@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Layout, Play, Activity } from 'lucide-react';
+import { Play, Activity } from 'lucide-react';
 import { getTopStocks, getStatus, runScreener } from './api';
 import ScoreCard from './components/ScoreCard';
 import './App.css';
@@ -25,8 +25,12 @@ function App() {
   }, []);
 
   const handleRun = async () => {
-    await runScreener();
-    fetchData();
+    try {
+      await runScreener();
+      fetchData();
+    } catch (err) {
+      console.error("Run screener failed", err);
+    }
   };
 
   return (
@@ -40,7 +44,7 @@ function App() {
         <div className="status-module">
           <div className="status-indicator">
             <span className={`dot ${status.status}`}></span>
-            <span className="status-text">Pipeline: {status.status.toUpperCase()}</span>
+            <span className="status-text">Pipeline: {status.status?.toUpperCase() || 'IDLE'}</span>
           </div>
           <p className="last-run">Scored: {status.scored || 0}</p>
         </div>
