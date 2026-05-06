@@ -56,3 +56,67 @@
 .run-button:hover:not(:disabled) {
   background: var(--border-color);
 }
+
+.score-card {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  padding: 16px;
+  border-radius: 4px;
+  transition: border-color 0.2s;
+}
+
+.score-card:hover {
+  border-color: var(--text-secondary);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.symbol {
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.score-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border-color);
+  margin-bottom: 12px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-secondary);
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+
+.metric .value {
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.success { color: var(--accent-color); }
+.danger { color: var(--danger-color); }
+.bold { font-weight: 700; }
