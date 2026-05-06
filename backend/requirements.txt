@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+alembic
+apscheduler
+yfinance
+nsepython
+pandas-ta
+pandas
+pytest
+pytest-cov
+httpx
+python-dotenv
