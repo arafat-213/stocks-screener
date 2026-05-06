@@ -1,30 +1,71 @@
-import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
-import Dashboard from './pages/Dashboard';
-import Screener from './pages/Screener';
-import StockDetail from './pages/StockDetail';
-import Reports from './pages/Reports';
+import React, { useEffect, useState } from 'react';
+import { Layout, Play, Activity } from 'lucide-react';
+import { getTopStocks, getStatus, runScreener } from './api';
+import ScoreCard from './components/ScoreCard';
+import './App.css';
 
 function App() {
+  const [stocks, setStocks] = useState([]);
+  const [status, setStatus] = useState({ status: 'idle' });
+
+  const fetchData = async () => {
+    try {
+      const [stocksRes, statusRes] = await Promise.all([getTopStocks(), getStatus()]);
+      setStocks(stocksRes.data);
+      setStatus(statusRes.data);
+    } catch (err) {
+      console.error("Fetch failed", err);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const interval = setInterval(fetchData, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleRun = async () => {
+    await runScreener();
+    fetchData();
+  };
+
   return (
-    <Router>
-      <div>
-        <nav style={{ padding: '1rem', borderBottom: '1px solid #ccc' }}>
-          <Link to=\"/\" style={{ marginRight: '1rem' }}>Dashboard</Link>
-          <Link to=\"/screener\" style={{ marginRight: '1rem' }}>Screener</Link>
-          <Link to=\"/reports\">Reports</Link>
-        </nav>
+    <div className="dashboard-container">
+      <aside className="sidebar">
+        <div className="sidebar-header">
+          <Activity className="icon-accent" />
+          <h1>Stock AI</h1>
+        </div>
         
-        <main style={{ padding: '1rem' }}>
-          <Routes>
-            <Route path=\"/\" element={<Dashboard />} />
-            <Route path=\"/screener\" element={<Screener />} />
-            <Route path=\"/stock/:symbol\" element={<StockDetail />} />
-            <Route path=\"/reports\" element={<Reports />} />
-          </Routes>
-        </main>
-      </div>
-    </Router>
+        <div className="status-module">
+          <div className="status-indicator">
+            <span className={`dot ${status.status}`}></span>
+            <span className="status-text">Pipeline: {status.status.toUpperCase()}</span>
+          </div>
+          <p className="last-run">Scored: {status.scored || 0}</p>
+        </div>
+
+        <button 
+          className="run-button" 
+          onClick={handleRun} 
+          disabled={status.status === 'running'}
+        >
+          <Play size={16} />
+          Run Screener
+        </button>
+      </aside>
+
+      <main className="main-content">
+        <header className="content-header">
+          <h2>Top Scored Stocks</h2>
+          <span className="timestamp">Real-time Analysis</span>
+        </header>
+        
+        <div className="stock-grid">
+          {stocks.map(s => <ScoreCard key={s.symbol} stock={s} />)}
+        </div>
+      </main>
+    </div>
   );
 }
 
