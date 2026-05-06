@@ -128,7 +128,6 @@ function App() {
       <main className="main-content">
         <header className="content-header">
           <h2>Top Scored Stocks</h2>
-          <span className="timestamp">Real-time Analysis</span>
         </header>
         
         <div className="stock-grid">
