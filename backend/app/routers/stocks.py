@@ -1,11 +1,24 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends, BackgroundTasks
+from sqlalchemy.orm import Session
+from sqlalchemy import desc
+from app.db.session import get_db
+from app.db.models import DailyScore, PipelineRun
+from app.pipeline.orchestrator import run_pipeline
 
-router = APIRouter(prefix="/api/stocks", tags=["stocks"])
+router = APIRouter()
 
-@router.get("/")
-async def get_stocks():
-    return {"stocks": []}
+@router.get("/stocks/top")
+def get_top_stocks(db: Session = Depends(get_db)):
+    scores = db.query(DailyScore).order_by(desc(DailyScore.entry_score)).limit(10).all()
+    return [{"symbol": s.symbol, "score": s.entry_score, "rsi": s.rsi, "signal": s.ema_signal} for s in scores]
 
-@router.get("/{symbol}")
-async def get_stock_detail(symbol: str):
-    return {"symbol": symbol}
+@router.post("/screener/run")
+def trigger_screener(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    background_tasks.add_task(run_pipeline, db)
+    return {"message": "Pipeline started"}
+
+@router.get("/pipeline/status")
+def get_pipeline_status(db: Session = Depends(get_db)):
+    run = db.query(PipelineRun).order_by(desc(PipelineRun.timestamp)).first()
+    if not run: return {"status": "idle"}
+    return {"status": run.status, "last_run": run.timestamp, "scored": run.stocks_scored}

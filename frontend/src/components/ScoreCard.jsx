@@ -1,8 +1,6 @@
-import React from 'react';
-
 export default function ScoreCard({ stock }) {
-  const isHighRsi = stock.rsi > 70;
-  const isLowRsi = stock.rsi < 30;
+  const isHighRsi = stock.rsi != null && stock.rsi > 70;
+  const isLowRsi = stock.rsi != null && stock.rsi < 30;
   const isBuy = stock.signal === 'BUY';
   const isSell = stock.signal === 'SELL';
 
@@ -17,7 +15,7 @@ export default function ScoreCard({ stock }) {
         <div className="metric">
           <label>RSI</label>
           <span className={`value ${isHighRsi ? 'danger' : isLowRsi ? 'success' : ''}`}>
-            {stock.rsi.toFixed(2)}
+            {stock.rsi != null ? stock.rsi.toFixed(2) : 'N/A'}
           </span>
         </div>
         <div className="metric">
