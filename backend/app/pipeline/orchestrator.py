@@ -158,7 +158,7 @@ def run_pipeline(db: Session):
         else:
             final_signal_date = datetime.date.today()
 
-        indices = ["^NSEI"]
+        indices = ["^NSEI", "^BSESN"]
         logger.info(f"Fetching market snapshots for {indices}")
         for idx in indices:
             hist, _ = fetch_stock_data(idx, append_ns=False, period="5d")
