@@ -4,6 +4,7 @@ import { fetchResults, fetchPipelineStatus, runScreener } from '../api/client';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
 import MarketTable, { MarketTableSkeleton } from '../components/MarketTable';
+import FilterBottomSheet from '../components/FilterBottomSheet';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -17,6 +18,10 @@ const Dashboard = () => {
   const [sortBy, setSortBy] = useState('confluence'); // 'confluence', 'score', 'rsi', 'pe'
   const [viewMode, setViewMode] = useState('table'); // 'grid', 'table'
 
+  // Responsiveness State
+  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
   const fetchData = async () => {
     try {
       const [resultsRes, statusRes] = await Promise.all([
@@ -28,7 +33,6 @@ const Dashboard = () => {
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch dashboard data:", err);
-      setError("Failed to load dashboard. Please try again.");
       setLoading(false);
     }
   };
@@ -37,6 +41,18 @@ const Dashboard = () => {
     fetchData();
     const interval = setInterval(fetchData, 15000); // Poll every 15s
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) setViewMode('grid');
+    };
+    window.addEventListener('resize', handleResize);
+    // Initial check
+    handleResize();
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleRunPipeline = async () => {
@@ -164,71 +180,87 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="filters-container card" style={{ padding: '20px', marginBottom: '24px' }}>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', alignItems: 'flex-start' }}>
-              <div className="filter-group">
-                <div className="filter-header" style={{ marginBottom: '12px' }}>
-                  <Filter size={16} style={{ marginRight: '8px', display: 'inline' }} />
-                  <h3 style={{ display: 'inline', fontSize: '14px' }}>Confluence</h3>
+          {!isMobile && (
+            <div className="filters-container card" style={{ padding: '20px', marginBottom: '24px' }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', alignItems: 'flex-start' }}>
+                <div className="filter-group">
+                  <div className="filter-header" style={{ marginBottom: '12px' }}>
+                    <Filter size={16} style={{ marginRight: '8px', display: 'inline' }} />
+                    <h3 style={{ display: 'inline', fontSize: '14px' }}>Confluence</h3>
+                  </div>
+                  <div className="radio-group" style={{ flexDirection: 'row', gap: '8px' }}>
+                    {['all', '3', '2+'].map(c => (
+                      <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`} style={{ border: '1px solid var(--color-border)' }}>
+                        <input 
+                          type="radio" 
+                          name="confluence" 
+                          value={c} 
+                          checked={confluenceFilter === c}
+                          onChange={(e) => setConfluenceFilter(e.target.value)}
+                        />
+                        {c === 'all' ? 'All Stocks' : c === '3' ? '3/3 Only' : '2/3+'}
+                      </label>
+                    ))}
+                  </div>
                 </div>
-                <div className="radio-group" style={{ flexDirection: 'row', gap: '8px' }}>
-                  {['all', '3', '2+'].map(c => (
-                    <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`} style={{ border: '1px solid var(--color-border)' }}>
-                      <input 
-                        type="radio" 
-                        name="confluence" 
-                        value={c} 
-                        checked={confluenceFilter === c}
-                        onChange={(e) => setConfluenceFilter(e.target.value)}
-                      />
-                      {c === 'all' ? 'All Stocks' : c === '3' ? '3/3 Only' : '2/3+'}
-                    </label>
-                  ))}
-                </div>
-              </div>
 
-              <div className="filter-group sectors" style={{ flex: 1, minWidth: '300px' }}>
-                <div className="filter-header" style={{ marginBottom: '12px' }}>
-                  <h3 style={{ fontSize: '14px' }}>Sectors <span className="count" style={{ marginLeft: '8px' }}>{availableSectors.length}</span></h3>
-                </div>
-                <div className="checkbox-list" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '8px', maxHeight: 'none' }}>
-                  {availableSectors.map(sector => (
-                    <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`} style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--color-border)', fontSize: '12px' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedSectors.includes(sector)}
-                        onChange={() => toggleSector(sector)}
-                        style={{ display: 'none' }}
-                      />
-                      <span>{sector}</span>
-                    </label>
-                  ))}
+                <div className="filter-group sectors" style={{ flex: 1, minWidth: '300px' }}>
+                  <div className="filter-header" style={{ marginBottom: '12px' }}>
+                    <h3 style={{ fontSize: '14px' }}>Sectors <span className="count" style={{ marginLeft: '8px' }}>{availableSectors.length}</span></h3>
+                  </div>
+                  <div className="checkbox-list" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '8px', maxHeight: 'none' }}>
+                    {availableSectors.map(sector => (
+                      <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`} style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--color-border)', fontSize: '12px' }}>
+                        <input 
+                          type="checkbox" 
+                          checked={selectedSectors.includes(sector)}
+                          onChange={() => toggleSector(sector)}
+                          style={{ display: 'none' }}
+                        />
+                        <span>{sector}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div className="action-bar">
             <h2>Market Screener</h2>
             <div style={{ display: 'flex', gap: '12px' }}>
-              <div className="view-toggle sort-controls">
+              {isMobile && (
                 <button 
-                  className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
-                  onClick={() => setViewMode('table')}
-                  title="Table View"
-                  style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'table' ? 'var(--color-bullish)' : 'inherit' }}
+                  className={`filter-mobile-btn ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'active' : ''}`}
+                  onClick={() => setIsFilterSheetOpen(true)}
                 >
-                  <List size={20} />
+                  <Filter size={20} />
+                  <span>Filters</span>
+                  {(confluenceFilter !== 'all' || selectedSectors.length > 0) && <span className="indicator" />}
                 </button>
-                <button 
-                  className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
-                  onClick={() => setViewMode('grid')}
-                  title="Grid View"
-                  style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'grid' ? 'var(--color-bullish)' : 'inherit' }}
-                >
-                  <LayoutGrid size={20} />
-                </button>
-              </div>
+              )}
+              
+              {!isMobile && (
+                <div className="view-toggle sort-controls">
+                  <button 
+                    className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                    onClick={() => setViewMode('table')}
+                    title="Table View"
+                    style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'table' ? 'var(--color-bullish)' : 'inherit' }}
+                  >
+                    <List size={20} />
+                  </button>
+                  <button 
+                    className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                    onClick={() => setViewMode('grid')}
+                    title="Grid View"
+                    style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'grid' ? 'var(--color-bullish)' : 'inherit' }}
+                  >
+                    <LayoutGrid size={20} />
+                  </button>
+                </div>
+              )}
+
               <div className="sort-controls">
                 <ArrowUpDown size={16} />
                 <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
@@ -261,6 +293,17 @@ const Dashboard = () => {
           </div>
         )}
       </main>
+
+      <FilterBottomSheet 
+        isOpen={isFilterSheetOpen}
+        onClose={() => setIsFilterSheetOpen(false)}
+        confluenceFilter={confluenceFilter}
+        setConfluenceFilter={setConfluenceFilter}
+        availableSectors={availableSectors}
+        selectedSectors={selectedSectors}
+        toggleSector={toggleSector}
+        resetFilters={resetFilters}
+      />
     </div>
   );
 };

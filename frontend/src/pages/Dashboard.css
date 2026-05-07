@@ -1,22 +1,10 @@
-.dashboard-layout {
-  display: flex;
-  min-height: 100vh;
+/* Page Layout - Navigation component handles the main container */
+.dashboard-page, .reports-page, .screener-page {
   width: 100%;
-  background: #f9fafb;
 }
 
-/* Sidebar Styling */
-.dashboard-sidebar {
-  width: 280px;
-  background: white;
-  border-right: 1px solid #e5e7eb;
-  padding: 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 32px;
-  position: fixed;
-  height: 100vh;
-  overflow-y: auto;
+.dashboard-content, .reports-content, .screener-content {
+  flex: 1;
 }
 
 .brand {
@@ -164,13 +152,7 @@
 .pipeline-btn:hover:not(:disabled) { opacity: 0.9; }
 .pipeline-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* Main Content Styling */
-.dashboard-main {
-  margin-left: 280px;
-  flex: 1;
-  padding: 32px;
-}
-
+/* Dashboard Header Styling */
 .dashboard-header {
   margin-bottom: 32px;
   display: flex;
@@ -247,10 +229,85 @@
   background: transparent;
 }
 
+/* Responsive Summary Bar */
+@media (max-width: 1024px) {
+  .summary-bar {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .summary-bar {
+    gap: 12px;
+  }
+  .summary-item {
+    padding: 12px;
+  }
+  .summary-item .value {
+    font-size: 16px;
+  }
+  .action-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  .action-bar h2 {
+    font-size: 20px;
+  }
+  .action-bar > div {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .sort-controls {
+    flex: 1;
+    justify-content: center;
+  }
+}
+
+/* Mobile Filter Button */
+.filter-mobile-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  padding: 8px 16px;
+  border-radius: 10px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+  position: relative;
+  transition: all 0.2s;
+}
+
+.filter-mobile-btn.active {
+  border-color: var(--color-bullish);
+  color: var(--color-bullish);
+  background: #f0fdf4;
+}
+
+.filter-mobile-btn .indicator {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-bullish);
+  border-radius: 50%;
+  border: 2px solid var(--color-bg-secondary);
+}
+
 .stock-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
   gap: 24px;
+}
+
+@media (max-width: 480px) {
+  .stock-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
 
 /* States */
