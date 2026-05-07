@@ -44,13 +44,18 @@ def calculate_fundamental_score(info: dict) -> float:
             
     return float(score)
 
-def calculate_technical_score(df: pd.DataFrame) -> dict:
+def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     """
     Calculates technical sub-score (Max 70 pts)
     - EMA Alignment: 20 pts
     - MACD: 20 pts
     - RSI 14: 15 pts
     - Volume: 15 pts
+    
+    Timeframe tiered logic for is_bullish:
+    - 'D': strict alignment
+    - 'W': RSI > 50 and Price > EMA26
+    - 'M': RSI > 50 and (Price > EMA13 or Price > EMA26)
     """
     if len(df) < 60:
         return {
@@ -59,7 +64,8 @@ def calculate_technical_score(df: pd.DataFrame) -> dict:
             "macd": 0.0, 
             "ema_signal": "neutral", 
             "volume_signal": "neutral",
-            "rsi_signal": "neutral"
+            "rsi_signal": "neutral",
+            "is_bullish": False
         }
         
     # Ensure we don't modify the original dataframe in a way that affects caller
@@ -82,66 +88,81 @@ def calculate_technical_score(df: pd.DataFrame) -> dict:
     ema_signal = "neutral"
     volume_signal = "neutral"
     rsi_signal = "neutral"
+    is_bullish = False
     
-    # 1. EMA Alignment (20 pts)
-    # Bullish: EMA_5 > EMA_13 > EMA_26 AND Price > EMA_26
     ema5 = latest.get('EMA_5')
     ema13 = latest.get('EMA_13')
+    ema20 = latest.get('EMA_20')
     ema26 = latest.get('EMA_26')
     price = latest.get('Close')
-    if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
-        if ema5 > ema13 > ema26 and price > ema26:
-            score += 20
-            ema_signal = "bullish"
-        elif ema5 < ema13 < ema26:
-            ema_signal = "bearish"
-        
-    # 2. MACD (20 pts)
-    # Bullish: MACD > Signal AND MACD > 0
     macd_line = latest.get('MACD_12_26_9')
     signal_line = latest.get('MACDs_12_26_9')
-    if pd.notna(macd_line) and pd.notna(signal_line):
-        if macd_line > signal_line and macd_line > 0:
-            score += 20
-        
-    # 3. RSI 14 (15 pts)
-    # Better RSI usage: 
-    # - Recovery from <30 AND price > EMA20
-    # - Crossing 50 from below
     rsi = latest.get('RSI_14')
     prev_rsi = prev.get('RSI_14')
-    ema20 = latest.get('EMA_20')
     
-    if pd.notna(rsi) and pd.notna(prev_rsi):
-        # Check for recovery in last 5 days
-        recent_rsi = df['RSI_14'].tail(5)
-        was_oversold = any(recent_rsi < 30)
+    if timeframe == 'D':
+        # 1. EMA Alignment (20 pts)
+        # Bullish: EMA_5 > EMA_13 > EMA_26 AND Price > EMA_26
+        if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
+            if ema5 > ema13 > ema26 and price > ema26:
+                score += 20
+                ema_signal = "bullish"
+            elif ema5 < ema13 < ema26:
+                ema_signal = "bearish"
+            
+        # 2. MACD (20 pts)
+        # Bullish: MACD > Signal AND MACD > 0
+        if pd.notna(macd_line) and pd.notna(signal_line):
+            if macd_line > signal_line and macd_line > 0:
+                score += 20
+            
+        # 3. RSI 14 (15 pts)
+        if pd.notna(rsi) and pd.notna(prev_rsi):
+            # Check for recovery in last 5 days
+            recent_rsi = df['RSI_14'].tail(5)
+            was_oversold = any(recent_rsi < 30)
+            
+            recovering = was_oversold and rsi > 30 and price > ema20
+            crossing_50 = prev_rsi <= 50 and rsi > 50
+            
+            if recovering:
+                score += 15
+                rsi_signal = "bullish_recovery"
+            elif crossing_50:
+                score += 15
+                rsi_signal = "bullish_crossing"
+            elif rsi > 50:
+                score += 5
+                rsi_signal = "bullish_strong"
+            
+        # 4. Volume (15 pts)
+        volume = latest.get('Volume')
+        sma20_vol = latest.get('VOL_SMA_20')
+        is_green = latest.get('Close') > latest.get('Open')
         
-        recovering = was_oversold and rsi > 30 and price > ema20
-        crossing_50 = prev_rsi <= 50 and rsi > 50
-        
-        if recovering:
-            score += 15
-            rsi_signal = "bullish_recovery"
-        elif crossing_50:
-            score += 15
-            rsi_signal = "bullish_crossing"
-        elif rsi > 50:
-            # Maintain some points for strong RSI even if not a "new" signal
-            score += 5
-            rsi_signal = "bullish_strong"
-        
-    # 4. Volume (15 pts)
-    # Better Volume usage:
-    # - Volume > 1.5x 20-day avg AND candle is green
-    volume = latest.get('Volume')
-    sma20_vol = latest.get('VOL_SMA_20')
-    is_green = latest.get('Close') > latest.get('Open')
-    
-    if pd.notna(volume) and pd.notna(sma20_vol):
-        if volume > 1.5 * sma20_vol and is_green:
-            score += 15
-            volume_signal = "bullish"
+        if pd.notna(volume) and pd.notna(sma20_vol):
+            if volume > 1.5 * sma20_vol and is_green:
+                score += 15
+                volume_signal = "bullish"
+                
+        # Define is_bullish for D
+        is_bullish = (
+            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
+            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
+            ema5 > ema13 > ema26 and price > ema26
+        )
+
+    elif timeframe == 'W':
+        is_bullish = (pd.notna(rsi) and rsi > 50 and pd.notna(ema26) and price > ema26)
+        score = 70.0 if is_bullish else 0.0
+        ema_signal = "bullish" if is_bullish else "neutral"
+
+    elif timeframe == 'M':
+        is_bullish = (pd.notna(rsi) and rsi > 50 and (
+            (pd.notna(ema13) and price > ema13) or (pd.notna(ema26) and price > ema26)
+        ))
+        score = 70.0 if is_bullish else 0.0
+        ema_signal = "bullish" if is_bullish else "neutral"
         
     return {
         "score": float(score),
@@ -149,16 +170,22 @@ def calculate_technical_score(df: pd.DataFrame) -> dict:
         "macd": float(macd_line) if pd.notna(macd_line) else 0.0,
         "ema_signal": ema_signal,
         "volume_signal": volume_signal,
-        "rsi_signal": rsi_signal
+        "rsi_signal": rsi_signal,
+        "is_bullish": bool(is_bullish)
     }
 
-def calculate_combined_score(df: pd.DataFrame, info: dict) -> dict:
+def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D') -> dict:
     """
     Combines Technical (70%) and Fundamental (30%) scores.
     Final Score range: 0-100.
+    
+    Skips fundamental score if timeframe is not 'D'.
     """
-    ta_data = calculate_technical_score(df)
-    fund_score = calculate_fundamental_score(info)
+    ta_data = calculate_technical_score(df, timeframe=timeframe)
+    
+    fund_score = 0.0
+    if timeframe == 'D':
+        fund_score = calculate_fundamental_score(info)
     
     combined_score = ta_data['score'] + fund_score
     # Ensure final score is in range 0-100
@@ -170,3 +197,4 @@ def calculate_combined_score(df: pd.DataFrame, info: dict) -> dict:
     ta_data['score'] = combined_score
     
     return ta_data
+
