@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, TrendingUp, Info, Activity, Loader2, AlertCircle } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { getStockDetail } from '../api/client';
+import { useTheme } from '../hooks/useTheme';
 import CandlestickChart from '../components/CandlestickChart';
 import './StockDetail.css';
 
 const StockDetail = () => {
   const { symbol } = useParams();
+  const { isDark } = useTheme();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -40,7 +42,7 @@ const StockDetail = () => {
   if (error || !data) {
     return (
       <div className="loading-container">
-        <AlertCircle size={48} color="#ef5350" />
+        <AlertCircle size={48} color="var(--color-bearish)" />
         <p>{error || "Stock not found"}</p>
         <Link to="/" className="back-link" style={{ marginTop: '16px' }}>
           <ArrowLeft size={18} /> Back to Dashboard
@@ -67,7 +69,7 @@ const StockDetail = () => {
       <div className="score-card" key={tf}>
         <h3>{label} Timeframe</h3>
         <div className="score-display">
-          <div className="score-value" style={{ color: '#6B7280' }}>--</div>
+          <div className="score-value" style={{ color: 'var(--color-text-muted)' }}>--</div>
           <div className="score-signals">
             <div className="signal-tag neutral">No Signal</div>
           </div>
@@ -84,7 +86,7 @@ const StockDetail = () => {
             <div className={`signal-tag ${scoreData.ema_signal === 'Bullish' ? 'bullish' : 'bearish'}`}>
               EMA: {scoreData.ema_signal}
             </div>
-            <div style={{ marginTop: '8px', fontSize: '12px', color: '#9CA3AF' }}>
+            <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--color-text-muted)' }}>
               RSI: {scoreData.rsi?.toFixed(1)}
             </div>
           </div>
@@ -119,7 +121,9 @@ const StockDetail = () => {
         <div className="main-col">
           <section className="chart-section">
             <h2><TrendingUp size={20} /> Price Action</h2>
-            <CandlestickChart data={ohlcv} />
+            <div className="chart-wrapper">
+              <CandlestickChart data={ohlcv} isDark={isDark} containerHeight={500} />
+            </div>
           </section>
 
           <section className="trend-section">
@@ -127,27 +131,31 @@ const StockDetail = () => {
             <div style={{ width: '100%', height: 300 }}>
               <ResponsiveContainer>
                 <LineChart data={score_history}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#2B2B43" />
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#2B2B43" : "#E5E7EB"} />
                   <XAxis 
                     dataKey="date" 
-                    stroke="#9CA3AF" 
+                    stroke="var(--color-text-muted)" 
                     fontSize={12}
                     tickFormatter={(str) => {
                       const date = new Date(str);
                       return date.toLocaleDateString([], { month: 'short', day: 'numeric' });
                     }}
                   />
-                  <YAxis stroke="#9CA3AF" fontSize={12} domain={[0, 10]} />
+                  <YAxis stroke="var(--color-text-muted)" fontSize={12} domain={[0, 10]} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#1E222D', border: '1px solid #2B2B43' }}
-                    itemStyle={{ color: '#FFF' }}
+                    contentStyle={{ 
+                      backgroundColor: 'var(--color-bg-secondary)', 
+                      borderColor: 'var(--color-border)',
+                      color: 'var(--color-text)'
+                    }}
+                    itemStyle={{ color: 'var(--color-text)' }}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="score" 
-                    stroke="#16a34a" 
+                    stroke="var(--color-bullish)" 
                     strokeWidth={3} 
-                    dot={{ r: 4, fill: '#16a34a' }}
+                    dot={{ r: 4, fill: 'var(--color-bullish)' }}
                     activeDot={{ r: 6 }}
                   />
                 </LineChart>
