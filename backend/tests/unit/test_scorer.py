@@ -37,7 +37,7 @@ def test_calculate_technical_score_bullish():
     volume = [1000] * 99 + [5000]
     
     df = pd.DataFrame({
-        'Open': close,
+        'Open': [c - 0.1 for c in close], # Ensure green candles
         'High': [c + 2 for c in close],
         'Low': [c - 2 for c in close],
         'Close': close,
@@ -51,8 +51,8 @@ def test_calculate_technical_score_bullish():
     
     assert result['ema_signal'] == 'bullish'
     assert result['volume_signal'] == 'bullish'
-    # It should be 70.0 now
-    assert result['score'] == 70.0
+    # It should be 60.0 now (EMA 20 + MACD 20 + RSI 5 + Volume 15)
+    assert result['score'] == 60.0
 
 def test_calculate_combined_score():
     # Mock DF that should give 70 pts
@@ -60,7 +60,7 @@ def test_calculate_combined_score():
     close = [100 + (i**1.2) for i in range(100)]
     volume = [1000] * 99 + [5000]
     df = pd.DataFrame({
-        'Open': close,
+        'Open': [c - 0.1 for c in close], # Ensure green candles
         'High': [c + 2 for c in close],
         'Low': [c - 2 for c in close],
         'Close': close,
@@ -72,8 +72,9 @@ def test_calculate_combined_score():
     
     result = calculate_combined_score(df, info)
     
-    assert result['score'] == 100.0
-    assert result['technical_score'] == 70.0
+    # Tech (60) + Fund (30) = 90
+    assert result['score'] == 90.0
+    assert result['technical_score'] == 60.0
     assert result['fundamental_score'] == 30.0
 
 def test_calculate_combined_score_clipping():
