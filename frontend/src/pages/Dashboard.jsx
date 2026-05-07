@@ -150,8 +150,12 @@ const Dashboard = () => {
     );
   }
 
-  const market = pipeline?.market_context?.[0] || {};
-  const isMarketUp = market.change_pct >= 0;
+  const market = pipeline?.market_context || [];
+  const nifty = market.find(m => m.symbol === '^NSEI') || {};
+  const sensex = market.find(m => m.symbol === '^BSESN') || {};
+  
+  const isNiftyUp = nifty.change_pct >= 0;
+  const isSensexUp = sensex.change_pct >= 0;
 
   return (
     <div className="dashboard-page">
@@ -169,14 +173,17 @@ const Dashboard = () => {
             </div>
             <div className="summary-item market">
               <span className="label">Nifty 50</span>
-              <span className={`value ${isMarketUp ? 'success' : 'danger'}`}>
-                {market.close?.toLocaleString('en-IN')} 
-                <small>({isMarketUp ? '▲' : '▼'} {Math.abs(market.change_pct)?.toFixed(2)}%)</small>
+              <span className={`value ${isNiftyUp ? 'success' : 'danger'}`}>
+                {nifty.close?.toLocaleString('en-IN')} 
+                <small>({isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%)</small>
               </span>
             </div>
-            <div className="summary-item timestamp">
-              <span className="label">Last Updated</span>
-              <span className="value">{new Date(pipeline?.scored_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+            <div className="summary-item market">
+              <span className="label">Sensex</span>
+              <span className={`value ${isSensexUp ? 'success' : 'danger'}`}>
+                {sensex.close?.toLocaleString('en-IN')} 
+                <small>({isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%)</small>
+              </span>
             </div>
           </div>
 
@@ -210,7 +217,7 @@ const Dashboard = () => {
                   </div>
                   <div className="checkbox-list" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '8px', maxHeight: 'none' }}>
                     {availableSectors.map(sector => (
-                      <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`} style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--color-border)', fontSize: '12px' }}>
+                      <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`}>
                         <input 
                           type="checkbox" 
                           checked={selectedSectors.includes(sector)}

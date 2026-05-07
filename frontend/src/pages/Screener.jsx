@@ -97,7 +97,7 @@ const Screener = () => {
               <select 
                 value={filters.sector} 
                 onChange={(e) => setFilters({...filters, sector: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--color-border)', outline: 'none', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
+                style={{ width: '100%' }}
               >
                 {sectors.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
@@ -109,7 +109,7 @@ const Screener = () => {
                 type="range" min="0" max="100" 
                 value={filters.minScore} 
                 onChange={(e) => setFilters({...filters, minScore: parseInt(e.target.value)})}
-                style={{ width: '100%', accentColor: 'var(--color-bullish)' }}
+                style={{ width: '100%' }}
               />
             </div>
 
@@ -119,7 +119,7 @@ const Screener = () => {
                 type="number" placeholder="e.g. 15"
                 value={filters.minROE}
                 onChange={(e) => setFilters({...filters, minROE: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--color-border)', outline: 'none', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
+                style={{ width: '100%' }}
               />
             </div>
 
@@ -129,7 +129,7 @@ const Screener = () => {
                 type="number" placeholder="e.g. 30"
                 value={filters.maxPE}
                 onChange={(e) => setFilters({...filters, maxPE: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--color-border)', outline: 'none', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
+                style={{ width: '100%' }}
               />
             </div>
           </div>
