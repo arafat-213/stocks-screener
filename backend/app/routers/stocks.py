@@ -9,7 +9,7 @@ router = APIRouter()
 
 @router.get("/stocks/top")
 def get_top_stocks(db: Session = Depends(get_db)):
-    scores = db.query(DailyScore).order_by(desc(DailyScore.entry_score)).limit(10).all()
+    scores = db.query(DailyScore).order_by(desc(DailyScore.entry_score)).limit(20).all()
     return [{"symbol": s.symbol, "score": s.entry_score, "rsi": s.rsi, "signal": s.ema_signal} for s in scores]
 
 @router.post("/screener/run")

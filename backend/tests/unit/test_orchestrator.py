@@ -7,7 +7,7 @@ import datetime
 @patch('app.pipeline.orchestrator.get_nse_symbols')
 @patch('app.pipeline.orchestrator.fetch_stock_data')
 @patch('app.pipeline.orchestrator.passes_tier1_fast_filters')
-@patch('app.pipeline.orchestrator.calculate_technical_score')
+@patch('app.pipeline.orchestrator.calculate_combined_score')
 @patch('app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals')
 def test_run_pipeline_tiered_flow(
     mock_fetch_cache,
