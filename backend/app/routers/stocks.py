@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 from app.db.session import get_db
-from app.db.models import DailyScore, PipelineRun
+from app.db.models import TechnicalSignal, PipelineRun
 from app.pipeline.orchestrator import run_pipeline
 
 router = APIRouter()
 
 @router.get("/stocks/top")
 def get_top_stocks(db: Session = Depends(get_db)):
-    scores = db.query(DailyScore).order_by(desc(DailyScore.entry_score)).limit(20).all()
+    scores = db.query(TechnicalSignal).filter(TechnicalSignal.timeframe == 'D').order_by(desc(TechnicalSignal.entry_score)).limit(20).all()
     return [{"symbol": s.symbol, "score": s.entry_score, "rsi": s.rsi, "signal": s.ema_signal} for s in scores]
 
 @router.post("/screener/run")

@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from .models import Stock, DailyScore, PipelineRun
+from .models import Stock, TechnicalSignal, PipelineRun
 
 def get_top_stocks(db: Session, limit: int = 10):
     \"\"\"Queries the top scored stocks for the dashboard.\"\"\"

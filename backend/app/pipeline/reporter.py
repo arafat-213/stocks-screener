@@ -2,24 +2,24 @@ import datetime
 import os
 import logging
 from sqlalchemy.orm import Session
-from app.db.models import DailyScore, Stock
+from app.db.models import TechnicalSignal, Stock
 
 logger = logging.getLogger(__name__)
 
 def generate_daily_report(db: Session):
-    """
+    \"\"\"
     Generates a daily snapshot report of the top scored stocks.
     Saves the report as a Markdown file in the 'backend/reports' directory.
-    """
+    \"\"\"
     try:
         today = datetime.datetime.utcnow().date()
-        
-        # Query top 20 stocks by score for today
+
+        # Query top 20 stocks by score for today (Daily timeframe)
         results = (
-            db.query(DailyScore, Stock)
-            .join(Stock, DailyScore.symbol == Stock.symbol)
-            .filter(DailyScore.date == today)
-            .order_by(DailyScore.entry_score.desc())
+            db.query(TechnicalSignal, Stock)
+            .join(Stock, TechnicalSignal.symbol == Stock.symbol)
+            .filter(TechnicalSignal.date == today, TechnicalSignal.timeframe == 'D')
+            .order_by(TechnicalSignal.entry_score.desc())
             .limit(20)
             .all()
         )

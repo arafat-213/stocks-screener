@@ -1,7 +1,7 @@
 import pytest
 from unittest.mock import MagicMock, patch
 from app.pipeline.reporter import generate_daily_report
-from app.db.models import DailyScore, Stock
+from app.db.models import TechnicalSignal, Stock
 import datetime
 import os
 
@@ -11,10 +11,10 @@ def test_generate_daily_report(tmp_path):
     today = datetime.datetime.utcnow().date()
     
     # Mock scores and stocks
-    score1 = DailyScore(symbol='REL', entry_score=90.0, rsi=65.0, ema_signal='bullish', volume_signal='high', date=today)
+    score1 = TechnicalSignal(symbol='REL', entry_score=90.0, rsi=65.0, ema_signal='bullish', volume_signal='high', date=today, timeframe='D')
     stock1 = Stock(symbol='REL', name='Reliance')
     
-    score2 = DailyScore(symbol='INF', entry_score=85.0, rsi=55.0, ema_signal='neutral', volume_signal='normal', date=today)
+    score2 = TechnicalSignal(symbol='INF', entry_score=85.0, rsi=55.0, ema_signal='neutral', volume_signal='normal', date=today, timeframe='D')
     stock2 = Stock(symbol='INF', name='Infosys')
     
     # Query join results

@@ -16,10 +16,10 @@ def get_nse_symbols() -> list[str]:
         logger.error(f"Failed to fetch NSE universe: {e}")
         return ["RELIANCE", "TCS", "HDFCBANK", "INFY", "HINDUNILVR"]
 
-def fetch_stock_data(symbol: str):
+def fetch_stock_data(symbol: str, period: str = "1y"):
     try:
         ticker = yf.Ticker(f"{symbol}.NS")
-        hist = ticker.history(period="1y")
+        hist = ticker.history(period=period)
         info = ticker.info
         
         if hist.empty:

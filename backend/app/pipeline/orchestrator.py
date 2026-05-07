@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from app.db.models import Stock, DailyScore, FundamentalData, PipelineRun, FundamentalCache
+from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, FundamentalCache
 from app.pipeline.fetcher import get_nse_symbols, fetch_stock_data
 from app.pipeline.screener import (
     passes_tier1_fast_filters, 
@@ -7,6 +7,7 @@ from app.pipeline.screener import (
     CURRENT_SCREENER_VERSION
 )
 from app.pipeline.scorer import calculate_combined_score
+from app.pipeline.utils import resample_ohlcv
 from app.pipeline.reporter import generate_daily_report
 import datetime
 import logging
@@ -35,7 +36,7 @@ def run_pipeline(db: Session):
         logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
             current_symbol = symbol
-            hist, info = fetch_stock_data(symbol)
+            hist, info = fetch_stock_data(symbol, period="3y")
             fetched_count += 1
             
             if hist is None or info is None:
@@ -84,6 +85,7 @@ def run_pipeline(db: Session):
         
         # 3. Final Filtering & Scoring
         logger.info("Applying Tier 2 filters and scoring")
+        scored_at = datetime.datetime.utcnow()
         for symbol in tier1_survivors:
             current_symbol = f"{symbol} (Scoring)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
@@ -102,22 +104,33 @@ def run_pipeline(db: Session):
                 continue
             
             hist, info = cache_data
-            ta_data = calculate_combined_score(hist, info)
+            
+            # Multi-timeframe loop
+            for tf, freq in [('D', None), ('W', 'W-FRI'), ('M', 'ME')]:
+                working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
+                if working_df.empty: continue
+                
+                signal_date = working_df.index[-1].date()
+                ta_data = calculate_combined_score(working_df, info, timeframe=tf)
+                
+                # Explicit Upsert into TechnicalSignal
+                signal = db.query(TechnicalSignal).filter_by(
+                    symbol=symbol, date=signal_date, timeframe=tf
+                ).first()
+                if not signal:
+                    signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
+                    db.add(signal)
+                
+                signal.entry_score = ta_data['score']
+                signal.is_bullish = ta_data['is_bullish']
+                signal.rsi = ta_data['rsi']
+                signal.macd = ta_data['macd']
+                signal.ema_signal = ta_data['ema_signal']
+                signal.volume_signal = ta_data.get('volume_signal', 'neutral')
+                signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
+                signal.scored_at = scored_at
+                
             scored_count += 1
-            
-            # Persist Score
-            today = datetime.datetime.utcnow().date()
-            score_entry = db.query(DailyScore).filter(DailyScore.symbol == symbol, DailyScore.date == today).first()
-            if not score_entry:
-                score_entry = DailyScore(symbol=symbol, date=today)
-                db.add(score_entry)
-            
-            score_entry.entry_score = ta_data['score']
-            score_entry.rsi = ta_data['rsi']
-            score_entry.macd = ta_data['macd']
-            score_entry.ema_signal = ta_data['ema_signal']
-            score_entry.volume_signal = ta_data['volume_signal']
-            
             if scored_count % 10 == 0:
                 db.commit()
         
