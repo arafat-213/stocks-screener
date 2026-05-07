@@ -10,3 +10,6 @@ export const fetchResults = () => apiClient.get('/screener/results');
 export const fetchPipelineStatus = () => apiClient.get('/pipeline/latest');
 export const runScreener = () => apiClient.post('/screener/run');
 export const getLatestReport = () => apiClient.get('/reports/latest');
+export const getReportList = () => apiClient.get('/reports');
+export const getReportByDate = (date) => apiClient.get(`/reports/${date}`);
+export const getStockDetail = (symbol) => apiClient.get(`/stocks/${symbol}`);

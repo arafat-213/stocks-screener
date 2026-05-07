@@ -1,13 +1,19 @@
-import React from 'react';
+import { Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import StockDetail from './pages/StockDetail';
+import Reports from './pages/Reports';
+import Screener from './pages/Screener';
 import './App.css';
 
 function App() {
-  // In a real app, we might have a router here.
-  // For now, we just render the Dashboard.
   return (
     <div className="app-container">
-      <Dashboard />
+      <Routes>
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/stocks/:symbol" element={<StockDetail />} />
+        <Route path="/reports" element={<Reports />} />
+        <Route path="/screener" element={<Screener />} />
+      </Routes>
     </div>
   );
 }
