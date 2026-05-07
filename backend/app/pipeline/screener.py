@@ -1,3 +1,38 @@
+CURRENT_SCREENER_VERSION = 1
+
+def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
+    """Returns (passes_filter, should_flag_missing_pledge)"""
+    if not info: return False, False
+    
+    # 1. Market Cap > ₹500 Cr (~$6M USD)
+    # Note: marketCap from yfinance for Indian stocks is usually in local currency (INR),
+    # but the instruction says "Mcap > ₹500 Cr (~$6M USD)" and the code uses 6,000,000.
+    # We will stick to the 6M value as requested.
+    mcap = info.get('marketCap', 0) or 0
+    if mcap < 6_000_000: return False, False
+    
+    # 2. P/E (0 < pe < 150)
+    pe = info.get('trailingPE') or info.get('forwardPE')
+    if pe is None or pe <= 0 or pe > 150: return False, False
+    
+    # 3. ROE > 15%
+    roe = info.get('returnOnEquity', 0) or 0
+    if roe < 0.15: return False, False
+    
+    # 4. Promoter Pledge < 20%
+    pledged = info.get('pledgedPercent')
+    flag_missing = False
+    if pledged is None:
+        flag_missing = True
+    elif pledged > 0.20:
+        return False, False
+    
+    # 5. Liquidity (20-day avg vol > 500k)
+    avg_vol = info.get('averageVolume', 0) or 0
+    if avg_vol < 500_000: return False, False
+    
+    return True, flag_missing
+
 def passes_fundamental_filters(info: dict) -> bool:
     if not info:
         return False
