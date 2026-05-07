@@ -1,13 +1,15 @@
-# Execution Tracker
+# Stock AI Refined Screener Implementation
 
-- [x] Task 1: Environment and Scaffolding
-- [x] Task 2: Database Setup & Alembic Migrations
-- [x] Task 3: Data Fetching (yfinance + nsepython)
-- [x] Task 4: Fundamental Screener
-- [x] Task 5: Technical Scorer (pandas-ta)
-- [x] Task 6: Pipeline Orchestrator
-- [x] Task 7: FastAPI Endpoints
-- [x] Task 8: APScheduler Integration
-- [x] Task 9: Frontend Initialization
-- [x] Task 10: API Client & Dashboard UI
-- [-] Task 11: Stock Detail & Charts (Out of scope of generated plan)
+## Phase 1: Foundation
+- [ ] Task 1: Update Database Models & Migrations
+
+## Phase 2: Screener Logic
+- [ ] Task 2: Implement Tier 1 Fast Filters
+- [ ] Task 3: Implement Sector-Relative D/E and 3-Year Profitability
+
+## Phase 3: Performance & Caching
+- [ ] Task 4: Implement Tiered Caching & Batching
+
+## Phase 4: Scoring & Finalization
+- [x] Task 5: Refine Stage 2 Scoring
+- [ ] Task 6: Final Verification & Pipeline Run

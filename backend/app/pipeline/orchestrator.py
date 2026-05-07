@@ -6,7 +6,7 @@ from app.pipeline.screener import (
     fetch_and_cache_deep_fundamentals,
     CURRENT_SCREENER_VERSION
 )
-from app.pipeline.scorer import calculate_technical_score
+from app.pipeline.scorer import calculate_combined_score
 import datetime
 import logging
 
@@ -27,7 +27,7 @@ def run_pipeline(db: Session):
         
         # 1. Tier 1 Screening
         tier1_survivors = []
-        hist_cache = {} # Temporary cache for hist data to avoid re-fetching
+        hist_cache = {} # Temporary cache for hist data and info to avoid re-fetching
         
         logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
@@ -48,7 +48,7 @@ def run_pipeline(db: Session):
             passes_t1, flag_missing_pledge = passes_tier1_fast_filters(info)
             if passes_t1:
                 tier1_survivors.append(symbol)
-                hist_cache[symbol] = hist
+                hist_cache[symbol] = (hist, info)
             
             # Periodically commit to keep DB updated with stock info
             if fetched_count % 50 == 0:
@@ -85,11 +85,12 @@ def run_pipeline(db: Session):
                 continue
             
             # Score
-            hist = hist_cache.get(symbol)
-            if hist is None: # Should not happen if in survivors
+            cache_data = hist_cache.get(symbol)
+            if cache_data is None: # Should not happen if in survivors
                 continue
-                
-            ta_data = calculate_technical_score(hist)
+            
+            hist, info = cache_data
+            ta_data = calculate_combined_score(hist, info)
             scored_count += 1
             
             # Persist Score
