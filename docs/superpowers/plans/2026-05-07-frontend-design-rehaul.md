@@ -72,23 +72,26 @@ Update `body` and `button` styles to use the new tokens.
 - Create: `frontend/src/hooks/useTheme.js`
 
 - [ ] **Step 1: Create useTheme hook**
-Implement system preference detection and listener.
+Implement system preference detection and separate effects for listener and attribute application.
 
 ```javascript
 import { useState, useEffect } from 'react';
 
 export const useTheme = () => {
-  const [isDark, setIsDark] = useState(window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const [isDark, setIsDark] = useState(
+    window.matchMedia('(prefers-color-scheme: dark)').matches
+  );
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+  }, [isDark]);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
     const listener = (e) => setIsDark(e.matches);
     media.addEventListener('change', listener);
-    
-    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
-    
     return () => media.removeEventListener('change', listener);
-  }, [isDark]);
+  }, []);
 
   return { isDark };
 };
@@ -108,7 +111,10 @@ Apply the hook at the root level.
 - Create: `frontend/src/components/Navigation.jsx`
 - Modify: `frontend/src/pages/Dashboard.jsx` (remove existing sidebar)
 
-- [ ] **Step 1: Create Navigation Component**
+- [ ] **Step 1: Migrate Sidebar Functionality**
+Ensure the "Run Pipeline" button and Pipeline Health stats are extracted from the old sidebar logic to be reused in `Navigation.jsx` (Desktop) and `FilterBottomSheet.jsx` (Mobile).
+
+- [ ] **Step 2: Create Navigation Component**
 Implement Desktop Sidebar (slim-responsive) and Mobile Bottom Nav.
 
 ```javascript
@@ -186,12 +192,24 @@ Implement the split view for desktop and vertical stack for mobile.
 Apply the new CSS variables to all text and container backgrounds.
 
 - [ ] **Step 3: Theme-Aware lightweight-charts**
-Update `CandlestickChart.jsx` to pass dynamic colors based on the current theme.
+Pass `isDark` as a prop to `CandlestickChart.jsx`. Inside the component, use a `useEffect` to call `chart.applyOptions()` when `isDark` changes.
 
 ```javascript
 // Inside CandlestickChart.jsx
-const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-// Pass to createChart config...
+useEffect(() => {
+  if (chartRef.current) {
+    chartRef.current.applyOptions({
+      layout: {
+        background: { color: isDark ? '#161616' : '#FFFFFF' },
+        textColor: isDark ? '#FFFFFF' : '#111827',
+      },
+      grid: {
+        vertLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
+        horzLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
+      }
+    });
+  }
+}, [isDark]);
 ```
 
 - [ ] **Step 4: Commit**
