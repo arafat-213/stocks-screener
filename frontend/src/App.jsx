@@ -3,9 +3,12 @@ import Dashboard from './pages/Dashboard';
 import StockDetail from './pages/StockDetail';
 import Reports from './pages/Reports';
 import Screener from './pages/Screener';
+import { useTheme } from './hooks/useTheme';
 import './App.css';
 
 function App() {
+  useTheme();
+
   return (
     <div className="app-container">
       <Routes>
