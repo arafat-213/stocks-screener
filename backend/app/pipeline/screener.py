@@ -1,5 +1,36 @@
 CURRENT_SCREENER_VERSION = 1
 
+DE_LIMITS = {
+    "Financial Services": 10,
+    "Insurance": 8,
+    "Real Estate": 4,
+    "Utilities": 3,
+    "default": 2
+}
+
+def get_row(df, keywords):
+    for idx in df.index:
+        if any(k.lower() in str(idx).lower() for k in keywords):
+            return df.loc[idx]
+    return None
+
+def check_profitability_streak(financials) -> bool:
+    """Checks if Net Income and Revenue are positive for last 3 years."""
+    try:
+        if financials.empty or len(financials.columns) < 3: return False
+        
+        ni_row = get_row(financials, ['net income', 'net earnings'])
+        rev_row = get_row(financials, ['total revenue', 'revenue', 'total operating revenue'])
+        
+        if ni_row is None or rev_row is None: return False
+        
+        # yf returns reverse chrono: iloc[0:3] are last 3 years
+        for i in range(3):
+            if ni_row.iloc[i] <= 0 or rev_row.iloc[i] <= 0: return False
+        return True
+    except Exception:
+        return False
+
 def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""
     if not info: return False, False
