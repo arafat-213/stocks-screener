@@ -82,6 +82,14 @@ const Navigation = ({ children }) => {
               <span>Scored</span>
               <span className="stat-val">{pipeline?.stocks_scored || 0}</span>
             </div>
+            {pipeline?.scored_at && (
+              <div className="health-stat last-run">
+                <span>Updated</span>
+                <span className="stat-val">
+                  {new Date(pipeline.scored_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            )}
           </div>
 
           <button 

@@ -96,6 +96,20 @@
   margin-bottom: 0;
 }
 
+.health-stat.last-run {
+  border-top: 1px solid var(--color-border);
+  margin-top: 12px;
+  padding-top: 12px;
+  font-size: 11px;
+}
+
+.health-stat.last-run span:first-child {
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-weight: 700;
+  opacity: 0.7;
+}
+
 .stat-val {
   font-family: var(--font-mono);
   font-weight: 600;
