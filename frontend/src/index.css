@@ -1,15 +1,30 @@
 :root {
-  --sidebar-width: 260px;
-  --bg-primary: #ffffff;
-  --bg-secondary: #f9fafb;
-  --text-primary: #111827;
-  --text-secondary: #6b7280;
-  --border-color: #e5e7eb;
-  --accent-color: #16a34a; /* Green */
-  --danger-color: #dc2626; /* Red */
-  --warning-color: #d97706; /* Yellow/Orange */
+  --color-bg: #FAFAFA;
+  --color-bg-secondary: #FFFFFF;
+  --color-bg-elevated: #F0F2F1;
+  --color-text: #111827;
+  --color-text-muted: #6B7280;
+  --color-border: #E5E7EB;
+  --color-bullish: #10B981;
+  --color-bearish: #F43F5E;
   
-  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-main: 'Inter', sans-serif;
+  --font-heading: 'Plus Jakarta Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  
+  --radius-standard: 12px;
+  --radius-dense: 8px;
+
+  --sidebar-width: 260px;
+}
+
+[data-theme="dark"] {
+  --color-bg: #0A0A0A;
+  --color-bg-secondary: #161616;
+  --color-bg-elevated: #1F1F1F;
+  --color-text: #FFFFFF;
+  --color-text-muted: #9CA3AF;
+  --color-border: #2B2B43;
 }
 
 *, *::before, *::after {
@@ -18,12 +33,22 @@
 
 body {
   margin: 0;
-  background-color: var(--bg-secondary);
-  color: var(--text-primary);
-  font-family: Inter, system-ui, -apple-system, sans-serif;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-main);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-heading);
+  margin: 0;
+}
+
+button, input, select, textarea {
+  font-family: inherit;
+  color: inherit;
 }
 
 #root {
