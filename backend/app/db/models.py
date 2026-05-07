@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean
+from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint
 from sqlalchemy.orm import declarative_base
 import datetime
 import uuid
@@ -13,16 +13,22 @@ class Stock(Base):
     industry = Column(String)
     market_cap = Column(Float)
 
-class DailyScore(Base):
-    __tablename__ = "daily_scores"
-    date = Column(DateTime, default=datetime.datetime.utcnow)
-    symbol = Column(String)
+class TechnicalSignal(Base):
+    __tablename__ = "technical_signals"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(DateTime, nullable=False)
+    symbol = Column(String, nullable=False)
+    timeframe = Column(String(1), nullable=False) # 'D', 'W', 'M'
+    is_bullish = Column(Boolean, nullable=False, default=False)
     entry_score = Column(Float)
     rsi = Column(Float)
     macd = Column(Float)
     ema_signal = Column(String)
     volume_signal = Column(String)
-    __table_args__ = (PrimaryKeyConstraint('date', 'symbol'),)
+    rsi_signal = Column(String)
+    scored_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    __table_args__ = (UniqueConstraint('symbol', 'date', 'timeframe'),)
 
 class FundamentalData(Base):
     __tablename__ = "fundamental_data"
