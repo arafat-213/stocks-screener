@@ -14,7 +14,7 @@ def test_fetch_and_cache_deep_fundamentals(mock_ticker_class):
     # Mock Ticker.info
     mock_ticker.info = {
         'sector': 'Financial Services',
-        'debtToEquity': 1.5,
+        'debtToEquity': 150.0,
         'pledgedPercent': 0.05,
         'trailingPE': 20,
         'priceToBook': 2.5,
@@ -68,7 +68,7 @@ def test_fetch_and_cache_deep_fundamentals_de_fail(mock_ticker_class):
     # Mock Ticker.info - High D/E for non-financial sector
     mock_ticker.info = {
         'sector': 'Technology',
-        'debtToEquity': 2.5, # > 2.0 default limit
+        'debtToEquity': 250.0, # > 2.0 default limit
         'pledgedPercent': 0.05,
         'marketCap': 1000000000
     }

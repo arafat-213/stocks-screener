@@ -69,19 +69,12 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 sector = info.get('sector', 'default')
                 de_limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
                 
-                # yfinance debtToEquity is often returned as percentage (e.g., 40.5 for 0.4)
-                # or absolute (e.g. 0.4). We need to be careful.
-                # Usually if it's > 100 it's definitely high.
-                # Most sources say yfinance returns it as percentage (e.g. 40.5 means 0.405)
-                # But some fields like 'debtToEquity' might be absolute.
-                # In previous code it was `if debt_equity > 100: return False`
+                # yfinance debtToEquity is returned as percentage (e.g. 40.5 for 0.405x)
+                # We normalize it to absolute value by always dividing by 100.
                 de_ratio = info.get('debtToEquity')
                 de_check_passed = True
                 if de_ratio is not None:
-                    # Assuming it's a percentage if > 5 (conservative for most sectors)
-                    # but DE_LIMITS are likely absolute values (e.g. 2.0)
-                    # Let's normalize it to absolute if it looks like a percentage.
-                    normalized_de = de_ratio / 100.0 if de_ratio > 10 else de_ratio
+                    normalized_de = de_ratio / 100.0
                     if normalized_de > de_limit:
                         de_check_passed = False
                         logger.info(f"{symbol} failed D/E check: {normalized_de} > {de_limit} (Sector: {sector})")
@@ -165,34 +158,3 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     if avg_vol < 500_000: return False, False
     
     return True, flag_missing
-
-def passes_fundamental_filters(info: dict) -> bool:
-    if not info:
-        return False
-        
-    try:
-        roe = info.get('returnOnEquity', 0)
-        if roe is None: roe = 0
-            
-        debt_equity = info.get('debtToEquity', 100)
-        if debt_equity is None: debt_equity = 100
-        
-        eps_growth = info.get('earningsGrowth', 0)
-        if eps_growth is None: eps_growth = 0
-            
-        market_cap = info.get('marketCap', 0)
-        if market_cap is None: market_cap = 0
-            
-        promoter_holding = info.get('heldPercentInsiders', 0)
-        if promoter_holding is None: promoter_holding = 0
-
-        if roe < 0.15: return False
-        # yfinance debtToEquity is often returned as percentage (e.g., 40.5 for 0.4)
-        if debt_equity > 100: return False 
-        if eps_growth < 0.10: return False
-        if market_cap < 5000000000: return False # 500 Cr in absolute
-        if promoter_holding < 0.40: return False
-        
-        return True
-    except Exception:
-        return False
