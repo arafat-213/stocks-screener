@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer
+from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean
 from sqlalchemy.orm import declarative_base
 import datetime
 import uuid
@@ -34,7 +34,20 @@ class FundamentalData(Base):
     debt_equity = Column(Float, nullable=True)
     eps_growth = Column(Float, nullable=True)
     promoter_holding = Column(Float, nullable=True)
+    pledged_percent = Column(Float, nullable=True)
+    market_cap = Column(Float, nullable=True)
     __table_args__ = (PrimaryKeyConstraint('date', 'symbol'),)
+
+class FundamentalCache(Base):
+    __tablename__ = "fundamental_cache"
+    symbol = Column(String, primary_key=True)
+    profitability_streak_passed = Column(Boolean)
+    de_ratio = Column(Float)
+    de_check_passed = Column(Boolean)
+    pledged_data_missing = Column(Boolean, default=False)
+    sector = Column(String)
+    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+    cache_version = Column(Integer, default=1)
 
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
