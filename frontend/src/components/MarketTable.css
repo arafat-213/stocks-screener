@@ -1,0 +1,151 @@
+.market-table-container {
+  width: 100%;
+  overflow-x: auto;
+  background-color: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-standard);
+  margin-top: 1rem;
+}
+
+.market-table {
+  display: grid;
+  min-width: 800px;
+  grid-template-columns: 140px 100px 80px 70px 70px 100px 70px 1fr;
+}
+
+.market-table-header {
+  display: contents;
+}
+
+.header-cell {
+  background-color: var(--color-bg-elevated);
+  padding: 12px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  border-bottom: 2px solid var(--color-border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.market-table-body {
+  display: contents;
+}
+
+.table-row {
+  display: contents;
+  text-decoration: none;
+  color: inherit;
+}
+
+.table-cell {
+  padding: 10px 16px;
+  font-size: 14px;
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+
+.table-row:hover .table-cell {
+  background-color: var(--color-bg-elevated);
+  cursor: pointer;
+}
+
+.table-row:last-child .table-cell {
+  border-bottom: none;
+}
+
+/* Specific alignments */
+.cell-numeric {
+  font-family: var(--font-mono);
+  justify-content: flex-end;
+  text-align: right;
+}
+
+.cell-symbol {
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.cell-sector {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Change Colors */
+.text-positive {
+  color: var(--color-bullish);
+}
+
+.text-negative {
+  color: var(--color-bearish);
+}
+
+/* Signal Dots */
+.signal-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.signal-indicator::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.signal-bullish::before {
+  background-color: var(--color-bullish);
+  box-shadow: 0 0 8px var(--color-bullish);
+}
+
+.signal-bearish::before {
+  background-color: var(--color-bearish);
+  box-shadow: 0 0 8px var(--color-bearish);
+}
+
+.signal-neutral::before {
+  background-color: var(--color-text-muted);
+  opacity: 0.3;
+}
+
+/* Skeleton Styling */
+.skeleton-cell {
+  height: 20px;
+  background: linear-gradient(90deg, var(--color-bg-elevated) 25%, var(--color-border) 50%, var(--color-bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+  border-radius: 4px;
+  width: 100%;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Sticky Symbol Column */
+.header-cell:first-child,
+.table-cell:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background-color: inherit;
+}
+
+.header-cell:first-child {
+  z-index: 11;
+  background-color: var(--color-bg-elevated);
+}
+
+.table-row:hover .table-cell:first-child {
+  background-color: var(--color-bg-elevated);
+}

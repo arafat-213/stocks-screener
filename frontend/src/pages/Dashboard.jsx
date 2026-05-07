@@ -1,21 +1,21 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Play, Activity, Filter, ArrowUpDown, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List } from 'lucide-react';
 import { fetchResults, fetchPipelineStatus, runScreener } from '../api/client';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
+import MarketTable, { MarketTableSkeleton } from '../components/MarketTable';
 import './Dashboard.css';
 
 const Dashboard = () => {
   const [stocks, setStocks] = useState([]);
   const [pipeline, setPipeline] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
   
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', '3', '2+'
   const [selectedSectors, setSelectedSectors] = useState([]);
   const [sortBy, setSortBy] = useState('confluence'); // 'confluence', 'score', 'rsi', 'pe'
+  const [viewMode, setViewMode] = useState('table'); // 'grid', 'table'
 
   const fetchData = async () => {
     try {
@@ -98,17 +98,8 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="dashboard-layout">
-        <aside className="dashboard-sidebar">
-          <div className="brand">
-            <Activity color="#16a34a" size={28} />
-            <h1>Stock AI</h1>
-          </div>
-          <div className="funnel-stats">
-            <div className="skeleton-line" style={{ height: '100px', borderRadius: '12px' }}></div>
-          </div>
-        </aside>
-        <main className="dashboard-main">
+      <div className="dashboard-page">
+        <main className="dashboard-content">
           <div className="summary-bar">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="summary-item">
@@ -116,8 +107,14 @@ const Dashboard = () => {
               </div>
             ))}
           </div>
-          <div className="stock-grid" style={{ marginTop: '32px' }}>
-            {[1, 2, 3, 4, 5, 6].map(i => <StockCardSkeleton key={i} />)}
+          <div style={{ marginTop: '32px' }}>
+            {viewMode === 'grid' ? (
+              <div className="stock-grid">
+                {[1, 2, 3, 4, 5, 6].map(i => <StockCardSkeleton key={i} />)}
+              </div>
+            ) : (
+              <MarketTableSkeleton rows={10} />
+            )}
           </div>
         </main>
       </div>
@@ -141,98 +138,9 @@ const Dashboard = () => {
   const isMarketUp = market.change_pct >= 0;
 
   return (
-    <div className="dashboard-layout">
-      {/* Sidebar */}
-      <aside className="dashboard-sidebar">
-        <div className="brand">
-          <Activity color="#16a34a" size={28} />
-          <h1>Stock AI</h1>
-        </div>
-
-        <nav className="filter-group">
-          <h3>Navigation</h3>
-          <div className="radio-group">
-            <Link to="/" className="radio-label active">Dashboard</Link>
-            <Link to="/screener" className="radio-label">Screener</Link>
-            <Link to="/reports" className="radio-label">Reports</Link>
-          </div>
-        </nav>
-
-        <div className="funnel-stats">
-          <h3>Pipeline Health</h3>
-          <div className="stat-row">
-            <span>Fetched</span>
-            <span className="stat-val">{pipeline?.stocks_fetched || 0}</span>
-          </div>
-          <div className="stat-row">
-            <span>Tier 1 (Filters)</span>
-            <span className="stat-val">{pipeline?.tier1_count || 0}</span>
-          </div>
-          <div className="stat-row">
-            <span>Tier 2 (Cache)</span>
-            <span className="stat-val">{pipeline?.tier2_count || 0}</span>
-          </div>
-          <div className="stat-row highlight">
-            <span>Scored</span>
-            <span className="stat-val">{pipeline?.stocks_scored || 0}</span>
-          </div>
-        </div>
-
-        <div className="filter-group">
-          <div className="filter-header">
-            <Filter size={16} />
-            <h3>Confluence</h3>
-          </div>
-          <div className="radio-group">
-            {['all', '3', '2+'].map(c => (
-              <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}>
-                <input 
-                  type="radio" 
-                  name="confluence" 
-                  value={c} 
-                  checked={confluenceFilter === c}
-                  onChange={(e) => setConfluenceFilter(e.target.value)}
-                />
-                {c === 'all' ? 'All Stocks' : c === '3' ? '3/3 Only' : '2/3+'}
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div className="filter-group sectors">
-          <div className="filter-header">
-            <h3>Sectors</h3>
-            <span className="count">{availableSectors.length}</span>
-          </div>
-          <div className="checkbox-list">
-            {availableSectors.map(sector => (
-              <label key={sector} className="checkbox-label">
-                <input 
-                  type="checkbox" 
-                  checked={selectedSectors.includes(sector)}
-                  onChange={() => toggleSector(sector)}
-                />
-                <span>{sector}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <button 
-          className="pipeline-btn" 
-          onClick={handleRunPipeline}
-          disabled={pipeline?.status === 'running'}
-        >
-          {pipeline?.status === 'running' ? (
-            <><Loader2 className="animate-spin" size={18} /> Running...</>
-          ) : (
-            <><Play size={18} /> Run Pipeline</>
-          )}
-        </button>
-      </aside>
-
+    <div className="dashboard-page">
       {/* Main Content */}
-      <main className="dashboard-main">
+      <main className="dashboard-content">
         <header className="dashboard-header">
           <div className="summary-bar">
             <div className="summary-item">
@@ -256,26 +164,94 @@ const Dashboard = () => {
             </div>
           </div>
 
+          <div className="filters-container card" style={{ padding: '20px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', alignItems: 'flex-start' }}>
+              <div className="filter-group">
+                <div className="filter-header" style={{ marginBottom: '12px' }}>
+                  <Filter size={16} style={{ marginRight: '8px', display: 'inline' }} />
+                  <h3 style={{ display: 'inline', fontSize: '14px' }}>Confluence</h3>
+                </div>
+                <div className="radio-group" style={{ flexDirection: 'row', gap: '8px' }}>
+                  {['all', '3', '2+'].map(c => (
+                    <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`} style={{ border: '1px solid var(--color-border)' }}>
+                      <input 
+                        type="radio" 
+                        name="confluence" 
+                        value={c} 
+                        checked={confluenceFilter === c}
+                        onChange={(e) => setConfluenceFilter(e.target.value)}
+                      />
+                      {c === 'all' ? 'All Stocks' : c === '3' ? '3/3 Only' : '2/3+'}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="filter-group sectors" style={{ flex: 1, minWidth: '300px' }}>
+                <div className="filter-header" style={{ marginBottom: '12px' }}>
+                  <h3 style={{ fontSize: '14px' }}>Sectors <span className="count" style={{ marginLeft: '8px' }}>{availableSectors.length}</span></h3>
+                </div>
+                <div className="checkbox-list" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '8px', maxHeight: 'none' }}>
+                  {availableSectors.map(sector => (
+                    <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`} style={{ padding: '4px 12px', borderRadius: '20px', border: '1px solid var(--color-border)', fontSize: '12px' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedSectors.includes(sector)}
+                        onChange={() => toggleSector(sector)}
+                        style={{ display: 'none' }}
+                      />
+                      <span>{sector}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div className="action-bar">
             <h2>Market Screener</h2>
-            <div className="sort-controls">
-              <ArrowUpDown size={16} />
-              <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                <option value="confluence">Confluence</option>
-                <option value="score">Daily Score</option>
-                <option value="rsi">Low RSI</option>
-                <option value="pe">Value (P/E)</option>
-              </select>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <div className="view-toggle sort-controls">
+                <button 
+                  className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                  onClick={() => setViewMode('table')}
+                  title="Table View"
+                  style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'table' ? 'var(--color-bullish)' : 'inherit' }}
+                >
+                  <List size={20} />
+                </button>
+                <button 
+                  className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                  onClick={() => setViewMode('grid')}
+                  title="Grid View"
+                  style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'grid' ? 'var(--color-bullish)' : 'inherit' }}
+                >
+                  <LayoutGrid size={20} />
+                </button>
+              </div>
+              <div className="sort-controls">
+                <ArrowUpDown size={16} />
+                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+                  <option value="confluence">Confluence</option>
+                  <option value="score">Daily Score</option>
+                  <option value="rsi">Low RSI</option>
+                  <option value="pe">Value (P/E)</option>
+                </select>
+              </div>
             </div>
           </div>
         </header>
 
         {filteredStocks.length > 0 ? (
-          <div className="stock-grid">
-            {filteredStocks.map(stock => (
-              <StockCard key={stock.symbol} stock={stock} />
-            ))}
-          </div>
+          viewMode === 'grid' ? (
+            <div className="stock-grid">
+              {filteredStocks.map(stock => (
+                <StockCard key={stock.symbol} stock={stock} />
+              ))}
+            </div>
+          ) : (
+            <MarketTable stocks={filteredStocks} />
+          )
         ) : (
           <div className="no-results">
             <Filter size={48} />
@@ -290,3 +266,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
