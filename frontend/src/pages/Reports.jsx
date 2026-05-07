@@ -45,90 +45,87 @@ const Reports = () => {
   }, [selectedDate]);
 
   return (
-    <div className="dashboard-layout">
-      {/* Sidebar */}
-      <aside className="dashboard-sidebar">
-        <div className="brand">
-          <Activity color="#16a34a" size={28} />
-          <h1>Stock AI</h1>
-        </div>
+    <div className="reports-page">
+      {/* Main Content */}
+      <main className="reports-content">
+        <header className="reports-header" style={{ marginBottom: '24px' }}>
+          <div className="action-bar">
+            <h2>Market Reports</h2>
+          </div>
+        </header>
 
-        <nav className="filter-group">
-          <h3>Navigation</h3>
-          <div className="radio-group">
-            <Link to="/" className="radio-label">Dashboard</Link>
-            <Link to="/screener" className="radio-label">Screener</Link>
-            <Link to="/reports" className="radio-label active">Reports</Link>
-          </div>
-        </nav>
-        
-        <div className="filter-group">
-          <div className="filter-header">
-            <h3>Available Dates</h3>
-            <span className="count">{dates.length}</span>
-          </div>
-          <div className="radio-group" style={{ maxHeight: 'calc(100vh - 400px)', overflowY: 'auto' }}>
+        <div className="card" style={{ padding: '24px', marginBottom: '24px' }}>
+          <h3 style={{ fontSize: '14px', marginBottom: '16px', color: 'var(--color-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+            Available Report Dates ({dates.length})
+          </h3>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
             {dates.map((date) => (
-              <label
+              <button
                 key={date}
-                className={`radio-label ${selectedDate === date ? 'active' : ''}`}
+                className={`filter-chip ${selectedDate === date ? 'active' : ''}`}
                 onClick={() => setSelectedDate(date)}
-                style={{ cursor: 'pointer' }}
+                style={{ 
+                  padding: '8px 16px', 
+                  borderRadius: '20px', 
+                  border: '1px solid var(--color-border)',
+                  background: selectedDate === date ? 'var(--color-bullish)' : 'white',
+                  color: selectedDate === date ? 'white' : 'var(--color-text)',
+                  cursor: 'pointer',
+                  fontSize: '13px',
+                  fontWeight: '600'
+                }}
               >
                 {date}
-              </label>
+              </button>
             ))}
           </div>
         </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="dashboard-main">
-        <header className="dashboard-header">
-          <div className="action-bar">
-            <h2>Report for {selectedDate || '...'}</h2>
+        <div className="report-results">
+          <div className="action-bar" style={{ marginBottom: '16px' }}>
+            <h3>Showing results for: <span style={{ color: 'var(--color-bullish)' }}>{selectedDate || '...'}</span></h3>
           </div>
-        </header>
         
-        {loading ? (
-          <div className="dashboard-loading">
-            <Loader2 className="animate-spin" size={40} />
-            <p>Loading report data...</p>
-          </div>
-        ) : reportData.length === 0 ? (
-          <div className="no-results">
-            <p>No data available for this date.</p>
-          </div>
-        ) : (
-          <div className="table-container">
-            <table className="stocks-table">
-              <thead>
-                <tr>
-                  <th>Symbol</th>
-                  <th>Name</th>
-                  <th>Confluence</th>
-                  <th>Daily Score</th>
-                  <th>RSI (D)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {reportData.map((stock) => (
-                  <tr key={stock.symbol}>
-                    <td><strong>{stock.symbol}</strong></td>
-                    <td>{stock.name}</td>
-                    <td>
-                      <span className={`status-badge ${stock.confluence_count >= 2 ? 'bullish' : 'neutral'}`}>
-                        {stock.confluence}
-                      </span>
-                    </td>
-                    <td>{stock.daily_score?.toFixed(1) || 'N/A'}</td>
-                    <td>{stock.rsi?.toFixed(1) || 'N/A'}</td>
+          {loading ? (
+            <div className="dashboard-loading" style={{ minHeight: '200px' }}>
+              <Loader2 className="animate-spin" size={40} />
+              <p>Loading report data...</p>
+            </div>
+          ) : reportData.length === 0 ? (
+            <div className="no-results">
+              <p>No data available for this date.</p>
+            </div>
+          ) : (
+            <div className="table-container">
+              <table className="stocks-table">
+                <thead>
+                  <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Confluence</th>
+                    <th>Daily Score</th>
+                    <th>RSI (D)</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {reportData.map((stock) => (
+                    <tr key={stock.symbol}>
+                      <td><strong>{stock.symbol}</strong></td>
+                      <td>{stock.name}</td>
+                      <td>
+                        <span className={`status-badge ${stock.confluence_count >= 2 ? 'bullish' : 'neutral'}`}>
+                          {stock.confluence}
+                        </span>
+                      </td>
+                      <td>{stock.daily_score?.toFixed(1) || 'N/A'}</td>
+                      <td>{stock.rsi?.toFixed(1) || 'N/A'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );

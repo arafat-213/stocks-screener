@@ -1,0 +1,224 @@
+.navigation-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  background: var(--color-bg-secondary);
+  border-right: 1px solid var(--color-border);
+  padding: 24px 16px;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  height: 100vh;
+  z-index: 50;
+  transition: width 0.3s ease;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 8px 32px 8px;
+}
+
+.brand-text {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--radius-dense);
+  color: var(--color-text-muted);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.nav-link:hover {
+  background: var(--color-bg-elevated);
+  color: var(--color-text);
+}
+
+.nav-link.active {
+  background: rgba(16, 185, 129, 0.1);
+  color: var(--color-bullish);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.pipeline-health {
+  background: var(--color-bg-elevated);
+  padding: 16px;
+  border-radius: var(--radius-standard);
+}
+
+.pipeline-health h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+
+.health-stat {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  margin-bottom: 8px;
+}
+
+.health-stat:last-child {
+  margin-bottom: 0;
+}
+
+.stat-val {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.run-pipeline-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: var(--color-text);
+  color: var(--color-bg-secondary);
+  border: none;
+  padding: 12px;
+  border-radius: var(--radius-dense);
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.run-pipeline-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.run-pipeline-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.main-content {
+  flex: 1;
+  margin-left: var(--sidebar-width);
+  min-height: 100vh;
+  transition: margin-left 0.3s ease;
+  padding: 32px;
+}
+
+.bottom-nav {
+  display: none;
+}
+
+/* Tablet: Icon-only sidebar */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .sidebar {
+    width: 80px;
+    align-items: center;
+    padding: 24px 8px;
+  }
+
+  .brand-text, .link-text, .pipeline-health, .btn-text {
+    display: none;
+  }
+
+  .sidebar-brand {
+    padding-bottom: 24px;
+    justify-content: center;
+  }
+
+  .nav-link {
+    justify-content: center;
+    padding: 12px 0;
+    width: 48px;
+    height: 48px;
+  }
+
+  .main-content {
+    margin-left: 80px;
+  }
+
+  .run-pipeline-btn {
+    width: 48px;
+    height: 48px;
+    padding: 0;
+  }
+}
+
+/* Mobile: Bottom Navigation */
+@media (max-width: 768px) {
+  .sidebar {
+    display: none;
+  }
+
+  .main-content {
+    margin-left: 0;
+    padding: 16px;
+    padding-bottom: 100px; /* Space for bottom nav */
+  }
+
+  .bottom-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 72px;
+    background: var(--color-bg-secondary);
+    border-top: 1px solid var(--color-border);
+    justify-content: space-around;
+    align-items: center;
+    z-index: 100;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  .bottom-nav-link {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--color-text-muted);
+    text-decoration: none;
+    font-size: 11px;
+    font-weight: 500;
+    flex: 1;
+    padding: 8px 0;
+    border-top: 2px solid transparent;
+    transition: all 0.2s;
+  }
+
+  .bottom-nav-link.active {
+    color: var(--color-bullish);
+    border-top-color: var(--color-bullish);
+    background: rgba(16, 185, 129, 0.05);
+  }
+
+  .bottom-nav-label {
+    font-weight: 600;
+  }
+}

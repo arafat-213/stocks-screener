@@ -80,27 +80,10 @@ const Screener = () => {
   };
 
   return (
-    <div className="dashboard-layout">
-      {/* Sidebar */}
-      <aside className="dashboard-sidebar">
-        <div className="brand">
-          <Activity color="#16a34a" size={28} />
-          <h1>Stock AI</h1>
-        </div>
-
-        <nav className="filter-group">
-          <h3>Navigation</h3>
-          <div className="radio-group">
-            <Link to="/" className="radio-label">Dashboard</Link>
-            <Link to="/screener" className="radio-label active">Screener</Link>
-            <Link to="/reports" className="radio-label">Reports</Link>
-          </div>
-        </nav>
-      </aside>
-
+    <div className="screener-page">
       {/* Main Content */}
-      <main className="dashboard-main">
-        <header className="dashboard-header">
+      <main className="screener-content">
+        <header className="screener-header" style={{ marginBottom: '24px' }}>
           <div className="action-bar">
             <h2>Interactive Screener</h2>
           </div>
