@@ -7,6 +7,7 @@ from app.pipeline.screener import (
     CURRENT_SCREENER_VERSION
 )
 from app.pipeline.scorer import calculate_combined_score
+from app.pipeline.reporter import generate_daily_report
 import datetime
 import logging
 import traceback
@@ -119,6 +120,10 @@ def run_pipeline(db: Session):
             
             if scored_count % 10 == 0:
                 db.commit()
+        
+        # 4. Generate Daily Report
+        logger.info("Generating daily report")
+        generate_daily_report(db)
             
         run.status = "complete"
         run.stocks_fetched = fetched_count
