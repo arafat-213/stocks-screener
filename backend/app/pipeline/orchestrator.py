@@ -64,6 +64,7 @@ def run_pipeline(db: Session):
                 run.stocks_fetched = fetched_count
                 db.commit()
         
+        run.tier1_count = len(tier1_survivors)
         db.commit()
         logger.info(f"Tier 1 complete. {len(tier1_survivors)} survivors.")
         
@@ -86,6 +87,7 @@ def run_pipeline(db: Session):
         # 3. Final Filtering & Scoring
         logger.info("Applying Tier 2 filters and scoring")
         scored_at = datetime.datetime.utcnow()
+        tier2_survivors_count = 0
         for symbol in tier1_survivors:
             current_symbol = f"{symbol} (Scoring)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
@@ -98,6 +100,7 @@ def run_pipeline(db: Session):
             if not cache.profitability_streak_passed or not cache.de_check_passed:
                 continue
             
+            tier2_survivors_count += 1
             # Score
             cache_data = hist_cache.get(symbol)
             if cache_data is None: # Should not happen if in survivors
@@ -130,11 +133,46 @@ def run_pipeline(db: Session):
                 signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
                 signal.scored_at = scored_at
                 
+                # Capture price snapshots for Daily timeframe
+                if tf == 'D' and len(working_df) >= 2:
+                    signal.close_price = float(working_df['Close'].iloc[-1])
+                    signal.price_change_pct = float(
+                        (working_df['Close'].iloc[-1] - working_df['Close'].iloc[-2]) 
+                        / working_df['Close'].iloc[-2] * 100
+                    )
+                
             scored_count += 1
             if scored_count % 10 == 0:
                 db.commit()
         
-        # 4. Generate Daily Report
+        run.tier2_count = tier2_survivors_count
+        
+        # 4. Market/Index Snapshots
+        from app.db.models import MarketSnapshot
+        
+        # Derive signal_date from the same logic used in scoring loop
+        # If we have survivors, use the last candle date from the first one
+        if tier1_survivors and hist_cache:
+            first_hist, _ = hist_cache[tier1_survivors[0]]
+            final_signal_date = first_hist.index[-1].date()
+        else:
+            final_signal_date = datetime.date.today()
+
+        indices = ["^NSEI"]
+        logger.info(f"Fetching market snapshots for {indices}")
+        for idx in indices:
+            hist, _ = fetch_stock_data(idx, append_ns=False, period="5d")
+            if hist is not None and len(hist) >= 2:
+                val = MarketSnapshot(
+                    date=final_signal_date,
+                    symbol=idx,
+                    close=float(hist['Close'].iloc[-1]),
+                    change_pct=float((hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2] * 100)
+                )
+                db.merge(val) # Upsert
+        db.commit()
+
+        # 5. Generate Daily Report
         logger.info("Generating daily report")
         generate_daily_report(db)
             

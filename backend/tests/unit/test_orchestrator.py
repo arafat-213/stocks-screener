@@ -64,6 +64,13 @@ def test_run_pipeline_tiered_flow(
     
     run_pipeline(mock_db)
     
+    # Get the run object that was added to the mock db
+    # It's the first object added via db.add()
+    run = mock_db.add.call_args_list[0][0][0]
+    assert isinstance(run, PipelineRun)
+    assert run.tier1_count == 1 # RELIANCE survived T1
+    assert run.tier2_count == 1 # RELIANCE survived T2
+
     # Verify RELIANCE triggered Tier 2 fetch
     mock_fetch_cache.assert_called_once()
     
