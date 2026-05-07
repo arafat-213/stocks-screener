@@ -9,7 +9,9 @@ import datetime
 @patch('app.pipeline.orchestrator.passes_tier1_fast_filters')
 @patch('app.pipeline.orchestrator.calculate_combined_score')
 @patch('app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals')
+@patch('app.pipeline.orchestrator.resample_ohlcv')
 def test_run_pipeline_tiered_flow(
+    mock_resample,
     mock_fetch_cache,
     mock_calc_score,
     mock_t1_filter,
@@ -26,8 +28,10 @@ def test_run_pipeline_tiered_flow(
     mock_hist.index = [datetime.datetime.utcnow()]
     mock_fetch_data.side_effect = [
         (mock_hist, {'longName': 'Reliance', 'marketCap': 1000}), # RELIANCE
-        (MagicMock(empty=True), {'longName': 'Infosys', 'marketCap': 500})   # INFY (empty hist)
+        (None, None)   # INFY (fetcher returns None, None if hist.empty or error)
     ]
+    
+    mock_resample.return_value = mock_hist
     
     # RELIANCE passes T1, INFY fails T1 (but hist was empty so it won't even reach T1 filter in first loop if I updated orchestrator correctly)
     # Actually, in the orchestrator:
