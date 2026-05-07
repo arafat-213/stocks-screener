@@ -2,24 +2,32 @@ import datetime
 import os
 import logging
 from sqlalchemy.orm import Session
+from sqlalchemy import func, case, text
 from app.db.models import TechnicalSignal, Stock
 
 logger = logging.getLogger(__name__)
 
 def generate_daily_report(db: Session):
-    \"\"\"
-    Generates a daily snapshot report of the top scored stocks.
+    """
+    Generates a daily snapshot report of the top scored stocks with multi-timeframe confluence.
     Saves the report as a Markdown file in the 'backend/reports' directory.
-    \"\"\"
+    """
     try:
         today = datetime.datetime.utcnow().date()
 
-        # Query top 20 stocks by score for today (Daily timeframe)
+        # Query top 20 stocks by confluence and score for today
         results = (
-            db.query(TechnicalSignal, Stock)
+            db.query(
+                TechnicalSignal.symbol,
+                Stock.name,
+                func.sum(case((TechnicalSignal.is_bullish == True, 1), else_=0)).label('confluence_count'),
+                func.max(case((TechnicalSignal.timeframe == 'D', TechnicalSignal.entry_score), else_=0)).label('daily_score'),
+                func.max(case((TechnicalSignal.timeframe == 'D', TechnicalSignal.rsi), else_=0)).label('rsi')
+            )
             .join(Stock, TechnicalSignal.symbol == Stock.symbol)
-            .filter(TechnicalSignal.date == today, TechnicalSignal.timeframe == 'D')
-            .order_by(TechnicalSignal.entry_score.desc())
+            .filter(func.date(TechnicalSignal.scored_at) == today)
+            .group_by(TechnicalSignal.symbol, Stock.name)
+            .order_by(text('confluence_count DESC'), text('daily_score DESC'))
             .limit(20)
             .all()
         )
@@ -33,14 +41,14 @@ def generate_daily_report(db: Session):
             f"# Daily Stock Scan Report - {today}",
             f"Generated at: {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC",
             "",
-            "| Symbol | Name | Score | RSI | Signal |",
+            "| Symbol | Name | Confluence | Daily Score | RSI |",
             "| :--- | :--- | :--- | :--- | :--- |"
         ]
         
-        for score, stock in results:
-            signal = f"EMA: {score.ema_signal}, Vol: {score.volume_signal}"
+        for symbol, name, confluence, score, rsi in results:
+            confluence_str = f"{int(confluence)}/3"
             report_lines.append(
-                f"| {score.symbol} | {stock.name} | {score.entry_score:.2f} | {score.rsi:.2f} | {signal} |"
+                f"| {symbol} | {name} | {confluence_str} | {score:.2f} | {rsi:.2f} |"
             )
             
         report_content = "\n".join(report_lines)
