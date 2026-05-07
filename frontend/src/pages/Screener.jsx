@@ -93,43 +93,43 @@ const Screener = () => {
         <div className="card" style={{ marginBottom: '24px', padding: '24px' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px' }}>
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: '#6b7280' }}>Sector</label>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Sector</label>
               <select 
                 value={filters.sector} 
                 onChange={(e) => setFilters({...filters, sector: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', outline: 'none' }}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--color-border)', outline: 'none', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
               >
                 {sectors.map(s => <option key={s} value={s}>{s}</option>)}
               </select>
             </div>
 
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: '#6b7280' }}>Min Entry Score ({filters.minScore})</label>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Min Entry Score ({filters.minScore})</label>
               <input 
                 type="range" min="0" max="100" 
                 value={filters.minScore} 
                 onChange={(e) => setFilters({...filters, minScore: parseInt(e.target.value)})}
-                style={{ width: '100%', accentColor: '#16a34a' }}
+                style={{ width: '100%', accentColor: 'var(--color-bullish)' }}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: '#6b7280' }}>Min ROE (%)</label>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Min ROE (%)</label>
               <input 
                 type="number" placeholder="e.g. 15"
                 value={filters.minROE}
                 onChange={(e) => setFilters({...filters, minROE: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', outline: 'none' }}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--color-border)', outline: 'none', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
               />
             </div>
 
             <div>
-              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: '#6b7280' }}>Max P/E</label>
+              <label style={{ display: 'block', marginBottom: '8px', fontSize: '12px', fontWeight: '600', textTransform: 'uppercase', color: 'var(--color-text-muted)' }}>Max P/E</label>
               <input 
                 type="number" placeholder="e.g. 30"
                 value={filters.maxPE}
                 onChange={(e) => setFilters({...filters, maxPE: e.target.value})}
-                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e5e7eb', outline: 'none' }}
+                style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid var(--color-border)', outline: 'none', background: 'var(--color-bg-secondary)', color: 'var(--color-text)' }}
               />
             </div>
           </div>

@@ -54,7 +54,7 @@ const Navigation = ({ children }) => {
       <aside className="sidebar">
         <div className="sidebar-brand">
           <Activity color="var(--color-bullish)" size={28} />
-          <span className="brand-text">Stock AI</span>
+          <span className="brand-text">Screener AI</span>
         </div>
 
         <nav className="sidebar-nav">

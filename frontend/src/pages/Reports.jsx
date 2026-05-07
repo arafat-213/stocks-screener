@@ -68,7 +68,7 @@ const Reports = () => {
                   padding: '8px 16px', 
                   borderRadius: '20px', 
                   border: '1px solid var(--color-border)',
-                  background: selectedDate === date ? 'var(--color-bullish)' : 'white',
+                  background: selectedDate === date ? 'var(--color-bullish)' : 'var(--color-bg-secondary)',
                   color: selectedDate === date ? 'white' : 'var(--color-text)',
                   cursor: 'pointer',
                   fontSize: '13px',
