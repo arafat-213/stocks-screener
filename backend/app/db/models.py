@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint
+from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date
 from sqlalchemy.orm import declarative_base
 import datetime
 import uuid
@@ -26,6 +26,8 @@ class TechnicalSignal(Base):
     ema_signal = Column(String)
     volume_signal = Column(String)
     rsi_signal = Column(String)
+    close_price = Column(Float, nullable=True)
+    price_change_pct = Column(Float, nullable=True)
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     __table_args__ = (UniqueConstraint('symbol', 'date', 'timeframe'),)
@@ -62,4 +64,13 @@ class PipelineRun(Base):
     status = Column(String)
     stocks_fetched = Column(Integer)
     stocks_scored = Column(Integer)
+    tier1_count = Column(Integer, default=0)
+    tier2_count = Column(Integer, default=0)
     errors = Column(Text)
+
+class MarketSnapshot(Base):
+    __tablename__ = "market_snapshots"
+    date = Column(Date, primary_key=True)
+    symbol = Column(String, primary_key=True)
+    close = Column(Float)
+    change_pct = Column(Float)
