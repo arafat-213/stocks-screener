@@ -4,6 +4,7 @@ import datetime
 import logging
 from sqlalchemy.orm import Session
 from app.db.models import FundamentalCache, FundamentalData
+from app.pipeline.utils import to_float
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +36,9 @@ def check_profitability_streak(financials) -> bool:
         
         # yf returns reverse chrono: iloc[0:3] are last 3 years
         for i in range(3):
-            if ni_row.iloc[i] <= 0 or rev_row.iloc[i] <= 0: return False
+            ni = to_float(ni_row.iloc[i], 0)
+            rev = to_float(rev_row.iloc[i], 0)
+            if ni <= 0 or rev <= 0: return False
         return True
     except Exception:
         return False
@@ -57,8 +60,11 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                     logger.warning(f"No info found for {symbol}")
                     continue
 
+                logger.info(f"Processing deep fundamentals for {symbol}")
                 # Tier 2 Metrics
                 profit_passed = check_profitability_streak(financials)
+                if not profit_passed:
+                    logger.info(f"{symbol} failed 3-year profitability streak")
                 
                 sector = info.get('sector', 'default')
                 de_limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
@@ -78,6 +84,7 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                     normalized_de = de_ratio / 100.0 if de_ratio > 10 else de_ratio
                     if normalized_de > de_limit:
                         de_check_passed = False
+                        logger.info(f"{symbol} failed D/E check: {normalized_de} > {de_limit} (Sector: {sector})")
                 else:
                     normalized_de = None
 
@@ -134,22 +141,19 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     if not info: return False, False
     
     # 1. Market Cap > ₹500 Cr (~$6M USD)
-    # Note: marketCap from yfinance for Indian stocks is usually in local currency (INR),
-    # but the instruction says "Mcap > ₹500 Cr (~$6M USD)" and the code uses 6,000,000.
-    # We will stick to the 6M value as requested.
-    mcap = info.get('marketCap', 0) or 0
+    mcap = to_float(info.get('marketCap'), 0)
     if mcap < 6_000_000: return False, False
     
     # 2. P/E (0 < pe < 150)
-    pe = info.get('trailingPE') or info.get('forwardPE')
+    pe = to_float(info.get('trailingPE') or info.get('forwardPE'))
     if pe is None or pe <= 0 or pe > 150: return False, False
     
     # 3. ROE > 15%
-    roe = info.get('returnOnEquity', 0) or 0
+    roe = to_float(info.get('returnOnEquity'), 0)
     if roe < 0.15: return False, False
     
     # 4. Promoter Pledge < 20%
-    pledged = info.get('pledgedPercent')
+    pledged = to_float(info.get('pledgedPercent'))
     flag_missing = False
     if pledged is None:
         flag_missing = True
@@ -157,7 +161,7 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
         return False, False
     
     # 5. Liquidity (20-day avg vol > 500k)
-    avg_vol = info.get('averageVolume', 0) or 0
+    avg_vol = to_float(info.get('averageVolume'), 0)
     if avg_vol < 500_000: return False, False
     
     return True, flag_missing

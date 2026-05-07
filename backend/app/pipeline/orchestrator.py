@@ -9,6 +9,7 @@ from app.pipeline.screener import (
 from app.pipeline.scorer import calculate_combined_score
 import datetime
 import logging
+import traceback
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ def run_pipeline(db: Session):
     db.add(run)
     db.commit()
     
+    current_symbol = "STARTUP"
     try:
         symbols = get_nse_symbols()
         if not symbols:
@@ -31,10 +33,15 @@ def run_pipeline(db: Session):
         
         logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
+            current_symbol = symbol
             hist, info = fetch_stock_data(symbol)
             fetched_count += 1
             
             if hist is None or info is None:
+                # Update progress even if fetch failed
+                if fetched_count % 50 == 0:
+                    run.stocks_fetched = fetched_count
+                    db.commit()
                 continue
             
             # Upsert Stock Info
@@ -50,8 +57,9 @@ def run_pipeline(db: Session):
                 tier1_survivors.append(symbol)
                 hist_cache[symbol] = (hist, info)
             
-            # Periodically commit to keep DB updated with stock info
+            # Periodically commit to keep DB updated with stock info and progress
             if fetched_count % 50 == 0:
+                run.stocks_fetched = fetched_count
                 db.commit()
         
         db.commit()
@@ -62,18 +70,21 @@ def run_pipeline(db: Session):
         seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
         
         for symbol in tier1_survivors:
+            current_symbol = f"{symbol} (Tier 2 Check)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
             
             if not cache or cache.last_updated < seven_days_ago or cache.cache_version < CURRENT_SCREENER_VERSION:
                 to_refresh.append(symbol)
         
         if to_refresh:
+            current_symbol = "BATCH_REFRESH"
             logger.info(f"Refreshing Tier 2 data for {len(to_refresh)} symbols")
             fetch_and_cache_deep_fundamentals(to_refresh, db)
         
         # 3. Final Filtering & Scoring
         logger.info("Applying Tier 2 filters and scoring")
         for symbol in tier1_survivors:
+            current_symbol = f"{symbol} (Scoring)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
             
             # If still no cache (fetch failed), skip
@@ -115,8 +126,9 @@ def run_pipeline(db: Session):
         db.commit()
         
     except Exception as e:
-        logger.error(f"Pipeline failed: {e}")
+        error_msg = f"Failed at {current_symbol}: {str(e)}\n{traceback.format_exc()}"
+        logger.error(f"Pipeline failed: {error_msg}")
         db.rollback()
         run.status = "failed"
-        run.errors = str(e)
+        run.errors = error_msg
         db.commit()

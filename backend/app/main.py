@@ -1,9 +1,27 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.background import BackgroundScheduler
+import logging
+import os
 from app.db.session import SessionLocal
 from app.pipeline.orchestrator import run_pipeline
 from app.routers import stocks
+
+# Configure Logging
+log_dir = "logs"
+if not os.path.exists(log_dir):
+    os.makedirs(log_dir)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler(os.path.join(log_dir, "pipeline.log"))
+    ]
+)
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Stock AI API")
 
