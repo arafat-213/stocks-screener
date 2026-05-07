@@ -1,0 +1,192 @@
+.stock-detail-container {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+  color: #D9D9D9;
+}
+
+.back-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #16a34a;
+  text-decoration: none;
+  font-weight: 500;
+  margin-bottom: 24px;
+  transition: color 0.2s;
+}
+
+.back-link:hover {
+  color: #22c55e;
+}
+
+.detail-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 32px;
+}
+
+.header-left .symbol-row {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.header-left h1 {
+  font-size: 32px;
+  margin: 0;
+  color: #FFF;
+}
+
+.header-left .sector-badge {
+  background: #2B2B43;
+  padding: 4px 12px;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #9CA3AF;
+}
+
+.header-left .stock-name {
+  font-size: 18px;
+  color: #9CA3AF;
+  margin-top: 4px;
+}
+
+.header-right {
+  text-align: right;
+}
+
+.current-price {
+  font-size: 32px;
+  font-weight: 700;
+  color: #FFF;
+}
+
+.price-change {
+  font-size: 18px;
+  font-weight: 600;
+  margin-top: 4px;
+}
+
+.price-change.positive { color: #26a69a; }
+.price-change.negative { color: #ef5350; }
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+
+.chart-section {
+  background: #1E222D;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #2B2B43;
+}
+
+.chart-section h2 {
+  font-size: 18px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.confluence-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.score-card {
+  background: #1E222D;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #2B2B43;
+}
+
+.score-card h3 {
+  font-size: 14px;
+  color: #9CA3AF;
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.score-display {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.score-value {
+  font-size: 36px;
+  font-weight: 800;
+  color: #FFF;
+}
+
+.score-signals {
+  text-align: right;
+}
+
+.signal-tag {
+  display: inline-block;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.signal-tag.bullish { background: rgba(38, 166, 154, 0.1); color: #26a69a; }
+.signal-tag.bearish { background: rgba(239, 83, 80, 0.1); color: #ef5350; }
+
+.fundamentals-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.fundamental-item {
+  background: rgba(43, 43, 67, 0.5);
+  padding: 12px;
+  border-radius: 8px;
+}
+
+.f-label {
+  display: block;
+  font-size: 12px;
+  color: #9CA3AF;
+  margin-bottom: 4px;
+}
+
+.f-value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #FFF;
+}
+
+.trend-section {
+  margin-top: 24px;
+  background: #1E222D;
+  border-radius: 12px;
+  padding: 20px;
+  border: 1px solid #2B2B43;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  gap: 16px;
+  color: #9CA3AF;
+}
+
+@media (max-width: 1024px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+}

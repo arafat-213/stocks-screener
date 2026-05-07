@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Play, Activity, Filter, ArrowUpDown, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { fetchResults, fetchPipelineStatus, runScreener } from '../api/client';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
@@ -147,6 +148,15 @@ const Dashboard = () => {
           <Activity color="#16a34a" size={28} />
           <h1>Stock AI</h1>
         </div>
+
+        <nav className="filter-group">
+          <h3>Navigation</h3>
+          <div className="radio-group">
+            <Link to="/" className="radio-label active">Dashboard</Link>
+            <Link to="/screener" className="radio-label">Screener</Link>
+            <Link to="/reports" className="radio-label">Reports</Link>
+          </div>
+        </nav>
 
         <div className="funnel-stats">
           <h3>Pipeline Health</h3>

@@ -162,6 +162,12 @@
 
 .technical { border-bottom: 1px solid #f3f4f6; padding-bottom: 10px; }
 
+.stock-card-link {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
 /* Skeleton Styles */
 .skeleton {
   pointer-events: none;

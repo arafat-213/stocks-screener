@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import './StockCard.css';
 
 const StockCard = ({ stock }) => {
@@ -35,68 +36,70 @@ const StockCard = ({ stock }) => {
   };
 
   return (
-    <div className="stock-card">
-      <div className="card-top">
-        <div className="symbol-section">
-          <div className="symbol-row">
-            <span className="stock-symbol">{symbol.replace('.NS', '')}</span>
-            <span className="sector-tag">{sector}</span>
+    <Link to={`/stocks/${symbol}`} className="stock-card-link">
+      <div className="stock-card">
+        <div className="card-top">
+          <div className="symbol-section">
+            <div className="symbol-row">
+              <span className="stock-symbol">{symbol.replace('.NS', '')}</span>
+              <span className="sector-tag">{sector}</span>
+            </div>
+            <div className="stock-name">{name}</div>
           </div>
-          <div className="stock-name">{name}</div>
-        </div>
-        <div className="price-section">
-          <div className="price-value">₹{close_price?.toLocaleString('en-IN') || '-'}</div>
-          <div className={`price-change ${isPositive ? 'positive' : 'negative'}`}>
-            {isPositive ? '+' : ''}{price_change_pct?.toFixed(2)}%
-          </div>
-        </div>
-      </div>
-
-      <div className="confluence-section">
-        <div className={`confluence-badge confluence-${confluence_count}`}>
-          {confluence_count}/3 Confluence
-        </div>
-        <div className="tf-indicators">
-          {renderTimeframe('D', 'D')}
-          {renderTimeframe('W', 'W')}
-          {renderTimeframe('M', 'M')}
-        </div>
-      </div>
-
-      <div className="metrics-section">
-        <div className="metrics-row technical">
-          <div className="metric-item">
-            <span className="m-label">Score</span>
-            <span className="m-value bold">{daily.score || '-'}</span>
-          </div>
-          <div className="metric-item">
-            <span className="m-label">RSI</span>
-            <span className="m-value">{daily.rsi?.toFixed(1) || '-'}</span>
-          </div>
-          <div className="metric-item">
-            <span className="m-label">EMA</span>
-            <span className={`m-value ${daily.ema_signal === 'Bullish' ? 'positive' : 'negative'}`}>
-              {daily.ema_signal || '-'}
-            </span>
+          <div className="price-section">
+            <div className="price-value">₹{close_price?.toLocaleString('en-IN') || '-'}</div>
+            <div className={`price-change ${isPositive ? 'positive' : 'negative'}`}>
+              {isPositive ? '+' : ''}{price_change_pct?.toFixed(2)}%
+            </div>
           </div>
         </div>
 
-        <div className="metrics-row fundamental">
-          <div className="metric-item">
-            <span className="m-label">P/E</span>
-            <span className="m-value">{fundamentals.pe?.toFixed(1) || '-'}</span>
+        <div className="confluence-section">
+          <div className={`confluence-badge confluence-${confluence_count}`}>
+            {confluence_count}/3 Confluence
           </div>
-          <div className="metric-item">
-            <span className="m-label">ROE</span>
-            <span className="m-value">{fundamentals.roe ? `${fundamentals.roe.toFixed(1)}%` : '-'}</span>
+          <div className="tf-indicators">
+            {renderTimeframe('D', 'D')}
+            {renderTimeframe('W', 'W')}
+            {renderTimeframe('M', 'M')}
           </div>
-          <div className="metric-item">
-            <span className="m-label">MCap</span>
-            <span className="m-value">{formatMCap(fundamentals.market_cap)}</span>
+        </div>
+
+        <div className="metrics-section">
+          <div className="metrics-row technical">
+            <div className="metric-item">
+              <span className="m-label">Score</span>
+              <span className="m-value bold">{daily.score || '-'}</span>
+            </div>
+            <div className="metric-item">
+              <span className="m-label">RSI</span>
+              <span className="m-value">{daily.rsi?.toFixed(1) || '-'}</span>
+            </div>
+            <div className="metric-item">
+              <span className="m-label">EMA</span>
+              <span className={`m-value ${daily.ema_signal === 'Bullish' ? 'positive' : 'negative'}`}>
+                {daily.ema_signal || '-'}
+              </span>
+            </div>
+          </div>
+
+          <div className="metrics-row fundamental">
+            <div className="metric-item">
+              <span className="m-label">P/E</span>
+              <span className="m-value">{fundamentals.pe?.toFixed(1) || '-'}</span>
+            </div>
+            <div className="metric-item">
+              <span className="m-label">ROE</span>
+              <span className="m-value">{fundamentals.roe ? `${fundamentals.roe.toFixed(1)}%` : '-'}</span>
+            </div>
+            <div className="metric-item">
+              <span className="m-label">MCap</span>
+              <span className="m-value">{formatMCap(fundamentals.market_cap)}</span>
+            </div>
           </div>
         </div>
       </div>
-    </div>
+    </Link>
   );
 };
 
