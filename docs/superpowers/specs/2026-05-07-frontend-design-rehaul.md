@@ -73,7 +73,20 @@ The design uses an "inverted hierarchy" where row/card elements are lighter than
 
 ### 5.1 Theme Awareness
 - Root attribute: `html[data-theme="dark"]`.
-- **Chart.js / lightweight-charts:** Must pass explicit background/text colors derived from current theme state to `createChart()`.
+- **Theme Detection:** On app init, read `window.matchMedia('(prefers-color-scheme: dark)')` and set `document.documentElement.setAttribute('data-theme', ...)` accordingly. Listen for changes with `addEventListener('change', ...)`.
+- **Chart.js / lightweight-charts:** Must pass explicit background/text colors derived from current theme state to `createChart()`:
+  ```js
+  createChart(container, {
+    layout: {
+      background: { color: isDark ? '#161616' : '#FFFFFF' },
+      textColor: isDark ? '#FFFFFF' : '#111827' },
+    },
+    grid: {
+      vertLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
+      horzLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
+    }
+  })
+  ```
 
 ### 5.2 Performance
 - `React.memo` for table rows and cards.
