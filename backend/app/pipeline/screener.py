@@ -1,3 +1,12 @@
+import yfinance as yf
+import time
+import datetime
+import logging
+from sqlalchemy.orm import Session
+from app.db.models import FundamentalCache, FundamentalData
+
+logger = logging.getLogger(__name__)
+
 CURRENT_SCREENER_VERSION = 1
 
 DE_LIMITS = {
@@ -17,7 +26,7 @@ def get_row(df, keywords):
 def check_profitability_streak(financials) -> bool:
     """Checks if Net Income and Revenue are positive for last 3 years."""
     try:
-        if financials.empty or len(financials.columns) < 3: return False
+        if financials is None or financials.empty or len(financials.columns) < 3: return False
         
         ni_row = get_row(financials, ['net income', 'net earnings'])
         rev_row = get_row(financials, ['total revenue', 'revenue', 'total operating revenue'])
@@ -30,6 +39,95 @@ def check_profitability_streak(financials) -> bool:
         return True
     except Exception:
         return False
+
+def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
+    """Fetches financials and info for symbols in batches and caches them."""
+    batch_size = 50
+    for i in range(0, len(symbols), batch_size):
+        batch = symbols[i:i+batch_size]
+        logger.info(f"Fetching Tier 2 data for batch: {batch}")
+        
+        for symbol in batch:
+            try:
+                ticker = yf.Ticker(f"{symbol}.NS")
+                financials = ticker.financials
+                info = ticker.info
+                
+                if not info:
+                    logger.warning(f"No info found for {symbol}")
+                    continue
+
+                # Tier 2 Metrics
+                profit_passed = check_profitability_streak(financials)
+                
+                sector = info.get('sector', 'default')
+                de_limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
+                
+                # yfinance debtToEquity is often returned as percentage (e.g., 40.5 for 0.4)
+                # or absolute (e.g. 0.4). We need to be careful.
+                # Usually if it's > 100 it's definitely high.
+                # Most sources say yfinance returns it as percentage (e.g. 40.5 means 0.405)
+                # But some fields like 'debtToEquity' might be absolute.
+                # In previous code it was `if debt_equity > 100: return False`
+                de_ratio = info.get('debtToEquity')
+                de_check_passed = True
+                if de_ratio is not None:
+                    # Assuming it's a percentage if > 5 (conservative for most sectors)
+                    # but DE_LIMITS are likely absolute values (e.g. 2.0)
+                    # Let's normalize it to absolute if it looks like a percentage.
+                    normalized_de = de_ratio / 100.0 if de_ratio > 10 else de_ratio
+                    if normalized_de > de_limit:
+                        de_check_passed = False
+                else:
+                    normalized_de = None
+
+                pledged = info.get('pledgedPercent')
+                pledged_missing = pledged is None
+                
+                # Update FundamentalCache
+                cache_entry = db_session.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
+                if not cache_entry:
+                    cache_entry = FundamentalCache(symbol=symbol)
+                    db_session.add(cache_entry)
+                
+                cache_entry.profitability_streak_passed = profit_passed
+                cache_entry.de_ratio = normalized_de
+                cache_entry.de_check_passed = de_check_passed
+                cache_entry.pledged_data_missing = pledged_missing
+                cache_entry.sector = sector
+                cache_entry.last_updated = datetime.datetime.utcnow()
+                cache_entry.cache_version = CURRENT_SCREENER_VERSION
+                
+                # Update FundamentalData (latest snapshot)
+                # We use today's date for the snapshot
+                today = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+                fund_data = db_session.query(FundamentalData).filter(
+                    FundamentalData.symbol == symbol,
+                    FundamentalData.date == today
+                ).first()
+                
+                if not fund_data:
+                    fund_data = FundamentalData(symbol=symbol, date=today)
+                    db_session.add(fund_data)
+                
+                fund_data.pe = info.get('trailingPE') or info.get('forwardPE')
+                fund_data.pb = info.get('priceToBook')
+                fund_data.roe = info.get('returnOnEquity')
+                fund_data.debt_equity = normalized_de
+                fund_data.eps_growth = info.get('earningsGrowth')
+                fund_data.promoter_holding = info.get('heldPercentInsiders')
+                fund_data.pledged_percent = pledged
+                fund_data.market_cap = info.get('marketCap')
+                
+                db_session.commit()
+                
+            except Exception as e:
+                logger.error(f"Failed Tier 2 fetch for {symbol}: {e}")
+                db_session.rollback()
+        
+        if i + batch_size < len(symbols):
+            logger.info("Batch complete. Sleeping for 1.0s...")
+            time.sleep(1.0)
 
 def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""

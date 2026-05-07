@@ -1,7 +1,11 @@
 from sqlalchemy.orm import Session
-from app.db.models import Stock, DailyScore, FundamentalData, PipelineRun
+from app.db.models import Stock, DailyScore, FundamentalData, PipelineRun, FundamentalCache
 from app.pipeline.fetcher import get_nse_symbols, fetch_stock_data
-from app.pipeline.screener import passes_fundamental_filters
+from app.pipeline.screener import (
+    passes_tier1_fast_filters, 
+    fetch_and_cache_deep_fundamentals,
+    CURRENT_SCREENER_VERSION
+)
 from app.pipeline.scorer import calculate_technical_score
 import datetime
 import logging
@@ -21,31 +25,78 @@ def run_pipeline(db: Session):
         scored_count = 0
         fetched_count = 0
         
+        # 1. Tier 1 Screening
+        tier1_survivors = []
+        hist_cache = {} # Temporary cache for hist data to avoid re-fetching
+        
+        logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
             hist, info = fetch_stock_data(symbol)
             fetched_count += 1
             
             if hist is None or info is None:
                 continue
-                
+            
             # Upsert Stock Info
             stock = db.query(Stock).filter(Stock.symbol == symbol).first()
             if not stock:
                 stock = Stock(symbol=symbol, name=info.get('longName', symbol), sector=info.get('sector', ''), industry=info.get('industry', ''), market_cap=info.get('marketCap', 0))
                 db.add(stock)
+            else:
+                stock.market_cap = info.get('marketCap', 0)
             
-            # Screen
-            if not passes_fundamental_filters(info):
+            passes_t1, flag_missing_pledge = passes_tier1_fast_filters(info)
+            if passes_t1:
+                tier1_survivors.append(symbol)
+                hist_cache[symbol] = hist
+            
+            # Periodically commit to keep DB updated with stock info
+            if fetched_count % 50 == 0:
+                db.commit()
+        
+        db.commit()
+        logger.info(f"Tier 1 complete. {len(tier1_survivors)} survivors.")
+        
+        # 2. Tier 2 Screening & Caching
+        to_refresh = []
+        seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+        
+        for symbol in tier1_survivors:
+            cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
+            
+            if not cache or cache.last_updated < seven_days_ago or cache.cache_version < CURRENT_SCREENER_VERSION:
+                to_refresh.append(symbol)
+        
+        if to_refresh:
+            logger.info(f"Refreshing Tier 2 data for {len(to_refresh)} symbols")
+            fetch_and_cache_deep_fundamentals(to_refresh, db)
+        
+        # 3. Final Filtering & Scoring
+        logger.info("Applying Tier 2 filters and scoring")
+        for symbol in tier1_survivors:
+            cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
+            
+            # If still no cache (fetch failed), skip
+            if not cache:
                 continue
                 
+            # Tier 2 Filters
+            if not cache.profitability_streak_passed or not cache.de_check_passed:
+                continue
+            
             # Score
+            hist = hist_cache.get(symbol)
+            if hist is None: # Should not happen if in survivors
+                continue
+                
             ta_data = calculate_technical_score(hist)
             scored_count += 1
             
             # Persist Score
-            score_entry = db.query(DailyScore).filter(DailyScore.symbol == symbol, DailyScore.date == datetime.datetime.utcnow().date()).first()
+            today = datetime.datetime.utcnow().date()
+            score_entry = db.query(DailyScore).filter(DailyScore.symbol == symbol, DailyScore.date == today).first()
             if not score_entry:
-                score_entry = DailyScore(symbol=symbol, date=datetime.datetime.utcnow().date())
+                score_entry = DailyScore(symbol=symbol, date=today)
                 db.add(score_entry)
             
             score_entry.entry_score = ta_data['score']
@@ -54,7 +105,8 @@ def run_pipeline(db: Session):
             score_entry.ema_signal = ta_data['ema_signal']
             score_entry.volume_signal = ta_data['volume_signal']
             
-            db.commit()
+            if scored_count % 10 == 0:
+                db.commit()
             
         run.status = "complete"
         run.stocks_fetched = fetched_count
@@ -63,6 +115,7 @@ def run_pipeline(db: Session):
         
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
+        db.rollback()
         run.status = "failed"
         run.errors = str(e)
         db.commit()
