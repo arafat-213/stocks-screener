@@ -71,7 +71,10 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     df.ta.atr(length=14, append=True)
     df.ta.adx(length=14, append=True)
     # Use explicit name for volume SMA to avoid collision with price SMA
-    df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    if 'Volume' in df.columns:
+        df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    else:
+        df['VOL_SMA_20'] = pd.Series(dtype='float64')
     
     # EMA Slope (20 periods)
     # df.ta.ema(length=20, append=True) was already called above
@@ -146,7 +149,7 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     volume_breakout = False
     volume = latest.get('Volume')
     sma20_vol = latest.get('VOL_SMA_20')
-    is_green = latest.get('Close') > latest.get('Open')
+    is_green = (latest.get('Close') > latest.get('Open')) if pd.notna(latest.get('Close')) and pd.notna(latest.get('Open')) else False
     if pd.notna(volume) and pd.notna(sma20_vol):
         if volume > 2.0 * sma20_vol and is_green:
             volume_breakout = True
