@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
-from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot
+from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
 
 router = APIRouter()
 
@@ -20,15 +20,16 @@ def get_dashboard_results(db: Session = Depends(get_db)):
     ).group_by(FundamentalData.symbol).subquery()
     
     # 3. Join Query
-    query_results = db.query(TechnicalSignal, Stock, FundamentalData).\
+    query_results = db.query(TechnicalSignal, Stock, FundamentalData, FundamentalCache).\
         join(Stock, TechnicalSignal.symbol == Stock.symbol).\
         outerjoin(latest_fund, Stock.symbol == latest_fund.c.symbol).\
         outerjoin(FundamentalData, (FundamentalData.symbol == latest_fund.c.symbol) & (FundamentalData.date == latest_fund.c.max_date)).\
+        outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol).\
         filter(TechnicalSignal.date == max_date).all()
         
     # 4. Python grouping
     stocks_map = {}
-    for signal, stock, fund in query_results:
+    for signal, stock, fund, cache in query_results:
         if stock.symbol not in stocks_map:
             stocks_map[stock.symbol] = {
                 "symbol": stock.symbol,
@@ -40,8 +41,9 @@ def get_dashboard_results(db: Session = Depends(get_db)):
                 "fundamentals": {
                     "pe": fund.pe if fund else None,
                     "pb": fund.pb if fund else None,
-                    "roe": fund.roe if fund else None,
-                    "market_cap": fund.market_cap if fund else stock.market_cap
+                    "roe": cache.roe if (cache and cache.roe is not None) else (fund.roe if fund else None),
+                    "market_cap": fund.market_cap if fund else stock.market_cap,
+                    "market_cap_category": cache.market_cap_category if cache else None
                 }
             }
         
@@ -50,7 +52,11 @@ def get_dashboard_results(db: Session = Depends(get_db)):
             "is_bullish": signal.is_bullish,
             "score": signal.entry_score,
             "rsi": signal.rsi,
-            "ema_signal": signal.ema_signal
+            "ema_signal": signal.ema_signal,
+            "rs_score": signal.rs_score,
+            "momentum_3m": signal.momentum_3m,
+            "adx": signal.adx,
+            "above_200ema": signal.above_200ema
         }
         
         # Ensure D price info is captured even if row order varies
