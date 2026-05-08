@@ -67,7 +67,9 @@ def setup_test_data(db):
         fcf_positive=True,
         dividend_consistency=True,
         market_cap_category="Small",
-        roe=16.0 # Prefer this over fund.roe
+        roe=16.0, # Prefer this over fund.roe
+        profitability_streak_passed=True,
+        de_check_passed=True
     )
     db.add(cache)
     

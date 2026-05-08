@@ -16,9 +16,9 @@ def test_passes_tier1_valid_stock():
     assert flag_missing is False
 
 def test_fails_tier1_market_cap():
-    # Mcap < 20B
+    # Mcap < 2B (₹200 Cr)
     info = {
-        'marketCap': 19_000_000_000,
+        'marketCap': 1_900_000_000,
         'trailingPE': 20,
         'returnOnEquity': 0.20,
         'pledgedPercent': 0.05,
