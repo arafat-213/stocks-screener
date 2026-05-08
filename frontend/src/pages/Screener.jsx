@@ -232,7 +232,7 @@ const Screener = () => {
                     <td>{stock.fundamentals?.pe?.toFixed(1) || 'N/A'}</td>
                     <td>{stock.timeframes?.D?.rs_score?.toFixed(0) || 'N/A'}</td>
                     <td className={stock.timeframes?.D?.momentum_3m > 0 ? 'success' : (stock.timeframes?.D?.momentum_3m < 0 ? 'danger' : '')}>
-                      {stock.timeframes?.D?.momentum_3m ? `${stock.timeframes?.D?.momentum_3m > 0 ? '+' : ''}${stock.timeframes?.D?.momentum_3m.toFixed(1)}%` : 'N/A'}
+                      {stock.timeframes?.D?.momentum_3m != null ? `${stock.timeframes?.D?.momentum_3m > 0 ? '+' : ''}${stock.timeframes?.D?.momentum_3m.toFixed(1)}%` : 'N/A'}
                     </td>
                     <td>{stock.timeframes?.D?.adx?.toFixed(1) || 'N/A'}</td>
                     <td>{stock.timeframes?.D?.above_200ema ? '✓' : '—'}</td>
