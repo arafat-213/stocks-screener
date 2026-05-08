@@ -69,12 +69,12 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 sector = info.get('sector', 'default')
                 de_limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
                 
-                # yfinance debtToEquity is returned as percentage (e.g. 40.5 for 0.405x)
-                # We normalize it to absolute value by always dividing by 100.
+                # yfinance debtToEquity is sometimes returned as percentage (e.g. 40.5 for 0.405x)
+                # We normalize it to absolute value by dividing by 100 only if > 5.
                 de_ratio = info.get('debtToEquity')
                 de_check_passed = True
                 if de_ratio is not None:
-                    normalized_de = de_ratio / 100.0
+                    normalized_de = de_ratio / 100.0 if de_ratio > 5 else de_ratio
                     if normalized_de > de_limit:
                         de_check_passed = False
                         logger.info(f"{symbol} failed D/E check: {normalized_de} > {de_limit} (Sector: {sector})")
@@ -133,9 +133,9 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""
     if not info: return False, False
     
-    # 1. Market Cap > ₹500 Cr (~$6M USD)
+    # 1. Market Cap > ₹500 Cr (~$600M USD)
     mcap = to_float(info.get('marketCap'), 0)
-    if mcap < 6_000_000: return False, False
+    if mcap < 600_000_000: return False, False
     
     # 2. P/E (0 < pe < 150)
     pe = to_float(info.get('trailingPE') or info.get('forwardPE'))
@@ -153,8 +153,9 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     elif pledged > 0.20:
         return False, False
     
-    # 5. Liquidity (20-day avg vol > 500k)
+    # 5. Liquidity (value-based: 20-day avg vol * price > ₹5 Cr)
     avg_vol = to_float(info.get('averageVolume'), 0)
-    if avg_vol < 500_000: return False, False
+    price = to_float(info.get('currentPrice') or info.get('previousClose'), 0)
+    if avg_vol * price < 50_000_000: return False, False
     
     return True, flag_missing
