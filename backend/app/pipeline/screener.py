@@ -183,7 +183,10 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 
                 # Advanced Metrics
                 cache_entry.roce = roce
+                cache_entry.roe = to_float(info.get('returnOnEquity'))
                 cache_entry.peg_ratio = peg
+                cache_entry.ev_to_ebitda = to_float(info.get('enterpriseToEbitda'))
+                cache_entry.dividend_yield = to_float(info.get('dividendYield'))
                 cache_entry.price_to_fcf = p_fcf
                 cache_entry.dividend_consistency = div_consistency
                 cache_entry.market_cap_category = mcap_cat

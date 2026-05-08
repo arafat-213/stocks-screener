@@ -34,6 +34,7 @@ class TechnicalSignal(Base):
     momentum_1m = Column(Float, nullable=True)
     momentum_3m = Column(Float, nullable=True)
     momentum_6m = Column(Float, nullable=True)
+    momentum_12m = Column(Float, nullable=True)
     rs_score = Column(Float, nullable=True)
     
     # Technical Indicators
@@ -81,6 +82,7 @@ class FundamentalCache(Base):
     
     # Advanced Fundamental Metrics
     roce = Column(Float, nullable=True)
+    roe = Column(Float, nullable=True)
     peg_ratio = Column(Float, nullable=True)
     ev_to_ebitda = Column(Float, nullable=True)
     dividend_yield = Column(Float, nullable=True)
