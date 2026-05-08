@@ -26,6 +26,7 @@ class TechnicalSignal(Base):
     ema_signal = Column(String)
     volume_signal = Column(String)
     rsi_signal = Column(String)
+    atr = Column(Float, nullable=True)
     close_price = Column(Float, nullable=True)
     price_change_pct = Column(Float, nullable=True)
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
