@@ -109,7 +109,7 @@ def run_pipeline(db: Session):
             hist, info = cache_data
             
             # Multi-timeframe loop
-            for tf, freq in [('D', None), ('W', 'W-FRI'), ('M', 'ME')]:
+            for tf, freq in [('D', None), ('W', 'W'), ('M', 'ME')]:
                 working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
                 if working_df.empty: continue
                 
@@ -131,6 +131,7 @@ def run_pipeline(db: Session):
                 signal.ema_signal = ta_data['ema_signal']
                 signal.volume_signal = ta_data.get('volume_signal', 'neutral')
                 signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
+                signal.atr = ta_data.get('atr')
                 signal.scored_at = scored_at
                 
                 # Capture price snapshots for Daily timeframe

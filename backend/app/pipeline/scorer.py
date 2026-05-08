@@ -57,7 +57,8 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     - 'W': RSI > 50 and Price > EMA26
     - 'M': RSI > 50 and (Price > EMA13 or Price > EMA26)
     """
-    if len(df) < 60:
+    min_bars = 24 if timeframe == 'M' else 60
+    if len(df) < min_bars:
         return {
             "score": 0.0, 
             "rsi": 0.0, 
@@ -65,7 +66,8 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
             "ema_signal": "neutral", 
             "volume_signal": "neutral",
             "rsi_signal": "neutral",
-            "is_bullish": False
+            "is_bullish": False,
+            "atr": None
         }
         
     # Ensure we don't modify the original dataframe in a way that affects caller
@@ -78,6 +80,7 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     df.ta.ema(length=26, append=True)
     df.ta.macd(fast=12, slow=26, signal=9, append=True)
     df.ta.rsi(length=14, append=True)
+    df.ta.atr(length=14, append=True)
     # Use explicit name for volume SMA to avoid collision with price SMA
     df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
     
@@ -99,6 +102,7 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     signal_line = latest.get('MACDs_12_26_9')
     rsi = latest.get('RSI_14')
     prev_rsi = prev.get('RSI_14')
+    atr = latest.get('ATRr_14')
     
     if timeframe == 'D':
         # 1. EMA Alignment (20 pts)
@@ -122,7 +126,7 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
             recent_rsi = df['RSI_14'].tail(5)
             was_oversold = any(recent_rsi < 30)
             
-            recovering = was_oversold and rsi > 30 and price > ema20
+            recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
             crossing_50 = prev_rsi <= 50 and rsi > 50
             
             if recovering:
@@ -171,7 +175,8 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
         "ema_signal": ema_signal,
         "volume_signal": volume_signal,
         "rsi_signal": rsi_signal,
-        "is_bullish": bool(is_bullish)
+        "is_bullish": bool(is_bullish),
+        "atr": float(atr) if pd.notna(atr) else None
     }
 
 def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D') -> dict:
