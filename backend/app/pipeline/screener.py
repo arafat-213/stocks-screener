@@ -136,29 +136,23 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""
     if not info: return False, False
     
-    # 1. Market Cap > ₹500 Cr (~$600M USD)
+    # 1. Market Cap > ₹200 Cr
     mcap = to_float(info.get('marketCap'), 0)
-    if mcap < 600_000_000: return False, False
+    if mcap < 20_000_000_000: return False, False
     
-    # 2. P/E (0 < pe < 150)
+    # 2. P/E (0 < pe < 300)
     pe = to_float(info.get('trailingPE') or info.get('forwardPE'))
-    if pe is None or pe <= 0 or pe > 150: return False, False
+    if pe is None or pe <= 0 or pe > 300: return False, False
     
-    # 3. ROE > 15%
-    roe = to_float(info.get('returnOnEquity'), 0)
-    if roe < 0.15: return False, False
-    
-    # 4. Promoter Pledge < 20%
+    # 3. ROE & Promoter Pledge (Loosened - checks removed, but still flag missing pledge)
     pledged = to_float(info.get('pledgedPercent'))
     flag_missing = False
     if pledged is None:
         flag_missing = True
-    elif pledged > 0.20:
-        return False, False
     
-    # 5. Liquidity (value-based: 20-day avg vol * price > ₹5 Cr)
+    # 5. Liquidity (value-based: 20-day avg vol * price > ₹2 Cr)
     avg_vol = to_float(info.get('averageVolume'), 0)
     price = to_float(info.get('currentPrice') or info.get('previousClose'), 0)
-    if avg_vol * price < 50_000_000: return False, False
+    if avg_vol * price < 20_000_000: return False, False
     
     return True, flag_missing
