@@ -13,3 +13,8 @@ export const getLatestReport = () => apiClient.get('/reports/latest');
 export const getReportList = () => apiClient.get('/reports');
 export const getReportByDate = (date) => apiClient.get(`/reports/${date}`);
 export const getStockDetail = (symbol) => apiClient.get(`/stocks/${symbol}`);
+export const getScreensList = () => apiClient.get('/screens');
+export const getScreenBySlug = (slug, live = false) =>
+  apiClient.get(`/screens/${slug}${live ? '?live=true' : ''}`);
+export const getTopStocks = () => apiClient.get('/stocks/top');
+export const getStatus = () => apiClient.get('/pipeline/status');
