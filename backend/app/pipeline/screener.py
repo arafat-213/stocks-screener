@@ -4,7 +4,7 @@ import datetime
 import logging
 from sqlalchemy.orm import Session
 from app.db.models import FundamentalCache, FundamentalData
-from app.pipeline.utils import to_float
+from app.pipeline.utils import to_float, get_financial_row
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +18,13 @@ DE_LIMITS = {
     "default": 2
 }
 
-def get_row(df, keywords):
-    for idx in df.index:
-        if any(k.lower() in str(idx).lower() for k in keywords):
-            return df.loc[idx]
-    return None
-
 def check_profitability_streak(financials) -> bool:
     """Checks if Net Income and Revenue are positive for last 3 years."""
     try:
         if financials is None or financials.empty or len(financials.columns) < 3: return False
         
-        ni_row = get_row(financials, ['net income', 'net earnings'])
-        rev_row = get_row(financials, ['total revenue', 'revenue', 'total operating revenue'])
+        ni_row = get_financial_row(financials, "net_income")
+        rev_row = get_financial_row(financials, "revenue")
         
         if ni_row is None or rev_row is None: return False
         
@@ -63,6 +57,15 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 logger.info(f"Processing deep fundamentals for {symbol}")
                 # Tier 2 Metrics
                 profit_passed = check_profitability_streak(financials)
+                
+                # Scaffolding: Stub extraction calls for future expansion
+                # We'll use these in Task 5 for advanced ratios
+                get_financial_row(financials, "ebit")
+                get_financial_row(ticker.balance_sheet, "total_assets")
+                get_financial_row(ticker.balance_sheet, "current_liab")
+                get_financial_row(ticker.cashflow, "op_cashflow")
+                get_financial_row(ticker.cashflow, "capex")
+
                 if not profit_passed:
                     logger.info(f"{symbol} failed 3-year profitability streak")
                 
