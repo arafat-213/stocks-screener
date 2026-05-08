@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Activity, Loader2, Filter, ArrowUpDown } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Loader2, Filter, ArrowUpDown } from 'lucide-react';
 import { fetchResults } from '../api/client';
 import './Dashboard.css';
 

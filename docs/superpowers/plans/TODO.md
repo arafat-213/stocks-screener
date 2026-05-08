@@ -5,5 +5,5 @@
 - [ ] Task 2: API Client Consolidation & Import Fixes
 - [x] Task 3: Screen Components Implementation
 - [x] Task 4: Screens Page Implementation
-- [ ] Task 5: Screener Enhancements
-- [ ] Task 6: Routing and Navigation
+- [x] Task 5: Screener Enhancements
+- [x] Task 6: Routing and Navigation
