@@ -4,7 +4,7 @@ import datetime
 import logging
 from sqlalchemy.orm import Session
 from app.db.models import FundamentalCache, FundamentalData
-from app.pipeline.utils import to_float
+from app.pipeline.utils import to_float, get_financial_row
 
 logger = logging.getLogger(__name__)
 
@@ -18,19 +18,13 @@ DE_LIMITS = {
     "default": 2
 }
 
-def get_row(df, keywords):
-    for idx in df.index:
-        if any(k.lower() in str(idx).lower() for k in keywords):
-            return df.loc[idx]
-    return None
-
 def check_profitability_streak(financials) -> bool:
     """Checks if Net Income and Revenue are positive for last 3 years."""
     try:
         if financials is None or financials.empty or len(financials.columns) < 3: return False
         
-        ni_row = get_row(financials, ['net income', 'net earnings'])
-        rev_row = get_row(financials, ['total revenue', 'revenue', 'total operating revenue'])
+        ni_row = get_financial_row(financials, "net_income")
+        rev_row = get_financial_row(financials, "revenue")
         
         if ni_row is None or rev_row is None: return False
         
@@ -43,34 +37,131 @@ def check_profitability_streak(financials) -> bool:
     except Exception:
         return False
 
+import random
+
 def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
-    """Fetches financials and info for symbols in batches and caches them."""
+    """Fetches financials and info for symbols in batches and caches them with retries."""
     batch_size = 50
     for i in range(0, len(symbols), batch_size):
         batch = symbols[i:i+batch_size]
         logger.info(f"Fetching Tier 2 data for batch: {batch}")
         
         for symbol in batch:
+            cache_version = CURRENT_SCREENER_VERSION
+            success = False
+            max_retries = 3
+            
+            for attempt in range(max_retries):
+                try:
+                    ticker = yf.Ticker(f"{symbol}.NS")
+                    # Force fetch of multiple attributes to trigger potential API errors early
+                    info = ticker.info
+                    financials = ticker.financials
+                    balance_sheet = ticker.balance_sheet
+                    cashflow = ticker.cashflow
+                    
+                    if not info:
+                        logger.warning(f"No info found for {symbol}")
+                        break # Don't retry if info is explicitly empty
+
+                    logger.info(f"Processing deep fundamentals for {symbol}")
+                    
+                    # 1. ROCE: EBIT / (Total Assets - Current Liabilities)
+                    ebit_row = get_financial_row(financials, "ebit")
+                    assets_row = get_financial_row(balance_sheet, "total_assets")
+                    liab_row = get_financial_row(balance_sheet, "current_liab")
+                    
+                    roce = None
+                    if ebit_row is not None and assets_row is not None and liab_row is not None:
+                        try:
+                            ebit = to_float(ebit_row.iloc[0], 0)
+                            assets = to_float(assets_row.iloc[0], 0)
+                            liab = to_float(liab_row.iloc[0], 0)
+                            capital_employed = assets - liab
+                            if capital_employed > 0:
+                                roce = ebit / capital_employed
+                        except (IndexError, ZeroDivisionError):
+                            pass
+                    
+                    # 2. PEG: PE / (Growth * 100)
+                    pe = to_float(info.get('trailingPE'))
+                    growth = to_float(info.get('earningsGrowth'))
+                    peg = None
+                    if pe and growth and pe > 0 and growth > 0:
+                        peg = pe / (growth * 100.0)
+                        
+                    # 3. FCF: Op Cash Flow - CapEx
+                    ocf_row = get_financial_row(cashflow, "op_cashflow")
+                    capex_row = get_financial_row(cashflow, "capex")
+                    fcf = None
+                    p_fcf = None
+                    if ocf_row is not None and capex_row is not None:
+                        try:
+                            ocf = to_float(ocf_row.iloc[0], 0)
+                            # CapEx is often reported as negative in yfinance cashflow
+                            capex = abs(to_float(capex_row.iloc[0], 0))
+                            fcf = ocf - capex
+                            
+                            mcap = to_float(info.get('marketCap'))
+                            if mcap and fcf and fcf > 0:
+                                p_fcf = mcap / fcf
+                        except IndexError:
+                            pass
+                            
+                    # 4. Dividend Consistency (2023, 2024, 2025)
+                    div_consistency = False
+                    try:
+                        divs = ticker.dividends
+                        if not divs.empty:
+                            years = [d.year for d in divs.index]
+                            if 2023 in years and 2024 in years and 2025 in years:
+                                div_consistency = True
+                    except Exception:
+                        pass
+                        
+                    # 5. Market Cap Category
+                    mcap_val = to_float(info.get('marketCap'), 0)
+                    # Convert to Cr (assuming mcap is in absolute INR)
+                    mcap_cr = mcap_val / 10_000_000
+                    if mcap_cr > 20000:
+                        mcap_cat = "largecap"
+                    elif mcap_cr >= 5000:
+                        mcap_cat = "midcap"
+                    else:
+                        mcap_cat = "smallcap"
+                    
+                    success = True
+                    break
+                    
+                except Exception as e:
+                    wait_time = (2 ** attempt) + random.uniform(0, 0.5)
+                    logger.error(f"Attempt {attempt+1} failed for {symbol}: {e}. Retrying in {wait_time:.2f}s...")
+                    if attempt < max_retries - 1:
+                        time.sleep(wait_time)
+                    else:
+                        logger.error(f"All retries failed for {symbol}")
+                        cache_version = -1
+            
             try:
-                ticker = yf.Ticker(f"{symbol}.NS")
-                financials = ticker.financials
-                info = ticker.info
+                # Update FundamentalCache (even if failed, to mark as attempted)
+                cache_entry = db_session.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
+                if not cache_entry:
+                    cache_entry = FundamentalCache(symbol=symbol)
+                    db_session.add(cache_entry)
                 
-                if not info:
-                    logger.warning(f"No info found for {symbol}")
+                cache_entry.last_updated = datetime.datetime.utcnow()
+                cache_entry.cache_version = cache_version
+
+                if not success:
+                    db_session.commit()
                     continue
 
-                logger.info(f"Processing deep fundamentals for {symbol}")
                 # Tier 2 Metrics
                 profit_passed = check_profitability_streak(financials)
-                if not profit_passed:
-                    logger.info(f"{symbol} failed 3-year profitability streak")
                 
                 sector = info.get('sector', 'default')
                 de_limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
                 
-                # yfinance debtToEquity is sometimes returned as percentage (e.g. 40.5 for 0.405x)
-                # We normalize it to absolute value by dividing by 100 only if > 5.
                 de_ratio = info.get('debtToEquity')
                 de_check_passed = True
                 if de_ratio is not None:
@@ -84,22 +175,24 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 pledged = info.get('pledgedPercent')
                 pledged_missing = pledged is None
                 
-                # Update FundamentalCache
-                cache_entry = db_session.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
-                if not cache_entry:
-                    cache_entry = FundamentalCache(symbol=symbol)
-                    db_session.add(cache_entry)
-                
                 cache_entry.profitability_streak_passed = profit_passed
                 cache_entry.de_ratio = normalized_de
                 cache_entry.de_check_passed = de_check_passed
                 cache_entry.pledged_data_missing = pledged_missing
                 cache_entry.sector = sector
-                cache_entry.last_updated = datetime.datetime.utcnow()
-                cache_entry.cache_version = CURRENT_SCREENER_VERSION
+                
+                # Advanced Metrics
+                cache_entry.roce = roce
+                cache_entry.roe = to_float(info.get('returnOnEquity'))
+                cache_entry.peg_ratio = peg
+                cache_entry.ev_to_ebitda = to_float(info.get('enterpriseToEbitda'))
+                cache_entry.dividend_yield = to_float(info.get('dividendYield'))
+                cache_entry.price_to_fcf = p_fcf
+                cache_entry.dividend_consistency = div_consistency
+                cache_entry.market_cap_category = mcap_cat
+                cache_entry.fcf_positive = (fcf > 0) if fcf is not None else None
                 
                 # Update FundamentalData (latest snapshot)
-                # We use today's date for the snapshot
                 today = datetime.datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
                 fund_data = db_session.query(FundamentalData).filter(
                     FundamentalData.symbol == symbol,
@@ -122,40 +215,34 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 db_session.commit()
                 
             except Exception as e:
-                logger.error(f"Failed Tier 2 fetch for {symbol}: {e}")
+                logger.error(f"Database error for {symbol}: {e}")
                 db_session.rollback()
         
         if i + batch_size < len(symbols):
-            logger.info("Batch complete. Sleeping for 1.0s...")
-            time.sleep(1.0)
+            logger.info("Batch complete. Sleeping for 4.0s...")
+            time.sleep(4.0)
 
 def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""
     if not info: return False, False
     
-    # 1. Market Cap > ₹500 Cr (~$600M USD)
+    # 1. Market Cap > ₹200 Cr
     mcap = to_float(info.get('marketCap'), 0)
-    if mcap < 600_000_000: return False, False
+    if mcap < 2_000_000_000: return False, False
     
-    # 2. P/E (0 < pe < 150)
+    # 2. P/E (0 < pe < 300 or None)
     pe = to_float(info.get('trailingPE') or info.get('forwardPE'))
-    if pe is None or pe <= 0 or pe > 150: return False, False
+    if pe is not None and (pe <= 0 or pe > 300): return False, False
     
-    # 3. ROE > 15%
-    roe = to_float(info.get('returnOnEquity'), 0)
-    if roe < 0.15: return False, False
-    
-    # 4. Promoter Pledge < 20%
+    # 3. ROE & Promoter Pledge (Loosened - checks removed, but still flag missing pledge)
     pledged = to_float(info.get('pledgedPercent'))
     flag_missing = False
     if pledged is None:
         flag_missing = True
-    elif pledged > 0.20:
-        return False, False
     
-    # 5. Liquidity (value-based: 20-day avg vol * price > ₹5 Cr)
+    # 5. Liquidity (value-based: 20-day avg vol * price > ₹2 Cr)
     avg_vol = to_float(info.get('averageVolume'), 0)
     price = to_float(info.get('currentPrice') or info.get('previousClose'), 0)
-    if avg_vol * price < 50_000_000: return False, False
+    if avg_vol * price < 20_000_000: return False, False
     
     return True, flag_missing

@@ -57,19 +57,6 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     - 'W': RSI > 50 and Price > EMA26
     - 'M': RSI > 50 and (Price > EMA13 or Price > EMA26)
     """
-    min_bars = 24 if timeframe == 'M' else 60
-    if len(df) < min_bars:
-        return {
-            "score": 0.0, 
-            "rsi": 0.0, 
-            "macd": 0.0, 
-            "ema_signal": "neutral", 
-            "volume_signal": "neutral",
-            "rsi_signal": "neutral",
-            "is_bullish": False,
-            "atr": None
-        }
-        
     # Ensure we don't modify the original dataframe in a way that affects caller
     df = df.copy()
         
@@ -78,12 +65,35 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     df.ta.ema(length=13, append=True)
     df.ta.ema(length=20, append=True)
     df.ta.ema(length=26, append=True)
+    df.ta.ema(length=200, append=True)
     df.ta.macd(fast=12, slow=26, signal=9, append=True)
     df.ta.rsi(length=14, append=True)
     df.ta.atr(length=14, append=True)
+    df.ta.adx(length=14, append=True)
     # Use explicit name for volume SMA to avoid collision with price SMA
-    df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    if 'Volume' in df.columns:
+        df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    else:
+        df['VOL_SMA_20'] = pd.Series(dtype='float64')
     
+    # EMA Slope (20 periods)
+    # df.ta.ema(length=20, append=True) was already called above
+    ema20_col = 'EMA_20'
+    ema_slope_20 = None
+    if ema20_col in df.columns and len(df) >= 6:
+        v1 = df[ema20_col].iloc[-1]
+        v6 = df[ema20_col].iloc[-6]
+        if pd.notna(v1) and pd.notna(v6):
+            ema_slope_20 = float((v1 - v6) / 5)
+
+    if len(df) < 1:
+        return {
+            "score": 0.0, "rsi": 0.0, "macd": 0.0, "ema_signal": "neutral",
+            "volume_signal": "neutral", "rsi_signal": "neutral", "is_bullish": False, "atr": None,
+            "momentum_1m": None, "momentum_3m": None, "momentum_6m": None, "momentum_12m": None,
+            "adx": None, "above_200ema": None, "ema_slope_20": None
+        }
+
     latest = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else latest
     
@@ -97,76 +107,115 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     ema13 = latest.get('EMA_13')
     ema20 = latest.get('EMA_20')
     ema26 = latest.get('EMA_26')
+    ema200 = latest.get('EMA_200')
     price = latest.get('Close')
     macd_line = latest.get('MACD_12_26_9')
     signal_line = latest.get('MACDs_12_26_9')
     rsi = latest.get('RSI_14')
     prev_rsi = prev.get('RSI_14')
     atr = latest.get('ATRr_14')
+    adx = latest.get('ADX_14')
     
-    if timeframe == 'D':
-        # 1. EMA Alignment (20 pts)
-        # Bullish: EMA_5 > EMA_13 > EMA_26 AND Price > EMA_26
-        if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
-            if ema5 > ema13 > ema26 and price > ema26:
-                score += 20
-                ema_signal = "bullish"
-            elif ema5 < ema13 < ema26:
-                ema_signal = "bearish"
-            
-        # 2. MACD (20 pts)
-        # Bullish: MACD > Signal AND MACD > 0
-        if pd.notna(macd_line) and pd.notna(signal_line):
-            if macd_line > signal_line and macd_line > 0:
-                score += 20
-            
-        # 3. RSI 14 (15 pts)
-        if pd.notna(rsi) and pd.notna(prev_rsi):
-            # Check for recovery in last 5 days
-            recent_rsi = df['RSI_14'].tail(5)
-            was_oversold = any(recent_rsi < 30)
-            
-            recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
-            crossing_50 = prev_rsi <= 50 and rsi > 50
-            
-            if recovering:
-                score += 15
-                rsi_signal = "bullish_recovery"
-            elif crossing_50:
-                score += 15
-                rsi_signal = "bullish_crossing"
-            elif rsi > 50:
-                score += 5
-                rsi_signal = "bullish_strong"
-            
-        # 4. Volume (15 pts)
-        volume = latest.get('Volume')
-        sma20_vol = latest.get('VOL_SMA_20')
-        is_green = latest.get('Close') > latest.get('Open')
+    # Momentum
+    momentum_1m = ((price / df['Close'].iloc[-22] - 1) * 100) if len(df) >= 22 else None
+    momentum_3m = ((price / df['Close'].iloc[-64] - 1) * 100) if len(df) >= 64 else None
+    momentum_6m = ((price / df['Close'].iloc[-127] - 1) * 100) if len(df) >= 127 else None
+    momentum_12m = ((price / df['Close'].iloc[-253] - 1) * 100) if len(df) >= 253 else None
+
+    # Above 200 EMA
+    above_200ema = (price > ema200) if pd.notna(ema200) else None
+
+    # 52-Week High/Low and Resistance
+    week52_high = None
+    week52_low = None
+    pct_from_52w_high = None
+    pct_from_52w_low = None
+    resistance_level = None
+    pct_from_resistance = None
+    
+    if len(df) >= 252:
+        recent_252 = df['Close'].tail(252)
+        week52_high = float(recent_252.max())
+        week52_low = float(recent_252.min())
+        pct_from_52w_high = (price / week52_high - 1) * 100
+        pct_from_52w_low = (price / week52_low - 1) * 100
         
-        if pd.notna(volume) and pd.notna(sma20_vol):
-            if volume > 1.5 * sma20_vol and is_green:
-                score += 15
-                volume_signal = "bullish"
+    # Resistance: Highest close in the year prior to the last 20 bars
+    if len(df) >= 260:
+        resistance_level = float(df['Close'].iloc[-260:-20].max())
+        pct_from_resistance = (price / resistance_level - 1) * 100
+
+    # Volume Breakout (2x 20-day SMA on green day)
+    volume_breakout = False
+    volume = latest.get('Volume')
+    sma20_vol = latest.get('VOL_SMA_20')
+    is_green = (latest.get('Close') > latest.get('Open')) if pd.notna(latest.get('Close')) and pd.notna(latest.get('Open')) else False
+    if pd.notna(volume) and pd.notna(sma20_vol):
+        if volume > 2.0 * sma20_vol and is_green:
+            volume_breakout = True
+
+    min_bars = 24 if timeframe == 'M' else 60
+    if len(df) >= min_bars:
+        if timeframe == 'D':
+            # 1. EMA Alignment (20 pts)
+            # Bullish: EMA_5 > EMA_13 > EMA_26 AND Price > EMA_26
+            if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
+                if ema5 > ema13 > ema26 and price > ema26:
+                    score += 20
+                    ema_signal = "bullish"
+                elif ema5 < ema13 < ema26:
+                    ema_signal = "bearish"
                 
-        # Define is_bullish for D
-        is_bullish = (
-            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
-            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
-            ema5 > ema13 > ema26 and price > ema26
-        )
+            # 2. MACD (20 pts)
+            # Bullish: MACD > Signal AND MACD > 0
+            if pd.notna(macd_line) and pd.notna(signal_line):
+                if macd_line > signal_line and macd_line > 0:
+                    score += 20
+                
+            # 3. RSI 14 (15 pts)
+            if pd.notna(rsi) and pd.notna(prev_rsi):
+                # Check for recovery in last 5 days
+                recent_rsi = df['RSI_14'].tail(5)
+                was_oversold = any(recent_rsi < 30)
+                
+                recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
+                crossing_50 = prev_rsi <= 50 and rsi > 50
+                
+                if recovering:
+                    score += 15
+                    rsi_signal = "bullish_recovery"
+                elif crossing_50:
+                    score += 15
+                    rsi_signal = "bullish_crossing"
+                elif rsi > 50:
+                    score += 5
+                    rsi_signal = "bullish_strong"
+                
+            # 4. Volume (15 pts)
+            # (Note: we already checked volume_breakout above, but this is for the 70pt score)
+            if pd.notna(volume) and pd.notna(sma20_vol):
+                if volume > 1.5 * sma20_vol and is_green:
+                    score += 15
+                    volume_signal = "bullish"
+                    
+            # Define is_bullish for D
+            is_bullish = (
+                pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
+                pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
+                ema5 > ema13 > ema26 and price > ema26
+            )
 
-    elif timeframe == 'W':
-        is_bullish = (pd.notna(rsi) and rsi > 50 and pd.notna(ema26) and price > ema26)
-        score = 70.0 if is_bullish else 0.0
-        ema_signal = "bullish" if is_bullish else "neutral"
+        elif timeframe == 'W':
+            is_bullish = (pd.notna(rsi) and rsi > 50 and pd.notna(ema26) and price > ema26)
+            score = 70.0 if is_bullish else 0.0
+            ema_signal = "bullish" if is_bullish else "neutral"
 
-    elif timeframe == 'M':
-        is_bullish = (pd.notna(rsi) and rsi > 50 and (
-            (pd.notna(ema13) and price > ema13) or (pd.notna(ema26) and price > ema26)
-        ))
-        score = 70.0 if is_bullish else 0.0
-        ema_signal = "bullish" if is_bullish else "neutral"
+        elif timeframe == 'M':
+            is_bullish = (pd.notna(rsi) and rsi > 50 and (
+                (pd.notna(ema13) and price > ema13) or (pd.notna(ema26) and price > ema26)
+            ))
+            score = 70.0 if is_bullish else 0.0
+            ema_signal = "bullish" if is_bullish else "neutral"
         
     return {
         "score": float(score),
@@ -176,8 +225,23 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
         "volume_signal": volume_signal,
         "rsi_signal": rsi_signal,
         "is_bullish": bool(is_bullish),
-        "atr": float(atr) if pd.notna(atr) else None
+        "atr": float(atr) if pd.notna(atr) else None,
+        "momentum_1m": float(momentum_1m) if momentum_1m is not None else None,
+        "momentum_3m": float(momentum_3m) if momentum_3m is not None else None,
+        "momentum_6m": float(momentum_6m) if momentum_6m is not None else None,
+        "momentum_12m": float(momentum_12m) if momentum_12m is not None else None,
+        "adx": float(adx) if pd.notna(adx) else None,
+        "above_200ema": bool(above_200ema) if above_200ema is not None else None,
+        "ema_slope_20": float(ema_slope_20) if ema_slope_20 is not None else None,
+        "week52_high": week52_high,
+        "week52_low": week52_low,
+        "pct_from_52w_high": float(pct_from_52w_high) if pct_from_52w_high is not None else None,
+        "pct_from_52w_low": float(pct_from_52w_low) if pct_from_52w_low is not None else None,
+        "resistance_level": resistance_level,
+        "pct_from_resistance": float(pct_from_resistance) if pct_from_resistance is not None else None,
+        "volume_breakout": bool(volume_breakout),
     }
+
 
 def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D') -> dict:
     """

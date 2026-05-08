@@ -6,7 +6,8 @@ import {
   FileText, 
   Activity, 
   Play, 
-  Loader2 
+  Loader2,
+  Layers 
 } from 'lucide-react';
 import { fetchPipelineStatus, runScreener } from '../api/client';
 import './Navigation.css';
@@ -45,6 +46,7 @@ const Navigation = ({ children }) => {
   const navItems = [
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { to: '/screener', label: 'Screener', icon: <Filter size={20} /> },
+    { to: '/screens', label: 'Screens', icon: <Layers size={20} /> },
     { to: '/reports', label: 'Reports', icon: <FileText size={20} /> },
   ];
 

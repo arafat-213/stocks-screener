@@ -9,10 +9,10 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 @router.get("")
 def list_reports(db: Session = Depends(get_db)):
-    # Get unique dates from technical_signals table, cast to Date to remove time component
-    dates = db.query(func.distinct(cast(TechnicalSignal.date, Date))).\
-        order_by(cast(TechnicalSignal.date, Date).desc()).all()
-    return [d[0].strftime("%Y-%m-%d") for d in dates if d[0]]
+    # Get unique dates from technical_signals table, using date() to remove time component
+    dates = db.query(func.distinct(func.date(TechnicalSignal.date))).\
+        order_by(func.date(TechnicalSignal.date).desc()).all()
+    return [d[0] for d in dates if d[0]]
 
 @router.get("/latest")
 def get_latest_report(db: Session = Depends(get_db)):
@@ -20,19 +20,27 @@ def get_latest_report(db: Session = Depends(get_db)):
     max_date = db.query(func.max(TechnicalSignal.date)).scalar()
     if not max_date:
         return []
-    return get_report_by_date(max_date.strftime("%Y-%m-%d"), db)
+    
+    # If it's a string (SQLite might return it as such), just take the date part
+    if isinstance(max_date, str):
+        date_str = max_date.split(' ')[0]
+    else:
+        date_str = max_date.strftime("%Y-%m-%d")
+        
+    return get_report_by_date(date_str, db)
 
 @router.get("/{date}")
 def get_report_by_date(date: str, db: Session = Depends(get_db)):
     try:
-        date_obj = datetime.strptime(date, "%Y-%m-%d").date()
+        # Validate format
+        datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
 
     # Join TechnicalSignal with Stock
     query_results = db.query(TechnicalSignal, Stock).\
         join(Stock, TechnicalSignal.symbol == Stock.symbol).\
-        filter(cast(TechnicalSignal.date, Date) == date_obj).all()
+        filter(func.date(TechnicalSignal.date) == date).all()
 
     if not query_results:
         return []

@@ -5,7 +5,7 @@ import logging
 import os
 from app.db.session import SessionLocal
 from app.pipeline.orchestrator import run_pipeline
-from app.routers import stocks, dashboard, reports
+from app.routers import stocks, dashboard, reports, screens
 
 # Configure Logging
 log_dir = "logs"
@@ -35,6 +35,7 @@ app.add_middleware(
 
 app.include_router(stocks.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(screens.router, prefix="/api")
 app.include_router(reports.router)
 
 scheduler = BackgroundScheduler()

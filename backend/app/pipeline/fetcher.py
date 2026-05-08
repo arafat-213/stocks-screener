@@ -5,11 +5,15 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def get_nse_symbols() -> list[str]:
+def get_nse_symbols(limit: int = None) -> list[str]:
     try:
         symbols = nse_eq_symbols()
         if not symbols:
             raise ValueError("Empty list returned from nsepython")
+        
+        if limit:
+            symbols = symbols[:limit]
+            
         logger.info(f"Successfully fetched {len(symbols)} symbols from NSE")
         return symbols
     except Exception as e:
