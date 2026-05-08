@@ -90,10 +90,21 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         "fundamentals": fundamentals
     }
 
+from pydantic import BaseModel
+
+class ScreenerRequest(BaseModel):
+    limit: int | None = None
+
 @router.post("/screener/run")
-def trigger_screener(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    background_tasks.add_task(run_pipeline, db)
-    return {"message": "Pipeline started"}
+def trigger_screener(request: ScreenerRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+    background_tasks.add_task(run_pipeline, db, limit=request.limit)
+    return {"message": f"Pipeline started{' with limit ' + str(request.limit) if request.limit else ''}"}
+
+@router.post("/pipeline/stop")
+def stop_pipeline():
+    from app.pipeline.orchestrator import request_pipeline_stop
+    request_pipeline_stop()
+    return {"message": "Stop signal sent to pipeline"}
 
 @router.get("/pipeline/status")
 def get_pipeline_status(db: Session = Depends(get_db)):

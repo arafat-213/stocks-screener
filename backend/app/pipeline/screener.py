@@ -228,11 +228,11 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     
     # 1. Market Cap > ₹200 Cr
     mcap = to_float(info.get('marketCap'), 0)
-    if mcap < 20_000_000_000: return False, False
+    if mcap < 2_000_000_000: return False, False
     
-    # 2. P/E (0 < pe < 300)
+    # 2. P/E (0 < pe < 300 or None)
     pe = to_float(info.get('trailingPE') or info.get('forwardPE'))
-    if pe is None or pe <= 0 or pe > 300: return False, False
+    if pe is not None and (pe <= 0 or pe > 300): return False, False
     
     # 3. ROE & Promoter Pledge (Loosened - checks removed, but still flag missing pledge)
     pledged = to_float(info.get('pledgedPercent'))

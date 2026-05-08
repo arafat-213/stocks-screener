@@ -1,3 +1,64 @@
+.secondary-button {
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  color: var(--color-text);
+  transition: all 0.2s;
+}
+
+.secondary-button:hover:not(:disabled) {
+  border-color: var(--color-text-muted);
+}
+
+.secondary-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.status-badge.running {
+  grid-column: span 1;
+  background: rgba(16, 185, 129, 0.05);
+  border-color: var(--color-bullish);
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.stop-button {
+  background: var(--color-bearish);
+  color: white;
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+  margin-left: auto;
+}
+
+.stop-button:hover { opacity: 0.9; }
+.stop-button:disabled { background: var(--color-text-muted); cursor: not-allowed; }
+
+.spin {
+  animation: spin 2s linear infinite;
+  color: var(--color-bullish);
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
 /* Page Layout - Navigation component handles the main container */
 .dashboard-page, .reports-page, .screener-page {
   width: 100%;

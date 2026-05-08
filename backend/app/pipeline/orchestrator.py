@@ -15,6 +15,14 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+# Global stop signal for graceful termination
+_STOP_SIGNAL = False
+
+def request_pipeline_stop():
+    global _STOP_SIGNAL
+    _STOP_SIGNAL = True
+    logger.info("Pipeline stop requested.")
+
 def _compute_rs_ranks(db: Session, signal_date: datetime.date):
     """
     Computes RS percentile rank based on 12-month momentum against a benchmark.
@@ -69,14 +77,17 @@ def _compute_rs_ranks(db: Session, signal_date: datetime.date):
         db.commit()
         logger.info(f"Successfully updated RS scores for {len(updates)} stocks.")
 
-def run_pipeline(db: Session):
+def run_pipeline(db: Session, limit: int = None):
+    global _STOP_SIGNAL
+    _STOP_SIGNAL = False # Reset signal at start
+
     run = PipelineRun(status="running", stocks_fetched=0, stocks_scored=0, errors="")
     db.add(run)
     db.commit()
     
     current_symbol = "STARTUP"
     try:
-        symbols = get_nse_symbols()
+        symbols = get_nse_symbols(limit=limit)
         if not symbols:
             raise ValueError("No symbols fetched")
             
@@ -89,6 +100,13 @@ def run_pipeline(db: Session):
         
         logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
+            if _STOP_SIGNAL:
+                logger.info("Pipeline stop signal received during Tier 1.")
+                run.status = "stopped"
+                run.errors = "Manually stopped during Tier 1"
+                db.commit()
+                return
+
             current_symbol = symbol
             hist, info = fetch_stock_data(symbol, period="3y")
             fetched_count += 1
@@ -127,6 +145,13 @@ def run_pipeline(db: Session):
         seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
         
         for symbol in tier1_survivors:
+            if _STOP_SIGNAL:
+                logger.info("Pipeline stop signal received during Tier 2 check.")
+                run.status = "stopped"
+                run.errors = "Manually stopped during Tier 2"
+                db.commit()
+                return
+
             current_symbol = f"{symbol} (Tier 2 Check)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
             
@@ -136,6 +161,8 @@ def run_pipeline(db: Session):
         if to_refresh:
             current_symbol = "BATCH_REFRESH"
             logger.info(f"Refreshing Tier 2 data for {len(to_refresh)} symbols")
+            # Note: fetch_and_cache_deep_fundamentals doesn't currently check _STOP_SIGNAL internally
+            # but it processes in batches of 50. For a true kill switch, we might want to pass signal there too.
             fetch_and_cache_deep_fundamentals(to_refresh, db)
         
         # 3. Final Filtering & Scoring
@@ -143,6 +170,13 @@ def run_pipeline(db: Session):
         scored_at = datetime.datetime.utcnow()
         tier2_survivors_count = 0
         for symbol in tier1_survivors:
+            if _STOP_SIGNAL:
+                logger.info("Pipeline stop signal received during scoring.")
+                run.status = "stopped"
+                run.errors = "Manually stopped during scoring"
+                db.commit()
+                return
+
             current_symbol = f"{symbol} (Scoring)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
             
@@ -220,6 +254,11 @@ def run_pipeline(db: Session):
         run.tier2_count = tier2_survivors_count
         db.commit() # Ensure all signals are committed before RS computation
 
+        if _STOP_SIGNAL:
+            run.status = "stopped"
+            db.commit()
+            return
+
         # 4. Market/Index Snapshots
         from app.db.models import MarketSnapshot
         
@@ -262,9 +301,14 @@ def run_pipeline(db: Session):
         db.commit()
         
     except Exception as e:
-        error_msg = f"Failed at {current_symbol}: {str(e)}\n{traceback.format_exc()}"
-        logger.error(f"Pipeline failed: {error_msg}")
-        db.rollback()
-        run.status = "failed"
-        run.errors = error_msg
+        if _STOP_SIGNAL:
+            run.status = "stopped"
+            run.errors = "Stopped during exception"
+        else:
+            error_msg = f"Failed at {current_symbol}: {str(e)}\n{traceback.format_exc()}"
+            logger.error(f"Pipeline failed: {error_msg}")
+            db.rollback()
+            run.status = "failed"
+            run.errors = error_msg
         db.commit()
+

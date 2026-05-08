@@ -1,16 +1,17 @@
-import { useState, useEffect, useMemo } from 'react';
-import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List } from 'lucide-react';
-import { fetchResults, fetchPipelineStatus, runScreener } from '../api/client';
+import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
+import { fetchResults, fetchPipelineStatus, runScreener, stopPipeline } from '../api/client';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
 import MarketTable, { MarketTableSkeleton } from '../components/MarketTable';
 import FilterBottomSheet from '../components/FilterBottomSheet';
 import './Dashboard.css';
+import { useState, useEffect, useMemo } from 'react';
 
 const Dashboard = () => {
   const [stocks, setStocks] = useState([]);
   const [pipeline, setPipeline] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isStopping, setIsStopping] = useState(false);
   
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', '3', '2+'
@@ -30,6 +31,9 @@ const Dashboard = () => {
       ]);
       setStocks(resultsRes.data);
       setPipeline(statusRes.data);
+      if (statusRes.data.status !== 'running') {
+        setIsStopping(false);
+      }
       setLoading(false);
     } catch (err) {
       console.error("Failed to fetch dashboard data:", err);
@@ -55,12 +59,22 @@ const Dashboard = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleRunPipeline = async () => {
+  const handleRunPipeline = async (limit = null) => {
     try {
-      await runScreener();
+      await runScreener(limit);
       fetchData();
     } catch (err) {
       console.error("Failed to run pipeline:", err);
+    }
+  };
+
+  const handleStopPipeline = async () => {
+    try {
+      setIsStopping(true);
+      await stopPipeline();
+    } catch (err) {
+      console.error("Failed to stop pipeline:", err);
+      setIsStopping(false);
     }
   };
 
@@ -163,6 +177,28 @@ const Dashboard = () => {
       <main className="dashboard-content">
         <header className="dashboard-header">
           <div className="summary-bar">
+            {pipeline?.status === 'running' && (
+              <div className="summary-item status-badge running">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <RefreshCcw size={16} className="spin" />
+                  <div>
+                    <span className="label">Pipeline Running</span>
+                    <span className="value" style={{ fontSize: '12px' }}>
+                      {pipeline.stocks_fetched} fetched | {pipeline.stocks_scored} scored
+                    </span>
+                  </div>
+                  <button
+                    className="stop-button"
+                    onClick={handleStopPipeline}
+                    disabled={isStopping}
+                    title="Stop Pipeline"
+                  >
+                    <Square size={14} fill="currentColor" />
+                    {isStopping ? 'Stopping...' : 'Stop'}
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="summary-item">
               <span className="label">Total Scored</span>
               <span className="value">{stocks.length}</span>
@@ -236,6 +272,14 @@ const Dashboard = () => {
           <div className="action-bar">
             <h2>Market Screener</h2>
             <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                className="secondary-button"
+                onClick={() => handleRunPipeline(50)}
+                disabled={pipeline?.status === 'running'}
+              >
+                <Play size={16} /> Test (50)
+              </button>
+
               {isMobile && (
                 <button 
                   className={`filter-mobile-btn ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'active' : ''}`}
