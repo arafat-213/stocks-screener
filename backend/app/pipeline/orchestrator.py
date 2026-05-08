@@ -184,10 +184,6 @@ def run_pipeline(db: Session, limit: int = None):
             if not cache or cache.cache_version == -1:
                 continue
                 
-            # Tier 2 Filters
-            if not cache.profitability_streak_passed or not cache.de_check_passed:
-                continue
-            
             tier2_survivors_count += 1
             # Score
             cache_data = hist_cache.get(symbol)
