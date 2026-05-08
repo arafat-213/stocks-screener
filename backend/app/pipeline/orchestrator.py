@@ -15,6 +15,60 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
+def _compute_rs_ranks(db: Session, signal_date: datetime.date):
+    """
+    Computes RS percentile rank based on 12-month momentum against a benchmark.
+    Uses bulk update for efficiency.
+    """
+    RS_BENCHMARK_CANDIDATES = ["^CRSLDX", "^NSEI"] # Nifty 500, Nifty 50
+    benchmark_symbol = None
+    benchmark_return = 0.0
+
+    logger.info("Resolving RS benchmark candidate...")
+    for candidate in RS_BENCHMARK_CANDIDATES:
+        hist, _ = fetch_stock_data(candidate, append_ns=False, period="2y")
+        if hist is not None and len(hist) >= 252:
+            benchmark_symbol = candidate
+            # 12-month return: (price_now / price_252_bars_ago - 1) * 100
+            benchmark_return = (hist['Close'].iloc[-1] / hist['Close'].iloc[-252] - 1) * 100
+            logger.info(f"Selected RS benchmark: {benchmark_symbol} with 12m return: {benchmark_return:.2f}%")
+            break
+    
+    if not benchmark_symbol:
+        logger.warning("No suitable RS benchmark found with enough history. Skipping RS computation.")
+        return
+
+    # Get all TechnicalSignals for signal_date and timeframe == 'D'
+    signals = db.query(TechnicalSignal).filter(
+        TechnicalSignal.date == signal_date,
+        TechnicalSignal.timeframe == 'D'
+    ).all()
+
+    if not signals:
+        logger.info(f"No signals found for {signal_date} to compute RS ranks.")
+        return
+
+    # Filter signals that have momentum_12m
+    valid_signals = [s for s in signals if s.momentum_12m is not None]
+    if not valid_signals:
+        logger.info("No signals with 12m momentum found.")
+        return
+
+    # Sort signals by momentum_12m (ascending)
+    # Percentile = (Rank / Count) * 100
+    valid_signals.sort(key=lambda x: x.momentum_12m)
+    count = len(valid_signals)
+    
+    updates = []
+    for i, s in enumerate(valid_signals):
+        rank = ((i + 1) / count) * 100
+        updates.append({"id": s.id, "rs_score": rank})
+    
+    if updates:
+        db.bulk_update_mappings(TechnicalSignal, updates)
+        db.commit()
+        logger.info(f"Successfully updated RS scores for {len(updates)} stocks.")
+
 def run_pipeline(db: Session):
     run = PipelineRun(status="running", stocks_fetched=0, stocks_scored=0, errors="")
     db.add(run)
@@ -92,8 +146,8 @@ def run_pipeline(db: Session):
             current_symbol = f"{symbol} (Scoring)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
             
-            # If still no cache (fetch failed), skip
-            if not cache:
+            # If still no cache or cache failed (version -1), skip
+            if not cache or cache.cache_version == -1:
                 continue
                 
             # Tier 2 Filters
@@ -132,6 +186,23 @@ def run_pipeline(db: Session):
                 signal.volume_signal = ta_data.get('volume_signal', 'neutral')
                 signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
                 signal.atr = ta_data.get('atr')
+                
+                # Momentum and New Technical Fields
+                signal.momentum_1m = ta_data.get('momentum_1m')
+                signal.momentum_3m = ta_data.get('momentum_3m')
+                signal.momentum_6m = ta_data.get('momentum_6m')
+                signal.momentum_12m = ta_data.get('momentum_12m')
+                signal.adx = ta_data.get('adx')
+                signal.above_200ema = ta_data.get('above_200ema')
+                signal.ema_slope_20 = ta_data.get('ema_slope_20')
+                signal.week52_high = ta_data.get('week52_high')
+                signal.week52_low = ta_data.get('week52_low')
+                signal.pct_from_52w_high = ta_data.get('pct_from_52w_high')
+                signal.pct_from_52w_low = ta_data.get('pct_from_52w_low')
+                signal.resistance_level = ta_data.get('resistance_level')
+                signal.pct_from_resistance = ta_data.get('pct_from_resistance')
+                signal.volume_breakout = ta_data.get('volume_breakout', False)
+                
                 signal.scored_at = scored_at
                 
                 # Capture price snapshots for Daily timeframe
@@ -147,17 +218,21 @@ def run_pipeline(db: Session):
                 db.commit()
         
         run.tier2_count = tier2_survivors_count
-        
+        db.commit() # Ensure all signals are committed before RS computation
+
         # 4. Market/Index Snapshots
         from app.db.models import MarketSnapshot
         
         # Derive signal_date from the same logic used in scoring loop
-        # If we have survivors, use the last candle date from the first one
         if tier1_survivors and hist_cache:
             first_hist, _ = hist_cache[tier1_survivors[0]]
             final_signal_date = first_hist.index[-1].date()
         else:
             final_signal_date = datetime.date.today()
+
+        # 3b. Compute RS Ranks
+        logger.info(f"Computing RS ranks for {final_signal_date}")
+        _compute_rs_ranks(db, final_signal_date)
 
         indices = ["^NSEI", "^BSESN"]
         logger.info(f"Fetching market snapshots for {indices}")
