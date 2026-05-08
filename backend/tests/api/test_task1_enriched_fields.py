@@ -1,19 +1,6 @@
 import pytest
-from fastapi.testclient import TestClient
-from app.main import app
-from app.db.session import SessionLocal
 from app.db import models
 import datetime
-
-client = TestClient(app)
-
-@pytest.fixture
-def db():
-    db = SessionLocal()
-    # Clean up or setup test data if needed
-    # For now, we assume there's some data or we'll inject it
-    yield db
-    db.close()
 
 def setup_test_data(db):
     # Add a stock
@@ -67,7 +54,7 @@ def setup_test_data(db):
         fcf_positive=True,
         dividend_consistency=True,
         market_cap_category="Small",
-        roe=16.0, # Prefer this over fund.roe
+        roe=16.0,
         profitability_streak_passed=True,
         de_check_passed=True
     )
@@ -85,14 +72,8 @@ def setup_test_data(db):
     
     db.commit()
 
-def test_screens_enriched_fields(db):
-    # Setup
-    db.query(models.ScreenResult).delete()
-    db.query(models.FundamentalCache).delete()
-    db.query(models.FundamentalData).delete()
-    db.query(models.TechnicalSignal).delete()
-    db.query(models.Stock).delete()
-    db.commit()
+def test_screens_enriched_fields(db, client):
+    # Setup - db fixture handles isolation, setup_test_db handles tables
     setup_test_data(db)
     
     # Execute
@@ -123,16 +104,11 @@ def test_screens_enriched_fields(db):
     assert result["de_ratio"] == 0.5
     assert result["fcf_positive"] is True
     assert result["dividend_consistency"] is True
+    # market_cap_category comes from cache
     assert result["market_cap_category"] == "Small"
 
-def test_dashboard_enriched_fields(db):
+def test_dashboard_enriched_fields(db, client):
     # Setup
-    db.query(models.ScreenResult).delete()
-    db.query(models.FundamentalCache).delete()
-    db.query(models.FundamentalData).delete()
-    db.query(models.TechnicalSignal).delete()
-    db.query(models.Stock).delete()
-    db.commit()
     setup_test_data(db)
     
     # Execute
