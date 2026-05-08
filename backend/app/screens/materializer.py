@@ -27,17 +27,23 @@ def materialize_all_screens(db: Session):
                 results = meta['fn'](db)
                 
                 for rank, item in enumerate(results, start=1):
-                    # item is expected to be a dict or object with symbol and timeframe
-                    # Depending on how fn() is implemented, we might need to adapt this.
-                    # Usually, these functions return objects from the query.
-                    
-                    symbol = item.get('symbol') if isinstance(item, dict) else getattr(item, 'symbol', None)
-                    timeframe = item.get('timeframe') if isinstance(item, dict) else getattr(item, 'timeframe', 'D')
-                    score = item.get('score') if isinstance(item, dict) else getattr(item, 'entry_score', 0.0)
-                    
+                    # Handle tuples (symbol, score), dicts, or SQLAlchemy objects
+                    if isinstance(item, tuple):
+                        symbol = item[0]
+                        score = item[1] if len(item) > 1 else 0.0
+                        timeframe = 'D'
+                    elif isinstance(item, dict):
+                        symbol = item.get('symbol')
+                        score = item.get('score', 0.0)
+                        timeframe = item.get('timeframe', 'D')
+                    else:
+                        symbol = getattr(item, 'symbol', None)
+                        score = getattr(item, 'entry_score', 0.0)
+                        timeframe = getattr(item, 'timeframe', 'D')
+
                     if not symbol:
                         continue
-                        
+
                     res = ScreenResult(
                         screen_slug=slug,
                         symbol=symbol,
