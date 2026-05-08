@@ -251,6 +251,10 @@ def run_pipeline(db: Session):
         # 5. Generate Daily Report
         logger.info("Generating daily report")
         generate_daily_report(db)
+
+        # 6. Materialize Named Screens
+        from app.screens.materializer import materialize_all_screens
+        materialize_all_screens(db)
             
         run.status = "complete"
         run.stocks_fetched = fetched_count
