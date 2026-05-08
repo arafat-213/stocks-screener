@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date
+from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date, ForeignKey, func
 from sqlalchemy.orm import declarative_base
 import datetime
 import uuid
@@ -29,6 +29,29 @@ class TechnicalSignal(Base):
     atr = Column(Float, nullable=True)
     close_price = Column(Float, nullable=True)
     price_change_pct = Column(Float, nullable=True)
+    
+    # Momentum and Relative Strength
+    momentum_1m = Column(Float, nullable=True)
+    momentum_3m = Column(Float, nullable=True)
+    momentum_6m = Column(Float, nullable=True)
+    rs_score = Column(Float, nullable=True)
+    
+    # Technical Indicators
+    adx = Column(Float, nullable=True)
+    above_200ema = Column(Boolean, nullable=True)
+    ema_slope_20 = Column(Float, nullable=True)
+    
+    # 52-Week Range and Resistance
+    pct_from_52w_high = Column(Float, nullable=True)
+    pct_from_52w_low = Column(Float, nullable=True)
+    week52_high = Column(Float, nullable=True)
+    week52_low = Column(Float, nullable=True)
+    resistance_level = Column(Float, nullable=True)
+    pct_from_resistance = Column(Float, nullable=True)
+    
+    # Volume Breakout
+    volume_breakout = Column(Boolean, nullable=True, default=False)
+    
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     __table_args__ = (UniqueConstraint('symbol', 'date', 'timeframe'),)
@@ -55,6 +78,18 @@ class FundamentalCache(Base):
     de_check_passed = Column(Boolean)
     pledged_data_missing = Column(Boolean, default=False)
     sector = Column(String)
+    
+    # Advanced Fundamental Metrics
+    roce = Column(Float, nullable=True)
+    peg_ratio = Column(Float, nullable=True)
+    ev_to_ebitda = Column(Float, nullable=True)
+    dividend_yield = Column(Float, nullable=True)
+    price_to_fcf = Column(Float, nullable=True)
+    earnings_growth_3y = Column(Float, nullable=True)
+    fcf_positive = Column(Boolean, nullable=True)
+    dividend_consistency = Column(Boolean, nullable=True)
+    market_cap_category = Column(String(20), nullable=True)
+    
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
     cache_version = Column(Integer, default=1)
 
@@ -75,3 +110,13 @@ class MarketSnapshot(Base):
     symbol = Column(String, primary_key=True)
     close = Column(Float)
     change_pct = Column(Float)
+
+class ScreenResult(Base):
+    __tablename__ = "screen_results"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    screen_slug = Column(String, nullable=False)
+    symbol = Column(String, ForeignKey('stocks.symbol'), nullable=False)
+    timeframe = Column(String(1), nullable=False) # 'D', 'W', 'M'
+    rank = Column(Integer)
+    score_used = Column(Float)
+    computed_at = Column(DateTime, default=func.now())
