@@ -25,7 +25,9 @@ def get_dashboard_results(db: Session = Depends(get_db)):
         outerjoin(latest_fund, Stock.symbol == latest_fund.c.symbol).\
         outerjoin(FundamentalData, (FundamentalData.symbol == latest_fund.c.symbol) & (FundamentalData.date == latest_fund.c.max_date)).\
         outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol).\
-        filter(TechnicalSignal.date == max_date).all()
+        filter(TechnicalSignal.date == max_date).\
+        filter(FundamentalCache.profitability_streak_passed == True).\
+        filter(FundamentalCache.de_check_passed == True).all()
         
     # 4. Python grouping
     stocks_map = {}
