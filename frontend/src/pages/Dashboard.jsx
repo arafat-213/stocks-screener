@@ -1,11 +1,12 @@
+import { useState, useEffect, useMemo } from 'react';
 import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
 import { fetchResults, fetchPipelineStatus, runScreener, stopPipeline } from '../api/client';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
 import MarketTable, { MarketTableSkeleton } from '../components/MarketTable';
 import FilterBottomSheet from '../components/FilterBottomSheet';
+import Select from '../components/ui/Select';
 import './Dashboard.css';
-import { useState, useEffect, useMemo } from 'react';
 
 const Dashboard = () => {
   const [stocks, setStocks] = useState([]);
@@ -203,10 +204,6 @@ const Dashboard = () => {
               <span className="label">Total Scored</span>
               <span className="value">{stocks.length}</span>
             </div>
-            <div className="summary-item">
-              <span className="label">3/3 Confluence</span>
-              <span className="value success">{stocks.filter(s => s.confluence_count === 3).length}</span>
-            </div>
             <div className="summary-item market">
               <span className="label">Nifty 50</span>
               <span className={`value ${isNiftyUp ? 'success' : 'danger'}`}>
@@ -292,7 +289,7 @@ const Dashboard = () => {
               )}
               
               {!isMobile && (
-                <div className="view-toggle sort-controls">
+                <div className="view-toggle view-toggle-container">
                   <button 
                     className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
                     onClick={() => setViewMode('table')}
@@ -312,14 +309,19 @@ const Dashboard = () => {
                 </div>
               )}
 
-              <div className="sort-controls">
-                <ArrowUpDown size={16} />
-                <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
-                  <option value="confluence">Confluence</option>
-                  <option value="score">Daily Score</option>
-                  <option value="rsi">Low RSI</option>
-                  <option value="pe">Value (P/E)</option>
-                </select>
+              <div className="sort-controls-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ArrowUpDown size={16} className="text-muted" />
+                <Select
+                  value={sortBy}
+                  onChange={setSortBy}
+                  options={[
+                    { value: 'confluence', label: 'Confluence' },
+                    { value: 'score', label: 'Daily Score' },
+                    { value: 'rsi', label: 'Low RSI' },
+                    { value: 'pe', label: 'Value (P/E)' }
+                  ]}
+                  className="sort-select"
+                />
               </div>
             </div>
           </div>

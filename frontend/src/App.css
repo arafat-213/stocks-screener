@@ -1,18 +1,1 @@
-.app-container {
-  width: 100%;
-  min-height: 100vh;
-}
-
-/* Global utility classes used across components */
-.success { color: #059669; }
-.danger { color: #dc2626; }
-.bold { font-weight: 700; }
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
+/* App-specific styles moved to index.css or component-specific files */

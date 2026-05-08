@@ -1,28 +1,29 @@
 import { Routes, Route } from 'react-router-dom';
+import { ThemeProvider } from './context/ThemeProvider';
+import MainLayout from './components/MainLayout';
+
+// Pages
 import Dashboard from './pages/Dashboard';
 import StockDetail from './pages/StockDetail';
-import Reports from './pages/Reports';
-import Screener from './pages/Screener';
-import Screens from './pages/Screens';
-import Navigation from './components/Navigation';
-import { useTheme } from './hooks/useTheme';
+import Discover from './pages/Discover';
+import Intelligence from './pages/Intelligence';
+import System from './pages/System';
+
 import './App.css';
 
 function App() {
-  useTheme();
-
   return (
-    <div className="app-container">
-      <Navigation>
+    <ThemeProvider>
+      <MainLayout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
           <Route path="/stocks/:symbol" element={<StockDetail />} />
-          <Route path="/reports" element={<Reports />} />
-          <Route path="/screener" element={<Screener />} />
-          <Route path="/screens" element={<Screens />} />
+          <Route path="/discover" element={<Discover />} />
+          <Route path="/intel" element={<Intelligence />} />
+          <Route path="/system" element={<System />} />
         </Routes>
-      </Navigation>
-    </div>
+      </MainLayout>
+    </ThemeProvider>
   );
 }
 

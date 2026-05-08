@@ -1,4 +1,4 @@
-import React from 'react';
+
 import './ScreenCard.css';
 
 const ScreenCard = ({ screen, isSelected, onClick }) => {
