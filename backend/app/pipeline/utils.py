@@ -1,4 +1,7 @@
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 FIELD_KEYWORDS = {
     "net_income":     ["net income", "net earnings", "profit after tax", "pat"],
@@ -35,7 +38,10 @@ def get_financial_row(df: pd.DataFrame, field_key: str) -> pd.Series | None:
         kw_lower = kw.lower()
         for i, idx_val in enumerate(index_lowered):
             if kw_lower in idx_val:
+                logger.debug(f"Matched financial row: '{df.index[i]}' for key '{field_key}' using keyword '{kw}'")
                 return df.iloc[i]
+    
+    logger.warning(f"Failed to find financial row for key '{field_key}' in index: {list(df.index)[:5]}...")
     return None
 
 def resample_ohlcv(df: pd.DataFrame, freq: str, drop_incomplete: bool = True) -> pd.DataFrame:

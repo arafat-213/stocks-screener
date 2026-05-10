@@ -8,10 +8,12 @@ router = APIRouter()
 
 @router.get("/screener/results")
 def get_dashboard_results(db: Session = Depends(get_db)):
-    # 1. Get latest date from signals
-    max_date = db.query(func.max(TechnicalSignal.date)).scalar()
-    if not max_date:
-        return []
+    # 1. Latest TechnicalSignal Subquery (Max date per symbol/timeframe)
+    latest_signal = db.query(
+        TechnicalSignal.symbol,
+        TechnicalSignal.timeframe,
+        func.max(TechnicalSignal.date).label("max_date")
+    ).group_by(TechnicalSignal.symbol, TechnicalSignal.timeframe).subquery()
         
     # 2. Latest Fundamental Subquery (Max date per symbol)
     latest_fund = db.query(
@@ -22,10 +24,12 @@ def get_dashboard_results(db: Session = Depends(get_db)):
     # 3. Join Query
     query_results = db.query(TechnicalSignal, Stock, FundamentalData, FundamentalCache).\
         join(Stock, TechnicalSignal.symbol == Stock.symbol).\
+        join(latest_signal, (TechnicalSignal.symbol == latest_signal.c.symbol) & \
+                           (TechnicalSignal.timeframe == latest_signal.c.timeframe) & \
+                           (TechnicalSignal.date == latest_signal.c.max_date)).\
         outerjoin(latest_fund, Stock.symbol == latest_fund.c.symbol).\
         outerjoin(FundamentalData, (FundamentalData.symbol == latest_fund.c.symbol) & (FundamentalData.date == latest_fund.c.max_date)).\
         outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol).\
-        filter(TechnicalSignal.date == max_date).\
         filter(FundamentalCache.profitability_streak_passed == True).\
         filter(FundamentalCache.de_check_passed == True).all()
         

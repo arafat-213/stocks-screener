@@ -9,7 +9,7 @@ router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 @router.get("")
 def list_reports(db: Session = Depends(get_db)):
-    # Get unique dates from technical_signals table, using date() to remove time component
+    # Get unique dates from technical_signals table, using func.date to remove time component
     dates = db.query(func.distinct(func.date(TechnicalSignal.date))).\
         order_by(func.date(TechnicalSignal.date).desc()).all()
     return [d[0] for d in dates if d[0]]
@@ -77,3 +77,4 @@ def get_report_by_date(date: str, db: Session = Depends(get_db)):
     final_results.sort(key=lambda x: (x["confluence_count"], x["daily_score"] or 0), reverse=True)
 
     return final_results[:50]
+
