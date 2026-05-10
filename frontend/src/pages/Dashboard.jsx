@@ -1,18 +1,34 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
-import { fetchResults, fetchPipelineStatus, runScreener, stopPipeline } from '../api/client';
+import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, Clock } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { fetchResults } from '../api/client';
+import { useFetch } from '../hooks/useFetch';
+import { usePipeline } from '../hooks/usePipeline';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
-import MarketTable, { MarketTableSkeleton } from '../components/MarketTable';
 import FilterBottomSheet from '../components/FilterBottomSheet';
 import Select from '../components/ui/Select';
+import { DataTable } from '../components/ui/DataTable';
+import { ErrorBanner } from '../components/ui/ErrorBanner';
 import './Dashboard.css';
 
 const Dashboard = () => {
-  const [stocks, setStocks] = useState([]);
-  const [pipeline, setPipeline] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [isStopping, setIsStopping] = useState(false);
+  // Data Fetching Hooks
+  const { 
+    data: stocks, 
+    loading: stocksLoading, 
+    error: stocksError, 
+    refetch: refetchStocks 
+  } = useFetch(fetchResults);
+
+  const { 
+    status, 
+    stats: pipeline, 
+    isBusy, 
+    run: handleRunPipeline, 
+    stop: handleStopPipeline, 
+    error: pipelineError 
+  } = usePipeline();
   
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', '3', '2+'
@@ -24,29 +40,14 @@ const Dashboard = () => {
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const fetchData = async () => {
-    try {
-      const [resultsRes, statusRes] = await Promise.all([
-        fetchResults(),
-        fetchPipelineStatus()
-      ]);
-      setStocks(resultsRes.data);
-      setPipeline(statusRes.data);
-      if (statusRes.data.status !== 'running') {
-        setIsStopping(false);
-      }
-      setLoading(false);
-    } catch (err) {
-      console.error("Failed to fetch dashboard data:", err);
-      setLoading(false);
-    }
-  };
-
+  // Implement refresh side-effect: when status transitions from running to complete, call refetchStocks()
+  const [prevStatus, setPrevStatus] = useState(status);
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 15000); // Poll every 15s
-    return () => clearInterval(interval);
-  }, []);
+    if (prevStatus === 'running' && status === 'complete') {
+      refetchStocks();
+    }
+    setPrevStatus(status);
+  }, [status, prevStatus, refetchStocks]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -60,33 +61,16 @@ const Dashboard = () => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const handleRunPipeline = async (limit = null) => {
-    try {
-      await runScreener(limit);
-      fetchData();
-    } catch (err) {
-      console.error("Failed to run pipeline:", err);
-    }
-  };
-
-  const handleStopPipeline = async () => {
-    try {
-      setIsStopping(true);
-      await stopPipeline();
-    } catch (err) {
-      console.error("Failed to stop pipeline:", err);
-      setIsStopping(false);
-    }
-  };
-
   // Derived: Available Sectors (only from current stocks)
   const availableSectors = useMemo(() => {
+    if (!stocks) return [];
     const sectors = new Set(stocks.map(s => s.sector).filter(Boolean));
     return Array.from(sectors).sort();
   }, [stocks]);
 
-  // Client-side Filtering and Sorting
+  // Client-side Filtering
   const filteredStocks = useMemo(() => {
+    if (!stocks) return [];
     return stocks
       .filter(stock => {
         // Confluence Filter
@@ -98,23 +82,78 @@ const Dashboard = () => {
         // Sector Filter
         if (selectedSectors.length === 0) return true;
         return selectedSectors.includes(stock.sector);
-      })
-      .sort((a, b) => {
-        // Sorting Logic
-        if (sortBy === 'confluence') {
-          if (b.confluence_count !== a.confluence_count) return b.confluence_count - a.confluence_count;
-          return (b.timeframes?.D?.score || 0) - (a.timeframes?.D?.score || 0);
-        }
-        if (sortBy === 'score') return (b.timeframes?.D?.score || 0) - (a.timeframes?.D?.score || 0);
-        if (sortBy === 'rsi') return (a.timeframes?.D?.rsi || 0) - (b.timeframes?.D?.rsi || 0); // Low RSI first
-        if (sortBy === 'pe') {
-          const peA = a.fundamentals?.pe || 999;
-          const peB = b.fundamentals?.pe || 999;
-          return peA - peB;
-        }
-        return 0;
       });
-  }, [stocks, confluenceFilter, selectedSectors, sortBy]);
+  }, [stocks, confluenceFilter, selectedSectors]);
+
+  // Column Definitions for DataTable
+  const columns = [
+    { 
+      key: 'symbol', 
+      label: 'Symbol', 
+      sortable: true,
+      render: (val) => (
+        <Link to={`/stocks/${val}`} className="table-link">
+          {val.replace('.NS', '')}
+        </Link>
+      )
+    },
+    { 
+      key: 'close_price', 
+      label: 'Price', 
+      sortable: true,
+      render: (val) => `₹${val?.toLocaleString('en-IN', { minimumFractionDigits: 1 })}`
+    },
+    { 
+      key: 'price_change_pct', 
+      label: 'Change %', 
+      sortable: true,
+      render: (val) => (
+        <span className={val >= 0 ? 'text-positive' : 'text-negative'}>
+          {val >= 0 ? '+' : ''}{val?.toFixed(2)}%
+        </span>
+      )
+    },
+    { 
+      key: 'score', 
+      label: 'Score', 
+      sortable: true,
+      accessor: (row) => row.timeframes?.D?.score || 0,
+      render: (val) => <span className="bold">{val || '-'}</span>
+    },
+    { 
+      key: 'rs_score', 
+      label: 'RS', 
+      sortable: true,
+      accessor: (row) => row.timeframes?.D?.rs_score || 0,
+      render: (val) => <span className="text-primary bold">{val?.toFixed(0) || '-'}</span>
+    },
+    { 
+      key: 'adx', 
+      label: 'ADX', 
+      sortable: true,
+      accessor: (row) => row.timeframes?.D?.adx || 0,
+      render: (val) => val?.toFixed(1) || '-'
+    },
+    { 
+      key: 'roe', 
+      label: 'ROE %', 
+      sortable: true,
+      accessor: (row) => row.fundamentals?.roe || 0,
+      render: (val) => `${val?.toFixed(1) || '-'}%`
+    },
+    { 
+      key: 'pe', 
+      label: 'P/E', 
+      sortable: true,
+      accessor: (row) => row.fundamentals?.pe || 999,
+      render: (val) => val?.toFixed(1) || '-'
+    },
+    { 
+      key: 'sector', 
+      label: 'Sector', 
+      sortable: true 
+    }
+  ];
 
   const toggleSector = (sector) => {
     setSelectedSectors(prev => 
@@ -127,7 +166,7 @@ const Dashboard = () => {
     setSelectedSectors([]);
   };
 
-  if (loading) {
+  if (stocksLoading && !stocks) {
     return (
       <div className="dashboard-page">
         <main className="dashboard-content">
@@ -144,7 +183,16 @@ const Dashboard = () => {
                 {[1, 2, 3, 4, 5, 6].map(i => <StockCardSkeleton key={i} />)}
               </div>
             ) : (
-              <MarketTableSkeleton rows={10} />
+              <div className="data-table-container skeleton">
+                <div className="table-header">
+                  {columns.map(col => <div key={col.key} className="header-cell">{col.label}</div>)}
+                </div>
+                {Array.from({ length: 10 }).map((_, i) => (
+                  <div key={i} className="table-row">
+                    {columns.map(col => <div key={col.key} className="table-cell"><div className="skeleton-line" /></div>)}
+                  </div>
+                ))}
+              </div>
             )}
           </div>
         </main>
@@ -158,7 +206,7 @@ const Dashboard = () => {
         <AlertCircle size={64} />
         <h1>No Data Available</h1>
         <p>The pipeline hasn't been run yet. Start it to see market analysis.</p>
-        <button className="primary-button" onClick={handleRunPipeline}>
+        <button className="primary-button" onClick={() => handleRunPipeline()} disabled={isBusy}>
           <Play size={20} /> Run Initial Pipeline
         </button>
       </div>
@@ -174,35 +222,39 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-page">
+      {(stocksError || pipelineError) && (
+        <ErrorBanner message={stocksError || pipelineError} />
+      )}
+
       {/* Main Content */}
       <main className="dashboard-content">
         <header className="dashboard-header">
           <div className="summary-bar">
-            {pipeline?.status === 'running' && (
+            {status === 'running' && (
               <div className="summary-item status-badge running">
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <RefreshCcw size={16} className="spin" />
                   <div>
                     <span className="label">Pipeline Running</span>
                     <span className="value" style={{ fontSize: '12px' }}>
-                      {pipeline.stocks_fetched} fetched | {pipeline.stocks_scored} scored
+                      {pipeline?.stocks_fetched || 0} fetched | {pipeline?.stocks_scored || 0} scored
                     </span>
                   </div>
                   <button
                     className="stop-button"
                     onClick={handleStopPipeline}
-                    disabled={isStopping}
+                    disabled={status === 'stopping'}
                     title="Stop Pipeline"
                   >
                     <Square size={14} fill="currentColor" />
-                    {isStopping ? 'Stopping...' : 'Stop'}
+                    {status === 'stopping' ? 'Stopping...' : 'Stop'}
                   </button>
                 </div>
               </div>
             )}
             <div className="summary-item">
               <span className="label">Total Scored</span>
-              <span className="value">{stocks.length}</span>
+              <span className="value">{stocks?.length || 0}</span>
             </div>
             <div className="summary-item market">
               <span className="label">Nifty 50</span>
@@ -211,12 +263,16 @@ const Dashboard = () => {
                 <small>({isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%)</small>
               </span>
             </div>
-            <div className="summary-item market">
-              <span className="label">Sensex</span>
-              <span className={`value ${isSensexUp ? 'success' : 'danger'}`}>
-                {sensex.close?.toLocaleString('en-IN')} 
-                <small>({isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%)</small>
-              </span>
+            <div className="summary-item">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Clock size={16} className="text-muted" />
+                <div>
+                  <span className="label">Last Updated</span>
+                  <span className="value" style={{ fontSize: '14px' }}>
+                    {pipeline?.scored_at ? new Date(pipeline.scored_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
 
@@ -272,7 +328,7 @@ const Dashboard = () => {
               <button
                 className="secondary-button"
                 onClick={() => handleRunPipeline(50)}
-                disabled={pipeline?.status === 'running'}
+                disabled={isBusy}
               >
                 <Play size={16} /> Test (50)
               </button>
@@ -335,7 +391,12 @@ const Dashboard = () => {
               ))}
             </div>
           ) : (
-            <MarketTable stocks={filteredStocks} />
+            <DataTable 
+              columns={columns} 
+              data={filteredStocks} 
+              initialSort={{ key: 'score', direction: 'desc' }}
+              loading={stocksLoading}
+            />
           )
         ) : (
           <div className="no-results">
@@ -362,4 +423,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-
