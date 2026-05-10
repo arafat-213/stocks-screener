@@ -105,6 +105,7 @@ class PipelineRun(Base):
     tier1_count = Column(Integer, default=0)
     tier2_count = Column(Integer, default=0)
     errors = Column(Text)
+    stop_requested = Column(Boolean, default=False)
 
 class MarketSnapshot(Base):
     __tablename__ = "market_snapshots"
@@ -121,4 +122,4 @@ class ScreenResult(Base):
     timeframe = Column(String(1), nullable=False) # 'D', 'W', 'M'
     rank = Column(Integer)
     score_used = Column(Float)
-    computed_at = Column(DateTime, default=func.now())
+    computed_at = Column(Date, default=datetime.date.today)

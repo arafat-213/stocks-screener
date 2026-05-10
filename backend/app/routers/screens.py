@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
@@ -72,6 +73,17 @@ def get_screen_results(
     results = []
 
     if not live:
+        # Latest TechnicalSignal subquery
+        latest_signal_sub = (
+            db.query(
+                models.TechnicalSignal.symbol,
+                func.max(models.TechnicalSignal.date).label("max_date")
+            )
+            .filter(models.TechnicalSignal.timeframe == 'D')
+            .group_by(models.TechnicalSignal.symbol)
+            .subquery()
+        )
+
         # Try fetching from DB
         db_results = (
             db.query(
@@ -84,8 +96,10 @@ def get_screen_results(
             .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
             .outerjoin(
                 models.TechnicalSignal, 
-                (models.Stock.symbol == models.TechnicalSignal.symbol) & (models.TechnicalSignal.timeframe == 'D')
+                (models.Stock.symbol == models.TechnicalSignal.symbol) & 
+                (models.TechnicalSignal.timeframe == 'D')
             )
+            .filter(models.TechnicalSignal.date == latest_signal_sub.c.max_date)
             .filter(models.ScreenResult.screen_slug == slug)
             .order_by(models.ScreenResult.rank)
             .all()
@@ -120,13 +134,26 @@ def get_screen_results(
                 live_symbols = live_tuples
                 score_map = {}
             
+            # Latest TechnicalSignal subquery
+            latest_signal_sub = (
+                db.query(
+                    models.TechnicalSignal.symbol,
+                    func.max(models.TechnicalSignal.date).label("max_date")
+                )
+                .filter(models.TechnicalSignal.timeframe == 'D')
+                .group_by(models.TechnicalSignal.symbol)
+                .subquery()
+            )
+
             enriched = (
                 db.query(models.Stock, models.FundamentalCache, models.TechnicalSignal)
                 .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
                 .outerjoin(
                     models.TechnicalSignal, 
-                    (models.Stock.symbol == models.TechnicalSignal.symbol) & (models.TechnicalSignal.timeframe == 'D')
+                    (models.Stock.symbol == models.TechnicalSignal.symbol) & 
+                    (models.TechnicalSignal.timeframe == 'D')
                 )
+                .filter(models.TechnicalSignal.date == latest_signal_sub.c.max_date)
                 .filter(models.Stock.symbol.in_(live_symbols))
                 .all()
             )

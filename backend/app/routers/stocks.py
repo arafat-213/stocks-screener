@@ -5,8 +5,10 @@ from app.db.session import get_db
 from app.db.models import TechnicalSignal, PipelineRun, Stock, FundamentalData, FundamentalCache
 from app.pipeline.orchestrator import run_pipeline
 from app.pipeline.fetcher import fetch_stock_data
+import logging
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.get("/stocks/top")
 def get_top_stocks(db: Session = Depends(get_db)):
@@ -91,19 +93,33 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     }
 
 from pydantic import BaseModel
+from app.db.session import SessionLocal
 
 class ScreenerRequest(BaseModel):
     limit: int | None = None
 
+def run_pipeline_wrapper(limit: int | None):
+    db = SessionLocal()
+    try:
+        run_pipeline(db, limit=limit)
+    finally:
+        db.close()
+
 @router.post("/screener/run")
 def trigger_screener(request: ScreenerRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    background_tasks.add_task(run_pipeline, db, limit=request.limit)
+    # Concurrency Guard
+    existing_run = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
+    if existing_run:
+        logger.error(f"Pipeline already running: {existing_run.run_id}")
+        raise HTTPException(status_code=409, detail="Pipeline is already running")
+        
+    background_tasks.add_task(run_pipeline_wrapper, limit=request.limit)
     return {"message": f"Pipeline started{' with limit ' + str(request.limit) if request.limit else ''}"}
 
 @router.post("/pipeline/stop")
-def stop_pipeline():
+def stop_pipeline(db: Session = Depends(get_db)):
     from app.pipeline.orchestrator import request_pipeline_stop
-    request_pipeline_stop()
+    request_pipeline_stop(db)
     return {"message": "Stop signal sent to pipeline"}
 
 @router.get("/pipeline/status")

@@ -15,13 +15,20 @@ import traceback
 
 logger = logging.getLogger(__name__)
 
-# Global stop signal for graceful termination
-_STOP_SIGNAL = False
+def request_pipeline_stop(db: Session):
+    run = db.query(PipelineRun).filter(PipelineRun.status == "running").order_by(PipelineRun.timestamp.desc()).first()
+    if run:
+        run.stop_requested = True
+        db.commit()
+        logger.info(f"Pipeline stop requested for run {run.run_id}.")
+    else:
+        logger.warning("No running pipeline found to stop.")
 
-def request_pipeline_stop():
-    global _STOP_SIGNAL
-    _STOP_SIGNAL = True
-    logger.info("Pipeline stop requested.")
+def _is_stop_requested(db: Session, run_id: str) -> bool:
+    # Refresh to get latest DB state
+    db.expire_all()
+    run = db.query(PipelineRun).filter(PipelineRun.run_id == run_id).first()
+    return run.stop_requested if run else False
 
 def _compute_rs_ranks(db: Session, signal_date: datetime.date):
     """
@@ -62,9 +69,9 @@ def _compute_rs_ranks(db: Session, signal_date: datetime.date):
         logger.info("No signals with 12m momentum found.")
         return
 
-    # Sort signals by momentum_12m (ascending)
+    # Sort signals by excess return (momentum_12m - benchmark_return)
     # Percentile = (Rank / Count) * 100
-    valid_signals.sort(key=lambda x: x.momentum_12m)
+    valid_signals.sort(key=lambda x: (x.momentum_12m - benchmark_return))
     count = len(valid_signals)
     
     updates = []
@@ -75,15 +82,27 @@ def _compute_rs_ranks(db: Session, signal_date: datetime.date):
     if updates:
         db.bulk_update_mappings(TechnicalSignal, updates)
         db.commit()
-        logger.info(f"Successfully updated RS scores for {len(updates)} stocks.")
+        logger.info(f"Successfully updated RS scores (percentile ranks) for {len(updates)} stocks.")
 
 def run_pipeline(db: Session, limit: int = None):
-    global _STOP_SIGNAL
-    _STOP_SIGNAL = False # Reset signal at start
+    # Secondary Concurrency Guard
+    existing = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
+    if existing:
+        logger.error(f"Cannot start pipeline: Run {existing.run_id} is already in progress.")
+        return
 
-    run = PipelineRun(status="running", stocks_fetched=0, stocks_scored=0, errors="")
+    run = PipelineRun(
+        status="running", 
+        stocks_fetched=0, 
+        stocks_scored=0, 
+        tier1_count=0, 
+        tier2_count=0, 
+        errors="",
+        stop_requested=False
+    )
     db.add(run)
     db.commit()
+    db.refresh(run)
     
     current_symbol = "STARTUP"
     try:
@@ -100,10 +119,10 @@ def run_pipeline(db: Session, limit: int = None):
         
         logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
-            if _STOP_SIGNAL:
-                logger.info("Pipeline stop signal received during Tier 1.")
+            if _is_stop_requested(db, run.run_id):
+                logger.info("Pipeline stop signal received during scoring.")
                 run.status = "stopped"
-                run.errors = "Manually stopped during Tier 1"
+                run.errors = "Manually stopped during scoring"
                 db.commit()
                 return
 
@@ -140,12 +159,18 @@ def run_pipeline(db: Session, limit: int = None):
         db.commit()
         logger.info(f"Tier 1 complete. {len(tier1_survivors)} survivors.")
         
+        # MEMORY OPTIMIZATION: If survivors are many, clear hist_cache and re-fetch as needed
+        use_lazy_loading = len(tier1_survivors) > 300
+        if use_lazy_loading:
+            logger.info("Survivors > 300. Clearing hist_cache to save memory (Lazy Loading enabled).")
+            hist_cache.clear()
+
         # 2. Tier 2 Screening & Caching
         to_refresh = []
         seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
         
         for symbol in tier1_survivors:
-            if _STOP_SIGNAL:
+            if _is_stop_requested(db, run.run_id):
                 logger.info("Pipeline stop signal received during Tier 2 check.")
                 run.status = "stopped"
                 run.errors = "Manually stopped during Tier 2"
@@ -170,7 +195,9 @@ def run_pipeline(db: Session, limit: int = None):
         scored_at = datetime.datetime.utcnow()
         tier2_survivors_count = 0
         for symbol in tier1_survivors:
-            if _STOP_SIGNAL:
+            scored_count += 1
+            run.stocks_scored = scored_count
+            if _is_stop_requested(db, run.run_id):
                 logger.info("Pipeline stop signal received during scoring.")
                 run.status = "stopped"
                 run.errors = "Manually stopped during scoring"
@@ -185,12 +212,15 @@ def run_pipeline(db: Session, limit: int = None):
                 continue
                 
             tier2_survivors_count += 1
-            # Score
+            # Score (MEMORY OPTIMIZATION: Re-fetch if hist_cache was cleared)
             cache_data = hist_cache.get(symbol)
-            if cache_data is None: # Should not happen if in survivors
-                continue
-            
-            hist, info = cache_data
+            if cache_data is None:
+                # Lazy load if cleared for memory
+                hist, info = fetch_stock_data(symbol, period="3y")
+                if hist is None or info is None:
+                    continue
+            else:
+                hist, info = cache_data
             
             # Multi-timeframe loop
             for tf, freq in [('D', None), ('W', 'W'), ('M', 'ME')]:
@@ -198,7 +228,7 @@ def run_pipeline(db: Session, limit: int = None):
                 if working_df.empty: continue
                 
                 signal_date = working_df.index[-1].date()
-                ta_data = calculate_combined_score(working_df, info, timeframe=tf)
+                ta_data = calculate_combined_score(working_df, info, timeframe=tf, fund_cache=cache)
                 
                 # Explicit Upsert into TechnicalSignal
                 signal = db.query(TechnicalSignal).filter_by(
@@ -243,14 +273,13 @@ def run_pipeline(db: Session, limit: int = None):
                         / working_df['Close'].iloc[-2] * 100
                     )
                 
-            scored_count += 1
             if scored_count % 10 == 0:
                 db.commit()
         
         run.tier2_count = tier2_survivors_count
         db.commit() # Ensure all signals are committed before RS computation
 
-        if _STOP_SIGNAL:
+        if _is_stop_requested(db, run.run_id):
             run.status = "stopped"
             db.commit()
             return
@@ -259,10 +288,18 @@ def run_pipeline(db: Session, limit: int = None):
         from app.db.models import MarketSnapshot
         
         # Derive signal_date from the same logic used in scoring loop
-        if tier1_survivors and hist_cache:
-            first_hist, _ = hist_cache[tier1_survivors[0]]
-            final_signal_date = first_hist.index[-1].date()
-        else:
+        final_signal_date = None
+        if tier1_survivors:
+            if tier1_survivors[0] in hist_cache:
+                first_hist, _ = hist_cache[tier1_survivors[0]]
+                final_signal_date = first_hist.index[-1].date()
+            else:
+                # Re-fetch just one to get the date if cache was cleared
+                h, _ = fetch_stock_data(tier1_survivors[0], period="1d")
+                if h is not None and not h.empty:
+                    final_signal_date = h.index[-1].date()
+        
+        if not final_signal_date:
             final_signal_date = datetime.date.today()
 
         # 3b. Compute RS Ranks
@@ -297,7 +334,7 @@ def run_pipeline(db: Session, limit: int = None):
         db.commit()
         
     except Exception as e:
-        if _STOP_SIGNAL:
+        if _is_stop_requested(db, run.run_id):
             run.status = "stopped"
             run.errors = "Stopped during exception"
         else:
