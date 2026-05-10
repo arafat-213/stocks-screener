@@ -13,10 +13,11 @@ def materialize_all_screens(db: Session):
     """
     logger.info("Starting screen materialization")
     start_time = datetime.datetime.now()
+    today = datetime.date.today()
     
     try:
-        # 1. Truncate existing results (latest-only policy)
-        db.query(ScreenResult).delete()
+        # 1. Delete existing results for today to allow re-runs without duplication
+        db.query(ScreenResult).filter(ScreenResult.computed_at == today).delete()
         db.commit()
         
         # 2. Run each screen and save results
@@ -50,7 +51,7 @@ def materialize_all_screens(db: Session):
                         timeframe=timeframe,
                         rank=rank,
                         score_used=float(score) if score is not None else 0.0,
-                        computed_at=datetime.datetime.utcnow()
+                        computed_at=today
                     )
                     db.add(res)
                     total_results += 1
