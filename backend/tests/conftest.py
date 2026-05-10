@@ -5,7 +5,8 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from app.main import app
-from app.db.session import get_db
+from app.db.session import get_db, SessionLocal
+from app.db import session as db_session_module
 from app.db.models import Base
 
 # Use in-memory SQLite for tests
@@ -20,10 +21,24 @@ TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engin
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_test_db():
+    # Patch the session module's SessionLocal and engine
+    # This ensures background tasks and other direct imports use the test DB
+    old_session_local = db_session_module.SessionLocal
+    old_engine = db_session_module.engine
+    
+    db_session_module.SessionLocal = TestingSessionLocal
+    db_session_module.engine = engine
+    
     # Create tables once per session
     Base.metadata.create_all(bind=engine)
+    
     yield
+    
     Base.metadata.drop_all(bind=engine)
+    
+    # Restore
+    db_session_module.SessionLocal = old_session_local
+    db_session_module.engine = old_engine
 
 @pytest.fixture
 def db():

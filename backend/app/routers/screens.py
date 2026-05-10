@@ -124,14 +124,18 @@ def get_screen_results(
     # Fallback or explicit live execution
     logger.info(f"Executing live screen for {slug}")
     try:
-        live_tuples = screen_meta["fn"](db) # Returns list of (symbol, score)
-        if live_tuples:
-            # Handle both list of symbols and list of (symbol, score) tuples
-            if isinstance(live_tuples[0], tuple):
-                live_symbols = [t[0] for t in live_tuples]
-                score_map = {t[0]: t[1] for t in live_tuples}
+        live_data = screen_meta["fn"](db) # Returns list of (symbol, score) or symbols
+        if live_data:
+            # Handle both list of symbols and list of (symbol, score) tuples/Rows
+            # Check if first element is tuple-like (has at least 1 element and is not a string)
+            first_item = live_data[0]
+            is_tuple_like = hasattr(first_item, "__iter__") and not isinstance(first_item, (str, bytes))
+            
+            if is_tuple_like:
+                live_symbols = [t[0] for t in live_data]
+                score_map = {t[0]: t[1] for t in live_data if len(t) > 1}
             else:
-                live_symbols = live_tuples
+                live_symbols = live_data
                 score_map = {}
             
             # Latest TechnicalSignal subquery
