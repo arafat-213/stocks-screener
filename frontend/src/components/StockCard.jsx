@@ -77,7 +77,7 @@ const StockCard = ({ stock }) => {
             </div>
             <div className="metric-item">
               <span className="m-label">EMA</span>
-              <span className={`m-value ${daily.ema_signal === 'Bullish' ? 'positive' : 'negative'}`}>
+              <span className={`m-value ${daily.ema_signal?.toLowerCase() === 'bullish' ? 'positive' : 'negative'}`}>
                 {daily.ema_signal || '-'}
               </span>
             </div>
