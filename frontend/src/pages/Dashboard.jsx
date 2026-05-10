@@ -166,14 +166,16 @@ const Dashboard = () => {
     setSelectedSectors([]);
   };
 
-  if (stocksLoading && !stocks) {
+  const hasData = stocks && stocks.length > 0;
+
+  if (stocksLoading && !hasData) {
     return (
       <div className="dashboard-page">
         <main className="dashboard-content">
           <div className="summary-bar">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="summary-item">
-                <div className="skeleton-line" className="skeleton-h-40"></div>
+                <div className="skeleton-line skeleton-h-40"></div>
               </div>
             ))}
           </div>
@@ -234,7 +236,7 @@ const Dashboard = () => {
                   <RefreshCcw size={16} className="spin" />
                   <div>
                     <span className="label">Pipeline Running</span>
-                    <span className="value" className="fs-12">
+                    <span className="value fs-12">
                       {pipeline?.stocks_fetched || 0} fetched | {pipeline?.stocks_scored || 0} scored
                     </span>
                   </div>
@@ -266,7 +268,7 @@ const Dashboard = () => {
                 <Clock size={16} className="text-muted" />
                 <div>
                   <span className="label">Last Updated</span>
-                  <span className="value" className="fs-14">
+                  <span className="value fs-14">
                     {pipeline?.scored_at ? new Date(pipeline.scored_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
                   </span>
                 </div>
@@ -278,13 +280,13 @@ const Dashboard = () => {
             <div className="filters-container card">
               <div className="filter-flex-wrap">
                 <div className="filter-group">
-                  <div className="filter-header" className="mb-12">
+                  <div className="mb-12">
                     <Filter size={16} className="mr-8 inline" />
                     <h3 className="inline fs-14">Confluence</h3>
                   </div>
-                  <div className="radio-group" className="flex-row-gap-8">
+                  <div className="flex-row-gap-8">
                     {['all', '3', '2+'].map(c => (
-                      <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`} className="radio-label">
+                      <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}>
                         <input 
                           type="radio" 
                           name="confluence" 
@@ -299,8 +301,8 @@ const Dashboard = () => {
                 </div>
 
                 <div className="filter-group sectors flex-1-min-300">
-                  <div className="filter-header" className="mb-12">
-                    <h3 className="fs-14">Sectors <span className="count" className="ml-8">{availableSectors.length}</span></h3>
+                  <div className="mb-12">
+                    <h3 className="fs-14">Sectors <span className="count ml-8">{availableSectors.length}</span></h3>
                   </div>
                   <div className="checkbox-list flex-row-wrap-gap-8">
                     {availableSectors.map(sector => (
@@ -363,7 +365,7 @@ const Dashboard = () => {
                 </div>
               )}
 
-              <div className="sort-controls-wrapper" className="flex-center-gap-8">
+              <div className="flex-center-gap-8">
                 <ArrowUpDown size={16} className="text-muted" />
                 <Select
                   value={sortBy}

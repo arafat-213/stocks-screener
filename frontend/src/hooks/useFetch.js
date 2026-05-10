@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 
 export const useFetch = (apiFn, options = {}) => {
   const { deps = [], autoFetch = true, refreshInterval = null, onSuccess } = options;
-  const [data, setData] = useState(null);
+  const [data, setData] = useState(undefined);
   const [loading, setLoading] = useState(autoFetch);
   const [error, setError] = useState(null);
   const isMounted = useRef(true);
