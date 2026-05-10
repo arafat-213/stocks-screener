@@ -1,9 +1,9 @@
 import { useMemo, useEffect } from 'react';
-import { getStatus, runScreener, stopPipeline } from '../api/client';
+import { fetchPipelineStatus, runScreener, stopPipeline } from '../api/client';
 import { useFetch } from './useFetch';
 
 export const usePipeline = () => {
-  const { data: statusData, refetch, loading } = useFetch(getStatus);
+  const { data: statusData, refetch, loading } = useFetch(fetchPipelineStatus);
 
   // Manage polling internally based on status
   useEffect(() => {
