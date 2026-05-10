@@ -1,8 +1,8 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Search, 
   RefreshCw, 
-  Loader2, 
   Target
 } from 'lucide-react';
 import { 
@@ -10,26 +10,179 @@ import {
   getScreensList, 
   getScreenBySlug 
 } from '../api/client';
+import { useFetch } from '../hooks/useFetch';
 import ScreenCard from '../components/ScreenCard';
-import ScreenResultTable from '../components/ScreenResultTable';
+import { DataTable } from '../components/ui/DataTable';
 import Select from '../components/ui/Select';
 import Slider from '../components/ui/Slider';
-import './Dashboard.css'; // Will refactor this to a shared page CSS later
+import './Dashboard.css';
+
+const SCREEN_COLUMNS = {
+  'momentum-monsters':      ['symbol', 'name', 'rs_score', 'momentum_3m', 'adx', 'score'],
+  'value-with-momentum':    ['symbol', 'name', 'peg_ratio', 'momentum_1m', 'ema_slope', 'score'],
+  'near-breakout':          ['symbol', 'name', 'pct_from_resistance', 'volume_breakout', 'score'],
+  '52w-high':               ['symbol', 'name', 'pct_from_52w_high', 'week52_high', 'score'],
+  '52w-low':                ['symbol', 'name', 'pct_from_52w_low', 'week52_low', 'score'],
+  'low-debt-midcap':        ['symbol', 'name', 'market_cap_category', 'de_ratio', 'fcf_positive', 'score'],
+  'undervalued-fundamentals':['symbol', 'name', 'peg_ratio', 'ev_to_ebitda', 'dividend_yield', 'score'],
+  'steady-compounders':     ['symbol', 'name', 'roce', 'dividend_consistency', 'above_200ema', 'score'],
+  '_default':               ['symbol', 'name', 'score', 'rsi', 'confluence_count'],
+};
+
+const COLUMN_META = {
+  symbol: { 
+    label: 'Symbol', 
+    key: 'symbol', 
+    sortable: true,
+    render: (v) => (
+      <Link to={`/stocks/${v}`} className="symbol-link">
+        {v}
+      </Link>
+    )
+  },
+  name: { label: 'Name', key: 'name', sortable: true },
+  score: { 
+    label: 'Score', 
+    key: 'score', 
+    sortable: true,
+    accessor: (row) => row.timeframes?.D?.score ?? row.score,
+    render: (v) => v != null ? v.toFixed(1) : '—' 
+  },
+  rs_score: { 
+    label: 'RS Score', 
+    key: 'rs_score', 
+    sortable: true,
+    accessor: (row) => row.timeframes?.D?.rs_score ?? row.rs_score,
+    render: (v) => v != null ? v.toFixed(0) : '—' 
+  },
+  momentum_1m: { 
+    label: '1M Mom %', 
+    key: 'momentum_1m', 
+    sortable: true,
+    render: (v) => v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—' 
+  },
+  momentum_3m: { 
+    label: '3M Mom %', 
+    key: 'momentum_3m', 
+    sortable: true,
+    render: (v) => v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—' 
+  },
+  adx: { 
+    label: 'ADX', 
+    key: 'adx', 
+    sortable: true,
+    render: (v) => v != null ? v.toFixed(1) : '—' 
+  },
+  peg_ratio: { 
+    label: 'PEG', 
+    key: 'peg_ratio', 
+    sortable: true,
+    render: (v) => v != null ? v.toFixed(2) : '—' 
+  },
+  ev_to_ebitda: { 
+    label: 'EV/EBITDA', 
+    key: 'ev_to_ebitda', 
+    sortable: true,
+    render: (v) => v != null ? v.toFixed(1) : '—' 
+  },
+  dividend_yield: { 
+    label: 'Div Yield', 
+    key: 'dividend_yield', 
+    sortable: true,
+    render: (v) => v != null ? `${(v * 100).toFixed(2)}%` : '—' 
+  },
+  roce: { 
+    label: 'ROCE %', 
+    key: 'roce', 
+    sortable: true,
+    render: (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—' 
+  },
+  de_ratio: { 
+    label: 'D/E', 
+    key: 'de_ratio', 
+    sortable: true,
+    render: (v) => v != null ? v.toFixed(2) : '—' 
+  },
+  pct_from_52w_high: { 
+    label: '% from High', 
+    key: 'pct_from_52w_high', 
+    sortable: true,
+    render: (v) => v != null ? `${v.toFixed(1)}%` : '—' 
+  },
+  pct_from_52w_low: { 
+    label: '% from Low', 
+    key: 'pct_from_52w_low', 
+    sortable: true,
+    render: (v) => v != null ? `${v.toFixed(1)}%` : '—' 
+  },
+  week52_high: { 
+    label: '52W High', 
+    key: 'week52_high', 
+    sortable: true,
+    render: (v) => v != null ? `₹${v.toLocaleString('en-IN')}` : '—' 
+  },
+  week52_low: { 
+    label: '52W Low', 
+    key: 'week52_low', 
+    sortable: true,
+    render: (v) => v != null ? `₹${v.toLocaleString('en-IN')}` : '—' 
+  },
+  pct_from_resistance: { 
+    label: '% to Break', 
+    key: 'pct_from_resistance', 
+    sortable: true,
+    render: (v) => v != null ? `${v.toFixed(1)}%` : '—' 
+  },
+  volume_breakout: { 
+    label: 'Vol Break', 
+    key: 'volume_breakout', 
+    sortable: true,
+    render: (v) => v ? '✓' : '—' 
+  },
+  fcf_positive: { 
+    label: 'FCF+', 
+    key: 'fcf_positive', 
+    sortable: true,
+    render: (v) => v ? '✓' : '—' 
+  },
+  dividend_consistency: { 
+    label: 'Div 3Y', 
+    key: 'dividend_consistency', 
+    sortable: true,
+    render: (v) => v ? '✓' : '—' 
+  },
+  above_200ema: { 
+    label: '>200 EMA', 
+    key: 'above_200ema', 
+    sortable: true,
+    render: (v) => v ? '✓' : '—' 
+  },
+  market_cap_category: { label: 'Cap', key: 'market_cap_category', sortable: true },
+  ema_slope: { 
+    label: 'EMA Trend', 
+    key: 'ema_slope', 
+    sortable: true,
+    render: (v) => v != null ? (v > 0 ? '↑' : '↓') : '—' 
+  },
+  confluence_count: { 
+    label: 'Conf.', 
+    key: 'confluence_count', 
+    sortable: true,
+    render: (v) => v != null ? `${v}/3` : '—' 
+  },
+  rsi: { 
+    label: 'RSI', 
+    key: 'rsi', 
+    sortable: true,
+    render: (v) => v != null ? v.toFixed(1) : '—' 
+  },
+};
 
 const Discover = () => {
   const [activeTab, setActiveTab] = useState('strategies'); // 'strategies' | 'interactive'
-  
-  // Strategies State
-  const [screens, setScreens] = useState([]);
   const [selectedSlug, setSelectedSlug] = useState(null);
-  const [strategyResults, setStrategyResults] = useState([]);
-  const [loadingScreens, setLoadingScreens] = useState(true);
-  const [loadingStrategyResults, setLoadingStrategyResults] = useState(false);
   const [liveMode, setLiveMode] = useState(false);
   
-  // Interactive State
-  const [stocks, setStocks] = useState([]);
-  const [loadingStocks, setLoadingStocks] = useState(true);
   const [interactiveFilters, setInteractiveFilters] = useState({
     sector: 'All',
     minScore: 0,
@@ -38,60 +191,30 @@ const Discover = () => {
     minRS: 0,
     capCategory: 'All'
   });
-  const [sortConfig] = useState({ key: 'confluence_count', direction: 'desc' });
 
   // Fetch Screens List
-  useEffect(() => {
-    const fetchScreens = async () => {
-      try {
-        const res = await getScreensList();
-        setScreens(res.data);
-        if (res.data.length > 0) setSelectedSlug(res.data[0].slug);
-      } catch (err) {
-        console.error('Failed to load screens:', err);
-      } finally {
-        setLoadingScreens(false);
+  const { data: screens = [], loading: loadingScreens } = useFetch(getScreensList, {
+    onSuccess: (data) => {
+      if (data && data.length > 0 && !selectedSlug) {
+        setSelectedSlug(data[0].slug);
       }
-    };
-    fetchScreens();
-  }, []);
+    }
+  });
 
   // Fetch Strategy Results
-  useEffect(() => {
-    if (!selectedSlug || activeTab !== 'strategies') return;
-    
-    const fetchResults = async () => {
-      setLoadingStrategyResults(true);
-      try {
-        const res = await getScreenBySlug(selectedSlug, liveMode);
-        setStrategyResults(res.data);
-      } catch (e) {
-        setStrategyResults([]);
-      } finally {
-        setLoadingStrategyResults(false);
-      }
-    };
-    
-    fetchResults();
-  }, [selectedSlug, liveMode, activeTab]);
+  const { data: strategyResults = [], loading: loadingStrategyResults } = useFetch(
+    useCallback(() => getScreenBySlug(selectedSlug, liveMode), [selectedSlug, liveMode]),
+    { 
+      autoFetch: !!selectedSlug && activeTab === 'strategies',
+      deps: [selectedSlug, liveMode, activeTab]
+    }
+  );
 
-  // Fetch All Stocks for Interactive
-  useEffect(() => {
-    if (activeTab !== 'interactive') return;
-    
-    const loadData = async () => {
-      setLoadingStocks(true);
-      try {
-        const response = await fetchResults();
-        setStocks(response.data);
-      } catch (error) {
-        console.error('Error fetching interactive results:', error);
-      } finally {
-        setLoadingStocks(false);
-      }
-    };
-    loadData();
-  }, [activeTab]);
+  // Fetch All Stocks for Interactive (renamed local function to loadInteractiveData)
+  const { data: stocks = [], loading: loadingStocks } = useFetch(fetchResults, {
+    autoFetch: activeTab === 'interactive',
+    deps: [activeTab]
+  });
 
   // Interactive Filter Logic
   const filteredStocks = useMemo(() => {
@@ -107,33 +230,15 @@ const Discover = () => {
     });
   }, [stocks, interactiveFilters]);
 
-  const sortedStocks = useMemo(() => {
-    const sortableItems = [...filteredStocks];
-    if (sortConfig.key) {
-      sortableItems.sort((a, b) => {
-        let aValue, bValue;
-        if (sortConfig.key === 'score') {
-          aValue = a.timeframes?.D?.score || 0;
-          bValue = b.timeframes?.D?.score || 0;
-        } else if (sortConfig.key === 'pe') {
-          aValue = a.fundamentals?.pe || 9999;
-          bValue = b.fundamentals?.pe || 9999;
-        } else {
-          aValue = a[sortConfig.key];
-          bValue = b[sortConfig.key];
-        }
-        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
-        return 0;
-      });
-    }
-    return sortableItems;
-  }, [filteredStocks, sortConfig]);
-
   const sectors = useMemo(() => {
     const s = new Set(stocks.map(stock => stock.sector).filter(Boolean));
     return ['All', ...Array.from(s).sort()];
   }, [stocks]);
+
+  const getColumnsForSlug = (slug) => {
+    const keys = SCREEN_COLUMNS[slug] || SCREEN_COLUMNS['_default'];
+    return keys.map(key => COLUMN_META[key]);
+  };
 
   return (
     <div className="discover-page">
@@ -163,10 +268,10 @@ const Discover = () => {
 
       {activeTab === 'strategies' ? (
         <section className="strategies-tab">
-          <div className="stock-grid" style={{ marginBottom: '32px' }}>
+          <div className="stock-grid mb-32">
             {loadingScreens ? (
               [...Array(3)].map((_, i) => (
-                <div key={i} className="card skeleton-card" style={{ height: '140px' }} />
+                <div key={i} className="card skeleton-card skeleton-h-140" />
               ))
             ) : (
               screens.map(screen => (
@@ -195,17 +300,18 @@ const Discover = () => {
                   Live Mode
                 </button>
               </div>
-              <ScreenResultTable 
-                results={strategyResults} 
-                slug={selectedSlug} 
-                loading={loadingStrategyResults} 
+              <DataTable 
+                columns={getColumnsForSlug(selectedSlug)}
+                data={strategyResults}
+                loading={loadingStrategyResults}
+                initialSort={{ key: 'score', direction: 'desc' }}
               />
             </div>
           )}
         </section>
       ) : (
         <section className="interactive-tab">
-          <div className="card filter-panel" style={{ marginBottom: '24px', padding: '24px' }}>
+          <div className="card filter-panel mb-24 p-24">
             <div className="filter-grid">
               <Select 
                 label="Sector"
@@ -232,30 +338,25 @@ const Discover = () => {
                 max={100}
               />
               <div className="filter-item">
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '8px', letterSpacing: '0.05em' }}>Max P/E</label>
+                <label className="filter-label-styled">Max P/E</label>
                 <input 
                   type="number" placeholder="e.g. 30"
                   value={interactiveFilters.maxPE}
                   onChange={(e) => setInteractiveFilters({...interactiveFilters, maxPE: e.target.value})}
                   className="custom-number-input"
-                  style={{ width: '100%', padding: '10px 14px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.9rem' }}
+                  
                 />
               </div>
             </div>
           </div>
 
           <div className="card results-card">
-            {loadingStocks ? (
-              <div className="loading-state">
-                <Loader2 className="animate-spin" size={32} />
-                <p>Analyzing market...</p>
-              </div>
-            ) : (
-              <ScreenResultTable 
-                results={sortedStocks} 
-                loading={false} 
-              />
-            )}
+            <DataTable 
+              columns={getColumnsForSlug('_default')}
+              data={filteredStocks}
+              loading={loadingStocks}
+              initialSort={{ key: 'score', direction: 'desc' }}
+            />
           </div>
         </section>
       )}

@@ -2,17 +2,6 @@ import { Link } from 'react-router-dom';
 import './MarketTable.css';
 
 const MarketTable = ({ stocks }) => {
-  const getRSISignal = (rsi) => {
-    if (rsi <= 30) return 'signal-bullish';
-    if (rsi >= 70) return 'signal-bearish';
-    return 'signal-neutral';
-  };
-
-  const getEMASignal = (signal) => {
-    if (signal === 'Bullish') return 'signal-bullish';
-    if (signal === 'Bearish') return 'signal-bearish';
-    return 'signal-neutral';
-  };
 
   return (
     <div className="market-table-container">

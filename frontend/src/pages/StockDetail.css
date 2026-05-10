@@ -206,6 +206,9 @@
   color: var(--color-text);
 }
 
+.f-value.positive { color: var(--color-bullish); }
+.f-value.negative { color: var(--color-bearish); }
+
 .trend-section {
   background: var(--color-bg-secondary);
   border-radius: var(--radius-standard);

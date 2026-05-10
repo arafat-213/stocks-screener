@@ -55,7 +55,13 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
                 "ema_signal": signal.ema_signal,
                 "volume_signal": signal.volume_signal,
                 "rsi_signal": signal.rsi_signal,
-                "rsi": signal.rsi
+                "rsi": signal.rsi,
+                "adx": signal.adx,
+                "rs_score": signal.rs_score,
+                "momentum_1m": signal.momentum_1m,
+                "momentum_3m": signal.momentum_3m,
+                "momentum_6m": signal.momentum_6m,
+                "momentum_12m": signal.momentum_12m
             }
         else:
             scores[tf] = None
@@ -80,7 +86,8 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         "roe": fund_data.roe if fund_data else None,
         "debt_equity": fund_cache.de_ratio if fund_cache else (fund_data.debt_equity if fund_data else None),
         "sector": fund_cache.sector if fund_cache else (stock.sector if stock else None),
-        "eps_growth": fund_data.eps_growth if fund_data else None
+        "eps_growth": fund_data.eps_growth if fund_data else None,
+        "market_cap": fund_data.market_cap if fund_data else (stock.market_cap if stock else None)
     }
 
     return {

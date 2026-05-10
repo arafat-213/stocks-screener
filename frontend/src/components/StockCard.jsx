@@ -30,9 +30,11 @@ const StockCard = ({ stock }) => {
 
   const formatMCap = (val) => {
     if (!val) return '-';
-    if (val >= 100000) return `${(val / 100000).toFixed(1)}L Cr`;
-    if (val >= 1000) return `${(val / 1000).toFixed(1)}k Cr`;
-    return `${val.toFixed(0)} Cr`;
+    // Absolute INR to Crore conversion
+    const crores = val / 10000000;
+    if (crores >= 100000) return `${(crores / 100000).toFixed(2)}L Cr`;
+    if (crores >= 1000) return `${(crores / 1000).toFixed(1)}k Cr`;
+    return `${crores.toFixed(0)} Cr`;
   };
 
   return (
@@ -77,7 +79,7 @@ const StockCard = ({ stock }) => {
             </div>
             <div className="metric-item">
               <span className="m-label">EMA</span>
-              <span className={`m-value ${daily.ema_signal === 'Bullish' ? 'positive' : 'negative'}`}>
+              <span className={`m-value ${daily.ema_signal?.toLowerCase() === 'bullish' ? 'positive' : 'negative'}`}>
                 {daily.ema_signal || '-'}
               </span>
             </div>

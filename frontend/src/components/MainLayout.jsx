@@ -8,6 +8,7 @@ import {
   Activity
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
+import GlobalSearch from './GlobalSearch';
 import './MainLayout.css';
 
 const MainLayout = ({ children }) => {
@@ -16,8 +17,11 @@ const MainLayout = ({ children }) => {
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
-    setIsSidebarOpen(false);
-  }, [location]);
+    if (isSidebarOpen) {
+      const timer = setTimeout(() => setIsSidebarOpen(false), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [location, isSidebarOpen]);
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
@@ -34,7 +38,10 @@ const MainLayout = ({ children }) => {
           <Activity size={24} className="text-bullish" />
           <span>Stock AI</span>
         </div>
-        <ThemeToggle />
+        <div className="mobile-header-actions">
+          <GlobalSearch />
+          <ThemeToggle />
+        </div>
       </header>
 
       {/* Desktop Sidebar */}
@@ -43,6 +50,9 @@ const MainLayout = ({ children }) => {
           <div className="brand">
             <Activity size={28} className="text-bullish" />
             <span>Stock AI</span>
+          </div>
+          <div className="desktop-search-container">
+            <GlobalSearch />
           </div>
         </div>
 
