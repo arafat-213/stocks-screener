@@ -2,44 +2,75 @@ import pandas_ta as ta
 import pandas as pd
 from app.pipeline.utils import to_float
 
-def calculate_fundamental_score(info: dict) -> float:
+def calculate_fundamental_score(info: dict, fund_cache=None) -> float:
     """
-    Calculates fundamental score (Max 30 pts)
-    - P/E Score (Max 20 pts):
-        pe < 25: +20
-        pe < 50: +15
-        pe < 100: +5
-        pe >= 100: -5
-        pe is None: +0
-    - Promoter Pledge (Max 10 pts):
-        pledged < 5%: +10
-        pledged < 15%: +5
-        pledged < 20%: +2
-        Otherwise (>= 20% or None): +0
+    Calculates fundamental score (Max 30 pts budget)
+    - PE: 10 pts (Max if PE < 25, 0 if PE > 60)
+    - Pledge: 5 pts (Max if Pledge == 0, 0 if Pledge > 20%)
+    - ROE: 5 pts (Max if ROE > 15%)
+    - ROCE: 5 pts (Max if ROCE > 15%)
+    - Debt/Equity: 5 pts (Max if D/E < 0.5)
     """
-    score = 0
+    score = 0.0
     
-    # P/E Score (Max 20 pts)
+    # 1. PE Score (Max 10 pts)
     pe = to_float(info.get('forwardPE') or info.get('trailingPE'))
     if pe is not None:
         if pe < 25:
-            score += 20
-        elif pe < 50:
-            score += 15
-        elif pe < 100:
-            score += 5
-        elif pe >= 100:
-            score -= 5
+            score += 10
+        elif pe < 40:
+            score += 6
+        elif pe < 60:
+            score += 2
             
-    # Promoter Pledge (Max 10 pts)
+    # 2. Promoter Pledge (Max 5 pts)
     # yfinance pledgedPercent is usually a float (e.g. 0.05 for 5%)
     pledged = to_float(info.get('pledgedPercent'))
     if pledged is not None:
-        if pledged < 0.05:
-            score += 10
-        elif pledged < 0.15:
+        if pledged == 0:
             score += 5
+        elif pledged < 0.10:
+            score += 3
         elif pledged < 0.20:
+            score += 1
+
+    # 3. ROE Score (Max 5 pts)
+    roe = None
+    if fund_cache and fund_cache.roe is not None:
+        roe = fund_cache.roe
+    else:
+        roe = to_float(info.get('returnOnEquity'))
+    
+    if roe is not None:
+        if roe > 0.15:
+            score += 5
+        elif roe > 0.10:
+            score += 2
+
+    # 4. ROCE Score (Max 5 pts)
+    roce = None
+    if fund_cache and fund_cache.roce is not None:
+        roce = fund_cache.roce
+    
+    if roce is not None:
+        if roce > 0.15:
+            score += 5
+        elif roce > 0.10:
+            score += 2
+
+    # 5. Debt/Equity Score (Max 5 pts)
+    de = None
+    if fund_cache and fund_cache.de_ratio is not None:
+        de = fund_cache.de_ratio
+    else:
+        de = to_float(info.get('debtToEquity'))
+        if de is not None and de > 5: # Handle percentage format (e.g. 50 instead of 0.5)
+            de = de / 100.0
+            
+    if de is not None:
+        if de < 0.5:
+            score += 5
+        elif de < 1.0:
             score += 2
             
     return float(score)
@@ -206,11 +237,13 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
             )
 
         elif timeframe == 'W':
+            # Pure technical trend indicator (max 70 pts)
             is_bullish = (pd.notna(rsi) and rsi > 50 and pd.notna(ema26) and price > ema26)
             score = 70.0 if is_bullish else 0.0
             ema_signal = "bullish" if is_bullish else "neutral"
 
         elif timeframe == 'M':
+            # Pure technical trend indicator (max 70 pts)
             is_bullish = (pd.notna(rsi) and rsi > 50 and (
                 (pd.notna(ema13) and price > ema13) or (pd.notna(ema26) and price > ema26)
             ))
@@ -243,18 +276,19 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     }
 
 
-def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D') -> dict:
+def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D', fund_cache=None) -> dict:
     """
-    Combines Technical (70%) and Fundamental (30%) scores.
+    Combines Technical and Fundamental scores.
     Final Score range: 0-100.
     
-    Skips fundamental score if timeframe is not 'D'.
+    - 'D': Technical (max 70 pts) + Fundamental (max 30 pts) = 100 pts.
+    - 'W'/'M': Pure technical trend indicator (max 70 pts).
     """
     ta_data = calculate_technical_score(df, timeframe=timeframe)
     
     fund_score = 0.0
     if timeframe == 'D':
-        fund_score = calculate_fundamental_score(info)
+        fund_score = calculate_fundamental_score(info, fund_cache=fund_cache)
     
     combined_score = ta_data['score'] + fund_score
     # Ensure final score is in range 0-100

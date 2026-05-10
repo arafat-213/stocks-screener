@@ -108,13 +108,15 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                         except IndexError:
                             pass
                             
-                    # 4. Dividend Consistency (2023, 2024, 2025)
+                    # 4. Dividend Consistency (Current-1, Current-2, Current-3)
                     div_consistency = False
                     try:
                         divs = ticker.dividends
                         if not divs.empty:
-                            years = [d.year for d in divs.index]
-                            if 2023 in years and 2024 in years and 2025 in years:
+                            years = set(d.year for d in divs.index)
+                            current_year = datetime.date.today().year
+                            required_years = {current_year - 1, current_year - 2, current_year - 3}
+                            if required_years.issubset(years):
                                 div_consistency = True
                     except Exception:
                         pass
@@ -227,6 +229,7 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     if not info: return False, False
     
     # 1. Market Cap > ₹200 Cr
+    # Note: marketCap from yfinance is in absolute currency units (e.g. 10000000000), not Cr/Lakhs
     mcap = to_float(info.get('marketCap'), 0)
     if mcap < 2_000_000_000: return False, False
     

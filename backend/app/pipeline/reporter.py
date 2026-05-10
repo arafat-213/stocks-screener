@@ -2,7 +2,7 @@ import datetime
 import os
 import logging
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, text
+from sqlalchemy import func, case, text, cast, Date
 from app.db.models import TechnicalSignal, Stock
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ def generate_daily_report(db: Session):
                 func.max(case((TechnicalSignal.timeframe == 'D', TechnicalSignal.rsi), else_=0)).label('rsi')
             )
             .join(Stock, TechnicalSignal.symbol == Stock.symbol)
-            .filter(func.date(TechnicalSignal.scored_at) == today)
+            .filter(cast(TechnicalSignal.date, Date) == today)
             .group_by(TechnicalSignal.symbol, Stock.name)
             .order_by(text('confluence_count DESC'), text('daily_score DESC'))
             .limit(20)
@@ -54,9 +54,8 @@ def generate_daily_report(db: Session):
         report_content = "\n".join(report_lines)
         
         # Ensure reports directory exists (backend/reports)
-        # Get the directory where this file is located (backend/app/pipeline/)
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        # Target backend/reports/
+        # backend/app/pipeline/reporter.py -> backend/reports/
         reports_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "reports"))
         
         if not os.path.exists(reports_dir):
@@ -69,7 +68,7 @@ def generate_daily_report(db: Session):
             f.write(report_content)
             
         logger.info(f"Daily report generated: {report_path}")
-        return report_path
+        return str(report_path)
         
     except Exception as e:
         logger.error(f"Failed to generate daily report: {e}")
