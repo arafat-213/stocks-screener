@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchResults } from '../api/client';
@@ -9,10 +9,13 @@ export const GlobalSearch = () => {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
   const inputRef = useRef(null);
+  const timeoutRef = useRef(null);
 
   useEffect(() => {
     // Fetch all symbols for full coverage
-    fetchResults().then(res => setSymbols(res.data.map(s => s.symbol)));
+    fetchResults()
+      .then(res => setSymbols(res.data.map(s => s.symbol)))
+      .catch(err => console.error("Search fetch failed:", err));
     
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -28,13 +31,18 @@ export const GlobalSearch = () => {
   useEffect(() => {
     if (isOpen) {
       // Focus after modal opens
-      setTimeout(() => inputRef.current?.focus(), 50);
+      timeoutRef.current = setTimeout(() => inputRef.current?.focus(), 50);
     }
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+    };
   }, [isOpen]);
 
-  const filtered = symbols
-    .filter(s => s.toLowerCase().includes(query.toLowerCase()))
-    .slice(0, 10);
+  const filtered = useMemo(() => {
+    return symbols
+      .filter(s => s.toLowerCase().includes(query.toLowerCase()))
+      .slice(0, 10);
+  }, [symbols, query]);
 
   const handleSelect = (symbol) => {
     navigate(`/stocks/${symbol}`);
@@ -44,7 +52,18 @@ export const GlobalSearch = () => {
 
   return (
     <div className={`global-search ${isOpen ? 'open' : ''}`}>
-      <div className="search-trigger" onClick={() => setIsOpen(true)}>
+      <div 
+        className="search-trigger" 
+        onClick={() => setIsOpen(true)}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            setIsOpen(true);
+          }
+        }}
+      >
         <Search size={18} />
         <span>Search stocks...</span>
         <kbd>⌘K</kbd>
