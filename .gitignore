@@ -155,3 +155,4 @@ cython_debug/
 backend/logs/
 backend/reports/
 .worktrees/
+.worktrees/
