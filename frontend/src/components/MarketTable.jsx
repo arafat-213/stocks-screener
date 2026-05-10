@@ -22,8 +22,9 @@ const MarketTable = ({ stocks }) => {
           <div className="header-cell cell-numeric">Price</div>
           <div className="header-cell cell-numeric">Change %</div>
           <div className="header-cell cell-numeric">Score</div>
-          <div className="header-cell cell-numeric">RSI</div>
-          <div className="header-cell">EMA</div>
+          <div className="header-cell cell-numeric">RS</div>
+          <div className="header-cell cell-numeric">ADX</div>
+          <div className="header-cell cell-numeric">ROE %</div>
           <div className="header-cell cell-numeric">P/E</div>
           <div className="header-cell">Sector</div>
         </div>
@@ -42,7 +43,7 @@ const MarketTable = ({ stocks }) => {
                   {stock.symbol.replace('.NS', '')}
                 </div>
                 <div className="table-cell cell-numeric">
-                  ₹{stock.close_price?.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
+                  ₹{stock.close_price?.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
                 </div>
                 <div className={`table-cell cell-numeric ${isPositive ? 'text-positive' : 'text-negative'}`}>
                   {isPositive ? '+' : ''}{stock.price_change_pct?.toFixed(2)}%
@@ -50,15 +51,14 @@ const MarketTable = ({ stocks }) => {
                 <div className="table-cell cell-numeric bold">
                   {daily.score || '-'}
                 </div>
-                <div className="table-cell cell-numeric">
-                  <span className={`signal-indicator ${getRSISignal(daily.rsi)}`}>
-                    {daily.rsi?.toFixed(1) || '-'}
-                  </span>
+                <div className="table-cell cell-numeric text-primary bold">
+                  {daily.rs_score?.toFixed(0) || '-'}
                 </div>
-                <div className="table-cell">
-                  <span className={`signal-indicator ${getEMASignal(daily.ema_signal)}`}>
-                    {daily.ema_signal || '-'}
-                  </span>
+                <div className="table-cell cell-numeric">
+                  {daily.adx?.toFixed(1) || '-'}
+                </div>
+                <div className="table-cell cell-numeric">
+                  {stock.fundamentals?.roe?.toFixed(1) || '-'}%
                 </div>
                 <div className="table-cell cell-numeric">
                   {stock.fundamentals?.pe?.toFixed(1) || '-'}

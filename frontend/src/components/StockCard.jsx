@@ -97,6 +97,30 @@ const StockCard = ({ stock }) => {
               <span className="m-value">{formatMCap(fundamentals.market_cap)}</span>
             </div>
           </div>
+
+          <div className="metrics-row technical-extra">
+            <div className="metric-item">
+              <span className="m-label">RS Score</span>
+              <span className="m-value bold text-primary">{daily.rs_score?.toFixed(0) || '-'}</span>
+            </div>
+            <div className="metric-item">
+              <span className="m-label">ADX</span>
+              <span className="m-value">{daily.adx?.toFixed(1) || '-'}</span>
+            </div>
+            <div className="metric-item">
+              <span className="m-label">52W High</span>
+              <span className={`m-value ${Math.abs(daily.pct_from_52wh) < 5 ? 'positive' : ''}`}>
+                {daily.pct_from_52wh != null ? `${daily.pct_from_52wh.toFixed(1)}%` : '-'}
+              </span>
+            </div>
+          </div>
+          
+          {daily.volume_breakout && (
+            <div className="volume-badge">
+              <span className="pulse-dot"></span>
+              Volume Breakout
+            </div>
+          )}
         </div>
       </div>
     </Link>

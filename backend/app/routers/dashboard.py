@@ -44,6 +44,10 @@ def get_dashboard_results(db: Session = Depends(get_db)):
                     "pe": fund.pe if fund else None,
                     "pb": fund.pb if fund else None,
                     "roe": cache.roe if (cache and cache.roe is not None) else (fund.roe if fund else None),
+                    "roce": cache.roce if cache else None,
+                    "peg": cache.peg_ratio if cache else None,
+                    "yield": cache.dividend_yield if cache else None,
+                    "debt_equity": cache.de_ratio if cache else (fund.debt_equity if fund else None),
                     "market_cap": fund.market_cap if fund else stock.market_cap,
                     "market_cap_category": cache.market_cap_category if cache else None
                 }
@@ -57,8 +61,12 @@ def get_dashboard_results(db: Session = Depends(get_db)):
             "ema_signal": signal.ema_signal,
             "rs_score": signal.rs_score,
             "momentum_3m": signal.momentum_3m,
+            "momentum_1m": signal.momentum_1m,
             "adx": signal.adx,
-            "above_200ema": signal.above_200ema
+            "above_200ema": signal.above_200ema,
+            "volume_breakout": signal.volume_breakout,
+            "pct_from_52wh": signal.pct_from_52w_high,
+            "atr": signal.atr
         }
         
         # Ensure D price info is captured even if row order varies
