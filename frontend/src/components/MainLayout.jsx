@@ -16,8 +16,11 @@ const MainLayout = ({ children }) => {
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
-    setIsSidebarOpen(false);
-  }, [location]);
+    if (isSidebarOpen) {
+      const timer = setTimeout(() => setIsSidebarOpen(false), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [location, isSidebarOpen]);
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { fetchResults } from '../api/client';
@@ -41,13 +41,13 @@ const Dashboard = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   // Implement refresh side-effect: when status transitions from running to complete, call refetchStocks()
-  const [prevStatus, setPrevStatus] = useState(status);
+  const prevStatusRef = useRef(status);
   useEffect(() => {
-    if (prevStatus === 'running' && status === 'complete') {
+    if (prevStatusRef.current === 'running' && status === 'complete') {
       refetchStocks();
     }
-    setPrevStatus(status);
-  }, [status, prevStatus, refetchStocks]);
+    prevStatusRef.current = status;
+  }, [status, refetchStocks]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -215,10 +215,8 @@ const Dashboard = () => {
 
   const market = pipeline?.market_context || [];
   const nifty = market.find(m => m.symbol === '^NSEI') || {};
-  const sensex = market.find(m => m.symbol === '^BSESN') || {};
   
   const isNiftyUp = nifty.change_pct >= 0;
-  const isSensexUp = sensex.change_pct >= 0;
 
   return (
     <div className="dashboard-page">

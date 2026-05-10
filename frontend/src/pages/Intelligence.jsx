@@ -74,9 +74,12 @@ const Intelligence = () => {
   // Expand the latest month by default once loaded
   useEffect(() => {
     if (groupedMonths.length > 0 && Object.keys(expandedMonths).length === 0) {
-      setExpandedMonths({ [groupedMonths[0].key]: true });
+      const timer = setTimeout(() => {
+        setExpandedMonths({ [groupedMonths[0].key]: true });
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [groupedMonths]);
+  }, [groupedMonths, expandedMonths]);
 
   const toggleMonth = (key) => {
     setExpandedMonths(prev => ({

@@ -28,7 +28,10 @@ export const useFetch = (apiFn, options = {}) => {
   }, [apiFn]);
 
   useEffect(() => {
-    if (autoFetch) fetchData();
+    if (autoFetch) {
+      const timer = setTimeout(() => fetchData(), 0);
+      return () => clearTimeout(timer);
+    }
   }, [fetchData, autoFetch, ...deps]);
 
   // Handle polling directly via setInterval or external trigger
