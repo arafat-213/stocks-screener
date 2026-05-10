@@ -35,7 +35,7 @@ const COLUMN_META = {
     key: 'symbol', 
     sortable: true,
     render: (v) => (
-      <Link to={`/stocks/${v}`} style={{ fontWeight: 'bold', color: 'inherit', textDecoration: 'none' }}>
+      <Link to={`/stocks/${v}`} className="symbol-link">
         {v}
       </Link>
     )
@@ -268,10 +268,10 @@ const Discover = () => {
 
       {activeTab === 'strategies' ? (
         <section className="strategies-tab">
-          <div className="stock-grid" style={{ marginBottom: '32px' }}>
+          <div className="stock-grid mb-32">
             {loadingScreens ? (
               [...Array(3)].map((_, i) => (
-                <div key={i} className="card skeleton-card" style={{ height: '140px' }} />
+                <div key={i} className="card skeleton-card skeleton-h-140" />
               ))
             ) : (
               screens.map(screen => (
@@ -311,7 +311,7 @@ const Discover = () => {
         </section>
       ) : (
         <section className="interactive-tab">
-          <div className="card filter-panel" style={{ marginBottom: '24px', padding: '24px' }}>
+          <div className="card filter-panel mb-24 p-24">
             <div className="filter-grid">
               <Select 
                 label="Sector"
@@ -338,13 +338,13 @@ const Discover = () => {
                 max={100}
               />
               <div className="filter-item">
-                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, textTransform: 'uppercase', color: 'var(--color-text-muted)', marginBottom: '8px', letterSpacing: '0.05em' }}>Max P/E</label>
+                <label className="filter-label-styled">Max P/E</label>
                 <input 
                   type="number" placeholder="e.g. 30"
                   value={interactiveFilters.maxPE}
                   onChange={(e) => setInteractiveFilters({...interactiveFilters, maxPE: e.target.value})}
                   className="custom-number-input"
-                  style={{ width: '100%', padding: '10px 14px', background: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: 'var(--radius-md)', fontSize: '0.9rem' }}
+                  
                 />
               </div>
             </div>

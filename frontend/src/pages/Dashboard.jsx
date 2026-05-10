@@ -173,11 +173,11 @@ const Dashboard = () => {
           <div className="summary-bar">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="summary-item">
-                <div className="skeleton-line" style={{ height: '40px' }}></div>
+                <div className="skeleton-line" className="skeleton-h-40"></div>
               </div>
             ))}
           </div>
-          <div style={{ marginTop: '32px' }}>
+          <div className="mt-32">
             {viewMode === 'grid' ? (
               <div className="stock-grid">
                 {[1, 2, 3, 4, 5, 6].map(i => <StockCardSkeleton key={i} />)}
@@ -232,11 +232,11 @@ const Dashboard = () => {
           <div className="summary-bar">
             {status === 'running' && (
               <div className="summary-item status-badge running">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div className="flex-center-gap-12">
                   <RefreshCcw size={16} className="spin" />
                   <div>
                     <span className="label">Pipeline Running</span>
-                    <span className="value" style={{ fontSize: '12px' }}>
+                    <span className="value" className="fs-12">
                       {pipeline?.stocks_fetched || 0} fetched | {pipeline?.stocks_scored || 0} scored
                     </span>
                   </div>
@@ -264,11 +264,11 @@ const Dashboard = () => {
               </span>
             </div>
             <div className="summary-item">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="flex-center-gap-8">
                 <Clock size={16} className="text-muted" />
                 <div>
                   <span className="label">Last Updated</span>
-                  <span className="value" style={{ fontSize: '14px' }}>
+                  <span className="value" className="fs-14">
                     {pipeline?.scored_at ? new Date(pipeline.scored_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
                   </span>
                 </div>
@@ -277,16 +277,16 @@ const Dashboard = () => {
           </div>
 
           {!isMobile && (
-            <div className="filters-container card" style={{ padding: '20px', marginBottom: '24px' }}>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '32px', alignItems: 'flex-start' }}>
+            <div className="filters-container card">
+              <div className="filter-flex-wrap">
                 <div className="filter-group">
-                  <div className="filter-header" style={{ marginBottom: '12px' }}>
-                    <Filter size={16} style={{ marginRight: '8px', display: 'inline' }} />
-                    <h3 style={{ display: 'inline', fontSize: '14px' }}>Confluence</h3>
+                  <div className="filter-header" className="mb-12">
+                    <Filter size={16} className="mr-8 inline" />
+                    <h3 className="inline fs-14">Confluence</h3>
                   </div>
-                  <div className="radio-group" style={{ flexDirection: 'row', gap: '8px' }}>
+                  <div className="radio-group" className="flex-row-gap-8">
                     {['all', '3', '2+'].map(c => (
-                      <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`} style={{ border: '1px solid var(--color-border)' }}>
+                      <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`} className="radio-label">
                         <input 
                           type="radio" 
                           name="confluence" 
@@ -300,18 +300,18 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="filter-group sectors" style={{ flex: 1, minWidth: '300px' }}>
-                  <div className="filter-header" style={{ marginBottom: '12px' }}>
-                    <h3 style={{ fontSize: '14px' }}>Sectors <span className="count" style={{ marginLeft: '8px' }}>{availableSectors.length}</span></h3>
+                <div className="filter-group sectors flex-1-min-300">
+                  <div className="filter-header" className="mb-12">
+                    <h3 className="fs-14">Sectors <span className="count" className="ml-8">{availableSectors.length}</span></h3>
                   </div>
-                  <div className="checkbox-list" style={{ flexDirection: 'row', flexWrap: 'wrap', gap: '8px', maxHeight: 'none' }}>
+                  <div className="checkbox-list flex-row-wrap-gap-8">
                     {availableSectors.map(sector => (
                       <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`}>
                         <input 
                           type="checkbox" 
                           checked={selectedSectors.includes(sector)}
                           onChange={() => toggleSector(sector)}
-                          style={{ display: 'none' }}
+                          className="hidden"
                         />
                         <span>{sector}</span>
                       </label>
@@ -365,7 +365,7 @@ const Dashboard = () => {
                 </div>
               )}
 
-              <div className="sort-controls-wrapper" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div className="sort-controls-wrapper" className="flex-center-gap-8">
                 <ArrowUpDown size={16} className="text-muted" />
                 <Select
                   value={sortBy}

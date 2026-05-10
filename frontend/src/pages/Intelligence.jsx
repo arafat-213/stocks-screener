@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { 
   Calendar, 
   Loader2, 
@@ -7,9 +7,11 @@ import {
   TrendingUp,
   AlertCircle
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { getReportList, getReportByDate } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
+import { DataTable } from '../components/ui/DataTable';
 import './Dashboard.css';
 
 const Intelligence = () => {
@@ -30,13 +32,15 @@ const Intelligence = () => {
     }
   });
 
+  // Stable report fetch function
+  const fetchReport = useCallback(() => getReportByDate(selectedDate), [selectedDate]);
+
   // Fetch specific report content
   const {
     data: reportData = [],
     loading: loadingReport,
     error: reportError
-  } = useFetch(() => getReportByDate(selectedDate), {
-    deps: [selectedDate],
+  } = useFetch(fetchReport, {
     autoFetch: !!selectedDate
   });
 
@@ -81,9 +85,45 @@ const Intelligence = () => {
     }));
   };
 
+  const columns = useMemo(() => [
+    { 
+      key: 'symbol', 
+      label: 'Symbol', 
+      sortable: true,
+      render: (val) => (
+        <Link to={`/stocks/${val}`} className="table-link mono bold">
+          {val.replace('.NS', '')}
+        </Link>
+      )
+    },
+    { 
+      key: 'confluence', 
+      label: 'Confluence', 
+      sortable: true,
+      accessor: (row) => row.confluence_count,
+      render: (val, row) => (
+        <span className={`status-badge ${row.confluence_count >= 2 ? 'bullish' : 'neutral'}`}>
+          {row.confluence}
+        </span>
+      )
+    },
+    { 
+      key: 'daily_score', 
+      label: 'Daily Score', 
+      sortable: true,
+      render: (val) => <span className="mono">{val?.toFixed(1) || 'N/A'}</span>
+    },
+    { 
+      key: 'rsi', 
+      label: 'RSI', 
+      sortable: true,
+      render: (val) => <span className="mono">{val?.toFixed(1) || 'N/A'}</span>
+    }
+  ], []);
+
   if (loadingDates && !dates.length) {
     return (
-      <div className="loading-state" style={{ height: '80vh' }}>
+      <div className="loading-state h-80vh">
         <Loader2 className="animate-spin" size={40} />
         <p>Loading market intelligence...</p>
       </div>
@@ -103,15 +143,15 @@ const Intelligence = () => {
       {datesError && <ErrorBanner message={`Failed to load report list: ${datesError}`} />}
       {reportError && <ErrorBanner message={`Failed to load report: ${reportError}`} />}
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '32px' }}>
+      <div className="intelligence-grid">
         {/* Date Selection Sidebar/List */}
-        <aside className="card" style={{ height: 'fit-content', padding: '24px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '20px' }}>
+        <aside className="card h-fit p-24">
+          <div className="flex-center-gap-8 mb-12">
             <Calendar size={18} className="text-primary" />
-            <h2 style={{ fontSize: '1rem', fontWeight: 700 }}>Past Sessions</h2>
+            <h2 className="fs-14 bold">Past Sessions</h2>
           </div>
           
-          <div className="month-groups" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <div className="month-groups flex-col-gap-12">
             {displayedMonths.map((month) => (
               <div key={month.key} className="month-section">
                 <button
@@ -129,14 +169,14 @@ const Intelligence = () => {
                     marginBottom: '8px'
                   }}
                 >
-                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--color-text-muted)' }}>
+                  <span className="month-section-label">
                     {month.label}
                   </span>
                   {expandedMonths[month.key] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                 </button>
 
                 {expandedMonths[month.key] && (
-                  <div className="date-list" style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div className="date-list flex-col-gap-4">
                     {month.dates.map((date) => (
                       <button
                         key={date}
@@ -190,12 +230,12 @@ const Intelligence = () => {
         {/* Report Content Area */}
         <section className="report-content">
           {loadingReport ? (
-            <div className="card loading-state" style={{ height: '400px' }}>
+            <div className="card loading-state mt-32">
               <Loader2 className="animate-spin" size={32} />
               <p>Compiling report for {selectedDate}...</p>
             </div>
           ) : reportData.length === 0 ? (
-            <div className="card no-results" style={{ padding: '64px' }}>
+            <div className="card no-results p-64">
               <AlertCircle size={48} />
               <h3>No data found</h3>
               <p>We couldn't find any session data for {selectedDate}.</p>
@@ -203,39 +243,18 @@ const Intelligence = () => {
           ) : (
             <div className="card results-card">
               <div className="card-header">
-                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div className="report-header-flex">
                   <TrendingUp size={20} className="text-bullish" />
-                  <h3 style={{ margin: 0 }}>Session Report: {selectedDate}</h3>
+                  <h3 className="m-0">Session Report: {selectedDate}</h3>
                 </div>
                 <span className="count-badge">{reportData.length} stocks tracked</span>
               </div>
 
-              <div className="table-container" style={{ border: 'none', margin: 0 }}>
-                <table className="stocks-table">
-                  <thead>
-                    <tr>
-                      <th>Symbol</th>
-                      <th>Confluence</th>
-                      <th>Daily Score</th>
-                      <th>RSI</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {reportData.map((stock) => (
-                      <tr key={stock.symbol}>
-                        <td className="mono" style={{ fontWeight: 700 }}>{stock.symbol}</td>
-                        <td>
-                          <span className={`status-badge ${stock.confluence_count >= 2 ? 'bullish' : 'neutral'}`}>
-                            {stock.confluence}
-                          </span>
-                        </td>
-                        <td className="mono">{stock.daily_score?.toFixed(1) || 'N/A'}</td>
-                        <td className="mono">{stock.rsi?.toFixed(1) || 'N/A'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <DataTable 
+                columns={columns} 
+                data={reportData} 
+                initialSort={{ key: 'confluence', direction: 'desc' }}
+              />
             </div>
           )}
         </section>
