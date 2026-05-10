@@ -29,11 +29,15 @@ def setup_test_db():
 def db():
     """Provides an isolated database session for a single test."""
     connection = engine.connect()
+    # Begin a non-ORM transaction
     transaction = connection.begin()
+    # Bind a new session to the connection
     session = TestingSessionLocal(bind=connection)
-
+    
+    # Run the test
     yield session
 
+    # Roll back everything after the test
     session.close()
     transaction.rollback()
     connection.close()
@@ -42,11 +46,9 @@ def db():
 def client(db):
     """Provides a TestClient with the get_db dependency overridden to use the test database."""
     def override_get_db():
-        try:
-            yield db
-        finally:
-            pass # Session management handled by the db fixture
+        yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
-    del app.dependency_overrides[get_db]
+    with TestClient(app) as c:
+        yield c
+    app.dependency_overrides.clear()
