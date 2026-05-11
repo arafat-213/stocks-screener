@@ -16,9 +16,11 @@ export const useFetch = (apiFn, options = {}) => {
       setLoading(true);
       const res = await apiFn(...args);
       if (isMounted.current) {
-        setData(res.data);
+        // Handle both axios response and direct data
+        const extractedData = res && typeof res === 'object' && 'data' in res ? res.data : res;
+        setData(extractedData);
         setError(null);
-        if (onSuccessRef.current) onSuccessRef.current(res.data);
+        if (onSuccessRef.current) onSuccessRef.current(extractedData);
       }
     } catch (err) {
       if (isMounted.current) setError(err.message || 'An error occurred');
@@ -44,7 +46,10 @@ export const useFetch = (apiFn, options = {}) => {
     return () => clearInterval(id);
   }, [fetchData, refreshInterval, data]);
 
-  useEffect(() => () => { isMounted.current = false; }, []);
+  useEffect(() => {
+    isMounted.current = true;
+    return () => { isMounted.current = false; };
+  }, []);
 
   return { data, loading, error, refetch: fetchData, setData };
 };

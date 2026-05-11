@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, FundamentalCache
-from app.pipeline.fetcher import get_nse_symbols, fetch_stock_data
+from app.pipeline.fetcher import get_nse_symbols, fetch_stock_data, fetch_market_snapshots
 from app.pipeline.screener import (
     passes_tier1_fast_filters, 
     fetch_and_cache_deep_fundamentals,
@@ -308,16 +308,15 @@ def run_pipeline(db: Session, limit: int = None):
 
         indices = ["^NSEI", "^BSESN"]
         logger.info(f"Fetching market snapshots for {indices}")
-        for idx in indices:
-            hist, _ = fetch_stock_data(idx, append_ns=False, period="5d")
-            if hist is not None and len(hist) >= 2:
-                val = MarketSnapshot(
-                    date=final_signal_date,
-                    symbol=idx,
-                    close=float(hist['Close'].iloc[-1]),
-                    change_pct=float((hist['Close'].iloc[-1] - hist['Close'].iloc[-2]) / hist['Close'].iloc[-2] * 100)
-                )
-                db.merge(val) # Upsert
+        snapshots = fetch_market_snapshots(indices)
+        for snap in snapshots:
+            val = MarketSnapshot(
+                date=final_signal_date,
+                symbol=snap["symbol"],
+                close=snap["close"],
+                change_pct=snap["change_pct"]
+            )
+            db.merge(val) # Upsert
         db.commit()
 
         # 5. Generate Daily Report

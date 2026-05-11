@@ -7,11 +7,13 @@ import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import CandlestickChart from '../components/CandlestickChart';
 import './StockDetail.css';
+import { useCallback } from 'react';
 
 const StockDetail = () => {
   const { symbol } = useParams();
   const { isDark } = useTheme();
-  const { data, loading, error } = useFetch(() => getStockDetail(symbol), { deps: [symbol] });
+  const fetchStockDetail = useCallback(() => getStockDetail(symbol), [symbol]);
+  const { data, loading, error } = useFetch(fetchStockDetail, { deps: [symbol] });
 
   if (loading) {
     return (

@@ -91,8 +91,8 @@ def test_fetch_and_cache_deep_fundamentals_retry_logic(mock_sleep, mock_ticker, 
     
     fetch_and_cache_deep_fundamentals([symbol], mock_db_session)
     
-    # Should attempt 3 times
-    assert mock_ticker.call_count == 3
+    # Should attempt 1 time (since we disabled manual retries to rely on session)
+    assert mock_ticker.call_count == 1
     
     # Verify cache marked as failed (-1)
     cache_entry = None

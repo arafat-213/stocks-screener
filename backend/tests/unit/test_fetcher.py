@@ -9,7 +9,8 @@ def test_fetch_stock_data_index(mock_ticker):
     
     # This should fail initially because append_ns is not an argument
     fetch_stock_data("^NSEI", append_ns=False)
-    mock_ticker.assert_called_with("^NSEI")
+    from app.pipeline.fetcher import session
+    mock_ticker.assert_called_with("^NSEI", session=session)
 
     fetch_stock_data("RELIANCE", append_ns=True)
-    mock_ticker.assert_called_with("RELIANCE.NS")
+    mock_ticker.assert_called_with("RELIANCE.NS", session=session)
