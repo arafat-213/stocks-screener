@@ -99,16 +99,48 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         "fundamentals": fundamentals
     }
 
+@router.post("/stocks/{symbol}/refresh-cache")
+def refresh_stock_cache(symbol: str, db: Session = Depends(get_db)):
+    clean_symbol = symbol.replace(".NS", "").upper()
+    cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == clean_symbol).first()
+    if not cache:
+        cache = FundamentalCache(symbol=clean_symbol)
+        db.add(cache)
+    
+    cache.force_refresh = True
+    cache.retry_after = None
+    db.commit()
+    return {"message": f"Force refresh scheduled for {clean_symbol}"}
+
+@router.get("/stocks/{symbol}/cache-status")
+def get_stock_cache_status(symbol: str, db: Session = Depends(get_db)):
+    clean_symbol = symbol.replace(".NS", "").upper()
+    cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == clean_symbol).first()
+    if not cache:
+        return {"status": "not_cached"}
+    
+    return {
+        "symbol": clean_symbol,
+        "last_updated": cache.last_updated,
+        "retry_after": cache.retry_after,
+        "fetch_attempts": cache.fetch_attempts,
+        "last_error": cache.last_error,
+        "force_refresh": cache.force_refresh,
+        "cache_version": cache.cache_version
+    }
+
 from pydantic import BaseModel
 from app.db.session import SessionLocal
+from app.db.models import PipelineError
 
 class ScreenerRequest(BaseModel):
     limit: int | None = None
+    resume_run_id: str | None = None
 
-def run_pipeline_wrapper(limit: int | None):
+def run_pipeline_wrapper(limit: int | None, resume_run_id: str | None = None):
     db = SessionLocal()
     try:
-        run_pipeline(db, limit=limit)
+        run_pipeline(db, limit=limit, resume_run_id=resume_run_id)
     finally:
         db.close()
 
@@ -116,12 +148,53 @@ def run_pipeline_wrapper(limit: int | None):
 def trigger_screener(request: ScreenerRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     # Concurrency Guard
     existing_run = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
-    if existing_run:
+    if existing_run and not request.resume_run_id:
         logger.error(f"Pipeline already running: {existing_run.run_id}")
         raise HTTPException(status_code=409, detail="Pipeline is already running")
         
-    background_tasks.add_task(run_pipeline_wrapper, limit=request.limit)
-    return {"message": f"Pipeline started{' with limit ' + str(request.limit) if request.limit else ''}"}
+    background_tasks.add_task(run_pipeline_wrapper, limit=request.limit, resume_run_id=request.resume_run_id)
+    return {
+        "message": f"Pipeline started",
+        "limit": request.limit,
+        "resume_run_id": request.resume_run_id
+    }
+
+@router.get("/pipeline/errors")
+def get_pipeline_errors(
+    run_id: str, 
+    phase: str | None = None, 
+    error_type: str | None = None,
+    db: Session = Depends(get_db)
+):
+    query = db.query(PipelineError).filter(PipelineError.run_id == run_id)
+    if phase:
+        query = query.filter(PipelineError.phase == phase)
+    if error_type:
+        query = query.filter(PipelineError.error_type == error_type)
+    
+    errors = query.order_by(PipelineError.occurred_at.desc()).limit(100).all()
+    return errors
+
+from app.pipeline.rs_ranks import compute_rs_ranks
+from app.screens.base import get_latest_signal_date
+import datetime
+
+@router.post("/pipeline/recompute-rs")
+def recompute_rs(
+    date: str | None = None, 
+    db: Session = Depends(get_db)
+):
+    if date:
+        try:
+            target_date = datetime.date.fromisoformat(date)
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+    else:
+        latest = get_latest_signal_date(db, timeframe='D')
+        target_date = latest.date() if hasattr(latest, 'date') else latest
+    
+    summary = compute_rs_ranks(db, target_date)
+    return summary
 
 @router.post("/pipeline/stop")
 def stop_pipeline(db: Session = Depends(get_db)):

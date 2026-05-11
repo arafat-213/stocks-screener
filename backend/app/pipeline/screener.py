@@ -18,6 +18,25 @@ DE_LIMITS = {
     "default": 2
 }
 
+def needs_cache_refresh(cache, seven_days_ago: datetime.datetime) -> bool:
+    """Checks if FundamentalCache entry needs refreshing based on age, version or force flag."""
+    if not cache: return True
+    if getattr(cache, 'force_refresh', False): return True
+    
+    # Version check
+    if getattr(cache, 'cache_version', 0) < CURRENT_SCREENER_VERSION: return True
+    
+    # Age check
+    last_upd = getattr(cache, 'last_updated', None)
+    if not last_upd or last_upd < seven_days_ago: return True
+    
+    # Backoff check
+    retry_after = getattr(cache, 'retry_after', None)
+    if retry_after and datetime.datetime.utcnow() < retry_after:
+        return False
+        
+    return False
+
 def check_profitability_streak(financials) -> bool:
     """Checks if Net Income and Revenue are positive for last 3 years."""
     try:
@@ -40,6 +59,7 @@ def check_profitability_streak(financials) -> bool:
 import random
 
 from app.pipeline.fetcher import session as yf_session
+from app.pipeline.errors import classify_error
 
 def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
     """Fetches financials and info for symbols in batches and caches them with retries."""
@@ -53,6 +73,12 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
             success = False
             max_retries = 1
             
+            # 1. Get/Create Cache Entry
+            cache_entry = db_session.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
+            if not cache_entry:
+                cache_entry = FundamentalCache(symbol=symbol)
+                db_session.add(cache_entry)
+
             for attempt in range(max_retries):
                 try:
                     ticker = yf.Ticker(f"{symbol}.NS", session=yf_session)
@@ -64,6 +90,7 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                     
                     if not info:
                         logger.warning(f"No info found for {symbol}")
+                        cache_entry.last_error = "Empty info from yfinance"
                         break # Don't retry if info is explicitly empty
 
                     logger.info(f"Processing deep fundamentals for {symbol}")
@@ -138,6 +165,21 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                     break
                     
                 except Exception as e:
+                    error_type = classify_error(e)
+                    cache_entry.last_error = f"{error_type}: {str(e)}"
+                    cache_entry.fetch_attempts = (cache_entry.fetch_attempts or 0) + 1
+                    
+                    # Backoff logic
+                    now = datetime.datetime.utcnow()
+                    if error_type == "rate_limit":
+                        cache_entry.retry_after = now + datetime.timedelta(hours=6)
+                    elif error_type == "empty_data" and cache_entry.fetch_attempts >= 3:
+                        cache_entry.retry_after = now + datetime.timedelta(hours=24)
+                    else:
+                        cache_entry.retry_after = now + datetime.timedelta(hours=2)
+                    
+                    db_session.commit()
+
                     wait_time = (2 ** attempt) + random.uniform(0, 0.5)
                     logger.error(f"Attempt {attempt+1} failed for {symbol}: {e}. Retrying in {wait_time:.2f}s...")
                     if attempt < max_retries - 1:
@@ -148,17 +190,18 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
             
             try:
                 # Update FundamentalCache (even if failed, to mark as attempted)
-                cache_entry = db_session.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
-                if not cache_entry:
-                    cache_entry = FundamentalCache(symbol=symbol)
-                    db_session.add(cache_entry)
-                
                 cache_entry.last_updated = datetime.datetime.utcnow()
                 cache_entry.cache_version = cache_version
 
                 if not success:
                     db_session.commit()
                     continue
+
+                # Reset failure state on success
+                cache_entry.fetch_attempts = 0
+                cache_entry.retry_after = None
+                cache_entry.last_error = None
+                cache_entry.force_refresh = False
 
                 # Tier 2 Metrics
                 profit_passed = check_profitability_streak(financials)
