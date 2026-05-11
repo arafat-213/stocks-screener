@@ -3,8 +3,17 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
+from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
 
 router = APIRouter()
+
+def get_live_market_data():
+    # Relies entirely on requests-cache for the 60s TTL
+    return fetch_market_snapshots(["^NSEI", "^BSESN"])
+
+@router.get("/market/live")
+def get_live_market():
+    return {"market_context": get_live_market_data()}
 
 @router.get("/screener/results")
 def get_dashboard_results(db: Session = Depends(get_db)):
