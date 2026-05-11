@@ -36,7 +36,7 @@ const MainLayout = ({ children }) => {
       <header className="mobile-header glass">
         <div className="brand">
           <Activity size={24} className="text-bullish" />
-          <span>Stock AI</span>
+          <span>Screener AI</span>
         </div>
         <div className="mobile-header-actions">
           <GlobalSearch />
@@ -49,10 +49,7 @@ const MainLayout = ({ children }) => {
         <div className="sidebar-header">
           <div className="brand">
             <Activity size={28} className="text-bullish" />
-            <span>Stock AI</span>
-          </div>
-          <div className="desktop-search-container">
-            <GlobalSearch />
+            <span>Screener AI</span>
           </div>
         </div>
 

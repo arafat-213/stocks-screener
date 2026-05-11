@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { fetchResults } from '../api/client';
+import './GlobalSearch.css';
 
 export const GlobalSearch = () => {
   const [query, setQuery] = useState('');
@@ -12,7 +13,6 @@ export const GlobalSearch = () => {
   const timeoutRef = useRef(null);
 
   useEffect(() => {
-    // Fetch all symbols for full coverage
     fetchResults()
       .then(res => setSymbols(res.data.map(s => s.symbol)))
       .catch(err => console.error("Search fetch failed:", err));
@@ -30,7 +30,6 @@ export const GlobalSearch = () => {
 
   useEffect(() => {
     if (isOpen) {
-      // Focus after modal opens
       timeoutRef.current = setTimeout(() => inputRef.current?.focus(), 50);
     }
     return () => {
@@ -57,12 +56,6 @@ export const GlobalSearch = () => {
         onClick={() => setIsOpen(true)}
         role="button"
         tabIndex={0}
-        onKeyDown={(e) => {
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            setIsOpen(true);
-          }
-        }}
       >
         <Search size={18} />
         <span>Search stocks...</span>
@@ -72,7 +65,7 @@ export const GlobalSearch = () => {
         <div className="search-overlay" onClick={() => setIsOpen(false)}>
           <div className="search-modal" onClick={e => e.stopPropagation()}>
             <div className="search-input-wrapper">
-              <Search size={20} />
+              <Search size={20} className="text-muted" />
               <input 
                 ref={inputRef}
                 value={query} 
@@ -84,7 +77,8 @@ export const GlobalSearch = () => {
               {filtered.length > 0 ? (
                 filtered.map(s => (
                   <div key={s} className="result-item" onClick={() => handleSelect(s)}>
-                    {s.replace('.NS', '')}
+                    <span className="font-medium">{s.replace('.NS', '')}</span>
+                    <span className="text-muted text-xs uppercase">NSE</span>
                   </div>
                 ))
               ) : (

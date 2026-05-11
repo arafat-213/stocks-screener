@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { usePipeline } from '../hooks/usePipeline';
 import { useTheme } from '../hooks/useTheme';
-import './Dashboard.css';
+import './System.css';
 
 const System = () => {
   const { status, stats: pipeline, isBusy, run, stop } = usePipeline();

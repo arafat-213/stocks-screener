@@ -4,9 +4,11 @@ import { Link } from 'react-router-dom';
 import { fetchResults } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
+import { useMarketData } from '../hooks/useMarketData';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
 import FilterBottomSheet from '../components/FilterBottomSheet';
+import GlobalSearch from '../components/GlobalSearch';
 import Select from '../components/ui/Select';
 import { DataTable } from '../components/ui/DataTable';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
@@ -29,6 +31,8 @@ const Dashboard = () => {
     stop: handleStopPipeline, 
     error: pipelineError 
   } = usePipeline();
+  
+  const { market_context, error: marketError } = useMarketData();
   
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', '3', '2+'
@@ -215,20 +219,32 @@ const Dashboard = () => {
     );
   }
 
-  const market = pipeline?.market_context || [];
+  const market = market_context || [];
   const nifty = market.find(m => m.symbol === '^NSEI') || {};
-  
+  const sensex = market.find(m => m.symbol === '^BSESN') || {};
+
   const isNiftyUp = nifty.change_pct >= 0;
+  const isSensexUp = sensex.change_pct >= 0;
+
+  const hasMarketData = market.length > 0;
 
   return (
     <div className="dashboard-page">
-      {(stocksError || pipelineError) && (
-        <ErrorBanner message={stocksError || pipelineError} />
+      {(stocksError || pipelineError || marketError) && (
+        <ErrorBanner message={stocksError || pipelineError || marketError} />
+      )}
+      {!hasMarketData && !stocksLoading && (
+        <div className="info-banner">Market data is currently unavailable.</div>
       )}
 
       {/* Main Content */}
       <main className="dashboard-content">
         <header className="dashboard-header">
+          <div className="flex justify-between items-center mb-6">
+            <h1 className="text-2xl font-bold">Dashboard</h1>
+            <GlobalSearch />
+          </div>
+
           <div className="summary-bar">
             {status === 'running' && (
               <div className="summary-item status-badge running">
@@ -263,16 +279,12 @@ const Dashboard = () => {
                 <small>({isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%)</small>
               </span>
             </div>
-            <div className="summary-item">
-              <div className="flex-center-gap-8">
-                <Clock size={16} className="text-muted" />
-                <div>
-                  <span className="label">Last Updated</span>
-                  <span className="value fs-14">
-                    {pipeline?.scored_at ? new Date(pipeline.scored_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Never'}
-                  </span>
-                </div>
-              </div>
+            <div className="summary-item market">
+              <span className="label">SENSEX</span>
+              <span className={`value ${isSensexUp ? 'success' : 'danger'}`}>
+                {sensex.close?.toLocaleString('en-IN')} 
+                <small>({isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%)</small>
+              </span>
             </div>
           </div>
 
