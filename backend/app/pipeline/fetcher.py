@@ -18,10 +18,19 @@ urls_expire_after = {
 cache_dir = os.environ.get("CACHE_DIR", os.path.join(os.path.dirname(__file__), "..", "..", "data"))
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir, exist_ok=True)
-cache_file = os.path.join(cache_dir, 'yfinance_cache')
 
-session = requests_cache.CachedSession(
-    cache_file,
+# Session Isolation: Two separate sessions for API and Pipeline
+yf_cache_file = os.path.join(cache_dir, 'yfinance_cache')
+pipeline_cache_file = os.path.join(cache_dir, 'pipeline_cache')
+
+yf_session = requests_cache.CachedSession(
+    yf_cache_file,
+    urls_expire_after=urls_expire_after,
+    backend='sqlite'
+)
+
+pipeline_session = requests_cache.CachedSession(
+    pipeline_cache_file,
     urls_expire_after=urls_expire_after,
     backend='sqlite'
 )
@@ -31,19 +40,25 @@ retry_strategy = Retry(
     backoff_factor=2,
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["HEAD", "GET", "OPTIONS"],
-    respect_retry_after_header=True
+    respect_retry_after_header=False  # Changed to False to prevent blocking
 )
-# ⚠️ Note: respect_retry_after_header=True means a Yahoo Finance
-# Retry-After header can block this thread for an arbitrary duration.
-# If pipeline hangs are observed, set this to False and rely solely
-# on backoff_factor for wait timing.
-adapter = HTTPAdapter(max_retries=retry_strategy)
-session.mount("https://", adapter)
-session.mount("http://", adapter)
 
-session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+adapter = HTTPAdapter(max_retries=retry_strategy)
+yf_session.mount("https://", adapter)
+yf_session.mount("http://", adapter)
+pipeline_session.mount("https://", adapter)
+pipeline_session.mount("http://", adapter)
+
+yf_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 })
+
+pipeline_session.headers.update({
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+})
+
+# Backward compatibility for any direct imports of 'session'
+session = yf_session
 
 # Keep the original get_nse_symbols unchanged
 def get_nse_symbols(limit: int = None) -> list[str]:
@@ -61,7 +76,7 @@ def get_nse_symbols(limit: int = None) -> list[str]:
         logger.error(f"Failed to fetch NSE universe: {e}")
         return ["RELIANCE", "TCS", "HDFCBANK", "INFY", "HINDUNILVR"]
 
-def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = True):
+def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = True, session=yf_session):
     try:
         ticker_symbol = f"{symbol}.NS" if append_ns else symbol
         # Inject our custom session
@@ -80,7 +95,7 @@ def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fe
         logger.error(f"Error fetching data for {symbol}: {e}")
         return None, None
 
-def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str = "5d") -> list[dict]:
+def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str = "5d", session=yf_session) -> list[dict]:
     """
     Dedicated function to fetch market snapshots efficiently using yf.download.
     """
@@ -120,3 +135,20 @@ def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str
     except Exception as e:
         logger.error(f"Error bulk fetching market snapshots: {e}")
         return []
+
+def slice_bulk_df(bulk_df: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
+    """Extracts OHLCV for a symbol from a MultiIndex or flat DataFrame."""
+    try:
+        suffix_symbol = f"{symbol}.NS"
+        if isinstance(bulk_df.columns, pd.MultiIndex):
+            df = bulk_df.xs(suffix_symbol, axis=1, level=1).copy()
+        else:
+            # Fallback for single-symbol batches where yfinance returns flat columns
+            df = bulk_df.copy()
+            
+        df = df.dropna(how='all')
+        if df.empty:
+            return None
+        return df
+    except (KeyError, AttributeError):
+        return None
