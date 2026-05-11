@@ -7,6 +7,10 @@ from contextlib import asynccontextmanager
 from app.db.session import SessionLocal
 from app.pipeline.orchestrator import run_pipeline
 from app.routers import stocks, dashboard, reports, screens
+from sqlalchemy import text
+from app.core.cache import response_cache
+from app.db.models import PipelineRun
+import datetime
 
 # Configure Logging
 log_dir = "logs"
@@ -63,6 +67,56 @@ app.include_router(dashboard.router, prefix="/api")
 app.include_router(screens.router, prefix="/api")
 app.include_router(reports.router)
 
+def db_query_pipeline_run(db):
+    """Helper for health check and testing."""
+    return db.query(PipelineRun).order_by(PipelineRun.timestamp.desc()).first()
+
 @app.get("/api/health")
 def health_check():
-    return {"status": "ok"}
+    db = SessionLocal()
+    db_status = "ok"
+    pipeline_info = {
+        "last_status": "unknown",
+        "data_age_hours": 0,
+        "is_stale": True
+    }
+    
+    try:
+        # DB Check with 2s timeout
+        db.execute(text("SELECT 1").execution_options(timeout=2.0))
+    except Exception as e:
+        logger.error(f"Health check DB error: {e}")
+        db_status = "error"
+    
+    if db_status == "ok":
+        try:
+            run = db_query_pipeline_run(db)
+            if run:
+                age_delta = datetime.datetime.utcnow() - run.timestamp
+                data_age_hours = round(age_delta.total_seconds() / 3600.0, 1)
+                pipeline_info = {
+                    "last_status": run.status,
+                    "data_age_hours": data_age_hours,
+                    "is_stale": data_age_hours > 26
+                }
+        except Exception as e:
+            logger.error(f"Health check Pipeline status error: {e}")
+            # We don't fail the whole DB check if just one query fails, but maybe we should?
+            # For now, we'll just keep the default pipeline_info.
+    
+    db.close()
+    
+    # Overall Status
+    status = "ok"
+    if db_status == "error":
+        status = "error"
+    elif pipeline_info["is_stale"]:
+        status = "degraded"
+        
+    return {
+        "status": status,
+        "db": db_status,
+        "cache": response_cache.stats(),
+        "pipeline": pipeline_info,
+        "version": "2.1.0"
+    }
