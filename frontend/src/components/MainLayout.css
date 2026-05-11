@@ -104,7 +104,11 @@
   }
 
   .sidebar-header {
-    margin-bottom: 40px;
+    margin-bottom: 24px;
+  }
+
+  .sidebar-search {
+    margin-bottom: 32px;
   }
 
   .sidebar-header .brand {

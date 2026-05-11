@@ -20,3 +20,4 @@ export const getScreenBySlug = (slug, live = false) =>
 export const getTopStocks = () => apiClient.get('/stocks/top');
 export const getDashboardChanges = () => apiClient.get('/dashboard/changes');
 export const getStatus = () => apiClient.get('/pipeline/status');
+export const searchStocks = (q) => apiClient.get(`/stocks/search?q=${encodeURIComponent(q)}`);

@@ -53,6 +53,10 @@ const MainLayout = ({ children }) => {
           </div>
         </div>
 
+        <div className="sidebar-search">
+          <GlobalSearch />
+        </div>
+
         <nav className="sidebar-nav">
           {navItems.map((item) => (
             <NavLink 

@@ -10,15 +10,20 @@ import logging
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
+def clean_stock_symbol(symbol: str) -> str:
+    """Standardize symbol by converting to upper case and stripping .NS suffix."""
+    s = symbol.strip().upper()
+    if s.endswith(".NS"):
+        return s[:-3]
+    return s
+
 @router.get("/stocks/search")
 def search_stocks(q: str = "", db: Session = Depends(get_db)):
     if len(q) < 2:
         return []
         
     # Strip .NS (case-insensitive) for searching
-    query = q.strip()
-    if query.upper().endswith(".NS"):
-        query = query[:-3]
+    query = clean_stock_symbol(q)
     
     # Ordering: Exact symbol match, then symbol starts with, then name contains
     results = db.query(Stock).filter(
@@ -52,7 +57,7 @@ def get_top_stocks(db: Session = Depends(get_db)):
 @router.get("/stocks/{symbol}")
 def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     # 1. Symbol Handling: Strip .NS for DB lookups
-    clean_symbol = symbol.replace(".NS", "").upper()
+    clean_symbol = clean_stock_symbol(symbol)
     
     # 2. DB Lookup
     stock = db.query(Stock).filter(Stock.symbol == clean_symbol).first()
@@ -135,7 +140,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
 
 @router.post("/stocks/{symbol}/refresh-cache")
 def refresh_stock_cache(symbol: str, db: Session = Depends(get_db)):
-    clean_symbol = symbol.replace(".NS", "").upper()
+    clean_symbol = clean_stock_symbol(symbol)
     cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == clean_symbol).first()
     if not cache:
         cache = FundamentalCache(symbol=clean_symbol)
@@ -148,10 +153,10 @@ def refresh_stock_cache(symbol: str, db: Session = Depends(get_db)):
 
 @router.get("/stocks/{symbol}/cache-status")
 def get_stock_cache_status(symbol: str, db: Session = Depends(get_db)):
-    clean_symbol = symbol.replace(".NS", "").upper()
+    clean_symbol = clean_stock_symbol(symbol)
     cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == clean_symbol).first()
     if not cache:
-        return {"status": "not_cached"}
+        return {"status": "not_cached", "symbol": clean_symbol}
     
     return {
         "symbol": clean_symbol,
