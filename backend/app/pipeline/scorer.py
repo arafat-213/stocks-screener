@@ -11,6 +11,9 @@ def calculate_fundamental_score(info: dict, fund_cache=None) -> float:
     - ROCE: 5 pts (Max if ROCE > 15%)
     - Debt/Equity: 5 pts (Max if D/E < 0.5)
     """
+    if info is None:
+        info = {}
+        
     score = 0.0
     
     # 1. PE Score (Max 10 pts)
@@ -298,6 +301,7 @@ def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D',
     ta_data['technical_score'] = ta_data['score']
     ta_data['fundamental_score'] = fund_score
     ta_data['score'] = combined_score
+    ta_data['combined_score'] = combined_score
     
     return ta_data
 
