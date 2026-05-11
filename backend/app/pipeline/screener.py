@@ -39,6 +39,8 @@ def check_profitability_streak(financials) -> bool:
 
 import random
 
+from app.pipeline.fetcher import session as yf_session
+
 def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
     """Fetches financials and info for symbols in batches and caches them with retries."""
     batch_size = 50
@@ -49,11 +51,11 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
         for symbol in batch:
             cache_version = CURRENT_SCREENER_VERSION
             success = False
-            max_retries = 3
+            max_retries = 1
             
             for attempt in range(max_retries):
                 try:
-                    ticker = yf.Ticker(f"{symbol}.NS")
+                    ticker = yf.Ticker(f"{symbol}.NS", session=yf_session)
                     # Force fetch of multiple attributes to trigger potential API errors early
                     info = ticker.info
                     financials = ticker.financials
