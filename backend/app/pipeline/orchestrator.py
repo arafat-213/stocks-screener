@@ -1,17 +1,26 @@
 from sqlalchemy.orm import Session
-from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, FundamentalCache
+from app.db.models import (
+    Stock, TechnicalSignal, FundamentalData, PipelineRun, 
+    FundamentalCache, PipelineCheckpoint, PipelineError
+)
 from app.pipeline.fetcher import get_nse_symbols, fetch_stock_data, fetch_market_snapshots
 from app.pipeline.screener import (
     passes_tier1_fast_filters, 
     fetch_and_cache_deep_fundamentals,
+    needs_cache_refresh,
     CURRENT_SCREENER_VERSION
 )
 from app.pipeline.scorer import calculate_combined_score
 from app.pipeline.utils import resample_ohlcv
 from app.pipeline.reporter import generate_daily_report
+from app.pipeline.errors import classify_error
+from app.pipeline.rs_ranks import compute_rs_ranks
+from app.core.cache import response_cache
+from app.screens.cache import screen_cache
 import datetime
 import logging
 import traceback
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -30,79 +39,69 @@ def _is_stop_requested(db: Session, run_id: str) -> bool:
     run = db.query(PipelineRun).filter(PipelineRun.run_id == run_id).first()
     return run.stop_requested if run else False
 
-def _compute_rs_ranks(db: Session, signal_date: datetime.date):
-    """
-    Computes RS percentile rank based on 12-month momentum against a benchmark.
-    Uses bulk update for efficiency.
-    """
-    RS_BENCHMARK_CANDIDATES = ["^CRSLDX", "^NSEI"] # Nifty 500, Nifty 50
-    benchmark_symbol = None
-    benchmark_return = 0.0
+def _get_completed_symbols(db: Session, run_id: str, phase: str) -> set:
+    checkpoint = db.query(PipelineCheckpoint).filter_by(run_id=run_id, phase=phase).first()
+    if checkpoint and checkpoint.completed_symbols:
+        try:
+            return set(json.loads(checkpoint.completed_symbols))
+        except Exception:
+            return set()
+    return set()
 
-    logger.info("Resolving RS benchmark candidate...")
-    for candidate in RS_BENCHMARK_CANDIDATES:
-        hist, _ = fetch_stock_data(candidate, append_ns=False, period="2y")
-        if hist is not None and len(hist) >= 252:
-            benchmark_symbol = candidate
-            # 12-month return: (price_now / price_252_bars_ago - 1) * 100
-            benchmark_return = (hist['Close'].iloc[-1] / hist['Close'].iloc[-252] - 1) * 100
-            logger.info(f"Selected RS benchmark: {benchmark_symbol} with 12m return: {benchmark_return:.2f}%")
-            break
-    
-    if not benchmark_symbol:
-        logger.warning("No suitable RS benchmark found with enough history. Skipping RS computation.")
-        return
-
-    # Get all TechnicalSignals for signal_date and timeframe == 'D'
-    signals = db.query(TechnicalSignal).filter(
-        TechnicalSignal.date == signal_date,
-        TechnicalSignal.timeframe == 'D'
-    ).all()
-
-    if not signals:
-        logger.info(f"No signals found for {signal_date} to compute RS ranks.")
-        return
-
-    # Filter signals that have momentum_12m
-    valid_signals = [s for s in signals if s.momentum_12m is not None]
-    if not valid_signals:
-        logger.info("No signals with 12m momentum found.")
-        return
-
-    # Sort signals by excess return (momentum_12m - benchmark_return)
-    # Percentile = (Rank / Count) * 100
-    valid_signals.sort(key=lambda x: (x.momentum_12m - benchmark_return))
-    count = len(valid_signals)
-    
-    updates = []
-    for i, s in enumerate(valid_signals):
-        rank = ((i + 1) / count) * 100
-        updates.append({"id": s.id, "rs_score": rank})
-    
-    if updates:
-        db.bulk_update_mappings(TechnicalSignal, updates)
-        db.commit()
-        logger.info(f"Successfully updated RS scores (percentile ranks) for {len(updates)} stocks.")
-
-def run_pipeline(db: Session, limit: int = None):
-    # Secondary Concurrency Guard
-    existing = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
-    if existing:
-        logger.error(f"Cannot start pipeline: Run {existing.run_id} is already in progress.")
-        return
-
-    run = PipelineRun(
-        status="running", 
-        stocks_fetched=0, 
-        stocks_scored=0, 
-        tier1_count=0, 
-        tier2_count=0, 
-        errors="",
-        stop_requested=False
-    )
-    db.add(run)
+def _save_checkpoint(db: Session, run_id: str, phase: str, symbols: set):
+    checkpoint = db.query(PipelineCheckpoint).filter_by(run_id=run_id, phase=phase).first()
+    if not checkpoint:
+        checkpoint = PipelineCheckpoint(run_id=run_id, phase=phase, started_at=datetime.datetime.utcnow())
+        db.add(checkpoint)
+    checkpoint.completed_symbols = json.dumps(list(symbols))
+    checkpoint.completed_at = datetime.datetime.utcnow()
     db.commit()
-    db.refresh(run)
+
+def _log_pipeline_error(db: Session, run_id: str, symbol: str, phase: str, e: Exception):
+    error_type = classify_error(e)
+    p_error = PipelineError(
+        run_id=run_id,
+        symbol=symbol,
+        phase=phase,
+        error_type=error_type,
+        message=str(e),
+        traceback=traceback.format_exc()
+    )
+    db.add(p_error)
+    db.commit()
+
+def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = None):
+    if resume_run_id:
+        run = db.query(PipelineRun).filter(PipelineRun.run_id == resume_run_id).first()
+        if not run:
+            logger.error(f"Cannot resume: Run {resume_run_id} not found.")
+            return
+        if run.status == "running":
+            logger.error(f"Cannot resume: Run {resume_run_id} is already in progress.")
+            return
+        run.status = "running"
+        run.stop_requested = False
+        db.commit()
+        logger.info(f"Resuming pipeline run {resume_run_id}")
+    else:
+        # Secondary Concurrency Guard
+        existing = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
+        if existing:
+            logger.error(f"Cannot start pipeline: Run {existing.run_id} is already in progress.")
+            return
+
+        run = PipelineRun(
+            status="running", 
+            stocks_fetched=0, 
+            stocks_scored=0, 
+            tier1_count=0, 
+            tier2_count=0, 
+            errors="",
+            stop_requested=False
+        )
+        db.add(run)
+        db.commit()
+        db.refresh(run)
     
     current_symbol = "STARTUP"
     try:
@@ -110,52 +109,70 @@ def run_pipeline(db: Session, limit: int = None):
         if not symbols:
             raise ValueError("No symbols fetched")
             
-        scored_count = 0
-        fetched_count = 0
-        
         # 1. Tier 1 Screening
-        tier1_survivors = []
+        completed_t1 = _get_completed_symbols(db, run.run_id, "tier1")
+        tier1_survivors = list(_get_completed_symbols(db, run.run_id, "tier1_survivors"))
         hist_cache = {} # Temporary cache for hist data and info to avoid re-fetching
         
+        fetched_count = run.stocks_fetched
         logger.info(f"Starting Tier 1 screening for {len(symbols)} symbols")
         for symbol in symbols:
+            if symbol in completed_t1:
+                continue
+
             if _is_stop_requested(db, run.run_id):
-                logger.info("Pipeline stop signal received during scoring.")
+                logger.info("Pipeline stop signal received during Tier 1.")
                 run.status = "stopped"
-                run.errors = "Manually stopped during scoring"
+                run.errors = "Manually stopped during Tier 1"
                 db.commit()
                 return
 
             current_symbol = symbol
-            hist, info = fetch_stock_data(symbol, period="3y")
-            fetched_count += 1
-            
-            if hist is None or info is None:
-                # Update progress even if fetch failed
+            try:
+                hist, info = fetch_stock_data(symbol, period="3y")
+                fetched_count += 1
+                
+                if hist is None or info is None:
+                    completed_t1.add(symbol)
+                    if fetched_count % 50 == 0:
+                        run.stocks_fetched = fetched_count
+                        _save_checkpoint(db, run.run_id, "tier1", completed_t1)
+                    continue
+                
+                # Upsert Stock Info
+                stock = db.query(Stock).filter(Stock.symbol == symbol).first()
+                if not stock:
+                    stock = Stock(
+                        symbol=symbol, 
+                        name=info.get('longName', symbol), 
+                        sector=info.get('sector', ''), 
+                        industry=info.get('industry', ''), 
+                        market_cap=info.get('marketCap', 0)
+                    )
+                    db.add(stock)
+                else:
+                    stock.market_cap = info.get('marketCap', 0)
+                
+                passes_t1, flag_missing_pledge = passes_tier1_fast_filters(info)
+                if passes_t1:
+                    tier1_survivors.append(symbol)
+                    hist_cache[symbol] = (hist, info)
+                
+                completed_t1.add(symbol)
+                # Periodically commit to keep DB updated with stock info and progress
                 if fetched_count % 50 == 0:
                     run.stocks_fetched = fetched_count
-                    db.commit()
-                continue
-            
-            # Upsert Stock Info
-            stock = db.query(Stock).filter(Stock.symbol == symbol).first()
-            if not stock:
-                stock = Stock(symbol=symbol, name=info.get('longName', symbol), sector=info.get('sector', ''), industry=info.get('industry', ''), market_cap=info.get('marketCap', 0))
-                db.add(stock)
-            else:
-                stock.market_cap = info.get('marketCap', 0)
-            
-            passes_t1, flag_missing_pledge = passes_tier1_fast_filters(info)
-            if passes_t1:
-                tier1_survivors.append(symbol)
-                hist_cache[symbol] = (hist, info)
-            
-            # Periodically commit to keep DB updated with stock info and progress
-            if fetched_count % 50 == 0:
-                run.stocks_fetched = fetched_count
-                db.commit()
+                    _save_checkpoint(db, run.run_id, "tier1", completed_t1)
+                    _save_checkpoint(db, run.run_id, "tier1_survivors", set(tier1_survivors))
+            except Exception as e:
+                logger.warning(f"Error processing {symbol} in Tier 1: {e}")
+                _log_pipeline_error(db, run.run_id, symbol, "tier1", e)
+                completed_t1.add(symbol) # Skip next time
         
+        run.stocks_fetched = fetched_count
         run.tier1_count = len(tier1_survivors)
+        _save_checkpoint(db, run.run_id, "tier1", completed_t1)
+        _save_checkpoint(db, run.run_id, "tier1_survivors", set(tier1_survivors))
         db.commit()
         logger.info(f"Tier 1 complete. {len(tier1_survivors)} survivors.")
         
@@ -169,7 +186,12 @@ def run_pipeline(db: Session, limit: int = None):
         to_refresh = []
         seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
         
+        completed_t2 = _get_completed_symbols(db, run.run_id, "tier2")
+        
         for symbol in tier1_survivors:
+            if symbol in completed_t2:
+                continue
+
             if _is_stop_requested(db, run.run_id):
                 logger.info("Pipeline stop signal received during Tier 2 check.")
                 run.status = "stopped"
@@ -180,23 +202,37 @@ def run_pipeline(db: Session, limit: int = None):
             current_symbol = f"{symbol} (Tier 2 Check)"
             cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
             
-            if not cache or cache.last_updated < seven_days_ago or cache.cache_version < CURRENT_SCREENER_VERSION:
+            if needs_cache_refresh(cache, seven_days_ago):
                 to_refresh.append(symbol)
+            else:
+                completed_t2.add(symbol)
         
         if to_refresh:
             current_symbol = "BATCH_REFRESH"
             logger.info(f"Refreshing Tier 2 data for {len(to_refresh)} symbols")
-            # Note: fetch_and_cache_deep_fundamentals doesn't currently check _STOP_SIGNAL internally
-            # but it processes in batches of 50. For a true kill switch, we might want to pass signal there too.
-            fetch_and_cache_deep_fundamentals(to_refresh, db)
+            # We refresh in smaller batches to allow resumption if it fails deep in Tier 2
+            t2_batch_size = 50
+            for i in range(0, len(to_refresh), t2_batch_size):
+                batch = to_refresh[i:i+t2_batch_size]
+                if _is_stop_requested(db, run.run_id):
+                    break
+                fetch_and_cache_deep_fundamentals(batch, db)
+                for s in batch: completed_t2.add(s)
+                _save_checkpoint(db, run.run_id, "tier2", completed_t2)
         
         # 3. Final Filtering & Scoring
         logger.info("Applying Tier 2 filters and scoring")
         scored_at = datetime.datetime.utcnow()
         tier2_survivors_count = 0
+        scored_count = run.stocks_scored
+        completed_scoring = _get_completed_symbols(db, run.run_id, "scoring")
+
         for symbol in tier1_survivors:
-            scored_count += 1
-            run.stocks_scored = scored_count
+            if symbol in completed_scoring:
+                scored_count += 1
+                tier2_survivors_count += 1 # We assume completed means they were survivors
+                continue
+
             if _is_stop_requested(db, run.run_id):
                 logger.info("Pipeline stop signal received during scoring.")
                 run.status = "stopped"
@@ -205,78 +241,90 @@ def run_pipeline(db: Session, limit: int = None):
                 return
 
             current_symbol = f"{symbol} (Scoring)"
-            cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
-            
-            # If still no cache or cache failed (version -1), skip
-            if not cache or cache.cache_version == -1:
-                continue
+            try:
+                cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
                 
-            tier2_survivors_count += 1
-            # Score (MEMORY OPTIMIZATION: Re-fetch if hist_cache was cleared)
-            cache_data = hist_cache.get(symbol)
-            if cache_data is None:
-                # Lazy load if cleared for memory
-                hist, info = fetch_stock_data(symbol, period="3y")
-                if hist is None or info is None:
+                # If still no cache or cache failed (version -1), skip
+                if not cache or cache.cache_version == -1:
+                    completed_scoring.add(symbol)
                     continue
-            else:
-                hist, info = cache_data
-            
-            # Multi-timeframe loop
-            for tf, freq in [('D', None), ('W', 'W'), ('M', 'ME')]:
-                working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
-                if working_df.empty: continue
+                    
+                tier2_survivors_count += 1
+                # Score (MEMORY OPTIMIZATION: Re-fetch if hist_cache was cleared)
+                cache_data = hist_cache.get(symbol)
+                if cache_data is None:
+                    # Lazy load if cleared for memory
+                    hist, info = fetch_stock_data(symbol, period="3y")
+                    if hist is None or info is None:
+                        completed_scoring.add(symbol)
+                        continue
+                else:
+                    hist, info = cache_data
                 
-                signal_date = working_df.index[-1].date()
-                ta_data = calculate_combined_score(working_df, info, timeframe=tf, fund_cache=cache)
+                # Multi-timeframe loop
+                for tf, freq in [('D', None), ('W', 'W'), ('M', 'ME')]:
+                    working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
+                    if working_df.empty: continue
+                    
+                    signal_date = working_df.index[-1].date()
+                    ta_data = calculate_combined_score(working_df, info, timeframe=tf, fund_cache=cache)
+                    
+                    # Explicit Upsert into TechnicalSignal
+                    signal = db.query(TechnicalSignal).filter_by(
+                        symbol=symbol, date=signal_date, timeframe=tf
+                    ).first()
+                    if not signal:
+                        signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
+                        db.add(signal)
+                    
+                    signal.entry_score = ta_data['score']
+                    signal.is_bullish = ta_data['is_bullish']
+                    signal.rsi = ta_data['rsi']
+                    signal.macd = ta_data['macd']
+                    signal.ema_signal = ta_data['ema_signal']
+                    signal.volume_signal = ta_data.get('volume_signal', 'neutral')
+                    signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
+                    signal.atr = ta_data.get('atr')
+                    
+                    # Momentum and New Technical Fields
+                    signal.momentum_1m = ta_data.get('momentum_1m')
+                    signal.momentum_3m = ta_data.get('momentum_3m')
+                    signal.momentum_6m = ta_data.get('momentum_6m')
+                    signal.momentum_12m = ta_data.get('momentum_12m')
+                    signal.adx = ta_data.get('adx')
+                    signal.above_200ema = ta_data.get('above_200ema')
+                    signal.ema_slope_20 = ta_data.get('ema_slope_20')
+                    signal.week52_high = ta_data.get('week52_high')
+                    signal.week52_low = ta_data.get('week52_low')
+                    signal.pct_from_52w_high = ta_data.get('pct_from_52w_high')
+                    signal.pct_from_52w_low = ta_data.get('pct_from_52w_low')
+                    signal.resistance_level = ta_data.get('resistance_level')
+                    signal.pct_from_resistance = ta_data.get('pct_from_resistance')
+                    signal.volume_breakout = ta_data.get('volume_breakout', False)
+                    
+                    signal.scored_at = scored_at
+                    
+                    # Capture price snapshots for Daily timeframe
+                    if tf == 'D' and len(working_df) >= 2:
+                        signal.close_price = float(working_df['Close'].iloc[-1])
+                        signal.price_change_pct = float(
+                            (working_df['Close'].iloc[-1] - working_df['Close'].iloc[-2]) 
+                            / working_df['Close'].iloc[-2] * 100
+                        )
                 
-                # Explicit Upsert into TechnicalSignal
-                signal = db.query(TechnicalSignal).filter_by(
-                    symbol=symbol, date=signal_date, timeframe=tf
-                ).first()
-                if not signal:
-                    signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
-                    db.add(signal)
-                
-                signal.entry_score = ta_data['score']
-                signal.is_bullish = ta_data['is_bullish']
-                signal.rsi = ta_data['rsi']
-                signal.macd = ta_data['macd']
-                signal.ema_signal = ta_data['ema_signal']
-                signal.volume_signal = ta_data.get('volume_signal', 'neutral')
-                signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
-                signal.atr = ta_data.get('atr')
-                
-                # Momentum and New Technical Fields
-                signal.momentum_1m = ta_data.get('momentum_1m')
-                signal.momentum_3m = ta_data.get('momentum_3m')
-                signal.momentum_6m = ta_data.get('momentum_6m')
-                signal.momentum_12m = ta_data.get('momentum_12m')
-                signal.adx = ta_data.get('adx')
-                signal.above_200ema = ta_data.get('above_200ema')
-                signal.ema_slope_20 = ta_data.get('ema_slope_20')
-                signal.week52_high = ta_data.get('week52_high')
-                signal.week52_low = ta_data.get('week52_low')
-                signal.pct_from_52w_high = ta_data.get('pct_from_52w_high')
-                signal.pct_from_52w_low = ta_data.get('pct_from_52w_low')
-                signal.resistance_level = ta_data.get('resistance_level')
-                signal.pct_from_resistance = ta_data.get('pct_from_resistance')
-                signal.volume_breakout = ta_data.get('volume_breakout', False)
-                
-                signal.scored_at = scored_at
-                
-                # Capture price snapshots for Daily timeframe
-                if tf == 'D' and len(working_df) >= 2:
-                    signal.close_price = float(working_df['Close'].iloc[-1])
-                    signal.price_change_pct = float(
-                        (working_df['Close'].iloc[-1] - working_df['Close'].iloc[-2]) 
-                        / working_df['Close'].iloc[-2] * 100
-                    )
-                
-            if scored_count % 10 == 0:
-                db.commit()
+                scored_count += 1
+                completed_scoring.add(symbol)
+                if scored_count % 25 == 0:
+                    run.stocks_scored = scored_count
+                    _save_checkpoint(db, run.run_id, "scoring", completed_scoring)
+            except Exception as e:
+                logger.warning(f"Error scoring {symbol}: {e}")
+                _log_pipeline_error(db, run.run_id, symbol, "scoring", e)
+                completed_scoring.add(symbol)
         
+        run.stocks_scored = scored_count
         run.tier2_count = tier2_survivors_count
+        _save_checkpoint(db, run.run_id, "scoring", completed_scoring)
         db.commit() # Ensure all signals are committed before RS computation
 
         if _is_stop_requested(db, run.run_id):
@@ -304,7 +352,7 @@ def run_pipeline(db: Session, limit: int = None):
 
         # 3b. Compute RS Ranks
         logger.info(f"Computing RS ranks for {final_signal_date}")
-        _compute_rs_ranks(db, final_signal_date)
+        compute_rs_ranks(db, final_signal_date)
 
         indices = ["^NSEI", "^BSESN"]
         logger.info(f"Fetching market snapshots for {indices}")
@@ -331,6 +379,11 @@ def run_pipeline(db: Session, limit: int = None):
         run.stocks_fetched = fetched_count
         run.stocks_scored = scored_count
         db.commit()
+
+        # Invalidate all caches on success
+        logger.info("Invalidating response and screens caches after successful pipeline run.")
+        response_cache.invalidate()
+        screen_cache.invalidate()
         
     except Exception as e:
         if _is_stop_requested(db, run.run_id):

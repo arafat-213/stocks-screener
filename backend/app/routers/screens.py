@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.db import models
 from app.screens.registry import SCREEN_REGISTRY
+from app.screens.cache import screen_cache
 from typing import List, Optional
 import logging
 
@@ -60,15 +61,28 @@ def list_screens():
         for slug, meta in SCREEN_REGISTRY.items()
     ]
 
+@router.post("/cache/clear")
+def clear_screens_cache():
+    screen_cache.invalidate()
+    return {"status": "success", "message": "Screens cache cleared"}
+
 @router.get("/{slug}")
 def get_screen_results(
     slug: str, 
+    response: Response,
     live: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     if slug not in SCREEN_REGISTRY:
         raise HTTPException(status_code=404, detail="Screen not found")
     
+    cache_key = f"screen:{slug}:{live}"
+    cached_val = screen_cache.get(cache_key)
+    if cached_val is not None:
+        response.headers["X-Cache"] = "HIT"
+        return cached_val
+
+    response.headers["X-Cache"] = "MISS"
     screen_meta = SCREEN_REGISTRY[slug]
     results = []
 
@@ -119,69 +133,71 @@ def get_screen_results(
                         fund=fund
                     )
                 )
-            return results
 
     # Fallback or explicit live execution
-    logger.info(f"Executing live screen for {slug}")
-    try:
-        live_data = screen_meta["fn"](db) # Returns list of (symbol, score) or symbols
-        if live_data:
-            # Handle both list of symbols and list of (symbol, score) tuples/Rows
-            # Check if first element is tuple-like (has at least 1 element and is not a string)
-            first_item = live_data[0]
-            is_tuple_like = hasattr(first_item, "__iter__") and not isinstance(first_item, (str, bytes))
-            
-            if is_tuple_like:
-                live_symbols = [t[0] for t in live_data]
-                score_map = {t[0]: t[1] for t in live_data if len(t) > 1}
-            else:
-                live_symbols = live_data
-                score_map = {}
-            
-            # Latest TechnicalSignal subquery
-            latest_signal_sub = (
-                db.query(
-                    models.TechnicalSignal.symbol,
-                    func.max(models.TechnicalSignal.date).label("max_date")
-                )
-                .filter(models.TechnicalSignal.timeframe == 'D')
-                .group_by(models.TechnicalSignal.symbol)
-                .subquery()
-            )
-
-            enriched = (
-                db.query(models.Stock, models.FundamentalCache, models.TechnicalSignal)
-                .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
-                .outerjoin(
-                    models.TechnicalSignal, 
-                    (models.Stock.symbol == models.TechnicalSignal.symbol) & 
-                    (models.TechnicalSignal.timeframe == 'D')
-                )
-                .filter(models.TechnicalSignal.date == latest_signal_sub.c.max_date)
-                .filter(models.Stock.symbol.in_(live_symbols))
-                .all()
-            )
-            
-            # Map for quick lookup
-            data_map = {s.symbol: (s, f, t) for s, f, t in enriched}
-            
-            for i, symbol in enumerate(live_symbols):
-                if symbol in data_map:
-                    stock, fund, tech = data_map[symbol]
-                    results.append(
-                        _build_screen_response(
-                            symbol=symbol,
-                            name=stock.name,
-                            rank=i + 1,
-                            score=score_map.get(symbol),
-                            sector=stock.sector,
-                            market_cap=stock.market_cap,
-                            tech=tech,
-                            fund=fund
-                        )
+    if (live or not results) and slug in SCREEN_REGISTRY:
+        logger.info(f"Executing live screen for {slug}")
+        try:
+            live_data = screen_meta["fn"](db) # Returns list of (symbol, score) or symbols
+            if live_data:
+                # Handle both list of symbols and list of (symbol, score) tuples/Rows
+                # Check if first element is tuple-like (has at least 1 element and is not a string)
+                first_item = live_data[0]
+                is_tuple_like = hasattr(first_item, "__iter__") and not isinstance(first_item, (str, bytes))
+                
+                if is_tuple_like:
+                    live_symbols = [t[0] for t in live_data]
+                    score_map = {t[0]: t[1] for t in live_data if len(t) > 1}
+                else:
+                    live_symbols = live_data
+                    score_map = {}
+                
+                # Latest TechnicalSignal subquery
+                latest_signal_sub = (
+                    db.query(
+                        models.TechnicalSignal.symbol,
+                        func.max(models.TechnicalSignal.date).label("max_date")
                     )
-    except Exception as e:
-        logger.error(f"Live screen {slug} failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Error executing screen: {str(e)}")
+                    .filter(models.TechnicalSignal.timeframe == 'D')
+                    .group_by(models.TechnicalSignal.symbol)
+                    .subquery()
+                )
 
+                enriched = (
+                    db.query(models.Stock, models.FundamentalCache, models.TechnicalSignal)
+                    .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
+                    .outerjoin(
+                        models.TechnicalSignal, 
+                        (models.Stock.symbol == models.TechnicalSignal.symbol) & 
+                        (models.TechnicalSignal.timeframe == 'D')
+                    )
+                    .filter(models.TechnicalSignal.date == latest_signal_sub.c.max_date)
+                    .filter(models.Stock.symbol.in_(live_symbols))
+                    .all()
+                )
+                
+                # Map for quick lookup
+                data_map = {s.symbol: (s, f, t) for s, f, t in enriched}
+                
+                for i, symbol in enumerate(live_symbols):
+                    if symbol in data_map:
+                        stock, fund, tech = data_map[symbol]
+                        results.append(
+                            _build_screen_response(
+                                symbol=symbol,
+                                name=stock.name,
+                                rank=i + 1,
+                                score=score_map.get(symbol),
+                                sector=stock.sector,
+                                market_cap=stock.market_cap,
+                                tech=tech,
+                                fund=fund
+                            )
+                        )
+        except Exception as e:
+            logger.error(f"Live screen {slug} failed: {e}")
+            raise HTTPException(status_code=500, detail=f"Error executing screen: {str(e)}")
+
+    # 4. Cache write — after both paths
+    screen_cache.set(cache_key, results, 60 if live else 900)
     return results

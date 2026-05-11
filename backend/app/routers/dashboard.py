@@ -1,9 +1,10 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
+from app.core.cache import response_cache
 
 router = APIRouter()
 
@@ -12,11 +13,27 @@ def get_live_market_data():
     return fetch_market_snapshots(["^NSEI", "^BSESN"])
 
 @router.get("/market/live")
-def get_live_market():
-    return {"market_context": get_live_market_data()}
+def get_live_market(response: Response):
+    cache_key = "dashboard:market_live"
+    cached, hit = response_cache.get(cache_key)
+    if hit:
+        response.headers["X-Cache"] = "HIT"
+        return cached
+    
+    response.headers["X-Cache"] = "MISS"
+    data = {"market_context": get_live_market_data()}
+    response_cache.set(cache_key, data, 60)
+    return data
 
 @router.get("/screener/results")
-def get_dashboard_results(db: Session = Depends(get_db)):
+def get_dashboard_results(response: Response, db: Session = Depends(get_db)):
+    cache_key = "dashboard:screener_results"
+    cached, hit = response_cache.get(cache_key)
+    if hit:
+        response.headers["X-Cache"] = "HIT"
+        return cached
+
+    response.headers["X-Cache"] = "MISS"
     # 1. Latest TechnicalSignal Subquery (Max date per symbol/timeframe)
     latest_signal = db.query(
         TechnicalSignal.symbol,
@@ -99,20 +116,38 @@ def get_dashboard_results(db: Session = Depends(get_db)):
         x["timeframes"].get('D', {}).get('score', 0)
     ), reverse=True)
 
+    response_cache.set(cache_key, final_results, 600)
     return final_results
 
 @router.get("/pipeline/latest")
-def get_pipeline_status(db: Session = Depends(get_db)):
+def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
+    cache_key = "dashboard:pipeline_status"
+    cached, hit = response_cache.get(cache_key)
+    if hit:
+        response.headers["X-Cache"] = "HIT"
+        return cached
+
+    response.headers["X-Cache"] = "MISS"
     run = db.query(PipelineRun).order_by(PipelineRun.timestamp.desc()).first()
     if not run:
-        return {"status": "never_run", "market_context": []}
+        data = {"status": "never_run", "market_context": []}
+        response_cache.set(cache_key, data, 30)
+        return data
         
     # MarketSnapshot uses Date, PipelineRun uses DateTime
     market = db.query(MarketSnapshot).filter(MarketSnapshot.date == run.timestamp.date()).all()
     
-    return {
+    # Calculate age
+    import datetime
+    age_delta = datetime.datetime.utcnow() - run.timestamp
+    data_age_hours = round(age_delta.total_seconds() / 3600.0, 1)
+    is_stale = data_age_hours > 26
+
+    data = {
         "status": run.status,
         "scored_at": run.timestamp,
+        "data_age_hours": data_age_hours,
+        "is_stale": is_stale,
         "stocks_fetched": run.stocks_fetched,
         "tier1_count": run.tier1_count,
         "tier2_count": run.tier2_count,
@@ -122,3 +157,5 @@ def get_pipeline_status(db: Session = Depends(get_db)):
             for m in market
         ]
     }
+    response_cache.set(cache_key, data, 30)
+    return data
