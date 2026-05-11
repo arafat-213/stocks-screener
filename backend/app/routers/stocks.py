@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, or_, func
 from app.db.session import get_db
 from app.db.models import TechnicalSignal, PipelineRun, Stock, FundamentalData, FundamentalCache
 from app.pipeline.orchestrator import run_pipeline
@@ -9,6 +9,37 @@ import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+@router.get("/stocks/search")
+def search_stocks(q: str = "", db: Session = Depends(get_db)):
+    if len(q) < 2:
+        return []
+        
+    query = q.strip()
+    
+    # Ordering: Exact symbol match, then symbol starts with, then name contains
+    results = db.query(Stock).filter(
+        or_(
+            Stock.symbol.ilike(f"%{query}%"),
+            Stock.name.ilike(f"%{query}%")
+        )
+    ).limit(50).all() 
+    
+    # Sort in Python for smart ordering
+    query_upper = query.upper()
+    def sort_key(s):
+        if s.symbol == query_upper: return 0
+        if s.symbol.startswith(query_upper): return 1
+        if s.name.lower().startswith(query.lower()): return 2
+        return 3
+        
+    sorted_results = sorted(results, key=sort_key)
+    final_results = sorted_results[:15]
+    
+    return [
+        {"symbol": s.symbol, "name": s.name, "sector": s.sector} 
+        for s in final_results
+    ]
 
 @router.get("/stocks/top")
 def get_top_stocks(db: Session = Depends(get_db)):
