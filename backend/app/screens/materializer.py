@@ -3,6 +3,7 @@ import datetime
 from sqlalchemy.orm import Session
 from app.db.models import ScreenResult
 from app.screens.registry import SCREEN_REGISTRY
+from app.screens.cache import screen_cache
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,9 @@ def materialize_all_screens(db: Session):
                 
         duration = (datetime.datetime.now() - start_time).total_seconds()
         logger.info(f"Screen materialization complete. Total rows: {total_results}. Duration: {duration:.2f}s")
+        
+        # Clear cache so next API requests fetch fresh database results
+        screen_cache.invalidate()
         
     except Exception as e:
         logger.error(f"Critical failure in materializer: {e}")
