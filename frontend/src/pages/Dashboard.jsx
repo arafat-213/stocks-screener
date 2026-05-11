@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { fetchResults } from '../api/client';
+import { fetchResults, getDashboardChanges } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
 import { useMarketData } from '../hooks/useMarketData';
@@ -13,6 +13,7 @@ import Select from '../components/ui/Select';
 import { DataTable } from '../components/ui/DataTable';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import StaleBanner from '../components/StaleBanner';
+import ChangeBanner from '../components/ChangeBanner';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -23,6 +24,8 @@ const Dashboard = () => {
     error: stocksError, 
     refetch: refetchStocks 
   } = useFetch(fetchResults);
+
+  const { data: changesData, loading: changesLoading, refetch: refetchChanges } = useFetch(getDashboardChanges);
 
   const { 
     status, 
@@ -50,9 +53,10 @@ const Dashboard = () => {
   useEffect(() => {
     if (prevStatusRef.current === 'running' && status === 'complete') {
       refetchStocks();
+      refetchChanges();
     }
     prevStatusRef.current = status;
-  }, [status, refetchStocks]);
+  }, [status, refetchStocks, refetchChanges]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -298,6 +302,13 @@ const Dashboard = () => {
               </span>
             </div>
           </div>
+
+          <ChangeBanner 
+            changes={changesData?.changes || []}
+            asOf={changesData?.as_of}
+            prevDate={changesData?.prev_date}
+            loading={changesLoading}
+          />
 
           {!isMobile && (
             <div className="filters-container card">

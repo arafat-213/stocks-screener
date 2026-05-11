@@ -12,6 +12,115 @@ def get_live_market_data():
     # Relies entirely on requests-cache for the 60s TTL
     return fetch_market_snapshots(["^NSEI", "^BSESN"])
 
+@router.get("/dashboard/changes")
+def get_signal_changes(response: Response, db: Session = Depends(get_db)):
+    cache_key = "dashboard:changes"
+    cached, hit = response_cache.get(cache_key)
+    if hit:
+        response.headers["X-Cache"] = "HIT"
+        return cached
+
+    response.headers["X-Cache"] = "MISS"
+    
+    # 1. Get the two most recent distinct dates for Daily timeframe
+    dates = db.query(func.date(TechnicalSignal.date)).\
+        filter(TechnicalSignal.timeframe == 'D').\
+        distinct().order_by(func.date(TechnicalSignal.date).desc()).limit(2).all()
+    
+    if len(dates) < 2:
+        data = {"changes": [], "as_of": str(dates[0][0]) if dates else None, "prev_date": None}
+        response_cache.set(cache_key, data, 600)
+        return data
+    
+    latest_date = dates[0][0]
+    prev_date = dates[1][0]
+
+    # 2. Get signals for both dates (including all timeframes for confluence)
+    # Filter by dates using func.date to match the distinct dates found
+    latest_signals_raw = db.query(TechnicalSignal, Stock.name).\
+        join(Stock, TechnicalSignal.symbol == Stock.symbol).\
+        filter(func.date(TechnicalSignal.date) == latest_date).all()
+        
+    prev_signals_raw = db.query(TechnicalSignal).\
+        filter(func.date(TechnicalSignal.date) == prev_date).all()
+
+    # 3. Process into maps: symbol -> {timeframes: {D: bool, W: bool, M: bool}, ...}
+    def build_signal_map(raw_signals):
+        s_map = {}
+        for row in raw_signals:
+            # Handle both Tuple(TechnicalSignal, name) and TechnicalSignal
+            sig = row[0] if isinstance(row, tuple) else row
+            name = row[1] if isinstance(row, tuple) else None
+            
+            if sig.symbol not in s_map:
+                s_map[sig.symbol] = {"timeframes": {}, "name": name, "close": None, "change": None, "score": None}
+            
+            s_map[sig.symbol]["timeframes"][sig.timeframe] = sig.is_bullish
+            if sig.timeframe == 'D':
+                s_map[sig.symbol]["close"] = sig.close_price
+                s_map[sig.symbol]["change"] = sig.price_change_pct
+                s_map[sig.symbol]["score"] = sig.entry_score
+        return s_map
+
+    latest_map = build_signal_map(latest_signals_raw)
+    prev_map = build_signal_map(prev_signals_raw)
+
+    # 4. Compute changes
+    changes = []
+    for symbol, latest in latest_map.items():
+        if symbol not in prev_map:
+            continue
+            
+        prev = prev_map[symbol]
+        
+        # Confluence calculation
+        latest_conf = sum(1 for tf in latest["timeframes"].values() if tf)
+        prev_conf = sum(1 for tf in prev["timeframes"].values() if tf)
+        
+        # Daily flip
+        latest_d_bullish = latest["timeframes"].get('D', False)
+        prev_d_bullish = prev["timeframes"].get('D', False)
+        
+        change_type = None
+        if not prev_d_bullish and latest_d_bullish:
+            change_type = "newly_bullish"
+        elif prev_d_bullish and not latest_d_bullish:
+            change_type = "turned_bearish"
+        elif latest_conf > prev_conf:
+            change_type = "confluence_improved"
+        elif latest_conf < prev_conf:
+            change_type = "confluence_dropped"
+            
+        if change_type:
+            changes.append({
+                "symbol": symbol,
+                "name": latest["name"],
+                "change_type": change_type,
+                "prev_score": prev.get("score"), # Note: prev score might be from prev_map signal
+                "curr_score": latest["score"],
+                "close_price": latest["close"],
+                "price_change_pct": latest["change"]
+            })
+
+    # Sort and limit: 10 bullish flips + 10 bearish flips max as per spec
+    # newly_bullish/confluence_improved first, then turned_bearish/confluence_dropped
+    bullish_changes = [c for c in changes if c["change_type"] in ["newly_bullish", "confluence_improved"]]
+    bearish_changes = [c for c in changes if c["change_type"] in ["turned_bearish", "confluence_dropped"]]
+    
+    bullish_changes.sort(key=lambda x: x["curr_score"] or 0, reverse=True)
+    bearish_changes.sort(key=lambda x: x["curr_score"] or 0, reverse=True)
+    
+    final_changes = bullish_changes[:10] + bearish_changes[:10]
+
+    data = {
+        "as_of": str(latest_date),
+        "prev_date": str(prev_date),
+        "changes": final_changes
+    }
+    
+    response_cache.set(cache_key, data, 600)
+    return data
+
 @router.get("/market/live")
 def get_live_market(response: Response):
     cache_key = "dashboard:market_live"

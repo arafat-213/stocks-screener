@@ -18,4 +18,5 @@ export const getScreensList = () => apiClient.get('/screens');
 export const getScreenBySlug = (slug, live = false) =>
   apiClient.get(`/screens/${slug}${live ? '?live=true' : ''}`);
 export const getTopStocks = () => apiClient.get('/stocks/top');
+export const getDashboardChanges = () => apiClient.get('/dashboard/changes');
 export const getStatus = () => apiClient.get('/pipeline/status');

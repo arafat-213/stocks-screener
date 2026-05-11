@@ -1,4 +1,4 @@
-# Stock AI — Indian Market Research Tool
+# Screener AI — Indian Market Research Tool
 
 A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs a daily pipeline after market close to screen and score stocks based on fundamental and technical indicators.
 
