@@ -33,3 +33,16 @@ def test_search_stocks_basic(client, db):
     symbols = [r["symbol"] for r in results]
     assert "RELIANCE" in symbols
     assert "RELINFRA" in symbols
+
+def test_search_stocks_with_ns_suffix(client, db):
+    # Seed data
+    db.add(Stock(symbol="RELIANCE", name="Reliance Industries Ltd", sector="Energy"))
+    db.commit()
+
+    # Searching with .NS suffix (case-insensitive) should work
+    for suffix in [".NS", ".ns", ".Ns"]:
+        response = client.get(f"/api/stocks/search?q=RELIANCE{suffix}")
+        assert response.status_code == 200
+        results = response.json()
+        assert len(results) == 1
+        assert results[0]["symbol"] == "RELIANCE"

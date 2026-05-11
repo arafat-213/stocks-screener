@@ -15,7 +15,10 @@ def search_stocks(q: str = "", db: Session = Depends(get_db)):
     if len(q) < 2:
         return []
         
+    # Strip .NS (case-insensitive) for searching
     query = q.strip()
+    if query.upper().endswith(".NS"):
+        query = query[:-3]
     
     # Ordering: Exact symbol match, then symbol starts with, then name contains
     results = db.query(Stock).filter(
