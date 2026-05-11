@@ -152,6 +152,7 @@ cython_debug/
 .vscode/
 
 # Project specific
+backend/data/
 backend/logs/
 backend/reports/
 .worktrees/
