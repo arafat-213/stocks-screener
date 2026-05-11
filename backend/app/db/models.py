@@ -92,6 +92,11 @@ class FundamentalCache(Base):
     dividend_consistency = Column(Boolean, nullable=True)
     market_cap_category = Column(String(20), nullable=True)
     
+    retry_after = Column(DateTime, nullable=True)
+    fetch_attempts = Column(Integer, default=0)
+    last_error = Column(String, nullable=True)
+    force_refresh = Column(Boolean, default=False)
+    
     last_updated = Column(DateTime, default=datetime.datetime.utcnow)
     cache_version = Column(Integer, default=1)
 
@@ -106,6 +111,25 @@ class PipelineRun(Base):
     tier2_count = Column(Integer, default=0)
     errors = Column(Text)
     stop_requested = Column(Boolean, default=False)
+
+class PipelineCheckpoint(Base):
+    __tablename__ = "pipeline_checkpoints"
+    run_id = Column(String, ForeignKey('pipeline_runs.run_id'), primary_key=True)
+    phase = Column(String, primary_key=True)  
+    completed_symbols = Column(Text)  # JSON array of symbols
+    started_at = Column(DateTime)
+    completed_at = Column(DateTime, nullable=True)
+
+class PipelineError(Base):
+    __tablename__ = "pipeline_errors"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    run_id = Column(String, ForeignKey('pipeline_runs.run_id'), nullable=False)
+    symbol = Column(String, nullable=True)
+    phase = Column(String, nullable=False)  
+    error_type = Column(String, nullable=False)  
+    message = Column(Text, nullable=False)
+    traceback = Column(Text, nullable=True)
+    occurred_at = Column(DateTime, default=datetime.datetime.utcnow)
 
 class MarketSnapshot(Base):
     __tablename__ = "market_snapshots"
