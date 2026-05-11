@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Response
+import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.db.session import get_db
@@ -122,7 +123,7 @@ def get_signal_changes(response: Response, db: Session = Depends(get_db)):
     return data
 
 @router.get("/market/live")
-def get_live_market(response: Response):
+async def get_live_market(response: Response):
     cache_key = "dashboard:market_live"
     cached, hit = response_cache.get(cache_key)
     if hit:
@@ -130,7 +131,9 @@ def get_live_market(response: Response):
         return cached
     
     response.headers["X-Cache"] = "MISS"
-    data = {"market_context": get_live_market_data()}
+    # Offload blocking yfinance call to a thread
+    market_data = await asyncio.to_thread(get_live_market_data)
+    data = {"market_context": market_data}
     response_cache.set(cache_key, data, 60)
     return data
 
