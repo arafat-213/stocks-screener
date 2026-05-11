@@ -12,6 +12,7 @@ import GlobalSearch from '../components/GlobalSearch';
 import Select from '../components/ui/Select';
 import { DataTable } from '../components/ui/DataTable';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
+import StaleBanner from '../components/StaleBanner';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -233,6 +234,16 @@ const Dashboard = () => {
       {(stocksError || pipelineError || marketError) && (
         <ErrorBanner message={stocksError || pipelineError || marketError} />
       )}
+      
+      {pipeline?.is_stale && (
+        <StaleBanner 
+          lastUpdated={pipeline.scored_at} 
+          dataAgeHours={pipeline.data_age_hours}
+          onRunPipeline={handleRunPipeline}
+          isBusy={isBusy}
+        />
+      )}
+
       {!hasMarketData && !stocksLoading && (
         <div className="info-banner">Market data is currently unavailable.</div>
       )}
