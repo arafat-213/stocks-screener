@@ -81,7 +81,7 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
 
             for attempt in range(max_retries):
                 try:
-                    ticker = yf.Ticker(f"{symbol}.NS", session=yf_session)
+                    ticker = yf.Ticker(f"{symbol}.NS")
                     # Force fetch of multiple attributes to trigger potential API errors early
                     info = ticker.info
                     financials = ticker.financials

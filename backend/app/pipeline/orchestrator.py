@@ -137,7 +137,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             
             logger.info(f"Downloading Tier 1 batch {i//batch_size + 1}: {len(batch)} symbols")
             try:
-                bulk_data = yf.download(batch_ns, period="2y", progress=False, session=pipeline_session)
+                bulk_data = yf.download(batch_ns, period="2y", progress=False)
                 
                 for symbol in batch:
                     try:
@@ -191,7 +191,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
                 try:
                     current_symbol = f"{symbol} (Tier 1.5)"
-                    ticker = yf.Ticker(symbol + ".NS", session=pipeline_session)
+                    ticker = yf.Ticker(symbol + ".NS")
                     fi = ticker.fast_info
                     
                     # fast_info uses camelCase in recent yfinance versions

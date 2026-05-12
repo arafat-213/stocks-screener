@@ -10,8 +10,10 @@ from requests.adapters import HTTPAdapter
 logger = logging.getLogger(__name__)
 
 urls_expire_after = {
-    '*/v8/finance/chart/^NSEI*': 60,
-    '*/v8/finance/chart/^BSESN*': 60,
+    '*/v8/finance/chart/*NSEI*': 60,
+    '*/v8/finance/chart/*BSESN*': 60,
+    '*/v8/finance/chart/%5ENSEI*': 60,
+    '*/v8/finance/chart/%5EBSESN*': 60,
     '*': 86400,
 }
 
@@ -19,46 +21,34 @@ cache_dir = os.environ.get("CACHE_DIR", os.path.join(os.path.dirname(__file__), 
 if not os.path.exists(cache_dir):
     os.makedirs(cache_dir, exist_ok=True)
 
-# Session Isolation: Two separate sessions for API and Pipeline
-yf_cache_file = os.path.join(cache_dir, 'yfinance_cache')
+# Session Isolation: Pipeline session remains for other requests if any
 pipeline_cache_file = os.path.join(cache_dir, 'pipeline_cache')
-
-yf_session = requests_cache.CachedSession(
-    yf_cache_file,
-    urls_expire_after=urls_expire_after,
-    backend='sqlite'
-)
 
 pipeline_session = requests_cache.CachedSession(
     pipeline_cache_file,
     urls_expire_after=urls_expire_after,
-    backend='sqlite'
+    backend='sqlite',
+    allowable_codes=[200, 404]
 )
 
 retry_strategy = Retry(
-    total=5,
-    backoff_factor=2,
+    total=3,
+    backoff_factor=1,
     status_forcelist=[429, 500, 502, 503, 504],
     allowed_methods=["HEAD", "GET", "OPTIONS"],
-    respect_retry_after_header=False  # Changed to False to prevent blocking
+    respect_retry_after_header=True
 )
 
 adapter = HTTPAdapter(max_retries=retry_strategy)
-yf_session.mount("https://", adapter)
-yf_session.mount("http://", adapter)
 pipeline_session.mount("https://", adapter)
 pipeline_session.mount("http://", adapter)
-
-yf_session.headers.update({
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-})
 
 pipeline_session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 })
 
 # Backward compatibility for any direct imports of 'session'
-session = yf_session
+session = pipeline_session
 
 # Keep the original get_nse_symbols unchanged
 def get_nse_symbols(limit: int = None) -> list[str]:
@@ -66,47 +56,46 @@ def get_nse_symbols(limit: int = None) -> list[str]:
         symbols = nse_eq_symbols()
         if not symbols:
             raise ValueError("Empty list returned from nsepython")
-        
+
         if limit:
             symbols = symbols[:limit]
-            
+
         logger.info(f"Successfully fetched {len(symbols)} symbols from NSE")
         return symbols
     except Exception as e:
         logger.error(f"Failed to fetch NSE universe: {e}")
         return ["RELIANCE", "TCS", "HDFCBANK", "INFY", "HINDUNILVR"]
 
-def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = True, session=yf_session):
+def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = True):
     try:
         ticker_symbol = f"{symbol}.NS" if append_ns else symbol
-        # Inject our custom session
-        ticker = yf.Ticker(ticker_symbol, session=session)
+        # No session injection for yfinance 0.2.66+
+        ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period=period)
-        
+
         info = None
         if fetch_info:
             info = ticker.info
-        
+
         if hist.empty:
             return None, None
-            
+
         return hist, info
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {e}")
         return None, None
 
-def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str = "5d", session=yf_session) -> list[dict]:
+def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str = "5d") -> list[dict]:
     """
     Dedicated function to fetch market snapshots efficiently using yf.download.
     """
     try:
         # yf.download is much faster and less prone to rate limits for pure price data
-        # Inject our custom session here as well
-        data = yf.download(symbols, period=period, progress=False, session=session)
-        
+        # No session injection for yfinance 0.2.66+
+        data = yf.download(symbols, period=period, progress=False, threads=False)
+
         if data.empty:
             return []
-            
         snapshots = []
         for symbol in symbols:
             try:
