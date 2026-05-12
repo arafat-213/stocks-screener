@@ -241,6 +241,9 @@ const Discover = () => {
     return keys.map(key => COLUMN_META[key]);
   };
 
+  const currentColumns = useMemo(() => getColumnsForSlug(selectedSlug), [selectedSlug]);
+  const defaultColumns = useMemo(() => getColumnsForSlug('_default'), []);
+
   return (
     <div className="discover-page">
       <header className="page-header">
@@ -296,7 +299,7 @@ const Discover = () => {
                 <div className="header-actions" style={{ display: 'flex', gap: '8px' }}>
                   <ExportButton 
                     data={strategyResults}
-                    columns={getColumnsForSlug(selectedSlug)}
+                    columns={currentColumns}
                     filename={`${selectedSlug}-${new Date().toISOString().split('T')[0]}.csv`}
                     disabled={loadingStrategyResults}
                   />
@@ -307,15 +310,14 @@ const Discover = () => {
                     <RefreshCw size={14} className={loadingStrategyResults ? "animate-spin" : ""} />
                     Live Mode
                   </button>
-                </div>
-              </div>
-              <DataTable 
-                columns={getColumnsForSlug(selectedSlug)}
-                data={strategyResults}
-                loading={loadingStrategyResults}
-                initialSort={{ key: 'score', direction: 'desc' }}
-              />
-            </div>
+                  </div>
+                  </div>
+                  <DataTable 
+                  columns={currentColumns}
+                  data={strategyResults}
+                  loading={loadingStrategyResults}
+                  initialSort={{ key: 'score', direction: 'desc' }}
+                  />            </div>
           )}
         </section>
       ) : (
@@ -364,13 +366,13 @@ const Discover = () => {
               <h3>Results <span className="count-badge">{filteredStocks.length} stocks</span></h3>
               <ExportButton 
                 data={filteredStocks}
-                columns={getColumnsForSlug('_default')}
+                columns={defaultColumns}
                 filename={`interactive-screen-${new Date().toISOString().split('T')[0]}.csv`}
                 disabled={loadingStocks}
               />
             </div>
             <DataTable 
-              columns={getColumnsForSlug('_default')}
+              columns={defaultColumns}
               data={filteredStocks}
               loading={loadingStocks}
               initialSort={{ key: 'score', direction: 'desc' }}
