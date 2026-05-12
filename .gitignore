@@ -157,3 +157,4 @@ backend/logs/
 backend/reports/
 .worktrees/
 .worktrees/
+http_cache.sqlite
