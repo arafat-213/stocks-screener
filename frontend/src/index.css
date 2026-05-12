@@ -9,6 +9,7 @@
   --color-text-muted: #64748B;
   --color-border: #E2E8F0;
   --color-primary: #3B82F6;
+  --color-primary-rgb: 59, 130, 246;
   --color-bullish: #22C55E;
   --color-bearish: #EF4444;
   --color-warning: #F59E0B;
@@ -39,6 +40,7 @@
   --color-text-muted: #94A3B8;
   --color-border: #1E293B;
   --color-primary: #3B82F6;
+  --color-primary-rgb: 59, 130, 246;
   
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
