@@ -218,13 +218,13 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     ticker = yf.Ticker(symbol + ".NS")
                     fi = ticker.fast_info
                     
-                    # fast_info uses camelCase in recent yfinance versions
-                    mcap = fi.get('marketCap', 0)
-                    avg_vol = fi.get('threeMonthAverageVolume', fi.get('lastVolume', 0))
-                    price = fi.get('lastPrice', 0)
+                    # fast_info can return None for some fields on certain stocks
+                    mcap = fi.get('marketCap') or 0
+                    avg_vol = fi.get('threeMonthAverageVolume') or fi.get('lastVolume') or 0
+                    price = fi.get('lastPrice') or 0
                     
                     # Liquidity Filter: Mcap > 200 Cr, Value > 2 Cr
-                    if mcap > 2_000_000_000 and (avg_vol * price > 20_000_000):
+                    if mcap > 200_000_000 and (avg_vol * price > 2_000_000):
                         # Metadata Update (requires .info)
                         info = ticker.info
                         stock = db.query(Stock).filter_by(symbol=symbol).first()
