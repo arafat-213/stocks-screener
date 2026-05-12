@@ -15,6 +15,7 @@ import ScreenCard from '../components/ScreenCard';
 import { DataTable } from '../components/ui/DataTable';
 import Select from '../components/ui/Select';
 import Slider from '../components/ui/Slider';
+import { ExportButton } from '../components/ui/ExportButton';
 import './Dashboard.css';
 
 const SCREEN_COLUMNS = {
@@ -292,13 +293,21 @@ const Discover = () => {
                   {screens.find(s => s.slug === selectedSlug)?.label}
                   <span className="count-badge">{strategyResults.length} hits</span>
                 </h3>
-                <button 
-                  onClick={() => setLiveMode(!liveMode)}
-                  className={`live-toggle ${liveMode ? 'active' : ''}`}
-                >
-                  <RefreshCw size={14} className={loadingStrategyResults ? "animate-spin" : ""} />
-                  Live Mode
-                </button>
+                <div className="header-actions" style={{ display: 'flex', gap: '8px' }}>
+                  <ExportButton 
+                    data={strategyResults}
+                    columns={getColumnsForSlug(selectedSlug)}
+                    filename={`${selectedSlug}-${new Date().toISOString().split('T')[0]}.csv`}
+                    disabled={loadingStrategyResults}
+                  />
+                  <button 
+                    onClick={() => setLiveMode(!liveMode)}
+                    className={`live-toggle ${liveMode ? 'active' : ''}`}
+                  >
+                    <RefreshCw size={14} className={loadingStrategyResults ? "animate-spin" : ""} />
+                    Live Mode
+                  </button>
+                </div>
               </div>
               <DataTable 
                 columns={getColumnsForSlug(selectedSlug)}
@@ -351,6 +360,15 @@ const Discover = () => {
           </div>
 
           <div className="card results-card">
+            <div className="card-header">
+              <h3>Results <span className="count-badge">{filteredStocks.length} stocks</span></h3>
+              <ExportButton 
+                data={filteredStocks}
+                columns={getColumnsForSlug('_default')}
+                filename={`interactive-screen-${new Date().toISOString().split('T')[0]}.csv`}
+                disabled={loadingStocks}
+              />
+            </div>
             <DataTable 
               columns={getColumnsForSlug('_default')}
               data={filteredStocks}
