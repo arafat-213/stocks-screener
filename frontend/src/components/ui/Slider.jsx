@@ -1,6 +1,6 @@
 import './Slider.css';
 
-const Slider = ({ value, onChange, min = 0, max = 100, label, className = "" }) => {
+const Slider = ({ value, onChange, min = 0, max = 100, step = 1, label, className = "" }) => {
   return (
     <div className={`custom-slider-container ${className}`}>
       {label && (
@@ -13,8 +13,9 @@ const Slider = ({ value, onChange, min = 0, max = 100, label, className = "" }) 
         type="range" 
         min={min} 
         max={max} 
+        step={step}
         value={value} 
-        onChange={(e) => onChange(parseInt(e.target.value))}
+        onChange={(e) => onChange(parseFloat(e.target.value))}
         className="custom-range-input"
       />
       <div className="slider-track-fill" style={{ width: `${((value - min) / (max - min)) * 100}%` }}></div>

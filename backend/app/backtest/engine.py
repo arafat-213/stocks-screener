@@ -447,6 +447,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 trades = simulate_trades(symbol, sector, df, scored_dates, config)
                 
                 # Save trades to DB
+                db_trades = []
                 for t in trades:
                     db_trade = BacktestTrade(
                         run_id=run_id,
@@ -464,8 +465,11 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                         adx_at_signal=t.adx_at_signal,
                         ema_signal=t.ema_signal
                     )
-                    db.add(db_trade)
+                    db_trades.append(db_trade)
                     all_trades.append(t)
+
+                if db_trades:
+                    db.bulk_save_objects(db_trades)
 
                 symbols_processed += 1
                 
@@ -479,6 +483,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             except Exception as e:
                 logger.error(f"Error processing symbol {symbol}: {e}")
+                logger.error(traceback.format_exc())
                 continue
 
         # 3. Finalize
@@ -505,6 +510,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         logger.info(f"Backtest {run_id} completed successfully")
 
     except Exception as e:
+        db.rollback()
         logger.error(f"Backtest {run_id} failed: {e}")
         logger.error(traceback.format_exc())
         run.status = 'failed'

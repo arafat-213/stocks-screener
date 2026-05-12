@@ -137,6 +137,47 @@ def test_simulate_trades_stop_loss_triggered():
     assert trade.exit_reason == 'stop_loss'
     assert trade.return_pct <= -5.0
 
+def test_simulate_trades_target_triggered():
+    df = create_dummy_df(100)
+    # Ensure a massive rise after entry to trigger Target
+    # Entry will be at index 61
+    df.iloc[62, df.columns.get_loc('High')] = 200.0 # Huge rise
+    
+    scored_dates = [{
+        "date": df.index[60],
+        "score": 100.0,
+        "rsi": 50.0,
+        "adx": 20.0,
+        "ema_signal": "bullish"
+    }]
+    config = BacktestConfig(score_threshold=80.0, holding_days=10, target_pct=10.0)
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.exit_reason == 'target'
+    assert trade.return_pct >= 10.0
+
+def test_simulate_trades_date_filters():
+    df = create_dummy_df(100)
+    # 3 signals at different dates
+    scored_dates = [
+        {"date": df.index[60], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish"},
+        {"date": df.index[70], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish"},
+        {"date": df.index[80], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish"}
+    ]
+    
+    # Filter for middle signal only
+    config = BacktestConfig(
+        score_threshold=80.0, 
+        date_from=df.index[65].date(),
+        date_to=df.index[75].date()
+    )
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    
+    assert len(trades) == 1
+    assert trades[0].signal_date == df.index[70].date()
+
 def test_compute_metrics_all_winners():
     trades = [
         TradeResult(
@@ -159,9 +200,10 @@ def test_compute_metrics_all_winners():
     metrics = compute_metrics(trades, benchmark_df, BacktestConfig())
     
     assert metrics['total_trades'] == 2
-    assert metrics['win_rate'] == 100.0
+    assert metrics['winning_trades'] == 2
+    assert metrics['win_rate'] == 1.0  # Scale 0-1
     assert metrics['avg_return_pct'] == 7.5
-    assert metrics['total_return_pct'] == 15.0
+    assert metrics['total_return_pct'] == 7.5 # (1500 / 20000) * 100 = 7.5
     assert len(metrics['equity_curve']) == 3
     # Initial capital = 2 * 10000 = 20000
     # First point: date 2020-01-10, cumulative PL = +1000 (10% of 10000)
