@@ -21,3 +21,10 @@ export const getTopStocks = () => apiClient.get('/stocks/top');
 export const getDashboardChanges = () => apiClient.get('/dashboard/changes');
 export const getStatus = () => apiClient.get('/pipeline/status');
 export const searchStocks = (q) => apiClient.get(`/stocks/search?q=${encodeURIComponent(q)}`);
+
+// Backtest
+export const runBacktest    = (config) => apiClient.post('/backtest/run', config);
+export const getBacktestRun = (runId)  => apiClient.get(`/backtest/${runId}`);
+export const getBacktestRuns = ()      => apiClient.get('/backtest/runs');
+export const getBacktestTrades = (runId, params) =>
+  apiClient.get(`/backtest/${runId}/trades`, { params });

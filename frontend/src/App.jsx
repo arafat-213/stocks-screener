@@ -8,6 +8,7 @@ import StockDetail from './pages/StockDetail';
 import Discover from './pages/Discover';
 import Intelligence from './pages/Intelligence';
 import System from './pages/System';
+import Backtest from './pages/Backtest';
 
 import './App.css';
 
@@ -21,6 +22,7 @@ function App() {
           <Route path="/discover" element={<Discover />} />
           <Route path="/intel" element={<Intelligence />} />
           <Route path="/system" element={<System />} />
+          <Route path="/backtest" element={<Backtest />} />
         </Routes>
       </MainLayout>
     </ThemeProvider>

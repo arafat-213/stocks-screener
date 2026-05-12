@@ -5,7 +5,8 @@ import {
   Search, 
   ShieldAlert, 
   Settings, 
-  Activity
+  Activity,
+  FlaskConical
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
@@ -27,6 +28,7 @@ const MainLayout = ({ children }) => {
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { to: '/discover', label: 'Discover', icon: <Search size={20} /> },
     { to: '/intel', label: 'Intelligence', icon: <ShieldAlert size={20} /> },
+    { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={20} /> },
     { to: '/system', label: 'System', icon: <Settings size={20} /> },
   ];
 
