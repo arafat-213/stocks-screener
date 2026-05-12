@@ -49,3 +49,19 @@ def test_lifespan_health():
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+def test_startup_cleanup_in_lifespan(db: Session):
+    """Verify that the app lifespan cleans up zombie runs on startup."""
+    # 1. Manually insert a zombie run
+    run = PipelineRun(status="running", run_id="startup_zombie")
+    db.add(run)
+    db.commit()
+    
+    # 2. Re-trigger lifespan. TestClient(app) with 'with' block triggers lifespan.
+    # Note: app is already imported and client is global, but lifespan usually runs 
+    # when the first request is made or when using 'with TestClient(app) as client'.
+    with TestClient(app) as ac:
+        # On startup, it should have called cleanup_zombie_runs
+        db.refresh(run)
+        assert run.status == "failed"
+        assert "Interrupted" in run.errors

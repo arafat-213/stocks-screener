@@ -4,9 +4,9 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 import os
 from contextlib import asynccontextmanager
-from app.db.session import SessionLocal
-from app.pipeline.orchestrator import run_pipeline
-from app.routers import stocks, dashboard, reports, screens
+from app.db import session as db_session
+from app.pipeline.orchestrator import run_pipeline, cleanup_zombie_runs
+from app.routers import stocks, dashboard, reports, screens, backtest
 from sqlalchemy import text
 from app.core.cache import response_cache
 from app.db.models import PipelineRun
@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler()
 
 def scheduled_pipeline():
-    db = SessionLocal()
+    db = db_session.SessionLocal()
     try:
         run_pipeline(db)
     finally:
@@ -40,6 +40,12 @@ def scheduled_pipeline():
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
+    db = db_session.SessionLocal()
+    try:
+        cleanup_zombie_runs(db)
+    finally:
+        db.close()
+        
     scheduler.add_job(scheduled_pipeline, 'cron', day_of_week='mon-fri', hour=16, minute=5)
     scheduler.start()
     logger.info("Scheduler started")
@@ -65,6 +71,7 @@ app.add_middleware(
 app.include_router(stocks.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(screens.router, prefix="/api")
+app.include_router(backtest.router, prefix="/api")
 app.include_router(reports.router)
 
 def db_query_pipeline_run(db):
@@ -73,7 +80,7 @@ def db_query_pipeline_run(db):
 
 @app.get("/api/health")
 def health_check():
-    db = SessionLocal()
+    db = db_session.SessionLocal()
     db_status = "ok"
     pipeline_info = {
         "last_status": "unknown",

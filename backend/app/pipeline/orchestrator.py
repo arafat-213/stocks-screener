@@ -31,11 +31,28 @@ logger = logging.getLogger(__name__)
 def request_pipeline_stop(db: Session):
     run = db.query(PipelineRun).filter(PipelineRun.status == "running").order_by(PipelineRun.timestamp.desc()).first()
     if run:
-        run.stop_requested = True
-        db.commit()
-        logger.info(f"Pipeline stop requested for run {run.run_id}.")
+        if run.stop_requested:
+            # Second stop request acts as a force-stop
+            run.status = "stopped"
+            run.errors = "Force stopped by user (Double-stop)"
+            db.commit()
+            logger.info(f"Pipeline FORCE stopped for run {run.run_id}.")
+        else:
+            run.stop_requested = True
+            db.commit()
+            logger.info(f"Pipeline stop requested for run {run.run_id}. Send another stop request to force-fail if it doesn't respond.")
     else:
         logger.warning("No running pipeline found to stop.")
+
+def cleanup_zombie_runs(db: Session):
+    """Mark any runs stuck in 'running' state as failed/interrupted on startup."""
+    zombies = db.query(PipelineRun).filter(PipelineRun.status == "running").all()
+    if zombies:
+        logger.info(f"Cleaning up {len(zombies)} zombie pipeline runs.")
+        for run in zombies:
+            run.status = "failed"
+            run.errors = "Interrupted by system restart or crash"
+        db.commit()
 
 def _is_stop_requested(db: Session, run_id: str) -> bool:
     # Refresh to get latest DB state
