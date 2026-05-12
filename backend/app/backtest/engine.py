@@ -1,8 +1,17 @@
 import pandas as pd
 import pandas_ta as ta
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import datetime
+import json
+import logging
+import traceback
+from sqlalchemy.orm import Session
+from sqlalchemy import func
 from app.pipeline.scorer import calculate_fundamental_score
+from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache
+from app.pipeline.fetcher import fetch_stock_data
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class BacktestConfig:
@@ -33,6 +42,7 @@ class TradeResult:
     ema_signal: str
 
 def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
+    # ... (existing score_series implementation)
     """
     Computes technical and fundamental scores for a series of OHLCV data.
     O(n) implementation: compute indicators once, then iterate.
@@ -182,6 +192,17 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
     
     for signal in scored_dates:
         signal_date = signal['date']
+        # Convert signal_date to datetime.date if it's a Timestamp or string
+        compare_date = signal_date.date() if hasattr(signal_date, 'date') else signal_date
+        if isinstance(compare_date, str):
+             compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
+
+        # Date Filtering
+        if config.date_from and compare_date < config.date_from:
+            continue
+        if config.date_to and compare_date > config.date_to:
+            continue
+
         signal_idx = date_to_idx.get(signal_date)
         
         if signal_idx is None or signal_idx <= last_exit_idx:
@@ -280,21 +301,24 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         
     returns = [t.return_pct for t in trades]
     total_trades = len(trades)
-    wins = [r for r in returns if r > 0]
-    win_rate = (len(wins) / total_trades) * 100
+    winning_trades = [r for r in returns if r > 0]
+    win_rate = len(winning_trades) / total_trades
     
     avg_return_pct = sum(returns) / total_trades
     median_return_pct = float(pd.Series(returns).median())
     best_trade_pct = max(returns)
     worst_trade_pct = min(returns)
     
-    # Strategy total return = sum of all trade returns (simplified as requested)
-    total_return_pct = sum(returns)
+    # Starting capital = total_trades * 10,000 (fixed position size ₹10k)
+    # Total PNL = sum of each trade's profit/loss
+    starting_capital = total_trades * 10000
+    total_pnl = sum((r / 100) * 10000 for r in returns)
+    total_return_pct = (total_pnl / starting_capital) * 100 if starting_capital > 0 else 0.0
     
-    # Sharpe Ratio (simplified, assuming 0 risk-free rate)
+    # Sharpe Ratio (non-annualized)
     if len(returns) > 1:
         std_dev = pd.Series(returns).std()
-        sharpe_ratio = (avg_return_pct / std_dev) * (252**0.5) if std_dev > 0 else 0
+        sharpe_ratio = (avg_return_pct / std_dev) if std_dev > 0 else 0.0
     else:
         sharpe_ratio = 0.0
         
@@ -307,7 +331,6 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         
     # Equity Curve Construction
     # We use ₹10,000 per trade. 
-    # To start at the same base, we use total_trades * 10,000 as initial capital.
     base_capital = total_trades * 10000
     
     # Strategy returns by exit date
@@ -351,6 +374,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
                 
     return {
         "total_trades": total_trades,
+        "winning_trades": len(winning_trades),
         "win_rate": float(win_rate),
         "avg_return_pct": float(avg_return_pct),
         "median_return_pct": float(median_return_pct),
@@ -362,3 +386,127 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         "benchmark_return_pct": float(benchmark_return_pct),
         "equity_curve": equity_curve
     }
+
+def run_backtest(db: Session, run_id: str, config: BacktestConfig):
+    """
+    Main orchestrator for the backtest.
+    """
+    logger.info(f"Starting backtest {run_id}")
+    run = db.query(BacktestRun).filter(BacktestRun.run_id == run_id).first()
+    if not run:
+        logger.error(f"BacktestRun {run_id} not found")
+        return
+
+    try:
+        # Update status to running
+        run.status = 'running'
+        db.commit()
+
+        # 1. Fetch benchmark data (^NSEI)
+        logger.info("Fetching benchmark data (^NSEI)")
+        benchmark_df, _ = fetch_stock_data("^NSEI", append_ns=False, period='3y', fetch_info=False)
+        
+        # 2. Select symbols
+        symbol_query = (
+            db.query(TechnicalSignal.symbol)
+            .group_by(TechnicalSignal.symbol)
+            .order_by(func.max(TechnicalSignal.date).desc())
+            .all()
+        )
+        symbols = [row[0] for row in symbol_query]
+        if config.symbol_limit:
+            symbols = symbols[:config.symbol_limit]
+        
+        run.symbols_total = len(symbols)
+        db.commit()
+
+        all_trades = []
+        symbols_processed = 0
+
+        # Pre-fetch sector info if needed
+        stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
+        # Pre-fetch fundamental cache if needed
+        fund_caches = {}
+        if config.include_fundamentals:
+            fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
+
+        for symbol in symbols:
+            try:
+                # Fetch historical OHLCV
+                df, _ = fetch_stock_data(symbol, period='3y', fetch_info=False)
+                if df is None or df.empty:
+                    continue
+
+                fund_cache = fund_caches.get(symbol)
+                
+                # Run scoring
+                scored_dates = score_series(df, fund_cache=fund_cache, config=config)
+                
+                # Run simulation
+                sector = stocks_info.get(symbol, "Unknown")
+                trades = simulate_trades(symbol, sector, df, scored_dates, config)
+                
+                # Save trades to DB
+                for t in trades:
+                    db_trade = BacktestTrade(
+                        run_id=run_id,
+                        symbol=t.symbol,
+                        sector=t.sector,
+                        signal_date=t.signal_date,
+                        entry_date=t.entry_date,
+                        exit_date=t.exit_date,
+                        exit_reason=t.exit_reason,
+                        signal_score=t.signal_score,
+                        entry_price=t.entry_price,
+                        exit_price=t.exit_price,
+                        return_pct=t.return_pct,
+                        rsi_at_signal=t.rsi_at_signal,
+                        adx_at_signal=t.adx_at_signal,
+                        ema_signal=t.ema_signal
+                    )
+                    db.add(db_trade)
+                    all_trades.append(t)
+
+                symbols_processed += 1
+                
+                # Periodic commits
+                if symbols_processed % 10 == 0:
+                    db.commit()
+                
+                if symbols_processed % 5 == 0:
+                    run.symbols_done = symbols_processed
+                    db.commit()
+
+            except Exception as e:
+                logger.error(f"Error processing symbol {symbol}: {e}")
+                continue
+
+        # 3. Finalize
+        logger.info(f"Computing final metrics for {len(all_trades)} trades")
+        metrics = compute_metrics(all_trades, benchmark_df, config)
+        
+        # Update run with results
+        run.total_trades = metrics['total_trades']
+        run.winning_trades = metrics['winning_trades']
+        run.win_rate = metrics['win_rate']
+        run.avg_return_pct = metrics['avg_return_pct']
+        run.median_return_pct = metrics['median_return_pct']
+        run.best_trade_pct = metrics['best_trade_pct']
+        run.worst_trade_pct = metrics['worst_trade_pct']
+        run.max_drawdown_pct = metrics['max_drawdown_pct']
+        run.sharpe_ratio = metrics['sharpe_ratio']
+        run.total_return_pct = metrics['total_return_pct']
+        run.benchmark_return_pct = metrics['benchmark_return_pct']
+        run.equity_curve_json = json.dumps(metrics['equity_curve'])
+        
+        run.symbols_done = len(symbols)
+        run.status = 'complete'
+        db.commit()
+        logger.info(f"Backtest {run_id} completed successfully")
+
+    except Exception as e:
+        logger.error(f"Backtest {run_id} failed: {e}")
+        logger.error(traceback.format_exc())
+        run.status = 'failed'
+        run.error_message = str(e)
+        db.commit()
