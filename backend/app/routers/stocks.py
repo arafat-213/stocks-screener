@@ -122,7 +122,9 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
 
     fundamentals = {
         "pe": fund_data.pe if fund_data else None,
-        "roe": fund_data.roe if fund_data else None,
+        "roe": fund_cache.roe if fund_cache else (fund_data.roe if fund_data else None),
+        "roce": fund_cache.roce if fund_cache else None,
+        "pledged_percent": fund_data.pledged_percent if fund_data else None,
         "debt_equity": fund_cache.de_ratio if fund_cache else (fund_data.debt_equity if fund_data else None),
         "sector": fund_cache.sector if fund_cache else (stock.sector if stock else None),
         "eps_growth": fund_data.eps_growth if fund_data else None,

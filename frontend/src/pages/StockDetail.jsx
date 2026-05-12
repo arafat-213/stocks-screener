@@ -6,6 +6,8 @@ import { useTheme } from '../hooks/useTheme';
 import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import CandlestickChart from '../components/CandlestickChart';
+import ScoreBreakdown from '../components/ScoreBreakdown';
+import { inferScoreBreakdown } from '../utils/scoreBreakdown';
 import './StockDetail.css';
 import { useCallback } from 'react';
 
@@ -42,13 +44,14 @@ const StockDetail = () => {
   const sector = data?.sector || '';
   const fundamentals = data?.fundamentals || {};
 
+  const dailyScore = latest_scores?.['D'];
+  const breakdown = inferScoreBreakdown(dailyScore, fundamentals);
+
   const latestOhlc = ohlcv.length > 0 ? ohlcv[ohlcv.length - 1] : { close: 0 };
   const prevOhlc = ohlcv.length > 1 ? ohlcv[ohlcv.length - 2] : latestOhlc;
   const priceChange = latestOhlc.close - (prevOhlc?.close || 0);
   const priceChangePct = prevOhlc?.close && prevOhlc.close !== 0 ? (priceChange / prevOhlc.close) * 100 : 0;
   const isPositive = priceChange >= 0;
-
-  const dailyScore = latest_scores?.['D'] || {};
 
   const renderScoreCard = (tf, label) => {
     const scoreData = latest_scores?.[tf];
@@ -180,25 +183,25 @@ const StockDetail = () => {
                 <div className="fundamental-item">
                   <span className="f-label">Mom. (1m)</span>
                   <span className={`f-value ${(dailyScore?.momentum_1m || 0) >= 0 ? 'positive' : 'negative'}`}>
-                    {dailyScore?.momentum_1m ? `${(dailyScore.momentum_1m * 100).toFixed(1)}%` : 'N/A'}
+                    {dailyScore?.momentum_1m ? `${(dailyScore.momentum_1m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
                 <div className="fundamental-item">
                   <span className="f-label">Mom. (3m)</span>
                   <span className={`f-value ${(dailyScore?.momentum_3m || 0) >= 0 ? 'positive' : 'negative'}`}>
-                    {dailyScore?.momentum_3m ? `${(dailyScore.momentum_3m * 100).toFixed(1)}%` : 'N/A'}
+                    {dailyScore?.momentum_3m ? `${(dailyScore.momentum_3m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
                 <div className="fundamental-item">
                   <span className="f-label">Mom. (6m)</span>
                   <span className={`f-value ${(dailyScore?.momentum_6m || 0) >= 0 ? 'positive' : 'negative'}`}>
-                    {dailyScore?.momentum_6m ? `${(dailyScore.momentum_6m * 100).toFixed(1)}%` : 'N/A'}
+                    {dailyScore?.momentum_6m ? `${(dailyScore.momentum_6m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
                 <div className="fundamental-item">
                   <span className="f-label">Mom. (12m)</span>
                   <span className={`f-value ${(dailyScore?.momentum_12m || 0) >= 0 ? 'positive' : 'negative'}`}>
-                    {dailyScore?.momentum_12m ? `${(dailyScore.momentum_12m * 100).toFixed(1)}%` : 'N/A'}
+                    {dailyScore?.momentum_12m ? `${(dailyScore.momentum_12m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
               </div>
@@ -213,7 +216,7 @@ const StockDetail = () => {
                 </div>
                 <div className="fundamental-item">
                   <span className="f-label">ROE</span>
-                  <span className="f-value">{fundamentals.roe ? `${fundamentals.roe.toFixed(1)}%` : 'N/A'}</span>
+                  <span className="f-value">{fundamentals.roe ? `${(fundamentals.roe * 100).toFixed(1)}%` : 'N/A'}</span>
                 </div>
                 <div className="fundamental-item">
                   <span className="f-label">D/E Ratio</span>
@@ -225,6 +228,13 @@ const StockDetail = () => {
                 </div>
               </div>
             </div>
+
+            {dailyScore && (
+              <div className="score-card">
+                <h3>Score Breakdown</h3>
+                <ScoreBreakdown breakdown={breakdown} totalScore={dailyScore.score} />
+              </div>
+            )}
           </div>
         </div>
       </div>
