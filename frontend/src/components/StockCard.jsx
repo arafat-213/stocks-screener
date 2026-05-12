@@ -1,8 +1,8 @@
-
 import { Link } from 'react-router-dom';
+import WatchlistStar from './WatchlistStar';
 import './StockCard.css';
 
-const StockCard = ({ stock }) => {
+const StockCard = ({ stock, isWatched, onToggleWatch }) => {
   const {
     symbol,
     name,
@@ -45,6 +45,7 @@ const StockCard = ({ stock }) => {
             <div className="symbol-row">
               <span className="stock-symbol">{symbol.replace('.NS', '')}</span>
               <span className="sector-tag">{sector}</span>
+              <WatchlistStar symbol={symbol} isWatched={isWatched} onToggle={onToggleWatch} />
             </div>
             <div className="stock-name">{name}</div>
           </div>

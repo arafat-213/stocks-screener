@@ -5,6 +5,7 @@ import { fetchResults, getDashboardChanges } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
 import { useMarketData } from '../hooks/useMarketData';
+import { useWatchlist } from '../hooks/useWatchlist';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
 import FilterBottomSheet from '../components/FilterBottomSheet';
@@ -14,6 +15,7 @@ import { DataTable } from '../components/ui/DataTable';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import StaleBanner from '../components/StaleBanner';
 import ChangeBanner from '../components/ChangeBanner';
+import WatchlistStar from '../components/WatchlistStar';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -37,9 +39,10 @@ const Dashboard = () => {
   } = usePipeline();
   
   const { market_context, error: marketError } = useMarketData();
+  const { toggle, isWatched, count } = useWatchlist();
   
   // Filters and Sort State
-  const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', '3', '2+'
+  const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', 'watchlist', '3', '2+'
   const [selectedSectors, setSelectedSectors] = useState([]);
   const [sortBy, setSortBy] = useState('confluence'); // 'confluence', 'score', 'rsi', 'pe'
   const [viewMode, setViewMode] = useState('table'); // 'grid', 'table'
@@ -83,6 +86,7 @@ const Dashboard = () => {
     return stocks
       .filter(stock => {
         // Confluence Filter
+        if (confluenceFilter === 'watchlist') return isWatched(stock.symbol);
         if (confluenceFilter === '3') return stock.confluence_count === 3;
         if (confluenceFilter === '2+') return stock.confluence_count >= 2;
         return true;
@@ -92,10 +96,22 @@ const Dashboard = () => {
         if (selectedSectors.length === 0) return true;
         return selectedSectors.includes(stock.sector);
       });
-  }, [stocks, confluenceFilter, selectedSectors]);
+  }, [stocks, confluenceFilter, selectedSectors, isWatched]);
 
   // Column Definitions for DataTable
   const columns = [
+    {
+      key: 'watchlist',
+      label: '★',
+      sortable: false,
+      render: (_, row) => (
+        <WatchlistStar 
+          symbol={row.symbol} 
+          isWatched={isWatched(row.symbol)} 
+          onToggle={toggle} 
+        />
+      )
+    },
     { 
       key: 'symbol', 
       label: 'Symbol', 
@@ -319,7 +335,7 @@ const Dashboard = () => {
                     <h3 className="inline fs-14">Confluence</h3>
                   </div>
                   <div className="flex-row-gap-8">
-                    {['all', '3', '2+'].map(c => (
+                    {['all', 'watchlist', '3', '2+'].map(c => (
                       <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}>
                         <input 
                           type="radio" 
@@ -328,7 +344,7 @@ const Dashboard = () => {
                           checked={confluenceFilter === c}
                           onChange={(e) => setConfluenceFilter(e.target.value)}
                         />
-                        {c === 'all' ? 'All Stocks' : c === '3' ? '3/3 Only' : '2/3+'}
+                        {c === 'all' ? 'All Stocks' : c === 'watchlist' ? `Watchlist (${count})` : c === '3' ? '3/3 Only' : '2/3+'}
                       </label>
                     ))}
                   </div>
@@ -421,7 +437,12 @@ const Dashboard = () => {
           viewMode === 'grid' ? (
             <div className="stock-grid">
               {filteredStocks.map(stock => (
-                <StockCard key={stock.symbol} stock={stock} />
+                <StockCard 
+                  key={stock.symbol} 
+                  stock={stock} 
+                  isWatched={isWatched(stock.symbol)} 
+                  onToggleWatch={toggle}
+                />
               ))}
             </div>
           ) : (
@@ -451,9 +472,11 @@ const Dashboard = () => {
         selectedSectors={selectedSectors}
         toggleSector={toggleSector}
         resetFilters={resetFilters}
+        watchlistCount={count}
       />
     </div>
   );
 };
 
 export default Dashboard;
+rd;

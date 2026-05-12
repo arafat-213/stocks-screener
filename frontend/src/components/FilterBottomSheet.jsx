@@ -9,7 +9,8 @@ const FilterBottomSheet = ({
   availableSectors, 
   selectedSectors, 
   toggleSector, 
-  resetFilters 
+  resetFilters,
+  watchlistCount
 }) => {
   // We keep it in DOM but hidden for animations to work smoothly
   return (
@@ -29,13 +30,13 @@ const FilterBottomSheet = ({
           <div className="filter-section">
             <h4>Confluence</h4>
             <div className="chip-group">
-              {['all', '3', '2+'].map(c => (
+              {['all', 'watchlist', '3', '2+'].map(c => (
                 <button 
                   key={c} 
                   className={`chip ${confluenceFilter === c ? 'active' : ''}`}
                   onClick={() => setConfluenceFilter(c)}
                 >
-                  {c === 'all' ? 'All Stocks' : c === '3' ? '3/3 Only' : '2/3+'}
+                  {c === 'all' ? 'All Stocks' : c === 'watchlist' ? `Watchlist (${watchlistCount})` : c === '3' ? '3/3 Only' : '2/3+'}
                 </button>
               ))}
             </div>
