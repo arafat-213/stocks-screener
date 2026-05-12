@@ -87,37 +87,50 @@ def get_screen_results(
     results = []
 
     if not live:
-        # Latest TechnicalSignal subquery
-        latest_signal_sub = (
-            db.query(
-                models.TechnicalSignal.symbol,
-                func.max(models.TechnicalSignal.date).label("max_date")
-            )
-            .filter(models.TechnicalSignal.timeframe == 'D')
-            .group_by(models.TechnicalSignal.symbol)
-            .subquery()
-        )
-
-        # Try fetching from DB
-        db_results = (
-            db.query(
-                models.ScreenResult,
-                models.Stock,
-                models.FundamentalCache,
-                models.TechnicalSignal
-            )
-            .join(models.Stock, models.ScreenResult.symbol == models.Stock.symbol)
-            .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
-            .outerjoin(
-                models.TechnicalSignal, 
-                (models.Stock.symbol == models.TechnicalSignal.symbol) & 
-                (models.TechnicalSignal.timeframe == 'D')
-            )
-            .filter(models.TechnicalSignal.date == latest_signal_sub.c.max_date)
+        # 1. Find the latest computed_at for this specific screen
+        latest_run = (
+            db.query(func.max(models.ScreenResult.computed_at))
             .filter(models.ScreenResult.screen_slug == slug)
-            .order_by(models.ScreenResult.rank)
-            .all()
+            .scalar()
         )
+        
+        if not latest_run:
+            # No data in DB, will fallback to live
+            db_results = []
+        else:
+            # 2. Latest TechnicalSignal subquery
+            latest_signal_sub = (
+                db.query(
+                    models.TechnicalSignal.symbol,
+                    func.max(models.TechnicalSignal.date).label("max_date")
+                )
+                .filter(models.TechnicalSignal.timeframe == 'D')
+                .group_by(models.TechnicalSignal.symbol)
+                .subquery()
+            )
+
+            # 3. Fetch from DB with proper joins and latest run filter
+            db_results = (
+                db.query(
+                    models.ScreenResult,
+                    models.Stock,
+                    models.FundamentalCache,
+                    models.TechnicalSignal
+                )
+                .join(models.Stock, models.ScreenResult.symbol == models.Stock.symbol)
+                .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
+                .outerjoin(latest_signal_sub, models.Stock.symbol == latest_signal_sub.c.symbol)
+                .outerjoin(
+                    models.TechnicalSignal, 
+                    (models.Stock.symbol == models.TechnicalSignal.symbol) & 
+                    (models.TechnicalSignal.timeframe == 'D') &
+                    (models.TechnicalSignal.date == latest_signal_sub.c.max_date)
+                )
+                .filter(models.ScreenResult.screen_slug == slug)
+                .filter(models.ScreenResult.computed_at == latest_run)
+                .order_by(models.ScreenResult.rank)
+                .all()
+            )
         
         if db_results:
             for sr, stock, fund, tech in db_results:
@@ -166,12 +179,13 @@ def get_screen_results(
                 enriched = (
                     db.query(models.Stock, models.FundamentalCache, models.TechnicalSignal)
                     .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
+                    .outerjoin(latest_signal_sub, models.Stock.symbol == latest_signal_sub.c.symbol)
                     .outerjoin(
                         models.TechnicalSignal, 
                         (models.Stock.symbol == models.TechnicalSignal.symbol) & 
-                        (models.TechnicalSignal.timeframe == 'D')
+                        (models.TechnicalSignal.timeframe == 'D') &
+                        (models.TechnicalSignal.date == latest_signal_sub.c.max_date)
                     )
-                    .filter(models.TechnicalSignal.date == latest_signal_sub.c.max_date)
                     .filter(models.Stock.symbol.in_(live_symbols))
                     .all()
                 )
