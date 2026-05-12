@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import pytest
-from app.backtest.engine import score_series, BacktestConfig
+from app.backtest.engine import score_series, BacktestConfig, simulate_trades, compute_metrics, TradeResult
 
 def create_dummy_df(n=200):
     np.random.seed(42)
@@ -96,3 +96,73 @@ def test_score_series_min_bars():
     df = create_dummy_df(50)
     results = score_series(df)
     assert len(results) == 0
+
+def test_simulate_trades_entry_is_next_day_open():
+    df = create_dummy_df(100)
+    # Force a signal at index 60
+    scored_dates = [{
+        "date": df.index[60],
+        "score": 100.0,
+        "rsi": 50.0,
+        "adx": 20.0,
+        "ema_signal": "bullish"
+    }]
+    config = BacktestConfig(score_threshold=80.0, holding_days=5)
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.signal_date == df.index[60].date()
+    assert trade.entry_date == df.index[61].date()
+    assert trade.entry_price == float(df.iloc[61]['Open'])
+
+def test_simulate_trades_stop_loss_triggered():
+    df = create_dummy_df(100)
+    # Ensure a massive drop after entry to trigger SL
+    # Entry will be at index 61
+    df.iloc[62, df.columns.get_loc('Low')] = 50.0 # Huge drop
+    
+    scored_dates = [{
+        "date": df.index[60],
+        "score": 100.0,
+        "rsi": 50.0,
+        "adx": 20.0,
+        "ema_signal": "bullish"
+    }]
+    config = BacktestConfig(score_threshold=80.0, holding_days=10, stop_loss_pct=5.0)
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.exit_reason == 'stop_loss'
+    assert trade.return_pct <= -5.0
+
+def test_compute_metrics_all_winners():
+    trades = [
+        TradeResult(
+            symbol="T1.NS", sector="S1", signal_date=None, entry_date=None, 
+            exit_date=pd.Timestamp('2020-01-10').date(), exit_reason='target',
+            signal_score=90.0, entry_price=100.0, exit_price=110.0, return_pct=10.0,
+            rsi_at_signal=0, adx_at_signal=0, ema_signal=""
+        ),
+        TradeResult(
+            symbol="T2.NS", sector="S2", signal_date=None, entry_date=None, 
+            exit_date=pd.Timestamp('2020-01-15').date(), exit_reason='holding_period',
+            signal_score=85.0, entry_price=100.0, exit_price=105.0, return_pct=5.0,
+            rsi_at_signal=0, adx_at_signal=0, ema_signal=""
+        )
+    ]
+    benchmark_df = pd.DataFrame({
+        'Close': [10000, 10100, 10200]
+    }, index=pd.to_datetime(['2020-01-10', '2020-01-15', '2020-01-20']))
+    
+    metrics = compute_metrics(trades, benchmark_df, BacktestConfig())
+    
+    assert metrics['total_trades'] == 2
+    assert metrics['win_rate'] == 100.0
+    assert metrics['avg_return_pct'] == 7.5
+    assert metrics['total_return_pct'] == 15.0
+    assert len(metrics['equity_curve']) == 3
+    # Initial capital = 2 * 10000 = 20000
+    # First point: date 2020-01-10, cumulative PL = +1000 (10% of 10000)
+    assert metrics['equity_curve'][0]['equity'] == 21000.0
