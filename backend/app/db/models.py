@@ -148,3 +148,45 @@ class ScreenResult(Base):
     rank = Column(Integer)
     score_used = Column(Float)
     computed_at = Column(Date, default=datetime.date.today)
+
+class BacktestRun(Base):
+    __tablename__ = "backtest_runs"
+
+    run_id          = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
+    created_at      = Column(DateTime, default=datetime.datetime.utcnow)
+    status          = Column(String, nullable=False) # 'pending', 'running', 'complete', 'failed'
+    config          = Column(Text, nullable=False)   # JSON string
+    symbols_total   = Column(Integer, default=0)
+    symbols_done    = Column(Integer, default=0)
+    error_message   = Column(Text, nullable=True)
+    total_trades     = Column(Integer, nullable=True)
+    winning_trades   = Column(Integer, nullable=True)
+    win_rate         = Column(Float, nullable=True)
+    avg_return_pct   = Column(Float, nullable=True)
+    median_return_pct = Column(Float, nullable=True)
+    best_trade_pct   = Column(Float, nullable=True)
+    worst_trade_pct  = Column(Float, nullable=True)
+    max_drawdown_pct = Column(Float, nullable=True)
+    sharpe_ratio     = Column(Float, nullable=True)
+    total_return_pct = Column(Float, nullable=True)
+    benchmark_return_pct = Column(Float, nullable=True)
+    equity_curve_json = Column(Text, nullable=True)
+
+class BacktestTrade(Base):
+    __tablename__ = "backtest_trades"
+
+    id              = Column(Integer, primary_key=True, autoincrement=True)
+    run_id          = Column(String, ForeignKey('backtest_runs.run_id'), nullable=False)
+    symbol          = Column(String, nullable=False)
+    sector          = Column(String, nullable=True)
+    signal_date     = Column(Date, nullable=False)
+    entry_date      = Column(Date, nullable=False)
+    exit_date       = Column(Date, nullable=False)
+    exit_reason     = Column(String, nullable=False) # 'holding_period', 'stop_loss', 'target'
+    signal_score    = Column(Float, nullable=False)
+    entry_price     = Column(Float, nullable=False)
+    exit_price      = Column(Float, nullable=False)
+    return_pct      = Column(Float, nullable=False)
+    rsi_at_signal   = Column(Float, nullable=True)
+    adx_at_signal   = Column(Float, nullable=True)
+    ema_signal      = Column(String, nullable=True)
