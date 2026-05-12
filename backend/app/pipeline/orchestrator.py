@@ -139,12 +139,14 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         hist_cache = {} # Temporary cache for hist data and info to avoid re-fetching
         
         fetched_count = run.stocks_fetched
-        batch_size = 500
+        batch_size = 100
         remaining_symbols = [s for s in symbols if s not in completed_t1]
         
         logger.info(f"Starting Tier 1 screening for {len(remaining_symbols)} remaining symbols (Batch size: {batch_size})")
         
         for i in range(0, len(remaining_symbols), batch_size):
+            # Use a fresh check to avoid session caching issues
+            db.expire_all()
             if _is_stop_requested(db, run.run_id):
                 logger.info("Pipeline stop signal received during Tier 1.")
                 run.status = "stopped"
@@ -157,7 +159,9 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             
             logger.info(f"Downloading Tier 1 batch {i//batch_size + 1}: {len(batch)} symbols")
             try:
-                bulk_data = yf.download(batch_ns, period="2y", progress=False)
+                # Add a timeout via proxy/session if needed, but smaller batches are better.
+                # yfinance download doesn't have a clean timeout param for the whole operation.
+                bulk_data = yf.download(batch_ns, period="2y", progress=False, timeout=30)
                 
                 for symbol in batch:
                     try:
