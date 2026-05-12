@@ -274,6 +274,7 @@ def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
         "data_age_hours": data_age_hours,
         "is_stale": is_stale,
         "stocks_fetched": run.stocks_fetched,
+        "total_symbols": run.total_symbols or 0,
         "tier1_count": run.tier1_count,
         "tier2_count": run.tier2_count,
         "stocks_scored": run.stocks_scored,

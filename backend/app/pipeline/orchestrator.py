@@ -113,6 +113,9 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         if not symbols:
             raise ValueError("No symbols fetched")
             
+        run.total_symbols = len(symbols)
+        db.commit()
+            
         # 1. Tier 1 Screening (Bulk Download + Technical Filter)
         completed_t1 = _get_completed_symbols(db, run.run_id, "tier1")
         tier1_survivors = list(_get_completed_symbols(db, run.run_id, "tier1_survivors"))

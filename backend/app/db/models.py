@@ -107,6 +107,7 @@ class PipelineRun(Base):
     status = Column(String)
     stocks_fetched = Column(Integer)
     stocks_scored = Column(Integer)
+    total_symbols = Column(Integer, default=0)
     tier1_count = Column(Integer, default=0)
     tier2_count = Column(Integer, default=0)
     errors = Column(Text)

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, Clock } from 'lucide-react';
+import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { fetchResults, getDashboardChanges } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
@@ -16,6 +16,7 @@ import { ErrorBanner } from '../components/ui/ErrorBanner';
 import StaleBanner from '../components/StaleBanner';
 import ChangeBanner from '../components/ChangeBanner';
 import WatchlistStar from '../components/WatchlistStar';
+import PipelineProgress from '../components/PipelineProgress';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -281,11 +282,17 @@ const Dashboard = () => {
               <div className="summary-item status-badge running">
                 <div className="flex-center-gap-12">
                   <RefreshCcw size={16} className="spin" />
-                  <div>
+                  <div style={{ flex: 1 }}>
                     <span className="label">Pipeline Running</span>
-                    <span className="value fs-12">
+                    <span className="value fs-12" style={{ display: 'block', marginBottom: '4px' }}>
                       {pipeline?.stocks_fetched || 0} fetched | {pipeline?.stocks_scored || 0} scored
                     </span>
+                    <PipelineProgress
+                      fetched={pipeline?.stocks_fetched || 0}
+                      scored={pipeline?.stocks_scored || 0}
+                      total={pipeline?.total_symbols || 0}
+                      tier1Count={pipeline?.tier1_count || 0}
+                    />
                   </div>
                   <button
                     className="stop-button"
@@ -479,4 +486,3 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
-rd;
