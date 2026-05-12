@@ -1,4 +1,6 @@
 import pytest
+from unittest.mock import patch
+import pandas as pd
 from app.db.models import Stock, TechnicalSignal, FundamentalData, FundamentalCache
 import datetime
 
@@ -7,7 +9,12 @@ def test_get_stock_detail_404(client):
     assert response.status_code == 404
     assert response.json()["detail"] == "Stock not found"
 
-def test_get_stock_detail_success(db, client):
+@patch('app.routers.stocks.fetch_stock_data')
+def test_get_stock_detail_success(mock_fetch, db, client):
+    # Mock OHLCV data
+    mock_df = pd.DataFrame({"Close": [100.0], "Open": [95.0], "High": [105.0], "Low": [90.0], "Volume": [1000]}, index=pd.to_datetime(["2024-05-11"]))
+    mock_df.index.name = "Date"
+    mock_fetch.return_value = (mock_df, {})
     # Seed data
     stock = Stock(symbol="TEST_RELIANCE", name="Test Reliance", sector="Energy")
     db.add(stock)

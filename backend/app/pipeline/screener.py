@@ -24,17 +24,17 @@ def needs_cache_refresh(cache, seven_days_ago: datetime.datetime) -> bool:
     if getattr(cache, 'force_refresh', False): return True
     
     # Version check
-    if getattr(cache, 'cache_version', 0) < CURRENT_SCREENER_VERSION: return True
+    if (getattr(cache, 'cache_version', 0) or 0) < CURRENT_SCREENER_VERSION: return True
     
-    # Age check
-    last_upd = getattr(cache, 'last_updated', None)
-    if not last_upd or last_upd < seven_days_ago: return True
-    
-    # Backoff check
+    # Backoff check (Takes precedence over age)
     retry_after = getattr(cache, 'retry_after', None)
     if retry_after and datetime.datetime.utcnow() < retry_after:
         return False
         
+    # Age check
+    last_upd = getattr(cache, 'last_updated', None)
+    if not last_upd or last_upd < seven_days_ago: return True
+    
     return False
 
 def check_profitability_streak(financials) -> bool:
@@ -58,7 +58,7 @@ def check_profitability_streak(financials) -> bool:
 
 import random
 
-from app.pipeline.fetcher import session as yf_session
+from app.pipeline.fetcher import pipeline_session as yf_session
 from app.pipeline.errors import classify_error
 
 def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):

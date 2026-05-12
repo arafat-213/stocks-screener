@@ -16,8 +16,8 @@ To reduce request volume from ~7,000+ to <1,000 per day:
 
 1.  **Tier 1: Segmented Bulk OHLCV (2,400 symbols)**
     *   Divide the universe into batches of 500.
-    *   Use `yf.download(batch, period="2y", session=pipeline_session)` for each batch.
-    *   Extract per-symbol DataFrames using `bulk_data.xs(symbol, axis=1, level=1)`.
+    *   Use `yf.download([s + ".NS" for s in batch], period="2y", session=pipeline_session)` for each batch.
+    *   Extract per-symbol DataFrames using `bulk_data.xs(symbol + ".NS", axis=1, level=1)`.
 2.  **Tier 1.1: Technical Filtering (Pure Python)**
     *   Run EMA, RSI, and Volume scorers on the bulk OHLCV data.
     *   Filter down to ~500-800 technical survivors.
@@ -52,10 +52,9 @@ To prevent the dashboard from hanging during pipeline runs:
 ### 3.2 Slicing Helper
 ```python
 def slice_bulk_df(bulk_df, symbol):
-    # Extracts [Open, High, Low, Close, Volume] for a symbol from a MultiIndex DF
     try:
-        df = bulk_df.xs(symbol, axis=1, level=1).copy()
-        return df.dropna()
+        df = bulk_df.xs(symbol + ".NS", axis=1, level=1).copy()
+        return df.dropna(how='all')  # only drop rows where ALL columns are NaN
     except KeyError:
         return None
 ```
@@ -64,6 +63,7 @@ def slice_bulk_df(bulk_df, symbol):
 *   **Empty Bulk Batch:** If `yf.download` returns an empty DF for a batch, log a `PipelineError` for that batch and proceed to the next to ensure partial completion.
 *   **Partial MultiIndex:** If some symbols are missing from the bulk response, they are treated as failed and skipped during slicing.
 *   **Persistent 429s:** With `respect_retry_after_header=False`, the pipeline will fail faster on persistent throttling, which is preferred over hanging the entire system.
+*   **Single-Symbol Batch Fallback:** If a batch contains only one symbol, `yf.download` may return a flat DataFrame instead of a MultiIndex. Detect with `isinstance(bulk_df.columns, pd.MultiIndex)` and handle both shapes in `slice_bulk_df`.
 
 ## 5. Implementation Plan (Summary)
 1.  Refactor `fetcher.py`: Isolate sessions and update retry logic.

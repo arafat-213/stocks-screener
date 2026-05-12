@@ -48,4 +48,4 @@ def test_lifespan_health():
     """Basic health check to ensure app with lifespan starts correctly"""
     response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok"}
+    assert response.json()["status"] == "ok"

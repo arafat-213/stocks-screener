@@ -2,7 +2,7 @@ import pytest
 import datetime
 from unittest.mock import patch, MagicMock
 from app.pipeline.screener import fetch_and_cache_deep_fundamentals, CURRENT_SCREENER_VERSION
-from app.pipeline.fetcher import session as yf_session
+from app.pipeline.fetcher import pipeline_session
 
 @patch('app.pipeline.screener.yf.Ticker')
 def test_screener_uses_resilient_session(mock_ticker):
@@ -23,4 +23,4 @@ def test_screener_uses_resilient_session(mock_ticker):
     
     fetch_and_cache_deep_fundamentals(["TEST"], mock_db_session)
     
-    mock_ticker.assert_called_with("TEST.NS", session=yf_session)
+    mock_ticker.assert_called_with("TEST.NS", session=pipeline_session)

@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.core.cache import response_cache
 from app.screens.cache import screen_cache
+from unittest.mock import patch
 
 client = TestClient(app)
 
@@ -35,7 +36,9 @@ def test_screens_cache_clear():
     response = client.get("/api/screens/52w-high")
     assert response.headers["X-Cache"] == "MISS"
 
-def test_dashboard_live_market_caching():
+@patch('app.routers.dashboard.get_live_market_data')
+def test_dashboard_live_market_caching(mock_get_market):
+    mock_get_market.return_value = [{"symbol": "^NSEI", "close": 20000, "change_pct": 1.5}]
     # 1. First request - MISS
     response = client.get("/api/market/live")
     assert response.status_code == 200

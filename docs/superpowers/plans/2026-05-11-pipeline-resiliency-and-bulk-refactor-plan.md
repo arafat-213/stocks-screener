@@ -1,6 +1,6 @@
 # Pipeline Resiliency and Bulk Refactor Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Fix Yahoo Finance 429 rate limiting by implementing a "Bulk-First" pipeline and resolve API unresponsiveness by isolating network sessions and offloading blocking calls.
 
@@ -17,7 +17,7 @@
 **Files:**
 - Modify: `backend/app/pipeline/fetcher.py`
 
-- [ ] **Step 1: Isolate Sessions and Update Retry Logic**
+- [x] **Step 1: Isolate Sessions and Update Retry Logic**
 Modify `backend/app/pipeline/fetcher.py` to create separate session objects and set `respect_retry_after_header=False`.
 
 ```python
@@ -67,7 +67,7 @@ pipeline_session.headers.update({
 # (Update fetch_stock_data and fetch_market_snapshots to use yf_session)
 ```
 
-- [ ] **Step 2: Add `slice_bulk_df` Helper**
+- [x] **Step 2: Add `slice_bulk_df` Helper**
 Add the helper to `backend/app/pipeline/fetcher.py` to handle MultiIndex slicing and single-symbol fallback.
 
 ```python
@@ -89,7 +89,7 @@ def slice_bulk_df(bulk_df: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
         return None
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add backend/app/pipeline/fetcher.py
 git commit -m "feat: isolate pipeline session and add bulk slicing helper"
@@ -102,7 +102,7 @@ git commit -m "feat: isolate pipeline session and add bulk slicing helper"
 **Files:**
 - Create: `backend/tests/unit/test_bulk_refactor.py`
 
-- [ ] **Step 1: Write test for `slice_bulk_df`**
+- [x] **Step 1: Write test for `slice_bulk_df`**
 Test both MultiIndex and single-symbol scenarios.
 
 ```python
@@ -125,11 +125,11 @@ def test_slice_bulk_df_single():
     assert sliced.iloc[0]['Close'] == 100
 ```
 
-- [ ] **Step 2: Run tests**
+- [x] **Step 2: Run tests**
 Run: `pytest backend/tests/unit/test_bulk_refactor.py`
 Expected: PASS
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add backend/tests/unit/test_bulk_refactor.py
 git commit -m "test: add unit tests for bulk slicing"
@@ -142,10 +142,10 @@ git commit -m "test: add unit tests for bulk slicing"
 **Files:**
 - Modify: `backend/app/pipeline/orchestrator.py`
 
-- [ ] **Step 1: Implement Segmented Bulk Download**
+- [x] **Step 1: Implement Segmented Bulk Download**
 Modify `run_pipeline` in `backend/app/pipeline/orchestrator.py` to fetch symbols in batches of 500 using `yf.download`.
 
-- [ ] **Step 2: Implement Technical Filter (Tier 1.1)**
+- [x] **Step 2: Implement Technical Filter (Tier 1.1)**
 Run `calculate_combined_score` (technical only) on the bulk data to identify survivors (~500-800).
 
 ```python
@@ -164,12 +164,12 @@ for i in range(0, len(symbols), batch_size):
         if hist is None: continue
         
         # Technical Score Only
-        scores = calculate_combined_score(hist, None) # None for info means technical only
-        if scores['is_bullish'] or scores['combined_score'] > 40:
+        scores = calculate_combined_score(hist, {})  # Pass empty dict, not None
+        if scores['is_bullish'] or scores['score'] > 40:  # 'score', not 'combined_score'
             technical_survivors.append((symbol, hist))
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add backend/app/pipeline/orchestrator.py
 git commit -m "feat: implement segmented bulk download and technical filtering"
@@ -183,10 +183,14 @@ git commit -m "feat: implement segmented bulk download and technical filtering"
 - Modify: `backend/app/pipeline/orchestrator.py`
 - Modify: `backend/app/pipeline/screener.py`
 
-- [ ] **Step 1: Implement Surgical Liquidity Check (Tier 1.5)**
+- [x] **Step 0 (addition): Update screener.py import**
+In `backend/app/pipeline/screener.py`, update the import:
+`from app.pipeline.fetcher import session as yf_session`  →  `from app.pipeline.fetcher import pipeline_session as yf_session`
+
+- [x] **Step 1: Implement Surgical Liquidity Check (Tier 1.5)**
 For the `technical_survivors`, call `ticker.fast_info` to filter by `market_cap` and `averageVolume`.
 
-- [ ] **Step 2: Deep Fundamentals (Tier 2)**
+- [x] **Step 2: Deep Fundamentals (Tier 2)**
 Proceed with surgical `.info` and `.financials` for the final ~300 survivors.
 
 ```python
@@ -195,18 +199,17 @@ final_survivors = []
 for symbol, hist in technical_survivors:
     ticker = yf.Ticker(symbol + ".NS", session=pipeline_session)
     fi = ticker.fast_info
-    
-    # Simple T1.5 filters
-    mcap = fi.get('market_cap', 0)
-    avg_vol = fi.get('last_volume', 0) # or average_volume
-    
-    if mcap > 2_000_000_000 and (avg_vol * fi.get('last_price', 0) > 20_000_000):
+    mcap = getattr(fi, 'market_cap', None) or 0
+    last_price = getattr(fi, 'last_price', None) or 0
+    avg_vol = getattr(fi, 'three_month_average_volume', None) or 0
+
+    if mcap > 2_000_000_000 and (avg_vol * last_price > 20_000_000):
         final_survivors.append(symbol)
 
 # Proceed to Tier 2 with final_survivors...
 ```
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 ```bash
 git add backend/app/pipeline/orchestrator.py backend/app/pipeline/screener.py
 git commit -m "feat: implement tier 1.5 liquidity check and surgical fundamentals"
@@ -219,7 +222,7 @@ git commit -m "feat: implement tier 1.5 liquidity check and surgical fundamental
 **Files:**
 - Modify: `backend/app/routers/dashboard.py`
 
-- [ ] **Step 1: Convert `/market/live` to Async**
+- [x] **Step 1: Convert `/market/live` to Async**
 Use `asyncio.to_thread` to offload the yfinance market snapshot call.
 
 ```python
@@ -242,7 +245,7 @@ async def get_live_market(response: Response):
     return data
 ```
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 ```bash
 git add backend/app/routers/dashboard.py
 git commit -m "fix: make market-live endpoint async-safe"
@@ -252,17 +255,17 @@ git commit -m "fix: make market-live endpoint async-safe"
 
 ### Task 6: Verification
 
-- [ ] **Step 1: Run Pipeline with small limit**
+- [x] **Step 1: Run Pipeline with small limit**
 Run: `python3 -c "from app.db.session import SessionLocal; from app.pipeline.orchestrator import run_pipeline; db=SessionLocal(); run_pipeline(db, limit=50)"`
 Check `logs/pipeline.log` for bulk download messages.
 
-- [ ] **Step 2: Verify Dashboard responsiveness**
+- [x] **Step 2: Verify Dashboard responsiveness**
 Start server: `uvicorn app.main:app`
 Trigger pipeline: `curl -X POST http://localhost:8000/api/screener/run -d '{"limit": 100}'`
 Simultaneously call health/live: `curl http://localhost:8000/api/health` and `curl http://localhost:8000/api/market/live`
 Expected: Both return promptly while pipeline is running.
 
-- [ ] **Step 3: Commit all remaining**
+- [x] **Step 3: Commit all remaining**
 ```bash
 git add .
 git commit -m "chore: final verification and cleanup"

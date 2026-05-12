@@ -23,9 +23,10 @@ def test_needs_cache_refresh():
     
     # Case 5: Recent cache, but in backoff
     cache = FundamentalCache(
-        symbol="TEST", 
+        symbol="TEST",
         last_updated=datetime.datetime.utcnow() - datetime.timedelta(days=8), # Age says YES
-        retry_after=datetime.datetime.utcnow() + datetime.timedelta(hours=1) # Backoff says NO
+        retry_after=datetime.datetime.utcnow() + datetime.timedelta(hours=1), # Backoff says NO
+        cache_version=1
     )
     assert needs_cache_refresh(cache, seven_days_ago) == False
 
