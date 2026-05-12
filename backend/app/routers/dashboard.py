@@ -2,12 +2,14 @@ from fastapi import APIRouter, Depends, Response
 import asyncio
 from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.engine import Row
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
 from app.core.cache import response_cache
 
 router = APIRouter()
+market_lock = asyncio.Lock()
 
 def get_live_market_data():
     # Relies entirely on requests-cache for the 60s TTL
@@ -49,9 +51,13 @@ def get_signal_changes(response: Response, db: Session = Depends(get_db)):
     def build_signal_map(raw_signals):
         s_map = {}
         for row in raw_signals:
-            # Handle both Tuple(TechnicalSignal, name) and TechnicalSignal
-            sig = row[0] if isinstance(row, tuple) else row
-            name = row[1] if isinstance(row, tuple) else None
+            # SQLAlchemy 2.0 Row objects are not tuples. Handle both cases.
+            if isinstance(row, (tuple, Row)):
+                sig = row[0]
+                name = row[1] if len(row) > 1 else None
+            else:
+                sig = row
+                name = None
             
             if sig.symbol not in s_map:
                 s_map[sig.symbol] = {"timeframes": {}, "name": name, "close": None, "change": None, "score": None}
@@ -130,12 +136,19 @@ async def get_live_market(response: Response):
         response.headers["X-Cache"] = "HIT"
         return cached
     
-    response.headers["X-Cache"] = "MISS"
-    # Offload blocking yfinance call to a thread
-    market_data = await asyncio.to_thread(get_live_market_data)
-    data = {"market_context": market_data}
-    response_cache.set(cache_key, data, 60)
-    return data
+    async with market_lock:
+        # Re-check cache after acquiring lock
+        cached, hit = response_cache.get(cache_key)
+        if hit:
+            response.headers["X-Cache"] = "HIT"
+            return cached
+
+        response.headers["X-Cache"] = "MISS"
+        # Offload blocking yfinance call to a thread
+        market_data = await asyncio.to_thread(get_live_market_data)
+        data = {"market_context": market_data}
+        response_cache.set(cache_key, data, 60)
+        return data
 
 @router.get("/screener/results")
 def get_dashboard_results(response: Response, db: Session = Depends(get_db)):
