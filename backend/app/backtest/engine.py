@@ -173,23 +173,23 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
             ema5 > ema13 > ema26 and price > ema26
         )
 
-        # Hard Filters (zero out score if violated, skip ADX weighting)
+        # 1. EMA200 Hard Filter (only one remains)
         ema200 = row.get('EMA_200')
-        hard_filter_triggered = (
-            (pd.notna(rsi) and rsi > 70) or
-            (pd.notna(ema200) and price < ema200) or
-            (pd.notna(adx) and adx < 20)
-        )
+        if pd.notna(ema200) and price < ema200:
+            total_score = 0.0
+        else:
+            # RSI overbought: penalty instead of block
+            if pd.notna(rsi) and rsi > 70:
+                score *= 0.5
 
-        if not hard_filter_triggered:
+            # ADX: scoring boost only
             if pd.notna(adx):
                 if adx > 30:
                     score += 10
                 elif adx > 20:
                     score += 5
+            
             total_score = score + fund_score
-        else:
-            total_score = 0.0
         
         results.append({
             "date": df.index[i],
@@ -232,11 +232,6 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
         if config.date_to and compare_date > config.date_to:
             continue
 
-        # Regime Filter
-        if config.use_regime_filter and regime_dict is not None:
-            if not regime_dict.get(compare_date, False):
-                continue
-                
         # Volume Breakout Filter
         if config.require_volume_breakout:
             if not signal.get('volume_breakout', False):
@@ -253,8 +248,16 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
             if entry_idx >= len(df):
                 break
                 
-            entry_price = df.iloc[entry_idx]['Open']
             entry_date = df.index[entry_idx]
+            # Convert to date for regime check
+            entry_compare_date = entry_date.date() if hasattr(entry_date, 'date') else entry_date
+            
+            # Regime Filter (on ENTRY date)
+            if config.use_regime_filter and regime_dict is not None:
+                if not regime_dict.get(entry_compare_date, False):
+                    continue
+
+            entry_price = df.iloc[entry_idx]['Open']
             
             # Exit conditions
             exit_price = None
@@ -458,7 +461,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         regime_dict = {}
         if benchmark_df is not None and not benchmark_df.empty:
-            benchmark_df['EMA_50'] = benchmark_df['Close'].rolling(50).mean()
+            benchmark_df.ta.ema(length=50, append=True)
             # Map index date to boolean
             valid = benchmark_df[benchmark_df['EMA_50'].notna()]
             regime_dict = dict(zip(

@@ -66,8 +66,9 @@ def test_regime_filter_blocks_trade():
         "volume_breakout": False
     }]
     
-    # Regime says FALSE for this date
-    regime_dict = {signal_date.date(): False}
+    # Regime says FALSE for entry date (T+1)
+    entry_date = df.index[11].date()
+    regime_dict = {entry_date: False}
     
     config = BacktestConfig(use_regime_filter=True)
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, regime_dict=regime_dict)
@@ -86,8 +87,9 @@ def test_regime_filter_allows_trade():
         "volume_breakout": False
     }]
     
-    # Regime says TRUE for this date
-    regime_dict = {signal_date.date(): True}
+    # Regime says TRUE for entry date (T+1)
+    entry_date = df.index[11].date()
+    regime_dict = {entry_date: True}
     
     config = BacktestConfig(use_regime_filter=True)
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, regime_dict=regime_dict)

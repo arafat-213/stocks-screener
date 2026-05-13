@@ -20,6 +20,12 @@ class BacktestRequest(BaseModel):
         description="0 disables stop-loss.")
     target_pct: float = Field(default=0.0, ge=0, le=200,
         description="0 disables profit target.")
+    trailing_stop_pct: float = Field(default=0.0, ge=0, le=50,
+        description="Percentage drop from peak to trigger exit.")
+    require_volume_breakout: bool = Field(default=False,
+        description="If true, requires volume > 2x SMA20 for entry.")
+    use_regime_filter: bool = Field(default=True,
+        description="If true, only enters trades when Nifty is in a bull regime.")
     include_fundamentals: bool = False
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
     date_from: Optional[str] = None   # "YYYY-MM-DD"
@@ -115,6 +121,9 @@ def start_backtest(
         holding_days=request.holding_days,
         stop_loss_pct=request.stop_loss_pct,
         target_pct=request.target_pct,
+        trailing_stop_pct=request.trailing_stop_pct,
+        require_volume_breakout=request.require_volume_breakout,
+        use_regime_filter=request.use_regime_filter,
         include_fundamentals=request.include_fundamentals,
         symbol_limit=request.symbol_limit,
         date_from=date_from,
