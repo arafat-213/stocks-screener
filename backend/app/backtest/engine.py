@@ -122,6 +122,12 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         
         is_green = price > open_price
         
+        # Volume Breakout
+        volume_breakout = False
+        if pd.notna(volume) and pd.notna(sma20_vol):
+            if volume > 2.0 * sma20_vol and is_green:
+                volume_breakout = True
+        
         # 1. EMA Alignment (20 pts)
         if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
             if ema5 > ema13 > ema26 and price > ema26:
@@ -166,8 +172,24 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
             pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
             ema5 > ema13 > ema26 and price > ema26
         )
-        
-        total_score = score + fund_score
+
+        # Hard Filters (zero out score if violated, skip ADX weighting)
+        ema200 = row.get('EMA_200')
+        hard_filter_triggered = (
+            (pd.notna(rsi) and rsi > 70) or
+            (pd.notna(ema200) and price < ema200) or
+            (pd.notna(adx) and adx < 20)
+        )
+
+        if not hard_filter_triggered:
+            if pd.notna(adx):
+                if adx > 30:
+                    score += 10
+                elif adx > 20:
+                    score += 5
+            total_score = score + fund_score
+        else:
+            total_score = 0.0
         
         results.append({
             "date": df.index[i],
@@ -179,7 +201,8 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
             "volume_signal": volume_signal,
             "rsi_signal": rsi_signal,
             "close": float(price),
-            "open": float(open_price)
+            "open": float(open_price),
+            "volume_breakout": bool(volume_breakout)
         })
         
     return results
