@@ -197,7 +197,8 @@ def test_compute_metrics_all_winners():
         'Close': [10000, 10100, 10200]
     }, index=pd.to_datetime(['2020-01-10', '2020-01-15', '2020-01-20']))
     
-    metrics = compute_metrics(trades, benchmark_df, BacktestConfig())
+    config = BacktestConfig(starting_capital=20000.0, position_size=10000.0)
+    metrics = compute_metrics(trades, benchmark_df, config)
     
     assert metrics['total_trades'] == 2
     assert metrics['winning_trades'] == 2

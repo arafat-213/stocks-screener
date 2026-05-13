@@ -34,6 +34,8 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "status": run.status,
         "config": config,
+        "starting_capital": run.starting_capital,
+        "position_size": run.position_size,
         "progress": {
             "symbols_done": run.symbols_done or 0,
             "symbols_total": run.symbols_total or 0,
