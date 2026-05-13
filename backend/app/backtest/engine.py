@@ -207,7 +207,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         
     return results
 
-def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: list[dict], config: BacktestConfig):
+def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: list[dict], config: BacktestConfig, regime_dict: dict = None):
     """
     Simulates trades based on scored signals.
     Entry: Next day's Open.
@@ -231,6 +231,16 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
             continue
         if config.date_to and compare_date > config.date_to:
             continue
+
+        # Regime Filter
+        if config.use_regime_filter and regime_dict is not None:
+            if not regime_dict.get(compare_date, False):
+                continue
+                
+        # Volume Breakout Filter
+        if config.require_volume_breakout:
+            if not signal.get('volume_breakout', False):
+                continue
 
         signal_idx = date_to_idx.get(signal_date)
         
@@ -260,9 +270,14 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
             # Walk forward up to config.holding_days
             final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
             
+            highest_price_since_entry = entry_price
+            
             for k in range(entry_idx, final_idx + 1):
                 day_low = df.iloc[k]['Low']
                 day_high = df.iloc[k]['High']
+                day_open = df.iloc[k]['Open']
+                
+                highest_price_since_entry = max(highest_price_since_entry, day_high)
                 
                 # Check Stop Loss first (conservative)
                 if day_low <= stop_loss_price:
@@ -271,6 +286,17 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
                     exit_reason = 'stop_loss'
                     last_exit_idx = k
                     break
+                    
+                # Check Trailing Stop
+                if config.trailing_stop_pct > 0:
+                    trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
+                    if day_low <= trailing_stop_price:
+                        # If it gapped down below stop, exit at open
+                        exit_price = min(trailing_stop_price, day_open)
+                        exit_date = df.index[k]
+                        exit_reason = 'trailing_stop'
+                        last_exit_idx = k
+                        break
                 
                 # Check Profit Target
                 if day_high >= target_price:
