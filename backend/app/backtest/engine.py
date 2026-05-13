@@ -24,6 +24,8 @@ class BacktestConfig:
     date_from: datetime.date = None    # filter signals after this date
     date_to: datetime.date = None      # filter signals before this date
     symbol_limit: int = None           # limit number of symbols to process
+    starting_capital: float = 1000000.0
+    position_size: float = 10000.0
 
 @dataclass
 class TradeResult:

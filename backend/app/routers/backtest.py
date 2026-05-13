@@ -24,6 +24,8 @@ class BacktestRequest(BaseModel):
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
     date_from: Optional[str] = None   # "YYYY-MM-DD"
     date_to: Optional[str] = None     # "YYYY-MM-DD"
+    starting_capital: float = Field(default=1000000.0, ge=10000)
+    position_size: float = Field(default=10000.0, ge=100)
 
 def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
     config = json.loads(run.config) if run.config else {}
@@ -99,6 +101,8 @@ def start_backtest(
         config=json.dumps(request.model_dump(), default=str),
         symbols_total=0,
         symbols_done=0,
+        starting_capital=request.starting_capital,
+        position_size=request.position_size,
     )
     db.add(db_run)
     db.commit()
@@ -112,7 +116,9 @@ def start_backtest(
         include_fundamentals=request.include_fundamentals,
         symbol_limit=request.symbol_limit,
         date_from=date_from,
-        date_to=date_to
+        date_to=date_to,
+        starting_capital=request.starting_capital,
+        position_size=request.position_size
     )
     
     # Add to background tasks
