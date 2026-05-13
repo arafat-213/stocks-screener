@@ -171,6 +171,8 @@ class BacktestRun(Base):
     total_return_pct = Column(Float, nullable=True)
     benchmark_return_pct = Column(Float, nullable=True)
     equity_curve_json = Column(Text, nullable=True)
+    starting_capital = Column(Float, nullable=True)
+    position_size    = Column(Float, nullable=True)
 
 class BacktestTrade(Base):
     __tablename__ = "backtest_trades"
