@@ -490,6 +490,18 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         # 3. Finalize
         logger.info(f"Computing final metrics for {len(all_trades)} trades")
+
+        # Slice benchmark data to match backtest range
+        if all_trades and benchmark_df is not None:
+            first_entry = min(t.entry_date for t in all_trades)
+            effective_from = config.date_from or first_entry
+            effective_to = config.date_to or datetime.date.today()
+
+            benchmark_df = benchmark_df[
+                (benchmark_df.index.date >= effective_from) &
+                (benchmark_df.index.date <= effective_to)
+            ]
+
         metrics = compute_metrics(all_trades, benchmark_df, config)
         
         # Update run with results
