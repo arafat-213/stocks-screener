@@ -209,3 +209,10 @@ def test_compute_metrics_all_winners():
     # Initial capital = 2 * 10000 = 20000
     # First point: date 2020-01-10, cumulative PL = +1000 (10% of 10000)
     assert metrics['equity_curve'][0]['equity'] == 21000.0
+
+def test_backtest_config_new_defaults():
+    config = BacktestConfig()
+    assert config.trailing_stop_pct == 0.0
+    assert config.require_volume_breakout is False
+    assert config.use_regime_filter is True
+

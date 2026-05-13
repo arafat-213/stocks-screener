@@ -20,6 +20,9 @@ class BacktestConfig:
     holding_days: int = 20             # trading days to hold
     stop_loss_pct: float = 7.0         # exit if price drops this % (0 = disabled)
     target_pct: float = 0.0            # exit if price rises this % (0 = disabled)
+    trailing_stop_pct: float = 0.0     # NEW: percentage drop from highest price
+    require_volume_breakout: bool = False # NEW: require volume > 2x SMA20
+    use_regime_filter: bool = True     # NEW: Nifty > 50 EMA filter
     include_fundamentals: bool = False  # use current fundamental data
     timeframe: str = 'D'               # 'D' only for now
     date_from: datetime.date = None    # filter signals after this date
