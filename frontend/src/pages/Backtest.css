@@ -57,6 +57,51 @@
   font-weight: 500;
 }
 
+.strategy-rules-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border);
+  margin: 8px 0;
+}
+
+.section-subtitle {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.date-range-grid {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.date-input-wrapper {
+  flex: 1;
+  min-width: 0; /* Important for flex children to shrink below content width */
+}
+
+input[type="date"].input-styled {
+  padding: 8px 4px 8px 8px;
+  font-size: 0.85rem;
+  min-width: 0;
+}
+
+.date-input-label {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  font-weight: 700;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+  margin-left: 2px;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -72,6 +117,12 @@
   font-size: 0.9rem;
   outline: none;
   transition: border-color 0.2s;
+  width: 100%;
+}
+
+input[type="date"].input-styled {
+  padding: 8px 6px 8px 10px; /* More compact for date picker icon */
+  min-width: 0; /* Allow shrinking */
 }
 
 .input-styled:focus {
@@ -341,5 +392,25 @@
 }
 
 .reason-tag.stop_loss { background: rgba(239, 68, 68, 0.1); color: #ef4444; }
+.reason-tag.trailing_stop { background: rgba(245, 158, 11, 0.1); color: #d97706; }
 .reason-tag.target { background: rgba(16, 185, 129, 0.1); color: #10b981; }
 .reason-tag.holding_period { background: rgba(59, 130, 246, 0.1); color: #3b82f6; }
+
+/* Animations */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease forwards;
+  animation-delay: var(--delay, 0s);
+  opacity: 0; /* Start invisible for animation */
+}
+

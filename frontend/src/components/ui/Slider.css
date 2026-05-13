@@ -32,7 +32,7 @@
   -webkit-appearance: none;
   width: 100%;
   height: 6px;
-  background: var(--color-bg-elevated);
+  background: var(--color-border);
   border-radius: 10px;
   outline: none;
   cursor: pointer;
@@ -54,17 +54,23 @@
   height: 18px;
   width: 18px;
   border-radius: 50%;
-  background: var(--color-bg-secondary);
+  background: #FFFFFF;
   border: 2px solid var(--color-primary);
   margin-top: -6px; /* Center thumb on track */
-  box-shadow: var(--shadow-sm);
-  transition: transform 150ms ease;
+  box-shadow: 0 0 0 2px rgba(var(--color-primary-rgb), 0.1), var(--shadow-sm);
+  transition: all 150ms ease;
   z-index: 3;
 }
 
+.custom-range-input:hover::-webkit-slider-thumb {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 4px rgba(var(--color-primary-rgb), 0.1), var(--shadow-md);
+}
+
 .custom-range-input:active::-webkit-slider-thumb {
-  transform: scale(1.2);
+  transform: scale(1.1);
   background: var(--color-primary);
+  border-color: #FFFFFF;
 }
 
 /* Progress fill (simulated) */
@@ -80,9 +86,9 @@
 }
 
 [data-theme="dark"] .custom-range-input {
-  background: var(--color-border);
+  background: rgba(255, 255, 255, 0.1);
 }
 
 [data-theme="dark"] .custom-range-input::-webkit-slider-thumb {
-  background: var(--color-bg);
+  background: var(--color-bg-secondary);
 }

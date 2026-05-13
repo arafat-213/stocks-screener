@@ -1,6 +1,7 @@
+import { memo } from 'react';
 import './Slider.css';
 
-const Slider = ({ value, onChange, min = 0, max = 100, step = 1, label, className = "" }) => {
+const Slider = memo(({ value, onChange, min = 0, max = 100, step = 1, label, className = "" }) => {
   return (
     <div className={`custom-slider-container ${className}`}>
       {label && (
@@ -21,6 +22,6 @@ const Slider = ({ value, onChange, min = 0, max = 100, step = 1, label, classNam
       <div className="slider-track-fill" style={{ width: `${((value - min) / (max - min)) * 100}%` }}></div>
     </div>
   );
-};
+});
 
 export default Slider;

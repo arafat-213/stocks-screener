@@ -143,6 +143,22 @@ a {
 .text-bearish { color: var(--color-bearish); }
 .text-muted { color: var(--color-text-muted); }
 
+/* Utility Classes */
+.flex { display: flex; }
+.flex-col { flex-direction: column; }
+.items-center { align-items: center; }
+.justify-between { justify-content: space-between; }
+.gap-1 { gap: 4px; }
+.gap-1\.5 { gap: 6px; }
+.gap-2 { gap: 8px; }
+.gap-3 { gap: 12px; }
+.gap-4 { gap: 16px; }
+.shrink-0 { flex-shrink: 0; }
+.text-2xl { font-size: 1.5rem; }
+.font-bold { font-weight: 700; }
+.w-full { width: 100%; }
+.h-full { height: 100%; }
+
 .animate-spin {
   animation: spin 1s linear infinite;
 }
@@ -157,6 +173,7 @@ input[type="text"],
 input[type="number"], 
 input[type="email"],
 input[type="password"],
+input[type="date"],
 select, 
 textarea {
   background-color: var(--color-bg-secondary);

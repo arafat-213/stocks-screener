@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useDeferredValue, memo } from 'react';
 import { 
   Play, 
   History, 
@@ -8,12 +8,18 @@ import {
   AlertTriangle, 
   ChevronLeft, 
   ChevronRight,
-  Activity,
-  Calendar,
   Layers,
   Info,
+  Calendar,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck,
+  Zap,
+  TrendingDown,
+  RotateCcw,
+  Target,
+  Clock,
+  Briefcase
 } from 'lucide-react';
 import { 
   LineChart, 
@@ -37,24 +43,176 @@ import { useFetch } from '../hooks/useFetch';
 import { useTheme } from '../hooks/useTheme';
 import { DataTable } from '../components/ui/DataTable';
 import Slider from '../components/ui/Slider';
+import Toggle from '../components/ui/Toggle';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 
 import './Backtest.css';
 
+// rerender-memo: Memoize expensive result components to isolate them from config changes
+const BacktestResults = memo(({ activeRun, tradesData, tradesPage, totalTradesCount, tradeColumns, loadingTrades, isDark, pageSize, onPageChange }) => {
+  if (!activeRun) return null;
+
+  const metrics = activeRun?.metrics;
+
+  if (activeRun.status === 'running' || activeRun.status === 'pending') {
+    return (
+      <div className="progress-container">
+        <div className="progress-header">
+          <h3>Backtest in Progress...</h3>
+          <span className="font-bold">{activeRun.progress.pct}%</span>
+        </div>
+        <div className="progress-bar-bg">
+          <div className="progress-bar-fill" style={{ width: `${activeRun.progress.pct}%` }}></div>
+        </div>
+        <p className="progress-stats">
+          Processing symbols: {activeRun.progress.symbols_done} / {activeRun.progress.symbols_total}
+        </p>
+      </div>
+    );
+  }
+
+  if (activeRun.status === 'failed') {
+    return (
+      <div className="error-card p-6 border border-bearish bg-bearish/10 rounded-xl">
+        <h3 className="text-bearish flex items-center gap-2 mb-2">
+          <AlertTriangle size={20} /> Backtest Failed
+        </h3>
+        <p>{activeRun.error_message || 'An unknown error occurred during execution.'}</p>
+      </div>
+    );
+  }
+
+  if (activeRun.status === 'complete' && metrics) {
+    return (
+      <>
+        {/* Metrics Grid */}
+        <div className="metrics-grid">
+          {[
+            { label: "Total Trades", value: metrics.total_trades },
+            { label: "Win Rate", value: `${metrics.win_rate?.toFixed(1)}%`, className: metrics.win_rate >= 50 ? 'positive' : 'negative' },
+            { label: "Avg Return", value: `${metrics.avg_return_pct?.toFixed(2)}%`, className: metrics.avg_return_pct >= 0 ? 'positive' : 'negative' },
+            { label: "Median Return", value: `${metrics.median_return_pct?.toFixed(2)}%`, className: metrics.median_return_pct >= 0 ? 'positive' : 'negative' },
+            { label: "Best Trade", value: `${metrics.best_trade_pct?.toFixed(2)}%`, className: "positive" },
+            { label: "Worst Trade", value: `${metrics.worst_trade_pct?.toFixed(2)}%`, className: "negative" },
+            { label: "Sharpe Ratio", value: metrics.sharpe_ratio?.toFixed(2) },
+            { label: "vs Nifty 50", value: `${(metrics.total_return_pct - metrics.benchmark_return_pct).toFixed(1)}%`, className: metrics.total_return_pct >= metrics.benchmark_return_pct ? 'positive' : 'negative' },
+            { label: "Max Drawdown", value: `${metrics.max_drawdown_pct?.toFixed(1)}%`, className: "negative" }
+          ].map((m, idx) => (
+            <div key={m.label} className="metric-card animate-fade-in" style={{ "--delay": `${idx * 0.05}s` }}>
+              <span className="metric-label">{m.label}</span>
+              <span className={`metric-value ${m.className || ''}`}>{m.value}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Equity Chart */}
+        <div className="chart-card animate-fade-in" style={{ "--delay": "0.5s" }}>
+          <h3><TrendingUp size={18} /> Equity Curve</h3>
+          <div className="equity-chart-wrapper">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart data={activeRun.equity_curve} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#2B2B43" : "#E5E7EB"} />
+                <XAxis 
+                  dataKey="date" 
+                  stroke="var(--color-text-muted)" 
+                  fontSize={11}
+                  tickFormatter={(str) => new Date(str).toLocaleDateString([], { month: 'short', year: '2-digit' })}
+                />
+                <YAxis 
+                  stroke="var(--color-text-muted)" 
+                  fontSize={11}
+                  tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'var(--color-bg-elevated)', borderColor: 'var(--color-border)' }}
+                  itemStyle={{ fontSize: '12px' }}
+                  labelStyle={{ marginBottom: '4px', fontWeight: 'bold' }}
+                />
+                <Legend verticalAlign="top" height={36} iconType="circle" />
+                <Line 
+                  name="Strategy Equity"
+                  type="monotone" 
+                  dataKey="equity" 
+                  stroke="var(--color-primary)" 
+                  strokeWidth={2} 
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+                <Line 
+                  name="Benchmark (Nifty 50)"
+                  type="monotone" 
+                  dataKey="benchmark_equity" 
+                  stroke="var(--color-text-muted)" 
+                  strokeWidth={2} 
+                  strokeDasharray="5 5"
+                  dot={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Trades Table */}
+        <div className="trades-card animate-fade-in" style={{ "--delay": "0.6s" }}>
+          <div className="trades-table-header">
+            <h3><Layers size={18} /> Detailed Trades</h3>
+            <div className="pagination-controls">
+              <span className="text-muted text-sm">
+                Showing {(tradesPage - 1) * pageSize + 1} - {Math.min(tradesPage * pageSize, totalTradesCount)} of {totalTradesCount}
+              </span>
+              <button 
+                className="page-btn" 
+                onClick={() => onPageChange(p => Math.max(1, p - 1))}
+                disabled={tradesPage === 1}
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="font-mono">{tradesPage}</span>
+              <button 
+                className="page-btn" 
+                onClick={() => onPageChange(p => p + 1)}
+                disabled={tradesPage * pageSize >= totalTradesCount}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </div>
+          <DataTable 
+            columns={tradeColumns} 
+            data={tradesData?.trades || []} 
+            loading={loadingTrades}
+            skeletonRows={10}
+          />
+        </div>
+      </>
+    );
+  }
+
+  return null;
+});
+
 const Backtest = () => {
   const { isDark } = useTheme();
 
-  // Configuration State
-  const [config, setConfig] = useState({
+  // rerender-lazy-state-init: Initialize state once
+  const [config, setConfig] = useState(() => ({
     score_threshold: 60,
     holding_days: 20,
     stop_loss_pct: 7.0,
     target_pct: 20.0,
+    trailing_stop_pct: 0.0,
+    use_regime_filter: true,
+    require_volume_breakout: false,
     include_fundamentals: false,
     symbol_limit: 100,
     date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
     date_to: new Date().toISOString().split('T')[0]
-  });
+  }));
+
+  // rerender-use-deferred-value: Defer the config object for non-urgent re-renders
+  // Note: Since activeRun/tradesData are from API, the main thing to defer is the overall component re-render
+  // which results in complex chart/table reconciliation.
+  const deferredConfig = useDeferredValue(config);
 
   const [activeRunId, setActiveRunId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,8 +231,7 @@ const Backtest = () => {
   const { 
     data: activeRun, 
     loading: loadingActiveRun, 
-    error: activeRunError, 
-    setData: setActiveRun 
+    error: activeRunError
   } = useFetch(fetchActiveRun, {
     deps: [activeRunId],
     refreshInterval: (data) => (data?.status === 'running' || data?.status === 'pending') ? 3000 : null
@@ -90,10 +247,11 @@ const Backtest = () => {
     deps: [activeRunId, activeRun?.status, tradesPage]
   });
 
-  // Handle Run Start
-  const handleRunBacktest = async () => {
+  // rerender-move-effect-to-event: Logic belongs in the event handler
+  const handleRunBacktest = useCallback(async () => {
     try {
       setIsSubmitting(true);
+      // Use the live config for starting the backtest
       const res = await runBacktest(config);
       setActiveRunId(res.data.run_id);
       refetchRecentRuns();
@@ -103,17 +261,33 @@ const Backtest = () => {
     } finally {
       setIsSubmitting(false);
     }
-  };
+  }, [config, refetchRecentRuns]);
 
-  const handleSelectRun = (runId) => {
+  const handleSelectRun = useCallback((runId) => {
     setActiveRunId(runId);
     setTradesPage(1);
-  };
+  }, []);
 
-  const trades = tradesData?.trades || [];
+  const handleResetConfig = useCallback(() => {
+    setConfig({
+      score_threshold: 60,
+      holding_days: 20,
+      stop_loss_pct: 7.0,
+      target_pct: 20.0,
+      trailing_stop_pct: 0.0,
+      use_regime_filter: true,
+      require_volume_breakout: false,
+      include_fundamentals: false,
+      symbol_limit: 100,
+      date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
+      date_to: new Date().toISOString().split('T')[0]
+    });
+  }, []);
+
   const totalTradesCount = tradesData?.total || 0;
 
-  const tradeColumns = [
+  // rerender-memo: Column definitions are static or have stable dependencies
+  const tradeColumns = useMemo(() => [
     { 
       key: 'symbol', 
       label: 'Symbol', 
@@ -172,9 +346,7 @@ const Backtest = () => {
         </span>
       )
     }
-  ];
-
-  const metrics = activeRun?.metrics;
+  ], []);
 
   return (
     <div className="backtest-page">
@@ -189,21 +361,31 @@ const Backtest = () => {
         {/* Sidebar Configuration */}
         <aside className="sidebar-panel">
           <section className="config-card">
-            <h2><Settings size={18} /> Configuration</h2>
+            <div className="flex justify-between items-center mb-5">
+              <h2 className="m-0 flex items-center gap-2"><Settings size={18} /> Configuration</h2>
+              <button 
+                className="text-muted hover:text-primary transition-colors p-1" 
+                onClick={handleResetConfig}
+                title="Reset to defaults"
+              >
+                <RotateCcw size={16} />
+              </button>
+            </div>
+            
             <div className="config-form">
               <div className="form-group">
                 <Slider 
-                  label="Score Threshold" 
+                  label={<span className="flex items-center gap-2"><Target size={13} /> Score Threshold</span>}
                   value={config.score_threshold} 
-                  onChange={(val) => setConfig({...config, score_threshold: val})} 
+                  onChange={(val) => setConfig(prev => ({...prev, score_threshold: val}))} 
                   min={0} max={100}
                 />
               </div>
               <div className="form-group">
                 <Slider 
-                  label="Holding Days" 
+                  label={<span className="flex items-center gap-2"><Clock size={13} /> Holding Days</span>}
                   value={config.holding_days} 
-                  onChange={(val) => setConfig({...config, holding_days: val})} 
+                  onChange={(val) => setConfig(prev => ({...prev, holding_days: val}))} 
                   min={1} max={252}
                 />
               </div>
@@ -211,7 +393,7 @@ const Backtest = () => {
                 <Slider 
                   label="Stop Loss %" 
                   value={config.stop_loss_pct} 
-                  onChange={(val) => setConfig({...config, stop_loss_pct: val})} 
+                  onChange={(val) => setConfig(prev => ({...prev, stop_loss_pct: val}))} 
                   min={0} max={50}
                   step={0.5}
                 />
@@ -220,45 +402,85 @@ const Backtest = () => {
                 <Slider 
                   label="Target %" 
                   value={config.target_pct} 
-                  onChange={(val) => setConfig({...config, target_pct: val})} 
+                  onChange={(val) => setConfig(prev => ({...prev, target_pct: val}))} 
                   min={0} max={200}
                   step={1}
                 />
               </div>
-              <div className="form-row">
-                <div className="form-group">
-                  <label>Symbol Limit</label>
-                  <input 
-                    type="number" 
-                    className="input-styled" 
-                    value={config.symbol_limit} 
-                    onChange={(e) => setConfig({...config, symbol_limit: parseInt(e.target.value) || 0})}
+              <div className="form-group">
+                <Slider 
+                  label={<span className="flex items-center gap-2"><TrendingDown size={13} /> Trailing Stop %</span>}
+                  value={config.trailing_stop_pct} 
+                  onChange={(val) => setConfig(prev => ({...prev, trailing_stop_pct: val}))} 
+                  min={0} max={20}
+                  step={0.5}
+                />
+              </div>
+
+              <div className="strategy-rules-section">
+                <h3 className="section-subtitle">Strategy Filters</h3>
+                <div className="flex flex-col gap-3">
+                  <Toggle 
+                    label="Market Regime"
+                    checked={config.use_regime_filter}
+                    onChange={(val) => setConfig(prev => ({...prev, use_regime_filter: val}))}
+                    icon={ShieldCheck}
                   />
-                </div>
-                <div className="form-group checkbox-group" onClick={() => setConfig({...config, include_fundamentals: !config.include_fundamentals})}>
-                  <input 
-                    type="checkbox" 
-                    checked={config.include_fundamentals} 
-                    onChange={() => {}} // Handled by group click
+                  <Toggle 
+                    label="Volume Breakout"
+                    checked={config.require_volume_breakout}
+                    onChange={(val) => setConfig(prev => ({...prev, require_volume_breakout: val}))}
+                    icon={Zap}
                   />
-                  <label>Fundamentals</label>
+                  <Toggle 
+                    label="Fundamentals"
+                    checked={config.include_fundamentals}
+                    onChange={(val) => setConfig(prev => ({...prev, include_fundamentals: val}))}
+                    icon={Briefcase}
+                  />
                 </div>
               </div>
+
               <div className="form-group">
-                <label>Date Range</label>
-                <div className="form-row">
-                  <input 
-                    type="date" 
-                    className="input-styled" 
-                    value={config.date_from} 
-                    onChange={(e) => setConfig({...config, date_from: e.target.value})}
-                  />
-                  <input 
-                    type="date" 
-                    className="input-styled" 
-                    value={config.date_to} 
-                    onChange={(e) => setConfig({...config, date_to: e.target.value})}
-                  />
+                <label className="flex items-center gap-2 mb-1"><Briefcase size={13} /> Symbol Limit</label>
+                <input 
+                  type="number" 
+                  className="input-styled w-full" 
+                  value={config.symbol_limit} 
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setConfig(prev => ({...prev, symbol_limit: val}));
+                  }}
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="flex items-center gap-2 mb-1"><Calendar size={13} /> Date Range</label>
+                <div className="date-range-grid">
+                  <div className="date-input-wrapper">
+                    <span className="date-input-label">From</span>
+                    <input 
+                      type="date" 
+                      className="input-styled" 
+                      value={config.date_from} 
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setConfig(prev => ({...prev, date_from: val}));
+                      }}
+                    />
+                  </div>
+                  <div className="date-input-wrapper">
+                    <span className="date-input-label">To</span>
+                    <input 
+                      type="date" 
+                      className="input-styled" 
+                      value={config.date_to} 
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setConfig(prev => ({...prev, date_to: val}));
+                      }}
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -323,7 +545,7 @@ const Backtest = () => {
             </div>
           </div>
 
-          {!activeRunId && !loadingActiveRun && (
+          {(!activeRunId && !loadingActiveRun) && (
             <div className="empty-state">
               <BarChart3 size={48} className="empty-state-icon mx-auto" />
               <h3>No Run Selected</h3>
@@ -333,163 +555,18 @@ const Backtest = () => {
 
           {activeRunError && <ErrorBanner message={activeRunError} />}
 
-          {(activeRun?.status === 'running' || activeRun?.status === 'pending') && (
-            <div className="progress-container">
-              <div className="progress-header">
-                <h3>Backtest in Progress...</h3>
-                <span className="font-bold">{activeRun.progress.pct}%</span>
-              </div>
-              <div className="progress-bar-bg">
-                <div className="progress-bar-fill" style={{ width: `${activeRun.progress.pct}%` }}></div>
-              </div>
-              <p className="progress-stats">
-                Processing symbols: {activeRun.progress.symbols_done} / {activeRun.progress.symbols_total}
-              </p>
-            </div>
-          )}
-
-          {activeRun?.status === 'failed' && (
-            <div className="error-card p-6 border border-bearish bg-bearish/10 rounded-xl">
-              <h3 className="text-bearish flex items-center gap-2 mb-2">
-                <AlertTriangle size={20} /> Backtest Failed
-              </h3>
-              <p>{activeRun.error_message || 'An unknown error occurred during execution.'}</p>
-            </div>
-          )}
-
-          {activeRun?.status === 'complete' && (
-            <>
-              {/* Metrics Grid */}
-              <div className="metrics-grid">
-                <div className="metric-card">
-                  <span className="metric-label">Total Trades</span>
-                  <span className="metric-value">{metrics.total_trades}</span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Win Rate</span>
-                  <span className={`metric-value ${metrics.win_rate >= 50 ? 'positive' : 'negative'}`}>
-                    {metrics.win_rate?.toFixed(1)}%
-                  </span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Avg Return</span>
-                  <span className={`metric-value ${metrics.avg_return_pct >= 0 ? 'positive' : 'negative'}`}>
-                    {metrics.avg_return_pct?.toFixed(2)}%
-                  </span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Median Return</span>
-                  <span className={`metric-value ${metrics.median_return_pct >= 0 ? 'positive' : 'negative'}`}>
-                    {metrics.median_return_pct?.toFixed(2)}%
-                  </span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Best Trade</span>
-                  <span className="metric-value positive">{metrics.best_trade_pct?.toFixed(2)}%</span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Worst Trade</span>
-                  <span className="metric-value negative">{metrics.worst_trade_pct?.toFixed(2)}%</span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Sharpe Ratio</span>
-                  <span className="metric-value">{metrics.sharpe_ratio?.toFixed(2)}</span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">vs Nifty 50</span>
-                  <span className={`metric-value ${metrics.total_return_pct >= metrics.benchmark_return_pct ? 'positive' : 'negative'}`}>
-                    {(metrics.total_return_pct - metrics.benchmark_return_pct).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="metric-card">
-                  <span className="metric-label">Max Drawdown</span>
-                  <span className="metric-value negative">
-                    {metrics.max_drawdown_pct?.toFixed(1)}%
-                  </span>
-                </div>
-              </div>
-
-              {/* Equity Chart */}
-              <div className="chart-card">
-                <h3><TrendingUp size={18} /> Equity Curve</h3>
-                <div className="equity-chart-wrapper">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={activeRun.equity_curve} margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#2B2B43" : "#E5E7EB"} />
-                      <XAxis 
-                        dataKey="date" 
-                        stroke="var(--color-text-muted)" 
-                        fontSize={11}
-                        tickFormatter={(str) => new Date(str).toLocaleDateString([], { month: 'short', year: '2-digit' })}
-                      />
-                      <YAxis 
-                        stroke="var(--color-text-muted)" 
-                        fontSize={11}
-                        tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
-                      />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: 'var(--color-bg-elevated)', borderColor: 'var(--color-border)' }}
-                        itemStyle={{ fontSize: '12px' }}
-                        labelStyle={{ marginBottom: '4px', fontWeight: 'bold' }}
-                      />
-                      <Legend verticalAlign="top" height={36} iconType="circle" />
-                      <Line 
-                        name="Strategy Equity"
-                        type="monotone" 
-                        dataKey="equity" 
-                        stroke="var(--color-primary)" 
-                        strokeWidth={2} 
-                        dot={false}
-                        activeDot={{ r: 4 }}
-                      />
-                      <Line 
-                        name="Benchmark (Nifty 50)"
-                        type="monotone" 
-                        dataKey="benchmark_equity" 
-                        stroke="var(--color-text-muted)" 
-                        strokeWidth={2} 
-                        strokeDasharray="5 5"
-                        dot={false}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-
-              {/* Trades Table */}
-              <div className="trades-card">
-                <div className="trades-table-header">
-                  <h3><Layers size={18} /> Detailed Trades</h3>
-                  <div className="pagination-controls">
-                    <span className="text-muted text-sm">
-                      Showing {(tradesPage - 1) * pageSize + 1} - {Math.min(tradesPage * pageSize, totalTradesCount)} of {totalTradesCount}
-                    </span>
-                    <button 
-                      className="page-btn" 
-                      onClick={() => setTradesPage(p => Math.max(1, p - 1))}
-                      disabled={tradesPage === 1}
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <span className="font-mono">{tradesPage}</span>
-                    <button 
-                      className="page-btn" 
-                      onClick={() => setTradesPage(p => p + 1)}
-                      disabled={tradesPage * pageSize >= totalTradesCount}
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-                </div>
-                <DataTable 
-                  columns={tradeColumns} 
-                  data={trades} 
-                  loading={loadingTrades}
-                  skeletonRows={10}
-                />
-              </div>
-            </>
-          )}
+          {/* rerender-use-deferred-value: The results section will only re-render when the UI is idle, keeping inputs smooth */}
+          <BacktestResults 
+            activeRun={activeRun}
+            tradesData={tradesData}
+            tradesPage={tradesPage}
+            totalTradesCount={totalTradesCount}
+            tradeColumns={tradeColumns}
+            loadingTrades={loadingTrades}
+            isDark={isDark}
+            pageSize={pageSize}
+            onPageChange={setTradesPage}
+          />
         </main>
       </div>
     </div>
