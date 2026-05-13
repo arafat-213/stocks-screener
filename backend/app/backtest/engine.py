@@ -455,7 +455,17 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         # 1. Fetch benchmark data (^NSEI)
         logger.info("Fetching benchmark data (^NSEI)")
         benchmark_df, _ = fetch_stock_data("^NSEI", append_ns=False, period='3y', fetch_info=False)
-        
+
+        regime_dict = {}
+        if benchmark_df is not None and not benchmark_df.empty:
+            benchmark_df['EMA_50'] = benchmark_df['Close'].rolling(50).mean()
+            # Map index date to boolean
+            valid = benchmark_df[benchmark_df['EMA_50'].notna()]
+            regime_dict = dict(zip(
+                valid.index.date,
+                valid['Close'] > valid['EMA_50']
+            ))
+
         # 2. Select symbols
         symbol_query = (
             db.query(TechnicalSignal.symbol)
@@ -494,7 +504,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 
                 # Run simulation
                 sector = stocks_info.get(symbol, "Unknown")
-                trades = simulate_trades(symbol, sector, df, scored_dates, config)
+                trades = simulate_trades(symbol, sector, df, scored_dates, config, regime_dict=regime_dict)
                 
                 # Save trades to DB
                 db_trades = []
