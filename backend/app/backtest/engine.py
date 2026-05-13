@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import pandas_ta as ta
 from dataclasses import dataclass, asdict
 import datetime
@@ -284,7 +285,7 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
 def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, config: BacktestConfig):
     """
     Calculates aggregate metrics and equity curve.
-    Fixed position size: ₹10,000 per trade.
+    Uses starting_capital and position_size from config.
     """
     if not trades:
         return {
@@ -311,19 +312,10 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     best_trade_pct = max(returns)
     worst_trade_pct = min(returns)
     
-    # Starting capital = total_trades * 10,000 (fixed position size ₹10k)
-    # Total PNL = sum of each trade's profit/loss
-    starting_capital = total_trades * 10000
-    total_pnl = sum((r / 100) * 10000 for r in returns)
-    total_return_pct = (total_pnl / starting_capital) * 100 if starting_capital > 0 else 0.0
+    # Updated PnL and Total Return logic
+    total_pnl = sum((r / 100) * config.position_size for r in returns)
+    total_return_pct = (total_pnl / config.starting_capital) * 100 if config.starting_capital > 0 else 0.0
     
-    # Sharpe Ratio (non-annualized)
-    if len(returns) > 1:
-        std_dev = pd.Series(returns).std()
-        sharpe_ratio = (avg_return_pct / std_dev) if std_dev > 0 else 0.0
-    else:
-        sharpe_ratio = 0.0
-        
     # Benchmark return
     benchmark_return_pct = 0.0
     if benchmark_data is not None and len(benchmark_data) > 1:
@@ -332,15 +324,11 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         benchmark_return_pct = ((end_price - start_price) / start_price) * 100
         
     # Equity Curve Construction
-    # We use ₹10,000 per trade. 
-    base_capital = total_trades * 10000
-    
-    # Strategy returns by exit date
     strat_returns_by_date = {}
     for t in trades:
         d = t.exit_date
         # Profit/Loss in absolute rupees
-        pl = (t.return_pct / 100) * 10000
+        pl = (t.return_pct / 100) * config.position_size
         strat_returns_by_date[d] = strat_returns_by_date.get(d, 0) + pl
         
     equity_curve = []
@@ -353,15 +341,23 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             d = date.date()
             cumulative_pl += strat_returns_by_date.get(d, 0.0)
             
-            # Scaled benchmark: (Price / StartPrice) * BaseCapital
-            bench_equity = (row['Close'] / first_bench_price) * base_capital
+            # Scaled benchmark: (Price / StartPrice) * config.starting_capital
+            bench_equity = (row['Close'] / first_bench_price) * config.starting_capital
             
             equity_curve.append({
                 "date": d.isoformat(),
-                "equity": float(base_capital + cumulative_pl),
+                "equity": float(config.starting_capital + cumulative_pl),
                 "benchmark_equity": float(bench_equity)
             })
     
+    # Updated Sharpe Ratio using daily returns from equity curve
+    sharpe_ratio = 0.0
+    if len(equity_curve) > 1:
+        equity_series = pd.Series([pt['equity'] for pt in equity_curve])
+        daily_returns = equity_series.pct_change().dropna()
+        if not daily_returns.empty and daily_returns.std() > 0:
+            sharpe_ratio = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
+
     # Max Drawdown from equity curve
     max_drawdown_pct = 0.0
     if equity_curve:
