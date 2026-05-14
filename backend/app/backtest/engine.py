@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 import datetime
 import json
 import logging
@@ -444,8 +444,8 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             effective_to = config.date_to or datetime.date.today()
 
             benchmark_df = benchmark_df[
-                (benchmark_df.index.date >= effective_from) &
-                (benchmark_df.index.date <= effective_to)
+              (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
+              (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
             ]
 
         metrics = compute_metrics(all_trades, benchmark_df, config)
