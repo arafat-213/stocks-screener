@@ -13,8 +13,8 @@ import uuid
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 class BacktestRequest(BaseModel):
-    score_threshold: float = Field(default=60.0, ge=0, le=100,
-        description="Minimum score to trigger a trade. Use 0–70 range when include_fundamentals=false.")
+    score_threshold: float = Field(default=45.0, ge=0, le=100,
+        description="Minimum score. Range 0-75 for tech-only, 0-100 with fundamentals. Crossover signals score ~45-55. Extended trend signals score ~20-35.")
     holding_days: int = Field(default=20, ge=1, le=252)
     stop_loss_pct: float = Field(default=7.0, ge=0, le=50,
         description="0 disables stop-loss.")

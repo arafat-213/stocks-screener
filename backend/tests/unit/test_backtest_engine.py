@@ -223,6 +223,7 @@ def test_compute_metrics_all_winners():
 
 def test_backtest_config_new_defaults():
     config = BacktestConfig()
+    assert config.score_threshold == 45.0
     assert config.trailing_stop_pct == 0.0
     assert config.require_volume_breakout is False
     assert config.use_regime_filter is True

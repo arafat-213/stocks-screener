@@ -1,6 +1,5 @@
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
 from dataclasses import dataclass, asdict
 import datetime
 import json
@@ -8,7 +7,7 @@ import logging
 import traceback
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.pipeline.scorer import calculate_fundamental_score
+from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
 from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data
 
@@ -16,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BacktestConfig:
-    score_threshold: float = 60.0      # minimum score to trigger a trade
+    score_threshold: float = 45.0      # minimum score to trigger a trade
     holding_days: int = 20             # trading days to hold
     stop_loss_pct: float = 7.0         # exit if price drops this % (0 = disabled)
     target_pct: float = 0.0            # exit if price rises this % (0 = disabled)
@@ -48,161 +47,47 @@ class TradeResult:
     ema_signal: str
 
 def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
-    # ... (existing score_series implementation)
     """
     Computes technical and fundamental scores for a series of OHLCV data.
-    O(n) implementation: compute indicators once, then iterate.
+    Uses calculate_technical_score as the single source of truth.
+    O(n^2) implementation: for each bar, compute technical score on slice.
     """
     if df is None or len(df) < 60:
         return []
 
-    # 1. Compute Indicators
-    df = df.copy()
-    df.ta.ema(length=5, append=True)
-    df.ta.ema(length=13, append=True)
-    df.ta.ema(length=20, append=True)
-    df.ta.ema(length=26, append=True)
-    df.ta.ema(length=200, append=True)
-    df.ta.macd(fast=12, slow=26, signal=9, append=True)
-    df.ta.rsi(length=14, append=True)
-    df.ta.atr(length=14, append=True)
-    df.ta.adx(length=14, append=True)
-    
-    if 'Volume' in df.columns:
-        df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
-    else:
-        df['VOL_SMA_20'] = pd.Series(dtype='float64')
-
     # Fundamental Score (computed once since we only have current data)
     fund_score = 0.0
     if config and config.include_fundamentals and fund_cache:
-        # Mocking an 'info' dict since calculate_fundamental_score expects it
-        # fund_cache should be an object with roe, roce, de_ratio etc.
         fund_score = calculate_fundamental_score(None, fund_cache=fund_cache)
 
     results = []
     MIN_BARS = 60
     
-    # Pre-fetch column names to avoid repeated lookups
-    ema5_col = 'EMA_5'
-    ema13_col = 'EMA_13'
-    ema20_col = 'EMA_20'
-    ema26_col = 'EMA_26'
-    macd_col = 'MACD_12_26_9'
-    signal_col = 'MACDs_12_26_9'
-    rsi_col = 'RSI_14'
-    adx_col = 'ADX_14'
-    vol_sma_col = 'VOL_SMA_20'
-    
     # Iterate from MIN_BARS to end
     for i in range(MIN_BARS, len(df)):
-        row = df.iloc[i]
-        prev_row = df.iloc[i-1]
+        bar_df = df.iloc[:i+1]
+        ta_data = calculate_technical_score(bar_df, timeframe='D')
         
-        score = 0.0
-        ema_signal = "neutral"
-        volume_signal = "neutral"
-        rsi_signal = "neutral"
-        is_bullish = False
-        
-        price = row['Close']
-        open_price = row['Open']
-        volume = row['Volume']
-        
-        ema5 = row.get(ema5_col)
-        ema13 = row.get(ema13_col)
-        ema20 = row.get(ema20_col)
-        ema26 = row.get(ema26_col)
-        macd_line = row.get(macd_col)
-        signal_line = row.get(signal_col)
-        rsi = row.get(rsi_col)
-        prev_rsi = prev_row.get(rsi_col)
-        adx = row.get(adx_col)
-        sma20_vol = row.get(vol_sma_col)
-        
-        is_green = price > open_price
-        
-        # Volume Breakout
-        volume_breakout = False
-        if pd.notna(volume) and pd.notna(sma20_vol):
-            if volume > 2.0 * sma20_vol and is_green:
-                volume_breakout = True
-        
-        # 1. EMA Alignment (20 pts)
-        if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
-            if ema5 > ema13 > ema26 and price > ema26:
-                score += 20
-                ema_signal = "bullish"
-            elif ema5 < ema13 < ema26:
-                ema_signal = "bearish"
-                
-        # 2. MACD (20 pts)
-        if pd.notna(macd_line) and pd.notna(signal_line):
-            if macd_line > signal_line and macd_line > 0:
-                score += 20
-                
-        # 3. RSI 14 (15 pts)
-        if pd.notna(rsi) and pd.notna(prev_rsi):
-            # was_oversold in last 5 bars
-            recent_rsi = df[rsi_col].iloc[max(0, i-4):i+1]
-            was_oversold = (recent_rsi < 30).any()
-            
-            recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
-            crossing_50 = prev_rsi <= 50 and rsi > 50
-            
-            if recovering:
-                score += 15
-                rsi_signal = "bullish_recovery"
-            elif crossing_50:
-                score += 15
-                rsi_signal = "bullish_crossing"
-            elif rsi > 50:
-                score += 5
-                rsi_signal = "bullish_strong"
-                
-        # 4. Volume (15 pts)
-        if pd.notna(volume) and pd.notna(sma20_vol):
-            if volume > 1.5 * sma20_vol and is_green:
-                score += 15
-                volume_signal = "bullish"
+        price = float(bar_df['Close'].iloc[-1])
+        open_price = float(bar_df['Open'].iloc[-1])
+        total_score = ta_data['score'] + fund_score
 
-        # is_bullish definition
-        is_bullish = (
-            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
-            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
-            ema5 > ema13 > ema26 and price > ema26
-        )
-
-        # 1. EMA200 Hard Filter (only one remains)
-        ema200 = row.get('EMA_200')
-        if pd.notna(ema200) and price < ema200:
+        # Hard Filter: Price must be above 200 EMA
+        if ta_data.get('above_200ema') == False:  # explicitly False, not None
             total_score = 0.0
-        else:
-            # RSI overbought: penalty instead of block
-            if pd.notna(rsi) and rsi > 70:
-                score *= 0.5
-
-            # ADX: scoring boost only
-            if pd.notna(adx):
-                if adx > 30:
-                    score += 10
-                elif adx > 20:
-                    score += 5
-            
-            total_score = score + fund_score
         
         results.append({
             "date": df.index[i],
             "score": float(total_score),
-            "is_bullish": bool(is_bullish),
-            "rsi": float(rsi) if pd.notna(rsi) else 0.0,
-            "adx": float(adx) if pd.notna(adx) else 0.0,
-            "ema_signal": ema_signal,
-            "volume_signal": volume_signal,
-            "rsi_signal": rsi_signal,
-            "close": float(price),
-            "open": float(open_price),
-            "volume_breakout": bool(volume_breakout)
+            "is_bullish": bool(ta_data['is_bullish']),
+            "rsi": float(ta_data['rsi']) if ta_data['rsi'] else 0.0,
+            "adx": float(ta_data['adx']) if ta_data.get('adx') is not None else 0.0,
+            "ema_signal": ta_data['ema_signal'],
+            "volume_signal": ta_data['volume_signal'],
+            "rsi_signal": ta_data['rsi_signal'],
+            "close": price,
+            "open": open_price,
+            "volume_breakout": bool(ta_data.get('volume_breakout', False))
         })
         
     return results

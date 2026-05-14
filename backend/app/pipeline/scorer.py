@@ -191,20 +191,50 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     min_bars = 24 if timeframe == 'M' else 60
     if len(df) >= min_bars:
         if timeframe == 'D':
-            # 1. EMA Alignment (20 pts)
-            # Bullish: EMA_5 > EMA_13 > EMA_26 AND Price > EMA_26
-            if pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26):
-                if ema5 > ema13 > ema26 and price > ema26:
-                    score += 20
-                    ema_signal = "bullish"
-                elif ema5 < ema13 < ema26:
-                    ema_signal = "bearish"
+            # 1. EMA Alignment (Tiered Scoring)
+            prev_ema5 = prev.get('EMA_5')
+            prev_ema13 = prev.get('EMA_13')
+
+            fresh_ema_cross = (
+                pd.notna(ema5) and pd.notna(ema13) and
+                pd.notna(prev_ema5) and pd.notna(prev_ema13) and
+                ema5 > ema13 and prev_ema5 <= prev_ema13
+            )
+
+            pullback_to_ema20 = (
+                pd.notna(ema20) and pd.notna(price) and
+                pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
+                ema5 > ema13 > ema26 and
+                abs(price - ema20) / ema20 < 0.02
+            )
+
+            if fresh_ema_cross:
+                score += 20
+                ema_signal = "bullish_cross"
+            elif pullback_to_ema20:
+                score += 15
+                ema_signal = "bullish_pullback"
+            elif pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 > ema13 > ema26 and price > ema26:
+                score += 8
+                ema_signal = "bullish"
+            elif pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 < ema13 < ema26:
+                ema_signal = "bearish"
                 
             # 2. MACD (20 pts)
-            # Bullish: MACD > Signal AND MACD > 0
+            prev_macd = prev.get('MACD_12_26_9')
+            prev_signal_line = prev.get('MACDs_12_26_9')
+
             if pd.notna(macd_line) and pd.notna(signal_line):
-                if macd_line > signal_line and macd_line > 0:
+                fresh_macd_cross = (
+                    pd.notna(prev_macd) and pd.notna(prev_signal_line) and
+                    macd_line > signal_line and prev_macd <= prev_signal_line
+                )
+                if fresh_macd_cross:
                     score += 20
+                elif macd_line > signal_line and macd_line < 0:
+                    score += 12
+                elif macd_line > signal_line and macd_line > 0:
+                    score += 6
                 
             # 3. RSI 14 (15 pts)
             if pd.notna(rsi) and pd.notna(prev_rsi):
@@ -215,14 +245,17 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                 recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
                 crossing_50 = prev_rsi <= 50 and rsi > 50
                 
-                if recovering:
+                if recovering and fresh_ema_cross:
+                    score += 20
+                    rsi_signal = "bullish_recovery_confirmed"
+                elif recovering:
                     score += 15
                     rsi_signal = "bullish_recovery"
                 elif crossing_50:
-                    score += 15
+                    score += 10
                     rsi_signal = "bullish_crossing"
                 elif rsi > 50:
-                    score += 5
+                    score += 3
                     rsi_signal = "bullish_strong"
                 
             # 4. Volume (15 pts)
@@ -234,9 +267,10 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                     
             # Define is_bullish for D
             is_bullish = (
-                pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
-                pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
-                ema5 > ema13 > ema26 and price > ema26
+                (fresh_ema_cross or pullback_to_ema20 or 
+                 (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 > ema13 > ema26)) and
+                pd.notna(macd_line) and pd.notna(signal_line) and macd_line > signal_line and
+                pd.notna(rsi) and rsi > 45
             )
 
         elif timeframe == 'W':

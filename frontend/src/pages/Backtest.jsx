@@ -209,11 +209,6 @@ const Backtest = () => {
     date_to: new Date().toISOString().split('T')[0]
   }));
 
-  // rerender-use-deferred-value: Defer the config object for non-urgent re-renders
-  // Note: Since activeRun/tradesData are from API, the main thing to defer is the overall component re-render
-  // which results in complex chart/table reconciliation.
-  const deferredConfig = useDeferredValue(config);
-
   const [activeRunId, setActiveRunId] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
@@ -282,6 +277,11 @@ const Backtest = () => {
       date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1)).toISOString().split('T')[0],
       date_to: new Date().toISOString().split('T')[0]
     });
+  }, []);
+
+  // rerender-functional-setstate: Stable handler for all config changes
+  const handleConfigChange = useCallback((key, value) => {
+    setConfig(prev => ({ ...prev, [key]: value }));
   }, []);
 
   const totalTradesCount = tradesData?.total || 0;
@@ -377,7 +377,7 @@ const Backtest = () => {
                 <Slider 
                   label={<span className="flex items-center gap-2"><Target size={13} /> Score Threshold</span>}
                   value={config.score_threshold} 
-                  onChange={(val) => setConfig(prev => ({...prev, score_threshold: val}))} 
+                  onChange={(val) => handleConfigChange('score_threshold', val)} 
                   min={0} max={100}
                 />
               </div>
@@ -385,7 +385,7 @@ const Backtest = () => {
                 <Slider 
                   label={<span className="flex items-center gap-2"><Clock size={13} /> Holding Days</span>}
                   value={config.holding_days} 
-                  onChange={(val) => setConfig(prev => ({...prev, holding_days: val}))} 
+                  onChange={(val) => handleConfigChange('holding_days', val)} 
                   min={1} max={252}
                 />
               </div>
@@ -393,7 +393,7 @@ const Backtest = () => {
                 <Slider 
                   label="Stop Loss %" 
                   value={config.stop_loss_pct} 
-                  onChange={(val) => setConfig(prev => ({...prev, stop_loss_pct: val}))} 
+                  onChange={(val) => handleConfigChange('stop_loss_pct', val)} 
                   min={0} max={50}
                   step={0.5}
                 />
@@ -402,7 +402,7 @@ const Backtest = () => {
                 <Slider 
                   label="Target %" 
                   value={config.target_pct} 
-                  onChange={(val) => setConfig(prev => ({...prev, target_pct: val}))} 
+                  onChange={(val) => handleConfigChange('target_pct', val)} 
                   min={0} max={200}
                   step={1}
                 />
@@ -411,7 +411,7 @@ const Backtest = () => {
                 <Slider 
                   label={<span className="flex items-center gap-2"><TrendingDown size={13} /> Trailing Stop %</span>}
                   value={config.trailing_stop_pct} 
-                  onChange={(val) => setConfig(prev => ({...prev, trailing_stop_pct: val}))} 
+                  onChange={(val) => handleConfigChange('trailing_stop_pct', val)} 
                   min={0} max={20}
                   step={0.5}
                 />
@@ -423,19 +423,19 @@ const Backtest = () => {
                   <Toggle 
                     label="Market Regime"
                     checked={config.use_regime_filter}
-                    onChange={(val) => setConfig(prev => ({...prev, use_regime_filter: val}))}
+                    onChange={(val) => handleConfigChange('use_regime_filter', val)}
                     icon={ShieldCheck}
                   />
                   <Toggle 
                     label="Volume Breakout"
                     checked={config.require_volume_breakout}
-                    onChange={(val) => setConfig(prev => ({...prev, require_volume_breakout: val}))}
+                    onChange={(val) => handleConfigChange('require_volume_breakout', val)}
                     icon={Zap}
                   />
                   <Toggle 
                     label="Fundamentals"
                     checked={config.include_fundamentals}
-                    onChange={(val) => setConfig(prev => ({...prev, include_fundamentals: val}))}
+                    onChange={(val) => handleConfigChange('include_fundamentals', val)}
                     icon={Briefcase}
                   />
                 </div>
@@ -447,10 +447,7 @@ const Backtest = () => {
                   type="number" 
                   className="input-styled w-full" 
                   value={config.symbol_limit} 
-                  onChange={(e) => {
-                    const val = parseInt(e.target.value) || 0;
-                    setConfig(prev => ({...prev, symbol_limit: val}));
-                  }}
+                  onChange={(e) => handleConfigChange('symbol_limit', parseInt(e.target.value) || 0)}
                 />
               </div>
 
@@ -463,10 +460,7 @@ const Backtest = () => {
                       type="date" 
                       className="input-styled" 
                       value={config.date_from} 
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setConfig(prev => ({...prev, date_from: val}));
-                      }}
+                      onChange={(e) => handleConfigChange('date_from', e.target.value)}
                     />
                   </div>
                   <div className="date-input-wrapper">
@@ -475,10 +469,7 @@ const Backtest = () => {
                       type="date" 
                       className="input-styled" 
                       value={config.date_to} 
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setConfig(prev => ({...prev, date_to: val}));
-                      }}
+                      onChange={(e) => handleConfigChange('date_to', e.target.value)}
                     />
                   </div>
                 </div>
