@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { fetchResults, getDashboardChanges } from '../api/client';
@@ -21,12 +21,12 @@ import './Dashboard.css';
 
 const Dashboard = () => {
   // Data Fetching Hooks
-  const { 
-    data: stocks, 
-    loading: stocksLoading, 
-    error: stocksError, 
-    refetch: refetchStocks 
-  } = useFetch(fetchResults);
+  const [stocks, setStocks] = useState([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const { data: changesData, loading: changesLoading, refetch: refetchChanges } = useFetch(getDashboardChanges);
 
@@ -40,7 +40,7 @@ const Dashboard = () => {
   } = usePipeline();
   
   const { market_context, error: marketError } = useMarketData();
-  const { toggle, isWatched, count } = useWatchlist();
+  const { watchlist, toggle, isWatched, count } = useWatchlist();
   
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', 'watchlist', '3', '2+'
@@ -52,15 +52,66 @@ const Dashboard = () => {
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  // Implement refresh side-effect: when status transitions from running to complete, call refetchStocks()
+  const loadMore = useCallback(async (isReset = false) => {
+    if (loading || (!hasMore && !isReset)) return;
+
+    setLoading(true);
+    const currentOffset = isReset ? 0 : offset;
+    
+    try {
+      const data = await fetchResults({
+        offset: currentOffset,
+        limit: 50,
+        sector: selectedSectors.join(','),
+        confluence: confluenceFilter === 'watchlist' ? undefined : confluenceFilter,
+        symbols: confluenceFilter === 'watchlist' ? [...watchlist].join(',') : undefined,
+        sort_by: sortBy
+      });
+
+      if (isReset) {
+        setStocks(data.items);
+        setOffset(50);
+      } else {
+        setStocks(prev => [...prev, ...data.items]);
+        setOffset(currentOffset + 50);
+      }
+
+      setHasMore(data.has_more);
+      setError(null);
+    } catch (err) {
+      setError(err.message || 'Failed to fetch stocks');
+    } finally {
+      setLoading(false);
+    }
+  }, [offset, hasMore, loading, selectedSectors, confluenceFilter, sortBy, watchlist]);
+
+  // Infinite Scroll Trigger
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const obs = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting && hasMore && !loading) {
+        loadMore();
+      }
+    }, { threshold: 0.1 });
+
+    if (sentinelRef.current) obs.observe(sentinelRef.current);
+    return () => obs.disconnect();
+  }, [hasMore, loading, loadMore]);
+
+  // Filter/Sort Integration
+  useEffect(() => {
+    loadMore(true);
+  }, [selectedSectors, confluenceFilter, sortBy]);
+
+  // Implement refresh side-effect: when status transitions from running to complete, call loadMore(true)
   const prevStatusRef = useRef(status);
   useEffect(() => {
     if (prevStatusRef.current === 'running' && status === 'complete') {
-      refetchStocks();
+      loadMore(true);
       refetchChanges();
     }
     prevStatusRef.current = status;
-  }, [status, refetchStocks, refetchChanges]);
+  }, [status, loadMore, refetchChanges]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -76,28 +127,10 @@ const Dashboard = () => {
 
   // Derived: Available Sectors (only from current stocks)
   const availableSectors = useMemo(() => {
-    if (!stocks) return [];
+    if (!stocks || stocks.length === 0) return [];
     const sectors = new Set(stocks.map(s => s.sector).filter(Boolean));
     return Array.from(sectors).sort();
   }, [stocks]);
-
-  // Client-side Filtering
-  const filteredStocks = useMemo(() => {
-    if (!stocks) return [];
-    return stocks
-      .filter(stock => {
-        // Confluence Filter
-        if (confluenceFilter === 'watchlist') return isWatched(stock.symbol);
-        if (confluenceFilter === '3') return stock.confluence_count === 3;
-        if (confluenceFilter === '2+') return stock.confluence_count >= 2;
-        return true;
-      })
-      .filter(stock => {
-        // Sector Filter
-        if (selectedSectors.length === 0) return true;
-        return selectedSectors.includes(stock.sector);
-      });
-  }, [stocks, confluenceFilter, selectedSectors, isWatched]);
 
   // Column Definitions for DataTable
   const columns = [
@@ -192,9 +225,9 @@ const Dashboard = () => {
     setSelectedSectors([]);
   };
 
-  const hasData = stocks && stocks.length > 0;
+  const hasData = stocks.length > 0;
 
-  if (stocksLoading && !hasData) {
+  if (loading && !hasData) {
     return (
       <div className="dashboard-page">
         <main className="dashboard-content">
@@ -252,8 +285,8 @@ const Dashboard = () => {
 
   return (
     <div className="dashboard-page">
-      {(stocksError || pipelineError || marketError) && (
-        <ErrorBanner message={stocksError || pipelineError || marketError} />
+      {(error || pipelineError || marketError) && (
+        <ErrorBanner message={error || pipelineError || marketError} />
       )}
       
       {pipeline?.is_stale && (
@@ -265,7 +298,7 @@ const Dashboard = () => {
         />
       )}
 
-      {!hasMarketData && !stocksLoading && (
+      {!hasMarketData && !loading && (
         <div className="info-banner">Market data is currently unavailable.</div>
       )}
 
@@ -440,10 +473,10 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {filteredStocks.length > 0 ? (
+        {stocks.length > 0 ? (
           viewMode === 'grid' ? (
             <div className="stock-grid">
-              {filteredStocks.map(stock => (
+              {stocks.map(stock => (
                 <StockCard 
                   key={stock.symbol} 
                   stock={stock} 
@@ -455,12 +488,12 @@ const Dashboard = () => {
           ) : (
             <DataTable 
               columns={columns} 
-              data={filteredStocks} 
+              data={stocks} 
               initialSort={{ key: 'score', direction: 'desc' }}
-              loading={stocksLoading}
+              loading={loading && stocks.length === 0}
             />
           )
-        ) : (
+        ) : !loading && (
           <div className="no-results">
             <Filter size={48} />
             <h3>No stocks match filters</h3>
@@ -468,6 +501,20 @@ const Dashboard = () => {
             <button onClick={resetFilters} className="text-button">Reset All Filters</button>
           </div>
         )}
+
+        {/* Sentinel and Footer UI */}
+        {loading && stocks.length > 0 && (
+          <div className="loading-more" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '20px', color: 'var(--color-text-muted)' }}>
+            <RefreshCcw size={20} className="spin" />
+            <span>Loading more stocks...</span>
+          </div>
+        )}
+        {!hasMore && stocks.length > 0 && (
+          <div className="no-more" style={{ textAlign: 'center', padding: '20px', color: 'var(--color-text-muted)' }}>
+            <p>No more stocks to show</p>
+          </div>
+        )}
+        <div ref={sentinelRef} style={{ height: '20px', margin: '20px 0' }} />
       </main>
 
       <FilterBottomSheet 

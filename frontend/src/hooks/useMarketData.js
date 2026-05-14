@@ -8,7 +8,7 @@ export const useMarketData = (refreshInterval = 300000) => {
 
   const fetchMarketData = useCallback(async () => {
     try {
-      const res = await apiClient.get('/market/live');
+      const res = await apiClient.get('/dashboard/market/live');
       setData(res.data);
       setError(null);
     } catch (err) {

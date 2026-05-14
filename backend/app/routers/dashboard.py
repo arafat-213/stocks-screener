@@ -8,14 +8,14 @@ from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, 
 from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
 from app.core.cache import response_cache
 
-router = APIRouter()
+router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 market_lock = asyncio.Lock()
 
 def get_live_market_data():
     # Relies entirely on requests-cache for the 60s TTL
     return fetch_market_snapshots(["^NSEI", "^BSESN"])
 
-@router.get("/dashboard/changes")
+@router.get("/changes")
 def get_signal_changes(response: Response, db: Session = Depends(get_db)):
     cache_key = "dashboard:changes"
     cached, hit = response_cache.get(cache_key)
@@ -201,7 +201,8 @@ def get_dashboard_results(
 
     # Apply filters
     if sector:
-        query = query.filter(Stock.sector == sector)
+        sector_list = [s.strip() for s in sector.split(",")]
+        query = query.filter(Stock.sector.in_(sector_list))
     
     if confluence:
         if confluence == '3':

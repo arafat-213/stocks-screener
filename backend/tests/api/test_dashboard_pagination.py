@@ -69,7 +69,7 @@ def test_screener_results_pagination(db, client):
     setup_pagination_data(db)
     response_cache.invalidate()
     
-    response = client.get("/api/screener/results")
+    response = client.get("/api/dashboard/screener/results")
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 15
@@ -79,7 +79,7 @@ def test_screener_results_filtering(db, client):
     setup_pagination_data(db)
     response_cache.invalidate()
     
-    response = client.get("/api/screener/results?sector=Technology")
+    response = client.get("/api/dashboard/screener/results?sector=Technology")
     assert response.status_code == 200
     assert response.json()["total"] == 5
         
@@ -87,7 +87,7 @@ def test_screener_results_ordering(db, client):
     setup_pagination_data(db)
     response_cache.invalidate()
     
-    response = client.get("/api/screener/results")
+    response = client.get("/api/dashboard/screener/results")
     assert response.status_code == 200
     items = response.json()["items"]
     
@@ -104,7 +104,7 @@ def test_screener_results_sorting_param(db, client):
     # Sort by RSI DESC
     # i=0 has RSI 58 (Highest)
     # i=14 has RSI 30 (Lowest)
-    response = client.get("/api/screener/results?sort_by=rsi")
+    response = client.get("/api/dashboard/screener/results?sort_by=rsi")
     assert response.status_code == 200
     items = response.json()["items"]
     assert items[0]["symbol"] == "STOCK0.NS"
@@ -113,7 +113,7 @@ def test_screener_results_sorting_param(db, client):
     # Sort by PE ASC (lower is better)
     # i=0 has PE 20 (Lowest)
     # i=14 has PE 34 (Highest)
-    response = client.get("/api/screener/results?sort_by=pe")
+    response = client.get("/api/dashboard/screener/results?sort_by=pe")
     assert response.status_code == 200
     items = response.json()["items"]
     assert items[0]["symbol"] == "STOCK0.NS"
@@ -121,7 +121,7 @@ def test_screener_results_sorting_param(db, client):
     
     # Sort by Score DESC
     # i=14 has score 84 (Highest)
-    response = client.get("/api/screener/results?sort_by=score")
+    response = client.get("/api/dashboard/screener/results?sort_by=score")
     assert response.status_code == 200
     items = response.json()["items"]
     assert items[0]["symbol"] == "STOCK14.NS"
