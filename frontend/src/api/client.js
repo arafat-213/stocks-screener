@@ -6,7 +6,8 @@ export const apiClient = axios.create({
   baseURL: API_BASE_URL,
 });
 
-export const fetchResults = () => apiClient.get('/screener/results');
+export const fetchResults = (params = {}) =>
+  apiClient.get('/dashboard/screener/results', { params }).then(res => res.data);
 export const fetchPipelineStatus = () => apiClient.get('/pipeline/latest');
 export const runScreener = (limit = null) => apiClient.post('/screener/run', { limit });
 export const stopPipeline = () => apiClient.post('/pipeline/stop');

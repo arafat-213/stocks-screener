@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, Response
 import asyncio
 from sqlalchemy.orm import Session
-from sqlalchemy import func
+from sqlalchemy import func, case
 from sqlalchemy.engine import Row
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
@@ -151,98 +151,202 @@ async def get_live_market(response: Response):
         return data
 
 @router.get("/screener/results")
-def get_dashboard_results(response: Response, db: Session = Depends(get_db)):
-    cache_key = "dashboard:screener_results"
+def get_dashboard_results(
+    response: Response, 
+    db: Session = Depends(get_db),
+    offset: int = 0,
+    limit: int = 50,
+    sector: str = None,
+    confluence: str = None,
+    symbols: str = None,
+    sort_by: str = "confluence"
+):
+    # Create a cache key that includes parameters
+    params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}"
+    cache_key = f"dashboard:screener_results:{params_str}"
+    
     cached, hit = response_cache.get(cache_key)
     if hit:
         response.headers["X-Cache"] = "HIT"
         return cached
 
     response.headers["X-Cache"] = "MISS"
+
     # 1. Latest TechnicalSignal Subquery (Max date per symbol/timeframe)
-    latest_signal = db.query(
+    latest_signal_sub = db.query(
         TechnicalSignal.symbol,
         TechnicalSignal.timeframe,
         func.max(TechnicalSignal.date).label("max_date")
     ).group_by(TechnicalSignal.symbol, TechnicalSignal.timeframe).subquery()
         
-    # 2. Latest Fundamental Subquery (Max date per symbol)
+    # 2. Confluence calculation query
+    # We want to group by symbol and count bullish signals across timeframes
+    # This will be used as a join to filter and sort
+    confluence_sub = db.query(
+        TechnicalSignal.symbol,
+        func.sum(case((TechnicalSignal.is_bullish == True, 1), else_=0)).label("confluence_count")
+    ).join(
+        latest_signal_sub,
+        (TechnicalSignal.symbol == latest_signal_sub.c.symbol) & 
+        (TechnicalSignal.timeframe == latest_signal_sub.c.timeframe) & 
+        (TechnicalSignal.date == latest_signal_sub.c.max_date)
+    ).group_by(TechnicalSignal.symbol).subquery()
+
+    # 3. Base Query for filtering and counting
+    query = db.query(Stock, FundamentalCache, confluence_sub.c.confluence_count).\
+        join(confluence_sub, Stock.symbol == confluence_sub.c.symbol).\
+        outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol).\
+        filter(FundamentalCache.profitability_streak_passed == True).\
+        filter(FundamentalCache.de_check_passed == True)
+
+    # Apply filters
+    if sector:
+        query = query.filter(Stock.sector == sector)
+    
+    if confluence:
+        if confluence == '3':
+            query = query.filter(confluence_sub.c.confluence_count == 3)
+        elif confluence == '2+':
+            query = query.filter(confluence_sub.c.confluence_count >= 2)
+            
+    if symbols:
+        symbol_list = [s.strip() for s in symbols.split(",")]
+        query = query.filter(Stock.symbol.in_(symbol_list))
+
+    # 4. Total Count
+    total = query.count()
+
+    # 5. Ordering and Pagination
+    # For ordering, we also need the Daily signal's score, RSI and bullish status
+    daily_signal = db.query(
+        TechnicalSignal.symbol,
+        TechnicalSignal.is_bullish,
+        TechnicalSignal.entry_score,
+        TechnicalSignal.rsi
+    ).join(
+        latest_signal_sub,
+        (TechnicalSignal.symbol == latest_signal_sub.c.symbol) & 
+        (TechnicalSignal.timeframe == 'D') & 
+        (TechnicalSignal.date == latest_signal_sub.c.max_date)
+    ).subquery()
+
+    query = query.outerjoin(daily_signal, Stock.symbol == daily_signal.c.symbol)
+    
+    if sort_by == "score":
+        query = query.order_by(func.coalesce(daily_signal.c.entry_score, 0).desc())
+    elif sort_by == "rsi":
+        query = query.order_by(func.coalesce(daily_signal.c.rsi, 0).desc())
+    elif sort_by == "pe":
+        # Join FundamentalData for latest date
+        latest_fund_sub = db.query(
+            FundamentalData.symbol,
+            func.max(FundamentalData.date).label("max_date")
+        ).group_by(FundamentalData.symbol).subquery()
+        
+        query = query.outerjoin(latest_fund_sub, Stock.symbol == latest_fund_sub.c.symbol)
+        query = query.outerjoin(FundamentalData, 
+            (FundamentalData.symbol == latest_fund_sub.c.symbol) & 
+            (FundamentalData.date == latest_fund_sub.c.max_date)
+        )
+        query = query.order_by(FundamentalData.pe.asc().nullslast())
+    else: # confluence (default)
+        query = query.order_by(
+            confluence_sub.c.confluence_count.desc(),
+            func.coalesce(daily_signal.c.is_bullish, False).desc(),
+            func.coalesce(daily_signal.c.entry_score, 0).desc()
+        )
+
+    # Execute with pagination
+    paged_stocks = query.offset(offset).limit(limit).all()
+
+    # 6. Fetch full data for the paged symbols
+    paged_symbols = [stock.symbol for stock, cache, count in paged_stocks]
+    
+    if not paged_symbols:
+        result = {"total": 0, "offset": offset, "limit": limit, "has_more": False, "items": []}
+        response_cache.set(cache_key, result, 600)
+        return result
+
+    # Latest Fundamental Subquery (Max date per symbol)
     latest_fund = db.query(
         FundamentalData.symbol,
         func.max(FundamentalData.date).label("max_date")
-    ).group_by(FundamentalData.symbol).subquery()
-    
-    # 3. Join Query
-    query_results = db.query(TechnicalSignal, Stock, FundamentalData, FundamentalCache).\
-        join(Stock, TechnicalSignal.symbol == Stock.symbol).\
-        join(latest_signal, (TechnicalSignal.symbol == latest_signal.c.symbol) & \
-                           (TechnicalSignal.timeframe == latest_signal.c.timeframe) & \
-                           (TechnicalSignal.date == latest_signal.c.max_date)).\
-        outerjoin(latest_fund, Stock.symbol == latest_fund.c.symbol).\
-        outerjoin(FundamentalData, (FundamentalData.symbol == latest_fund.c.symbol) & (FundamentalData.date == latest_fund.c.max_date)).\
-        outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol).\
-        filter(FundamentalCache.profitability_streak_passed == True).\
-        filter(FundamentalCache.de_check_passed == True).all()
-        
-    # 4. Python grouping
-    stocks_map = {}
-    for signal, stock, fund, cache in query_results:
-        if stock.symbol not in stocks_map:
-            stocks_map[stock.symbol] = {
-                "symbol": stock.symbol,
-                "name": stock.name,
-                "sector": stock.sector,
-                "close_price": signal.close_price if signal.timeframe == 'D' else None,
-                "price_change_pct": signal.price_change_pct if signal.timeframe == 'D' else None,
-                "timeframes": {},
-                "fundamentals": {
-                    "pe": fund.pe if fund else None,
-                    "pb": fund.pb if fund else None,
-                    "roe": cache.roe if (cache and cache.roe is not None) else (fund.roe if fund else None),
-                    "roce": cache.roce if cache else None,
-                    "peg": cache.peg_ratio if cache else None,
-                    "yield": cache.dividend_yield if cache else None,
-                    "debt_equity": cache.de_ratio if cache else (fund.debt_equity if fund else None),
-                    "market_cap": fund.market_cap if fund else stock.market_cap,
-                    "market_cap_category": cache.market_cap_category if cache else None
-                }
-            }
-        
-        # Add timeframe signal
-        stocks_map[stock.symbol]["timeframes"][signal.timeframe] = {
-            "is_bullish": signal.is_bullish,
-            "score": signal.entry_score,
-            "rsi": signal.rsi,
-            "ema_signal": signal.ema_signal,
-            "rs_score": signal.rs_score,
-            "momentum_3m": signal.momentum_3m,
-            "momentum_1m": signal.momentum_1m,
-            "adx": signal.adx,
-            "above_200ema": signal.above_200ema,
-            "volume_breakout": signal.volume_breakout,
-            "pct_from_52wh": signal.pct_from_52w_high,
-            "atr": signal.atr
+    ).filter(FundamentalData.symbol.in_(paged_symbols)).group_by(FundamentalData.symbol).subquery()
+
+    # Fetch all signals for these symbols
+    all_signals = db.query(TechnicalSignal).\
+        join(latest_signal_sub, 
+             (TechnicalSignal.symbol == latest_signal_sub.c.symbol) & 
+             (TechnicalSignal.timeframe == latest_signal_sub.c.timeframe) & 
+             (TechnicalSignal.date == latest_signal_sub.c.max_date)).\
+        filter(TechnicalSignal.symbol.in_(paged_symbols)).all()
+
+    # Fetch fundamental data
+    all_funds = db.query(FundamentalData).\
+        join(latest_fund, (FundamentalData.symbol == latest_fund.c.symbol) & (FundamentalData.date == latest_fund.c.max_date)).\
+        filter(FundamentalData.symbol.in_(paged_symbols)).all()
+
+    # 7. Reconstruct into the same enriched data structure
+    stocks_map = {stock.symbol: {
+        "symbol": stock.symbol,
+        "name": stock.name,
+        "sector": stock.sector,
+        "confluence_count": count,
+        "close_price": None,
+        "price_change_pct": None,
+        "timeframes": {},
+        "fundamentals": {
+            "pe": None, "pb": None, "roe": cache.roe if cache else None,
+            "roce": cache.roce if cache else None, "peg": cache.peg_ratio if cache else None,
+            "yield": cache.dividend_yield if cache else None, 
+            "debt_equity": cache.de_ratio if cache else None,
+            "market_cap": stock.market_cap,
+            "market_cap_category": cache.market_cap_category if cache else None
         }
-        
-        # Ensure D price info is captured even if row order varies
-        if signal.timeframe == 'D':
-            stocks_map[stock.symbol]["close_price"] = signal.close_price
-            stocks_map[stock.symbol]["price_change_pct"] = signal.price_change_pct
+    } for stock, cache, count in paged_stocks}
 
-    # 5. Final Confluence & Sorting
-    final_results = list(stocks_map.values())
-    for item in final_results:
-        item["confluence_count"] = sum(1 for tf in item["timeframes"].values() if tf["is_bullish"])
+    for sig in all_signals:
+        if sig.symbol in stocks_map:
+            stocks_map[sig.symbol]["timeframes"][sig.timeframe] = {
+                "is_bullish": sig.is_bullish,
+                "score": sig.entry_score,
+                "rsi": sig.rsi,
+                "ema_signal": sig.ema_signal,
+                "rs_score": sig.rs_score,
+                "momentum_3m": sig.momentum_3m,
+                "momentum_1m": sig.momentum_1m,
+                "adx": sig.adx,
+                "above_200ema": sig.above_200ema,
+                "volume_breakout": sig.volume_breakout,
+                "pct_from_52wh": sig.pct_from_52w_high,
+                "atr": sig.atr
+            }
+            if sig.timeframe == 'D':
+                stocks_map[sig.symbol]["close_price"] = sig.close_price
+                stocks_map[sig.symbol]["price_change_pct"] = sig.price_change_pct
+
+    for fund in all_funds:
+        if fund.symbol in stocks_map:
+            f_map = stocks_map[fund.symbol]["fundamentals"]
+            f_map["pe"] = fund.pe
+            f_map["pb"] = fund.pb
+            if f_map["roe"] is None: f_map["roe"] = fund.roe
+            if f_map["debt_equity"] is None: f_map["debt_equity"] = fund.debt_equity
+            f_map["market_cap"] = fund.market_cap
+
+    # Maintain original order from paged_stocks
+    items = [stocks_map[symbol] for symbol in paged_symbols]
     
-    # Sort: Confluence DESC -> Daily Bullish DESC -> Daily Score DESC
-    final_results.sort(key=lambda x: (
-        x["confluence_count"],
-        x["timeframes"].get('D', {}).get('is_bullish', False),
-        x["timeframes"].get('D', {}).get('score', 0)
-    ), reverse=True)
+    result = {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "has_more": offset + limit < total,
+        "items": items
+    }
 
-    response_cache.set(cache_key, final_results, 600)
-    return final_results
+    response_cache.set(cache_key, result, 600)
+    return result
 
 @router.get("/pipeline/latest")
 def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
