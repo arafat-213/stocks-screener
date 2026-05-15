@@ -367,16 +367,30 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             ))
 
         # 2. Select symbols
-        symbol_query = (
-            db.query(TechnicalSignal.symbol)
-            .group_by(TechnicalSignal.symbol)
-            .order_by(func.max(TechnicalSignal.date).desc())
-            .all()
-        )
-        symbols = [row[0] for row in symbol_query]
+        if config.screen_slug and config.screen_slug != "all":
+            from app.screens.registry import SCREEN_REGISTRY
+            if config.screen_slug not in SCREEN_REGISTRY:
+                raise ValueError(f"Invalid screen slug: {config.screen_slug}")
+
+            logger.info(f"Filtering symbols using screen: {config.screen_slug}")
+            screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
+            screen_results = screen_fn(db)
+            symbols = [r[0] for r in screen_results]
+
+            if not symbols:
+                 raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
+        else:
+            symbol_query = (
+                db.query(TechnicalSignal.symbol)
+                .group_by(TechnicalSignal.symbol)
+                .order_by(func.max(TechnicalSignal.date).desc())
+                .all()
+            )
+            symbols = [row[0] for row in symbol_query]
+
         if config.symbol_limit:
             symbols = symbols[:config.symbol_limit]
-        
+
         run.symbols_total = len(symbols)
         db.commit()
 
