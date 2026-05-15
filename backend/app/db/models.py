@@ -41,6 +41,12 @@ class TechnicalSignal(Base):
     adx = Column(Float, nullable=True)
     above_200ema = Column(Boolean, nullable=True)
     ema_slope_20 = Column(Float, nullable=True)
+
+    # EMA Levels
+    ema5_level = Column(Float, nullable=True)
+    ema13_level = Column(Float, nullable=True)
+    ema20_level = Column(Float, nullable=True)
+    ema26_level = Column(Float, nullable=True)
     
     # 52-Week Range and Resistance
     pct_from_52w_high = Column(Float, nullable=True)

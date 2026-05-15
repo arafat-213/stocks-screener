@@ -25,6 +25,7 @@ import logging
 import traceback
 import json
 import yfinance as yf
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +91,80 @@ def _log_pipeline_error(db: Session, run_id: str, symbol: str, phase: str, e: Ex
     )
     db.add(p_error)
     db.commit()
+
+def process_symbol(symbol: str, db: Session, hist: pd.DataFrame = None, info: dict = None, cache: FundamentalCache = None, scored_at: datetime.datetime = None):
+    """
+    Processes a single symbol across all timeframes and saves TechnicalSignals.
+    Returns a list of created/updated TechnicalSignal objects.
+    """
+    if hist is None or info is None:
+        from app.pipeline.fetcher import fetch_stock_data
+        hist, info = fetch_stock_data(symbol, period="3y")
+        if hist is None or info is None or hist.empty:
+            return []
+
+    if scored_at is None:
+        scored_at = datetime.datetime.utcnow()
+
+    signals = []
+    # Multi-timeframe loop
+    for tf, freq in [('D', None), ('W', 'W'), ('M', 'ME')]:
+        working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
+        if working_df.empty: continue
+        
+        signal_date = working_df.index[-1].date()
+        ta_data = calculate_combined_score(working_df, info, timeframe=tf, fund_cache=cache)
+        
+        # Explicit Upsert into TechnicalSignal
+        signal = db.query(TechnicalSignal).filter_by(
+            symbol=symbol, date=signal_date, timeframe=tf
+        ).first()
+        if not signal:
+            signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
+            db.add(signal)
+        
+        signal.entry_score = ta_data['score']
+        signal.is_bullish = ta_data['is_bullish']
+        signal.rsi = ta_data['rsi']
+        signal.macd = ta_data['macd']
+        signal.ema_signal = ta_data['ema_signal']
+        signal.volume_signal = ta_data.get('volume_signal', 'neutral')
+        signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
+        signal.atr = ta_data.get('atr')
+        
+        # EMA Levels
+        signal.ema5_level = ta_data.get('ema5_level')
+        signal.ema13_level = ta_data.get('ema13_level')
+        signal.ema20_level = ta_data.get('ema20_level')
+        signal.ema26_level = ta_data.get('ema26_level')
+        
+        # Momentum and New Technical Fields
+        signal.momentum_1m = ta_data.get('momentum_1m')
+        signal.momentum_3m = ta_data.get('momentum_3m')
+        signal.momentum_6m = ta_data.get('momentum_6m')
+        signal.momentum_12m = ta_data.get('momentum_12m')
+        signal.adx = ta_data.get('adx')
+        signal.above_200ema = ta_data.get('above_200ema')
+        signal.ema_slope_20 = ta_data.get('ema_slope_20')
+        signal.week52_high = ta_data.get('week52_high')
+        signal.week52_low = ta_data.get('week52_low')
+        signal.pct_from_52w_high = ta_data.get('pct_from_52w_high')
+        signal.pct_from_52w_low = ta_data.get('pct_from_52w_low')
+        signal.resistance_level = ta_data.get('resistance_level')
+        signal.pct_from_resistance = ta_data.get('pct_from_resistance')
+        signal.volume_breakout = ta_data.get('volume_breakout', False)
+        
+        signal.scored_at = scored_at
+        
+        # Capture price snapshots for Daily timeframe
+        if tf == 'D' and len(working_df) >= 2:
+            signal.close_price = float(working_df['Close'].iloc[-1])
+            signal.price_change_pct = float(
+                (working_df['Close'].iloc[-1] - working_df['Close'].iloc[-2]) 
+                / working_df['Close'].iloc[-2] * 100
+            )
+        signals.append(signal)
+    return signals
 
 def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = None):
     if resume_run_id:
@@ -342,56 +417,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 else:
                     hist, info = cache_data
                 
-                # Multi-timeframe loop
-                for tf, freq in [('D', None), ('W', 'W'), ('M', 'ME')]:
-                    working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
-                    if working_df.empty: continue
-                    
-                    signal_date = working_df.index[-1].date()
-                    ta_data = calculate_combined_score(working_df, info, timeframe=tf, fund_cache=cache)
-                    
-                    # Explicit Upsert into TechnicalSignal
-                    signal = db.query(TechnicalSignal).filter_by(
-                        symbol=symbol, date=signal_date, timeframe=tf
-                    ).first()
-                    if not signal:
-                        signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
-                        db.add(signal)
-                    
-                    signal.entry_score = ta_data['score']
-                    signal.is_bullish = ta_data['is_bullish']
-                    signal.rsi = ta_data['rsi']
-                    signal.macd = ta_data['macd']
-                    signal.ema_signal = ta_data['ema_signal']
-                    signal.volume_signal = ta_data.get('volume_signal', 'neutral')
-                    signal.rsi_signal = ta_data.get('rsi_signal', 'neutral')
-                    signal.atr = ta_data.get('atr')
-                    
-                    # Momentum and New Technical Fields
-                    signal.momentum_1m = ta_data.get('momentum_1m')
-                    signal.momentum_3m = ta_data.get('momentum_3m')
-                    signal.momentum_6m = ta_data.get('momentum_6m')
-                    signal.momentum_12m = ta_data.get('momentum_12m')
-                    signal.adx = ta_data.get('adx')
-                    signal.above_200ema = ta_data.get('above_200ema')
-                    signal.ema_slope_20 = ta_data.get('ema_slope_20')
-                    signal.week52_high = ta_data.get('week52_high')
-                    signal.week52_low = ta_data.get('week52_low')
-                    signal.pct_from_52w_high = ta_data.get('pct_from_52w_high')
-                    signal.pct_from_52w_low = ta_data.get('pct_from_52w_low')
-                    signal.resistance_level = ta_data.get('resistance_level')
-                    signal.pct_from_resistance = ta_data.get('pct_from_resistance')
-                    signal.volume_breakout = ta_data.get('volume_breakout', False)
-                    
-                    signal.scored_at = scored_at
-                    
-                    # Capture price snapshots for Daily timeframe
-                    if tf == 'D' and len(working_df) >= 2:
-                        signal.close_price = float(working_df['Close'].iloc[-1])
-                        signal.price_change_pct = float(
-                            (working_df['Close'].iloc[-1] - working_df['Close'].iloc[-2]) 
-                            / working_df['Close'].iloc[-2] * 100
-                        )
+                process_symbol(symbol, db, hist=hist, info=info, cache=cache, scored_at=scored_at)
                 
                 scored_count += 1
                 completed_scoring.add(symbol)

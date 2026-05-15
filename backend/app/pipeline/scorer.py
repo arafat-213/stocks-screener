@@ -91,6 +91,16 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     - 'W': RSI > 50 and Price > EMA26
     - 'M': RSI > 50 and (Price > EMA13 or Price > EMA26)
     """
+    if len(df) < 1:
+        return {
+            "score": 0.0, "rsi": 0.0, "macd": 0.0, "ema_signal": "neutral",
+            "volume_signal": "neutral", "rsi_signal": "neutral", "is_bullish": False,
+            "ema5_level": None, "ema13_level": None, "ema20_level": None, "ema26_level": None,
+            "atr": None,
+            "momentum_1m": None, "momentum_3m": None, "momentum_6m": None, "momentum_12m": None,
+            "adx": None, "above_200ema": None, "ema_slope_20": None
+        }
+
     # Ensure we don't modify the original dataframe in a way that affects caller
     df = df.copy()
         
@@ -119,14 +129,6 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
         v6 = df[ema20_col].iloc[-6]
         if pd.notna(v1) and pd.notna(v6):
             ema_slope_20 = float((v1 - v6) / 5)
-
-    if len(df) < 1:
-        return {
-            "score": 0.0, "rsi": 0.0, "macd": 0.0, "ema_signal": "neutral",
-            "volume_signal": "neutral", "rsi_signal": "neutral", "is_bullish": False, "atr": None,
-            "momentum_1m": None, "momentum_3m": None, "momentum_6m": None, "momentum_12m": None,
-            "adx": None, "above_200ema": None, "ema_slope_20": None
-        }
 
     latest = df.iloc[-1]
     prev = df.iloc[-2] if len(df) > 1 else latest
@@ -295,6 +297,10 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
         "volume_signal": volume_signal,
         "rsi_signal": rsi_signal,
         "is_bullish": bool(is_bullish),
+        "ema5_level": float(ema5) if pd.notna(ema5) else None,
+        "ema13_level": float(ema13) if pd.notna(ema13) else None,
+        "ema20_level": float(ema20) if pd.notna(ema20) else None,
+        "ema26_level": float(ema26) if pd.notna(ema26) else None,
         "atr": float(atr) if pd.notna(atr) else None,
         "momentum_1m": float(momentum_1m) if momentum_1m is not None else None,
         "momentum_3m": float(momentum_3m) if momentum_3m is not None else None,

@@ -7,6 +7,7 @@ from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
 from app.core.cache import response_cache
+from app.pipeline.trade_setup import compute_trade_setup
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 market_lock = asyncio.Lock()
@@ -325,6 +326,7 @@ def get_dashboard_results(
             if sig.timeframe == 'D':
                 stocks_map[sig.symbol]["close_price"] = sig.close_price
                 stocks_map[sig.symbol]["price_change_pct"] = sig.price_change_pct
+                stocks_map[sig.symbol]["setup"] = compute_trade_setup(sig)
 
     for fund in all_funds:
         if fund.symbol in stocks_map:
