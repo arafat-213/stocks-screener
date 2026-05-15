@@ -343,6 +343,8 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         # 1. Fetch benchmark data (^NSEI)
         logger.info("Fetching benchmark data (^NSEI)")
         benchmark_df, _ = fetch_stock_data("^NSEI", append_ns=False, period='3y', fetch_info=False)
+        if benchmark_df is not None and benchmark_df.index.tz is not None:
+            benchmark_df.index = benchmark_df.index.tz_localize(None)
 
         regime_dict = {}
         if benchmark_df is not None and not benchmark_df.empty:
@@ -384,6 +386,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 df, _ = fetch_stock_data(symbol, period='3y', fetch_info=False)
                 if df is None or df.empty:
                     continue
+                
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
 
                 fund_cache = fund_caches.get(symbol)
                 
