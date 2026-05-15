@@ -396,18 +396,20 @@ const Backtest = () => {
                 />
               </div>
 
-              <div className="risk-management-section mt-6 mb-6 p-4 bg-muted/30 rounded-lg border border-border">
-                <h3 className="section-subtitle flex items-center gap-2 mb-4">
-                  <ShieldCheck size={16} className="text-primary" /> Risk Management
+              <div className="risk-management-card">
+                <h3 className="risk-management-title">
+                  <ShieldCheck size={16} /> Risk Management
                 </h3>
                 
-                <Toggle 
-                  label="Use ATR-based Stops & Targets"
-                  checked={config.use_atr_stops}
-                  onChange={(val) => handleConfigChange('use_atr_stops', val)}
-                />
+                <div className="risk-management-toggle">
+                  <Toggle 
+                    label="Use ATR-based Stops & Targets"
+                    checked={config.use_atr_stops}
+                    onChange={(val) => handleConfigChange('use_atr_stops', val)}
+                  />
+                </div>
                 
-                <div className="mt-4 space-y-4">
+                <div className="risk-management-controls">
                   {config.use_atr_stops ? (
                     <>
                       <Slider 
@@ -430,18 +432,18 @@ const Backtest = () => {
                   ) : (
                     <>
                       <Slider 
-                        label="Stop Loss %" 
-                        value={config.stop_loss_pct} 
-                        onChange={(val) => handleConfigChange('stop_loss_pct', val)} 
-                        min={0} max={50}
-                        step={0.5}
+                        label="Stop Loss %"
+                        min={1}
+                        max={25}
+                        value={config.stop_loss_pct}
+                        onChange={(val) => handleConfigChange('stop_loss_pct', val)}
                       />
                       <Slider 
-                        label="Target %" 
-                        value={config.target_pct} 
-                        onChange={(val) => handleConfigChange('target_pct', val)} 
-                        min={0} max={200}
-                        step={1}
+                        label="Profit Target %"
+                        min={0}
+                        max={100}
+                        value={config.target_pct}
+                        onChange={(val) => handleConfigChange('target_pct', val)}
                       />
                     </>
                   )}

@@ -414,3 +414,31 @@ input[type="date"].input-styled {
   opacity: 0; /* Start invisible for animation */
 }
 
+.risk-management-card {
+  margin: 24px 0;
+  padding: 16px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.risk-management-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  margin-bottom: 16px;
+}
+
+.risk-management-toggle {
+  margin-bottom: 20px;
+}
+
+.risk-management-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
