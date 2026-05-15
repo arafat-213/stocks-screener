@@ -34,6 +34,7 @@ class BacktestRequest(BaseModel):
         description="If true, uses ATR-based stops instead of flat percentage.")
     include_fundamentals: bool = False
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
+    screen_slug: Optional[str] = Field(default=None, description="Slug of the screen to filter symbols by.")
     date_from: Optional[str] = None   # "YYYY-MM-DD"
     date_to: Optional[str] = None     # "YYYY-MM-DD"
     starting_capital: float = Field(default=1000000.0, ge=10000)
@@ -135,6 +136,7 @@ def start_backtest(
         use_atr_stops=request.use_atr_stops,
         include_fundamentals=request.include_fundamentals,
         symbol_limit=request.symbol_limit,
+        screen_slug=request.screen_slug,
         date_from=date_from,
         date_to=date_to,
         starting_capital=request.starting_capital,
