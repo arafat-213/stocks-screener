@@ -17,6 +17,7 @@ import StaleBanner from '../components/StaleBanner';
 import ChangeBanner from '../components/ChangeBanner';
 import WatchlistStar from '../components/WatchlistStar';
 import PipelineProgress from '../components/PipelineProgress';
+import SetupBadge from '../components/SetupBadge';
 import './Dashboard.css';
 
 const Dashboard = () => {
@@ -155,6 +156,13 @@ const Dashboard = () => {
           {val.replace('.NS', '')}
         </Link>
       )
+    },
+    { 
+      key: 'setup', 
+      label: 'Setup', 
+      sortable: true,
+      accessor: (row) => row.setup?.setup_type || '',
+      render: (_, row) => <SetupBadge setup={row.setup} />
     },
     { 
       key: 'close_price', 
