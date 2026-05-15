@@ -5,6 +5,7 @@ from app.db.session import get_db
 from app.db.models import TechnicalSignal, PipelineRun, Stock, FundamentalData, FundamentalCache
 from app.pipeline.orchestrator import run_pipeline
 from app.pipeline.fetcher import fetch_stock_data
+from app.pipeline.trade_setup import compute_trade_setup
 import logging
 
 router = APIRouter()
@@ -82,12 +83,16 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
 
     # 4. Latest Scores (MTF)
     scores = {}
+    daily_signal_obj = None
     for tf in ['D', 'W', 'M']:
         signal = db.query(TechnicalSignal).filter(
             TechnicalSignal.symbol == clean_symbol,
             TechnicalSignal.timeframe == tf
         ).order_by(desc(TechnicalSignal.date)).first()
         
+        if tf == 'D':
+            daily_signal_obj = signal
+
         if signal:
             scores[tf] = {
                 "score": signal.entry_score,
@@ -104,6 +109,9 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
             }
         else:
             scores[tf] = None
+
+    # 4b. Trade Setup (from daily signal)
+    setup = compute_trade_setup(daily_signal_obj)
 
     # 5. Score History (Last 30 daily)
     history_signals = db.query(TechnicalSignal).filter(
@@ -137,7 +145,8 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         "ohlcv": ohlcv,
         "scores": scores,
         "score_history": score_history,
-        "fundamentals": fundamentals
+        "fundamentals": fundamentals,
+        "setup": setup
     }
 
 @router.post("/stocks/{symbol}/refresh-cache")
