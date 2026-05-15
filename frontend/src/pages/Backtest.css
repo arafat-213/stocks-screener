@@ -4,6 +4,10 @@
   margin: 0 auto;
 }
 
+.page-header {
+  margin-bottom: 24px;
+}
+
 .backtest-grid {
   display: grid;
   grid-template-columns: 320px 1fr;
@@ -39,6 +43,25 @@
   gap: 8px;
 }
 
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.config-reset-btn {
+  color: var(--color-text-muted);
+  padding: 4px;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-standard);
+}
+
+.config-reset-btn:hover {
+  color: var(--color-primary);
+  background: var(--color-bg-secondary);
+}
+
 .config-form {
   display: flex;
   flex-direction: column;
@@ -51,10 +74,17 @@
   gap: 8px;
 }
 
-.form-group label {
+.form-group label, .form-label {
   font-size: 0.85rem;
   color: var(--color-text-muted);
   font-weight: 500;
+}
+
+.form-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
 }
 
 .strategy-rules-section {
@@ -74,6 +104,12 @@
   letter-spacing: 0.08em;
   font-weight: 700;
   margin-bottom: 4px;
+}
+
+.strategy-rules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .date-range-grid {
@@ -284,6 +320,22 @@ input[type="date"].input-styled {
 .progress-stats {
   font-size: 0.85rem;
   color: var(--color-text-muted);
+}
+
+.error-card {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid var(--color-bearish);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+}
+
+.error-card-title {
+  color: var(--color-bearish);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .metrics-grid {

@@ -73,8 +73,8 @@ const BacktestResults = memo(({ activeRun, tradesData, tradesPage, totalTradesCo
 
   if (activeRun.status === 'failed') {
     return (
-      <div className="error-card p-6 border border-bearish bg-bearish/10 rounded-xl">
-        <h3 className="text-bearish flex items-center gap-2 mb-2">
+      <div className="error-card">
+        <h3 className="error-card-title">
           <AlertTriangle size={20} /> Backtest Failed
         </h3>
         <p>{activeRun.error_message || 'An unknown error occurred during execution.'}</p>
@@ -356,7 +356,7 @@ const Backtest = () => {
 
   return (
     <div className="backtest-page">
-      <header className="page-header" style={{ marginBottom: '24px' }}>
+      <header className="page-header">
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <History className="text-primary" /> Backtest Engine
         </h1>
@@ -367,10 +367,10 @@ const Backtest = () => {
         {/* Sidebar Configuration */}
         <aside className="sidebar-panel">
           <section className="config-card">
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="m-0 flex items-center gap-2"><Settings size={18} /> Configuration</h2>
+            <div className="config-header">
+              <h2 className="flex items-center gap-2"><Settings size={18} /> Configuration</h2>
               <button 
-                className="text-muted hover:text-primary transition-colors p-1" 
+                className="config-reset-btn" 
                 onClick={handleResetConfig}
                 title="Reset to defaults"
               >
@@ -462,7 +462,7 @@ const Backtest = () => {
 
               <div className="strategy-rules-section">
                 <h3 className="section-subtitle">Strategy Filters</h3>
-                <div className="flex flex-col gap-3">
+                <div className="strategy-rules-list">
                   <Toggle 
                     label="Market Regime"
                     checked={config.use_regime_filter}
@@ -485,7 +485,7 @@ const Backtest = () => {
               </div>
 
               <div className="form-group">
-                <label className="flex items-center gap-2 mb-1"><Briefcase size={13} /> Symbol Limit</label>
+                <label className="form-label"><Briefcase size={13} /> Symbol Limit</label>
                 <input 
                   type="number" 
                   className="input-styled w-full" 
@@ -495,7 +495,7 @@ const Backtest = () => {
               </div>
 
               <div className="form-group">
-                <label className="flex items-center gap-2 mb-1"><Calendar size={13} /> Date Range</label>
+                <label className="form-label"><Calendar size={13} /> Date Range</label>
                 <div className="date-range-grid">
                   <div className="date-input-wrapper">
                     <span className="date-input-label">From</span>
