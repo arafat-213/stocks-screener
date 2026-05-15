@@ -7,6 +7,7 @@ import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import CandlestickChart from '../components/CandlestickChart';
 import ScoreBreakdown from '../components/ScoreBreakdown';
+import TradingPlan from '../components/TradingPlan';
 import { inferScoreBreakdown } from '../utils/scoreBreakdown';
 import './StockDetail.css';
 import { useCallback } from 'react';
@@ -43,6 +44,7 @@ const StockDetail = () => {
   const name = data?.name || '';
   const sector = data?.sector || '';
   const fundamentals = data?.fundamentals || {};
+  const setup = data?.setup;
 
   const dailyScore = latest_scores?.['D'];
   const breakdown = inferScoreBreakdown(dailyScore, fundamentals);
@@ -164,6 +166,7 @@ const StockDetail = () => {
 
         <div className="side-col">
           <div className="confluence-panel">
+            <TradingPlan setup={setup} />
             <h2><Activity size={20} /> Technical Confluence</h2>
             {renderScoreCard('D', 'Daily')}
             {renderScoreCard('W', 'Weekly')}
