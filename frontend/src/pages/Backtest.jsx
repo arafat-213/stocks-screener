@@ -37,7 +37,8 @@ import {
   runBacktest, 
   getBacktestRun, 
   getBacktestRuns, 
-  getBacktestTrades 
+  getBacktestTrades,
+  getScreensList
 } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { useTheme } from '../hooks/useTheme';
@@ -196,6 +197,7 @@ const Backtest = () => {
 
   // rerender-lazy-state-init: Initialize state once
   const [config, setConfig] = useState(() => ({
+    screen_slug: 'all',
     score_threshold: 60,
     holding_days: 20,
     stop_loss_pct: 7.0,
@@ -216,6 +218,9 @@ const Backtest = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
   const pageSize = 50;
+
+  // Fetch Available Screens
+  const { data: screens } = useFetch(getScreensList);
 
   // Fetch Recent Runs
   const { data: recentRuns, refetch: refetchRecentRuns } = useFetch(getBacktestRuns);
@@ -268,6 +273,7 @@ const Backtest = () => {
 
   const handleResetConfig = useCallback(() => {
     setConfig({
+      screen_slug: 'all',
       score_threshold: 60,
       holding_days: 20,
       stop_loss_pct: 7.0,
@@ -379,6 +385,23 @@ const Backtest = () => {
             </div>
             
             <div className="config-form">
+              <div className="form-group">
+                <label className="form-label flex items-center gap-2">
+                  <Layers size={13} /> Starting Universe
+                </label>
+                <select 
+                  className="input-styled w-full"
+                  value={config.screen_slug}
+                  onChange={(e) => handleConfigChange('screen_slug', e.target.value)}
+                >
+                  <option value="all">All Symbols (Default)</option>
+                  {screens?.map(screen => (
+                    <option key={screen.slug} value={screen.slug}>
+                      {screen.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="form-group">
                 <Slider 
                   label={<span className="flex items-center gap-2"><Target size={13} /> Score Threshold</span>}
