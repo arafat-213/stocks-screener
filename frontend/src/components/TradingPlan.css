@@ -1,9 +1,10 @@
 .trading-plan-card {
-  background: var(--card-bg, #ffffff);
-  border: 1px solid var(--border-color, #e5e7eb);
-  border-radius: 12px;
+  background: var(--color-bg-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 16px;
   margin-top: 16px;
+  box-shadow: var(--shadow-sm);
 }
 
 .plan-header {
@@ -12,6 +13,11 @@
   gap: 8px;
   margin-bottom: 16px;
   text-transform: capitalize;
+  font-weight: 600;
+}
+
+.text-primary {
+  color: var(--color-primary);
 }
 
 .plan-grid {
@@ -26,19 +32,24 @@
   align-items: center;
   gap: 4px;
   font-size: 0.75rem;
-  color: #6b7280;
+  color: var(--color-text-muted);
   margin-bottom: 4px;
 }
 
 .plan-item .value {
   font-size: 1.1rem;
   font-weight: 700;
-  font-family: monospace;
+  font-family: var(--font-mono);
+}
+
+.plan-item .value.negative,
+.plan-item .value.bearish {
+  color: var(--color-bearish);
 }
 
 .plan-item .basis {
   font-size: 0.7rem;
-  color: #9ca3af;
+  color: var(--color-text-muted);
 }
 
 .plan-targets {
@@ -53,20 +64,28 @@
 .target-pill {
   display: flex;
   flex-direction: column;
-  background: rgba(16, 185, 129, 0.08);
+  background: rgba(var(--color-primary-rgb), 0.08);
   padding: 8px 12px;
-  border-radius: 8px;
-  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(var(--color-primary-rgb), 0.2);
 }
 
-.target-pill .rr { font-size: 0.7rem; font-weight: 600; color: #10b981; }
-.target-pill .price { font-weight: 700; font-family: monospace; }
+.target-pill .rr { 
+  font-size: 0.7rem; 
+  font-weight: 600; 
+  color: var(--color-bullish); 
+}
+
+.target-pill .price { 
+  font-weight: 700; 
+  font-family: var(--font-mono); 
+}
 
 .plan-footer {
   display: flex;
   justify-content: space-between;
   font-size: 0.75rem;
-  color: #9ca3af;
-  border-top: 1px solid var(--border-color, #f3f4f6);
+  color: var(--color-text-muted);
+  border-top: 1px solid var(--color-border);
   padding-top: 12px;
 }
