@@ -5,6 +5,7 @@ from app.db.session import get_db
 from app.db import models
 from app.screens.registry import SCREEN_REGISTRY
 from app.screens.cache import screen_cache
+from app.pipeline.trade_setup import compute_trade_setup
 from typing import List, Optional
 import logging
 
@@ -12,6 +13,8 @@ router = APIRouter(prefix="/screens", tags=["screens"])
 logger = logging.getLogger(__name__)
 
 def _build_screen_response(symbol, name, rank, score, sector, market_cap, tech, fund):
+    setup = compute_trade_setup(tech) if tech else None
+    
     return {
         "symbol": symbol,
         "name": name,
@@ -42,6 +45,7 @@ def _build_screen_response(symbol, name, rank, score, sector, market_cap, tech, 
         "price": tech.close_price if tech else None,
         "change_pct": tech.price_change_pct if tech else None,
         "rsi": tech.rsi if tech else None,
+        "setup": setup,
         "indicators": {
             "fundamental": {
                 "pe": None,
