@@ -26,6 +26,12 @@ class BacktestRequest(BaseModel):
         description="If true, requires volume > 2x SMA20 for entry.")
     use_regime_filter: bool = Field(default=True,
         description="If true, only enters trades when Nifty is in a bull regime.")
+    atr_multiplier: float = Field(default=2.0, ge=1.0, le=10.0,
+        description="Multiplier for ATR-based stop loss.")
+    risk_reward_ratio: float = Field(default=2.0, ge=0.5, le=10.0,
+        description="Target profit as a multiple of risk.")
+    use_atr_stops: bool = Field(default=False,
+        description="If true, uses ATR-based stops instead of flat percentage.")
     include_fundamentals: bool = False
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
     date_from: Optional[str] = None   # "YYYY-MM-DD"
@@ -124,6 +130,9 @@ def start_backtest(
         trailing_stop_pct=request.trailing_stop_pct,
         require_volume_breakout=request.require_volume_breakout,
         use_regime_filter=request.use_regime_filter,
+        atr_multiplier=request.atr_multiplier,
+        risk_reward_ratio=request.risk_reward_ratio,
+        use_atr_stops=request.use_atr_stops,
         include_fundamentals=request.include_fundamentals,
         symbol_limit=request.symbol_limit,
         date_from=date_from,

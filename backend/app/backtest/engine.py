@@ -22,6 +22,9 @@ class BacktestConfig:
     trailing_stop_pct: float = 0.0     # NEW: percentage drop from highest price
     require_volume_breakout: bool = False # NEW: require volume > 2x SMA20
     use_regime_filter: bool = True     # NEW: Nifty > 50 EMA filter
+    atr_multiplier: float = 2.0        # Multiplier for ATR-based stop loss
+    risk_reward_ratio: float = 2.0     # Target profit as multiple of risk
+    use_atr_stops: bool = False        # Whether to use ATR for stops/targets
     include_fundamentals: bool = False  # use current fundamental data
     timeframe: str = 'D'               # 'D' only for now
     date_from: datetime.date = None    # filter signals after this date
