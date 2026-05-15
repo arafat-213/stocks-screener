@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import WatchlistStar from './WatchlistStar';
+import SetupBadge from './SetupBadge';
 import './StockCard.css';
 
 const StockCard = ({ stock, isWatched, onToggleWatch }) => {
@@ -11,7 +12,8 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
     price_change_pct,
     timeframes,
     fundamentals,
-    confluence_count
+    confluence_count,
+    setup
   } = stock;
 
   const daily = timeframes?.D || {};
@@ -44,6 +46,7 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
           <div className="symbol-section">
             <div className="symbol-row">
               <span className="stock-symbol">{symbol.replace('.NS', '')}</span>
+              <SetupBadge setup={setup} />
               <span className="sector-tag">{sector}</span>
               <WatchlistStar symbol={symbol} isWatched={isWatched} onToggle={onToggleWatch} />
             </div>
