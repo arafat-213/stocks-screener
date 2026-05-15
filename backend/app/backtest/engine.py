@@ -241,6 +241,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     if not trades:
         return {
             "total_trades": 0,
+            "winning_trades": 0,
             "win_rate": 0.0,
             "avg_return_pct": 0.0,
             "median_return_pct": 0.0,
