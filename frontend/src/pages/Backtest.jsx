@@ -201,6 +201,9 @@ const Backtest = () => {
     stop_loss_pct: 7.0,
     target_pct: 20.0,
     trailing_stop_pct: 0.0,
+    use_atr_stops: false,
+    atr_multiplier: 2.0,
+    risk_reward_ratio: 2.0,
     use_regime_filter: true,
     require_volume_breakout: false,
     include_fundamentals: false,
@@ -270,6 +273,9 @@ const Backtest = () => {
       stop_loss_pct: 7.0,
       target_pct: 20.0,
       trailing_stop_pct: 0.0,
+      use_atr_stops: false,
+      atr_multiplier: 2.0,
+      risk_reward_ratio: 2.0,
       use_regime_filter: true,
       require_volume_breakout: false,
       include_fundamentals: false,
@@ -389,24 +395,59 @@ const Backtest = () => {
                   min={1} max={252}
                 />
               </div>
-              <div className="form-group">
-                <Slider 
-                  label="Stop Loss %" 
-                  value={config.stop_loss_pct} 
-                  onChange={(val) => handleConfigChange('stop_loss_pct', val)} 
-                  min={0} max={50}
-                  step={0.5}
+
+              <div className="risk-management-section mt-6 mb-6 p-4 bg-muted/30 rounded-lg border border-border">
+                <h3 className="section-subtitle flex items-center gap-2 mb-4">
+                  <ShieldCheck size={16} className="text-primary" /> Risk Management
+                </h3>
+                
+                <Toggle 
+                  label="Use ATR-based Stops & Targets"
+                  checked={config.use_atr_stops}
+                  onChange={(val) => handleConfigChange('use_atr_stops', val)}
                 />
+                
+                <div className="mt-4 space-y-4">
+                  {config.use_atr_stops ? (
+                    <>
+                      <Slider 
+                        label="ATR Multiplier (Stop Loss)"
+                        min={1.0}
+                        max={5.0}
+                        step={0.1}
+                        value={config.atr_multiplier}
+                        onChange={(val) => handleConfigChange('atr_multiplier', val)}
+                      />
+                      <Slider 
+                        label="Risk/Reward Ratio (Targets)"
+                        min={1.0}
+                        max={10.0}
+                        step={0.5}
+                        value={config.risk_reward_ratio}
+                        onChange={(val) => handleConfigChange('risk_reward_ratio', val)}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <Slider 
+                        label="Stop Loss %" 
+                        value={config.stop_loss_pct} 
+                        onChange={(val) => handleConfigChange('stop_loss_pct', val)} 
+                        min={0} max={50}
+                        step={0.5}
+                      />
+                      <Slider 
+                        label="Target %" 
+                        value={config.target_pct} 
+                        onChange={(val) => handleConfigChange('target_pct', val)} 
+                        min={0} max={200}
+                        step={1}
+                      />
+                    </>
+                  )}
+                </div>
               </div>
-              <div className="form-group">
-                <Slider 
-                  label="Target %" 
-                  value={config.target_pct} 
-                  onChange={(val) => handleConfigChange('target_pct', val)} 
-                  min={0} max={200}
-                  step={1}
-                />
-              </div>
+
               <div className="form-group">
                 <Slider 
                   label={<span className="flex items-center gap-2"><TrendingDown size={13} /> Trailing Stop %</span>}
