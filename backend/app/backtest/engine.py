@@ -11,6 +11,7 @@ from sqlalchemy import func
 from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
 from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data
+from app.screens.registry import SCREEN_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -368,7 +369,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         # 2. Select symbols
         if config.screen_slug and config.screen_slug != "all":
-            from app.screens.registry import SCREEN_REGISTRY
             if config.screen_slug not in SCREEN_REGISTRY:
                 raise ValueError(f"Invalid screen slug: {config.screen_slug}")
 
