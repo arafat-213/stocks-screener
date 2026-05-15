@@ -227,4 +227,78 @@ def test_backtest_config_new_defaults():
     assert config.trailing_stop_pct == 0.0
     assert config.require_volume_breakout is False
     assert config.use_regime_filter is True
+    assert config.atr_multiplier == 2.0
+    assert config.risk_reward_ratio == 2.0
+    assert config.use_atr_stops is False
+
+def test_simulate_trades_uses_atr_stops():
+    df = create_dummy_df(100)
+    # Force a signal at index 60 with ATR info
+    atr_value = 5.0
+    scored_dates = [{
+        "date": df.index[60],
+        "score": 100.0,
+        "rsi": 50.0,
+        "adx": 20.0,
+        "ema_signal": "bullish",
+        "atr": atr_value
+    }]
+    
+    # config: multiplier 2.0, RR 2.0
+    # Stop Loss = entry_price - (2.0 * 5.0) = entry_price - 10.0
+    # Target = entry_price + (2.0 * 2.0 * 5.0) = entry_price + 20.0
+    config = BacktestConfig(
+        score_threshold=80.0, 
+        use_atr_stops=True,
+        atr_multiplier=2.0,
+        risk_reward_ratio=2.0,
+        holding_days=10
+    )
+    
+    # Mock price movement to trigger ATR target
+    entry_price = float(df.iloc[61]['Open'])
+    target_price = entry_price + 20.0
+    df.iloc[62, df.columns.get_loc('High')] = target_price + 1.0
+    
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.exit_reason == 'target'
+    # Use approx for float comparison
+    assert trade.exit_price == pytest.approx(target_price)
+
+def test_simulate_trades_uses_atr_stops_sl():
+    df = create_dummy_df(100)
+    # Force a signal at index 60 with ATR info
+    atr_value = 5.0
+    scored_dates = [{
+        "date": df.index[60],
+        "score": 100.0,
+        "rsi": 50.0,
+        "adx": 20.0,
+        "ema_signal": "bullish",
+        "atr": atr_value
+    }]
+    
+    # config: multiplier 2.0
+    # Stop Loss = entry_price - (2.0 * 5.0) = entry_price - 10.0
+    config = BacktestConfig(
+        score_threshold=80.0, 
+        use_atr_stops=True,
+        atr_multiplier=2.0,
+        holding_days=10
+    )
+    
+    # Mock price movement to trigger ATR stop loss
+    entry_price = float(df.iloc[61]['Open'])
+    sl_price = entry_price - 10.0
+    df.iloc[62, df.columns.get_loc('Low')] = sl_price - 1.0
+    
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    
+    assert len(trades) == 1
+    trade = trades[0]
+    assert trade.exit_reason == 'stop_loss'
+    assert trade.exit_price == pytest.approx(sl_price)
 

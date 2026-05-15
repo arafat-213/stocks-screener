@@ -90,7 +90,8 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
             "rsi_signal": ta_data['rsi_signal'],
             "close": price,
             "open": open_price,
-            "volume_breakout": bool(ta_data.get('volume_breakout', False))
+            "volume_breakout": bool(ta_data.get('volume_breakout', False)),
+            "atr": ta_data.get('atr')
         })
         
     return results
@@ -152,11 +153,15 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
             exit_date = None
             exit_reason = 'holding_period'
             
-            stop_loss_pct = config.stop_loss_pct
-            target_pct = config.target_pct
-            
-            stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct > 0 else 0
-            target_price = entry_price * (1 + target_pct / 100) if target_pct > 0 else float('inf')
+            if config.use_atr_stops and signal.get('atr'):
+                atr = signal['atr']
+                stop_loss_price = entry_price - (config.atr_multiplier * atr)
+                target_price = entry_price + (config.atr_multiplier * config.risk_reward_ratio * atr)
+            else:
+                stop_loss_pct = config.stop_loss_pct
+                target_pct = config.target_pct
+                stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct > 0 else 0
+                target_price = entry_price * (1 + target_pct / 100) if target_pct > 0 else float('inf')
             
             # Walk forward up to config.holding_days
             final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
