@@ -4,7 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 FIELD_KEYWORDS = {
-    "net_income":     ["net income", "net earnings", "profit after tax", "pat"],
+    "net_income":     ["net income", "net earnings", "profit after tax", "pat", "net income from continuing operations"],
     "revenue":        ["total revenue", "revenue", "total operating revenue", "net sales"],
     "ebit":           ["ebit", "operating income", "operating profit"],
     "total_assets":   ["total assets"],
@@ -32,16 +32,17 @@ def get_financial_row(df: pd.DataFrame, field_key: str) -> pd.Series | None:
         return None
     
     keywords = FIELD_KEYWORDS[field_key]
-    index_lowered = [str(idx).lower() for idx in df.index]
+    # Clean index labels: strip whitespace and lower case
+    cleaned_index = [str(idx).strip().lower() for idx in df.index]
     
     for kw in keywords:
-        kw_lower = kw.lower()
-        for i, idx_val in enumerate(index_lowered):
-            if kw_lower in idx_val:
+        kw_lower = kw.lower().strip()
+        for i, idx_val in enumerate(cleaned_index):
+            if kw_lower == idx_val or kw_lower in idx_val:
                 logger.debug(f"Matched financial row: '{df.index[i]}' for key '{field_key}' using keyword '{kw}'")
                 return df.iloc[i]
     
-    logger.warning(f"Failed to find financial row for key '{field_key}' in index: {list(df.index)[:5]}...")
+    logger.warning(f"Failed to find financial row for key '{field_key}'. Available index: {list(df.index)}")
     return None
 
 def resample_ohlcv(df: pd.DataFrame, freq: str, drop_incomplete: bool = True) -> pd.DataFrame:
