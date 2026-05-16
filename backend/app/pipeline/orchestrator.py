@@ -1,3 +1,5 @@
+import logging
+from app.core.logging_manager import logging_manager
 from sqlalchemy.orm import Session
 from app.db.models import (
     Stock, TechnicalSignal, FundamentalData, PipelineRun, 
@@ -21,7 +23,6 @@ from app.pipeline.rs_ranks import compute_rs_ranks
 from app.core.cache import response_cache
 from app.screens.cache import screen_cache
 import datetime
-import logging
 import traceback
 import json
 import yfinance as yf
@@ -198,6 +199,8 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         db.add(run)
         db.commit()
         db.refresh(run)
+    
+    logging_manager.setup_run_logging(str(run.run_id))
     
     current_symbol = "STARTUP"
     try:
@@ -504,4 +507,5 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             run.status = "failed"
             run.errors = error_msg
         db.commit()
-
+    finally:
+        logging_manager.cleanup_run_logging()

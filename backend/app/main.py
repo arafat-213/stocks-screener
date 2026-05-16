@@ -12,6 +12,8 @@ from app.core.cache import response_cache
 from app.db.models import PipelineRun
 import datetime
 
+from app.core.logging_manager import logging_manager
+
 # Configure Logging
 log_dir = "logs"
 if not os.path.exists(log_dir):
@@ -22,7 +24,6 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler(os.path.join(log_dir, "pipeline.log"))
     ]
 )
 

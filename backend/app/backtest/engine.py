@@ -13,6 +13,8 @@ from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, Fu
 from app.pipeline.fetcher import fetch_stock_data
 from app.screens.registry import SCREEN_REGISTRY
 
+from app.core.logging_manager import logging_manager
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -341,168 +343,172 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
     """
     Main orchestrator for the backtest.
     """
-    logger.info(f"Starting backtest {run_id}")
-    run = db.query(BacktestRun).filter(BacktestRun.run_id == run_id).first()
-    if not run:
-        logger.error(f"BacktestRun {run_id} not found")
-        return
-
+    logging_manager.setup_run_logging(run_id)
     try:
-        # Update status to running
-        run.status = 'running'
-        db.commit()
+        logger.info(f"Starting backtest {run_id}")
+        run = db.query(BacktestRun).filter(BacktestRun.run_id == run_id).first()
+        if not run:
+            logger.error(f"BacktestRun {run_id} not found")
+            return
 
-        # 1. Fetch benchmark data (^NSEI)
-        logger.info("Fetching benchmark data (^NSEI)")
-        benchmark_df, _ = fetch_stock_data("^NSEI", append_ns=False, period='3y', fetch_info=False)
-        if benchmark_df is not None and benchmark_df.index.tz is not None:
-            benchmark_df.index = benchmark_df.index.tz_localize(None)
+        try:
+            # Update status to running
+            run.status = 'running'
+            db.commit()
 
-        regime_dict = {}
-        if benchmark_df is not None and not benchmark_df.empty:
-            benchmark_df.ta.ema(length=50, append=True)
-            # Map index date to boolean
-            valid = benchmark_df[benchmark_df['EMA_50'].notna()]
-            regime_dict = dict(zip(
-                valid.index.date,
-                valid['Close'] > valid['EMA_50']
-            ))
+            # 1. Fetch benchmark data (^NSEI)
+            logger.info("Fetching benchmark data (^NSEI)")
+            benchmark_df, _ = fetch_stock_data("^NSEI", append_ns=False, period='3y', fetch_info=False)
+            if benchmark_df is not None and benchmark_df.index.tz is not None:
+                benchmark_df.index = benchmark_df.index.tz_localize(None)
 
-        # 2. Select symbols
-        if config.screen_slug and config.screen_slug != "all":
-            if config.screen_slug not in SCREEN_REGISTRY:
-                raise ValueError(f"Invalid screen slug: {config.screen_slug}")
+            regime_dict = {}
+            if benchmark_df is not None and not benchmark_df.empty:
+                benchmark_df.ta.ema(length=50, append=True)
+                # Map index date to boolean
+                valid = benchmark_df[benchmark_df['EMA_50'].notna()]
+                regime_dict = dict(zip(
+                    valid.index.date,
+                    valid['Close'] > valid['EMA_50']
+                ))
 
-            logger.info(f"Filtering symbols using screen: {config.screen_slug}")
-            screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
-            screen_results = screen_fn(db)
-            symbols = [r[0] for r in screen_results]
+            # 2. Select symbols
+            if config.screen_slug and config.screen_slug != "all":
+                if config.screen_slug not in SCREEN_REGISTRY:
+                    raise ValueError(f"Invalid screen slug: {config.screen_slug}")
 
-            if not symbols:
-                 raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
-        else:
-            symbol_query = (
-                db.query(TechnicalSignal.symbol)
-                .group_by(TechnicalSignal.symbol)
-                .order_by(func.max(TechnicalSignal.date).desc())
-                .all()
-            )
-            symbols = [row[0] for row in symbol_query]
+                logger.info(f"Filtering symbols using screen: {config.screen_slug}")
+                screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
+                screen_results = screen_fn(db)
+                symbols = [r[0] for r in screen_results]
 
-        if config.symbol_limit:
-            symbols = symbols[:config.symbol_limit]
+                if not symbols:
+                     raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
+            else:
+                symbol_query = (
+                    db.query(TechnicalSignal.symbol)
+                    .group_by(TechnicalSignal.symbol)
+                    .order_by(func.max(TechnicalSignal.date).desc())
+                    .all()
+                )
+                symbols = [row[0] for row in symbol_query]
 
-        run.symbols_total = len(symbols)
-        db.commit()
+            if config.symbol_limit:
+                symbols = symbols[:config.symbol_limit]
 
-        all_trades = []
-        symbols_processed = 0
+            run.symbols_total = len(symbols)
+            db.commit()
 
-        # Pre-fetch sector info if needed
-        stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
-        # Pre-fetch fundamental cache if needed
-        fund_caches = {}
-        if config.include_fundamentals:
-            fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
+            all_trades = []
+            symbols_processed = 0
 
-        for symbol in symbols:
-            try:
-                # Fetch historical OHLCV
-                df, _ = fetch_stock_data(symbol, period='3y', fetch_info=False)
-                if df is None or df.empty:
+            # Pre-fetch sector info if needed
+            stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
+            # Pre-fetch fundamental cache if needed
+            fund_caches = {}
+            if config.include_fundamentals:
+                fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
+
+            for symbol in symbols:
+                try:
+                    # Fetch historical OHLCV
+                    df, _ = fetch_stock_data(symbol, period='3y', fetch_info=False)
+                    if df is None or df.empty:
+                        continue
+                    
+                    if df.index.tz is not None:
+                        df.index = df.index.tz_localize(None)
+
+                    fund_cache = fund_caches.get(symbol)
+                    
+                    # Run scoring
+                    scored_dates = score_series(df, fund_cache=fund_cache, config=config)
+                    
+                    # Run simulation
+                    sector = stocks_info.get(symbol, "Unknown")
+                    trades = simulate_trades(symbol, sector, df, scored_dates, config, regime_dict=regime_dict)
+                    
+                    # Save trades to DB
+                    db_trades = []
+                    for t in trades:
+                        db_trade = BacktestTrade(
+                            run_id=run_id,
+                            symbol=t.symbol,
+                            sector=t.sector,
+                            signal_date=t.signal_date,
+                            entry_date=t.entry_date,
+                            exit_date=t.exit_date,
+                            exit_reason=t.exit_reason,
+                            signal_score=t.signal_score,
+                            entry_price=t.entry_price,
+                            exit_price=t.exit_price,
+                            return_pct=t.return_pct,
+                            rsi_at_signal=t.rsi_at_signal,
+                            adx_at_signal=t.adx_at_signal,
+                            ema_signal=t.ema_signal
+                        )
+                        db_trades.append(db_trade)
+                        all_trades.append(t)
+
+                    if db_trades:
+                        db.bulk_save_objects(db_trades)
+
+                    symbols_processed += 1
+                    
+                    # Periodic commits
+                    if symbols_processed % 10 == 0:
+                        db.commit()
+                    
+                    if symbols_processed % 5 == 0:
+                        run.symbols_done = symbols_processed
+                        db.commit()
+
+                except Exception as e:
+                    logger.error(f"Error processing symbol {symbol}: {e}")
+                    logger.error(traceback.format_exc())
                     continue
-                
-                if df.index.tz is not None:
-                    df.index = df.index.tz_localize(None)
 
-                fund_cache = fund_caches.get(symbol)
-                
-                # Run scoring
-                scored_dates = score_series(df, fund_cache=fund_cache, config=config)
-                
-                # Run simulation
-                sector = stocks_info.get(symbol, "Unknown")
-                trades = simulate_trades(symbol, sector, df, scored_dates, config, regime_dict=regime_dict)
-                
-                # Save trades to DB
-                db_trades = []
-                for t in trades:
-                    db_trade = BacktestTrade(
-                        run_id=run_id,
-                        symbol=t.symbol,
-                        sector=t.sector,
-                        signal_date=t.signal_date,
-                        entry_date=t.entry_date,
-                        exit_date=t.exit_date,
-                        exit_reason=t.exit_reason,
-                        signal_score=t.signal_score,
-                        entry_price=t.entry_price,
-                        exit_price=t.exit_price,
-                        return_pct=t.return_pct,
-                        rsi_at_signal=t.rsi_at_signal,
-                        adx_at_signal=t.adx_at_signal,
-                        ema_signal=t.ema_signal
-                    )
-                    db_trades.append(db_trade)
-                    all_trades.append(t)
+            # 3. Finalize
+            logger.info(f"Computing final metrics for {len(all_trades)} trades")
 
-                if db_trades:
-                    db.bulk_save_objects(db_trades)
+            # Slice benchmark data to match backtest range
+            if all_trades and benchmark_df is not None:
+                first_entry = min(t.entry_date for t in all_trades)
+                effective_from = config.date_from or first_entry
+                effective_to = config.date_to or datetime.date.today()
 
-                symbols_processed += 1
-                
-                # Periodic commits
-                if symbols_processed % 10 == 0:
-                    db.commit()
-                
-                if symbols_processed % 5 == 0:
-                    run.symbols_done = symbols_processed
-                    db.commit()
+                benchmark_df = benchmark_df[
+                  (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
+                  (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
+                ]
 
-            except Exception as e:
-                logger.error(f"Error processing symbol {symbol}: {e}")
-                logger.error(traceback.format_exc())
-                continue
+            metrics = compute_metrics(all_trades, benchmark_df, config)
+            
+            # Update run with results
+            run.total_trades = metrics['total_trades']
+            run.winning_trades = metrics['winning_trades']
+            run.win_rate = metrics['win_rate']
+            run.avg_return_pct = metrics['avg_return_pct']
+            run.median_return_pct = metrics['median_return_pct']
+            run.best_trade_pct = metrics['best_trade_pct']
+            run.worst_trade_pct = metrics['worst_trade_pct']
+            run.max_drawdown_pct = metrics['max_drawdown_pct']
+            run.sharpe_ratio = metrics['sharpe_ratio']
+            run.total_return_pct = metrics['total_return_pct']
+            run.benchmark_return_pct = metrics['benchmark_return_pct']
+            run.equity_curve_json = json.dumps(metrics['equity_curve'])
+            
+            run.symbols_done = len(symbols)
+            run.status = 'complete'
+            db.commit()
+            logger.info(f"Backtest {run_id} completed successfully")
 
-        # 3. Finalize
-        logger.info(f"Computing final metrics for {len(all_trades)} trades")
-
-        # Slice benchmark data to match backtest range
-        if all_trades and benchmark_df is not None:
-            first_entry = min(t.entry_date for t in all_trades)
-            effective_from = config.date_from or first_entry
-            effective_to = config.date_to or datetime.date.today()
-
-            benchmark_df = benchmark_df[
-              (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
-              (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
-            ]
-
-        metrics = compute_metrics(all_trades, benchmark_df, config)
-        
-        # Update run with results
-        run.total_trades = metrics['total_trades']
-        run.winning_trades = metrics['winning_trades']
-        run.win_rate = metrics['win_rate']
-        run.avg_return_pct = metrics['avg_return_pct']
-        run.median_return_pct = metrics['median_return_pct']
-        run.best_trade_pct = metrics['best_trade_pct']
-        run.worst_trade_pct = metrics['worst_trade_pct']
-        run.max_drawdown_pct = metrics['max_drawdown_pct']
-        run.sharpe_ratio = metrics['sharpe_ratio']
-        run.total_return_pct = metrics['total_return_pct']
-        run.benchmark_return_pct = metrics['benchmark_return_pct']
-        run.equity_curve_json = json.dumps(metrics['equity_curve'])
-        
-        run.symbols_done = len(symbols)
-        run.status = 'complete'
-        db.commit()
-        logger.info(f"Backtest {run_id} completed successfully")
-
-    except Exception as e:
-        db.rollback()
-        logger.error(f"Backtest {run_id} failed: {e}")
-        logger.error(traceback.format_exc())
-        run.status = 'failed'
-        run.error_message = str(e)
-        db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"Backtest {run_id} failed: {e}")
+            logger.error(traceback.format_exc())
+            run.status = 'failed'
+            run.error_message = str(e)
+            db.commit()
+    finally:
+        logging_manager.cleanup_run_logging()
