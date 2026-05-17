@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from dataclasses import dataclass
+from collections import Counter
 from typing import Optional
 import datetime
 import json
@@ -27,7 +28,7 @@ class BacktestConfig:
     require_volume_breakout: bool = False # NEW: require volume > 2x SMA20
     use_regime_filter: bool = True     # NEW: Nifty > 50 EMA filter
     atr_multiplier: float = 2.0        # Multiplier for ATR-based stop loss
-    risk_reward_ratio: float = 2.0     # Target profit as multiple of risk
+    risk_reward_ratio: float = 2.5     # Target profit as multiple of risk
     use_atr_stops: bool = False        # Whether to use ATR for stops/targets
     include_fundamentals: bool = False  # use current fundamental data
     timeframe: str = 'D'               # 'D' only for now
@@ -253,13 +254,34 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             "sharpe_ratio": 0.0,
             "total_return_pct": 0.0,
             "benchmark_return_pct": 0.0,
-            "equity_curve": []
+            "equity_curve": [],
+            "expectancy":     0.0,
+            "profit_factor":  0.0,
+            "avg_win_pct":    0.0,
+            "avg_loss_pct":   0.0,
+            "exit_breakdown": {"stop_loss": 0, "target": 0, "trailing_stop": 0, "holding_period": 0},
         }
         
     returns = [t.return_pct for t in trades]
     total_trades = len(trades)
     winning_trades = [r for r in returns if r > 0]
     win_rate = len(winning_trades) / total_trades
+    losing_returns = [r for r in returns if r <= 0]
+    avg_win_pct    = sum(winning_trades) / len(winning_trades) if winning_trades else 0.0
+    avg_loss_pct   = sum(losing_returns)  / len(losing_returns)  if losing_returns  else 0.0
+    expectancy     = (win_rate * avg_win_pct) + ((1 - win_rate) * avg_loss_pct)
+    profit_factor  = (
+        (win_rate * avg_win_pct) / ((1 - win_rate) * abs(avg_loss_pct))
+        if losing_returns and avg_loss_pct != 0 else 0.0
+    )
+
+    reason_counts  = Counter(t.exit_reason for t in trades)
+    exit_breakdown = {
+        "stop_loss":      reason_counts.get('stop_loss', 0),
+        "target":         reason_counts.get('target', 0),
+        "trailing_stop":  reason_counts.get('trailing_stop', 0),
+        "holding_period": reason_counts.get('holding_period', 0),
+    }
     
     avg_return_pct = sum(returns) / total_trades
     median_return_pct = float(pd.Series(returns).median())
@@ -336,7 +358,12 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         "sharpe_ratio": float(sharpe_ratio),
         "total_return_pct": float(total_return_pct),
         "benchmark_return_pct": float(benchmark_return_pct),
-        "equity_curve": equity_curve
+        "equity_curve": equity_curve,
+        "expectancy":     float(expectancy),
+        "profit_factor":  float(profit_factor),
+        "avg_win_pct":    float(avg_win_pct),
+        "avg_loss_pct":   float(avg_loss_pct),
+        "exit_breakdown": exit_breakdown,
     }
 
 def run_backtest(db: Session, run_id: str, config: BacktestConfig):
@@ -496,6 +523,11 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             run.sharpe_ratio = metrics['sharpe_ratio']
             run.total_return_pct = metrics['total_return_pct']
             run.benchmark_return_pct = metrics['benchmark_return_pct']
+            run.expectancy = metrics['expectancy']
+            run.profit_factor = metrics['profit_factor']
+            run.avg_win_pct = metrics['avg_win_pct']
+            run.avg_loss_pct = metrics['avg_loss_pct']
+            run.exit_breakdown_json = json.dumps(metrics['exit_breakdown'])
             run.equity_curve_json = json.dumps(metrics['equity_curve'])
             
             run.symbols_done = len(symbols)

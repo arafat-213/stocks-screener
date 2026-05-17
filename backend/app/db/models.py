@@ -179,6 +179,11 @@ class BacktestRun(Base):
     equity_curve_json = Column(Text, nullable=True)
     starting_capital = Column(Float, nullable=True)
     position_size    = Column(Float, nullable=True)
+    expectancy = Column(Float, nullable=True)
+    profit_factor = Column(Float, nullable=True)
+    avg_win_pct = Column(Float, nullable=True)
+    avg_loss_pct = Column(Float, nullable=True)
+    exit_breakdown_json = Column(Text, nullable=True)
 
 class BacktestTrade(Base):
     __tablename__ = "backtest_trades"

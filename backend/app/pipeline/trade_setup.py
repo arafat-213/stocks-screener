@@ -52,7 +52,11 @@ def compute_trade_setup(signal: TechnicalSignal) -> dict | None:
         "stop_loss": round(stop, 2),
         "stop_basis": f"{ATR_STOP_MULTIPLIER}× ATR below entry",
         "targets": [
-            {"level": round(entry_mid + r * risk, 2), "rr": r}
+            {
+              "level": round(entry_mid + r * risk, 2),
+              "rr": r,
+              "label": "partial" if r == TARGET_R_LEVELS[0] else "primary",
+            }
             for r in TARGET_R_LEVELS
         ],
         "atr": round(atr, 2),

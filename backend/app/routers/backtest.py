@@ -28,7 +28,7 @@ class BacktestRequest(BaseModel):
         description="If true, only enters trades when Nifty is in a bull regime.")
     atr_multiplier: float = Field(default=2.0, ge=1.0, le=10.0,
         description="Multiplier for ATR-based stop loss.")
-    risk_reward_ratio: float = Field(default=2.0, ge=0.5, le=10.0,
+    risk_reward_ratio: float = Field(default=2.5, ge=0.5, le=10.0,
         description="Target profit as a multiple of risk.")
     use_atr_stops: bool = Field(default=False,
         description="If true, uses ATR-based stops instead of flat percentage.")
@@ -70,7 +70,16 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
             "sharpe_ratio": run.sharpe_ratio,
             "total_return_pct": run.total_return_pct,
             "benchmark_return_pct": run.benchmark_return_pct,
+            "expectancy": run.expectancy,
+            "profit_factor": run.profit_factor,
+            "avg_win_pct": run.avg_win_pct,
+            "avg_loss_pct": run.avg_loss_pct,
         }
+        if run.exit_breakdown_json:
+            result["metrics"]["exit_breakdown"] = json.loads(run.exit_breakdown_json)
+
+        if include_curve and run.equity_curve_json:
+            result["equity_curve"] = json.loads(run.equity_curve_json)
         if include_curve and run.equity_curve_json:
             result["equity_curve"] = json.loads(run.equity_curve_json)
     return result
