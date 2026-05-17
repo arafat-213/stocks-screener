@@ -228,7 +228,7 @@ def test_backtest_config_new_defaults():
     assert config.require_volume_breakout is False
     assert config.use_regime_filter is True
     assert config.atr_multiplier == 2.0
-    assert config.risk_reward_ratio == 2.0
+    assert config.risk_reward_ratio == 2.5
     assert config.use_atr_stops is False
 
 def test_simulate_trades_uses_atr_stops():

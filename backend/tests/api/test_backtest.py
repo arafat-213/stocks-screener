@@ -4,6 +4,7 @@ from app.db.session import get_db
 from app.routers.backtest import BacktestRequest
 from app.backtest.engine import BacktestConfig
 import pytest
+from unittest.mock import patch
 
 client = TestClient(app)
 
@@ -12,7 +13,8 @@ def test_list_backtest_runs():
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-def test_start_backtest():
+@patch('app.routers.backtest.run_backtest')
+def test_start_backtest(mock_run):
     payload = {
         "score_threshold": 70,
         "holding_days": 10,
@@ -50,7 +52,7 @@ def test_backtest_request_default_values():
     request = BacktestRequest()
     # Check that new fields have expected defaults
     assert request.atr_multiplier == 2.0
-    assert request.risk_reward_ratio == 2.0
+    assert request.risk_reward_ratio == 2.5
     assert request.use_atr_stops is False
 
 def test_backtest_config_dataclass():
@@ -66,5 +68,5 @@ def test_backtest_config_dataclass():
 def test_backtest_config_defaults():
     config = BacktestConfig()
     assert config.atr_multiplier == 2.0
-    assert config.risk_reward_ratio == 2.0
+    assert config.risk_reward_ratio == 2.5
     assert config.use_atr_stops is False

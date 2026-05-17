@@ -2,6 +2,7 @@ from app.db import models
 import uuid
 import json
 import datetime
+from unittest.mock import patch
 
 def test_serialize_run_structure(client, db):
     # Create a dummy run
@@ -85,7 +86,8 @@ def test_get_backtest_trades_sorting(client, db):
     assert trades[0]["symbol"] == "S1"
     assert trades[0]["return_pct"] == 10
 
-def test_backtest_request_validation(client):
+@patch('app.routers.backtest.run_backtest')
+def test_backtest_request_validation(mock_run, client, db):
     # Test target_pct > 200 fails
     payload = {
         "target_pct": 201
