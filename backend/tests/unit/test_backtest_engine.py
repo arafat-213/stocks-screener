@@ -3,7 +3,7 @@ import numpy as np
 import pytest
 from app.backtest.engine import score_series, BacktestConfig, simulate_trades, compute_metrics, TradeResult
 
-def create_dummy_df(n=200):
+def create_dummy_df(n=400):
     np.random.seed(42)
     dates = pd.date_range(start='2020-01-01', periods=n)
     # Create somewhat realistic trending data to avoid all NaNs/zeros
@@ -18,11 +18,11 @@ def create_dummy_df(n=200):
     return df
 
 def test_score_series_returns_list():
-    df = create_dummy_df(100)
+    df = create_dummy_df(300)
     results = score_series(df)
     assert isinstance(results, list)
-    # MIN_BARS = 60, so for 100 bars we expect 100 - 60 = 40 results
-    assert len(results) == 40
+    # MIN_BARS = 210, so for 300 bars we expect 300 - 210 = 90 results
+    assert len(results) == 90
     if len(results) > 0:
         first = results[0]
         assert "score" in first
@@ -34,13 +34,13 @@ def test_score_series_returns_list():
 
 def test_score_series_no_future_leak():
     # Use more bars to let indicators stabilize a bit
-    df = create_dummy_df(300)
+    df = create_dummy_df(400)
     results_full = score_series(df)
     
-    # Take a point in the middle (e.g., index 150)
-    # result index will be 150 - 60 = 90
-    test_idx = 150
-    result_idx = test_idx - 60
+    # Take a point in the middle (e.g., index 250)
+    # result index will be 250 - 210 = 40
+    test_idx = 250
+    result_idx = test_idx - 210
     expected_score_at_test = results_full[result_idx]['score']
     
     # Score truncated df (only up to test_idx)
@@ -104,41 +104,45 @@ def test_score_series_with_fundamentals():
             assert r_fund['score'] == r_no_fund['score'] + 15.0
 
 def test_score_series_min_bars():
-    df = create_dummy_df(50)
+    df = create_dummy_df(200)
     results = score_series(df)
     assert len(results) == 0
 
 def test_simulate_trades_entry_is_next_day_open():
-    df = create_dummy_df(100)
-    # Force a signal at index 60
+    df = create_dummy_df(300)
+    # Force a signal at index 250
     scored_dates = [{
-        "date": df.index[60],
+        "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
         "adx": 20.0,
-        "ema_signal": "bullish"
+        "ema_signal": "bullish",
+        "above_200ema": True,
+        "volume_breakout": True
     }]
     config = BacktestConfig(score_threshold=80.0, holding_days=5)
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
     assert len(trades) == 1
     trade = trades[0]
-    assert trade.signal_date == df.index[60].date()
-    assert trade.entry_date == df.index[61].date()
-    assert trade.entry_price == float(df.iloc[61]['Open'])
+    assert trade.signal_date == df.index[250].date()
+    assert trade.entry_date == df.index[251].date()
+    assert trade.entry_price == float(df.iloc[251]['Open'])
 
 def test_simulate_trades_stop_loss_triggered():
-    df = create_dummy_df(100)
+    df = create_dummy_df(300)
     # Ensure a massive drop after entry to trigger SL
-    # Entry will be at index 61
-    df.iloc[62, df.columns.get_loc('Low')] = 50.0 # Huge drop
+    # Entry will be at index 251
+    df.iloc[252, df.columns.get_loc('Low')] = 50.0 # Huge drop
     
     scored_dates = [{
-        "date": df.index[60],
+        "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
         "adx": 20.0,
-        "ema_signal": "bullish"
+        "ema_signal": "bullish",
+        "above_200ema": True,
+        "volume_breakout": True
     }]
     config = BacktestConfig(score_threshold=80.0, holding_days=10, stop_loss_pct=5.0)
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
@@ -149,17 +153,19 @@ def test_simulate_trades_stop_loss_triggered():
     assert trade.return_pct <= -5.0
 
 def test_simulate_trades_target_triggered():
-    df = create_dummy_df(100)
+    df = create_dummy_df(300)
     # Ensure a massive rise after entry to trigger Target
-    # Entry will be at index 61
-    df.iloc[62, df.columns.get_loc('High')] = 200.0 # Huge rise
+    # Entry will be at index 251
+    df.iloc[252, df.columns.get_loc('High')] = 200.0 # Huge rise
     
     scored_dates = [{
-        "date": df.index[60],
+        "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
         "adx": 20.0,
-        "ema_signal": "bullish"
+        "ema_signal": "bullish",
+        "above_200ema": True,
+        "volume_breakout": True
     }]
     config = BacktestConfig(score_threshold=80.0, holding_days=10, target_pct=10.0)
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
@@ -170,24 +176,24 @@ def test_simulate_trades_target_triggered():
     assert trade.return_pct >= 10.0
 
 def test_simulate_trades_date_filters():
-    df = create_dummy_df(100)
+    df = create_dummy_df(300)
     # 3 signals at different dates
     scored_dates = [
-        {"date": df.index[60], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish"},
-        {"date": df.index[70], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish"},
-        {"date": df.index[80], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish"}
+        {"date": df.index[250], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish", "above_200ema": True, "volume_breakout": True},
+        {"date": df.index[260], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish", "above_200ema": True, "volume_breakout": True},
+        {"date": df.index[270], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish", "above_200ema": True, "volume_breakout": True}
     ]
     
     # Filter for middle signal only
     config = BacktestConfig(
         score_threshold=80.0, 
-        date_from=df.index[65].date(),
-        date_to=df.index[75].date()
+        date_from=df.index[255].date(),
+        date_to=df.index[265].date()
     )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
     assert len(trades) == 1
-    assert trades[0].signal_date == df.index[70].date()
+    assert trades[0].signal_date == df.index[260].date()
 
 def test_compute_metrics_all_winners():
     trades = [
@@ -223,24 +229,26 @@ def test_compute_metrics_all_winners():
 
 def test_backtest_config_new_defaults():
     config = BacktestConfig()
-    assert config.score_threshold == 45.0
+    assert config.score_threshold == 55.0
     assert config.trailing_stop_pct == 0.0
-    assert config.require_volume_breakout is False
+    assert config.require_volume_breakout is True
     assert config.use_regime_filter is True
     assert config.atr_multiplier == 2.0
     assert config.risk_reward_ratio == 2.5
     assert config.use_atr_stops is False
 
 def test_simulate_trades_uses_atr_stops():
-    df = create_dummy_df(100)
-    # Force a signal at index 60 with ATR info
+    df = create_dummy_df(300)
+    # Force a signal at index 250 with ATR info
     atr_value = 5.0
     scored_dates = [{
-        "date": df.index[60],
+        "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
         "adx": 20.0,
         "ema_signal": "bullish",
+        "above_200ema": True,
+        "volume_breakout": True,
         "atr": atr_value
     }]
     
@@ -256,9 +264,9 @@ def test_simulate_trades_uses_atr_stops():
     )
     
     # Mock price movement to trigger ATR target
-    entry_price = float(df.iloc[61]['Open'])
+    entry_price = float(df.iloc[251]['Open'])
     target_price = entry_price + 20.0
-    df.iloc[62, df.columns.get_loc('High')] = target_price + 1.0
+    df.iloc[252, df.columns.get_loc('High')] = target_price + 1.0
     
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
@@ -269,15 +277,17 @@ def test_simulate_trades_uses_atr_stops():
     assert trade.exit_price == pytest.approx(target_price)
 
 def test_simulate_trades_uses_atr_stops_sl():
-    df = create_dummy_df(100)
-    # Force a signal at index 60 with ATR info
+    df = create_dummy_df(300)
+    # Force a signal at index 250 with ATR info
     atr_value = 5.0
     scored_dates = [{
-        "date": df.index[60],
+        "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
         "adx": 20.0,
         "ema_signal": "bullish",
+        "above_200ema": True,
+        "volume_breakout": True,
         "atr": atr_value
     }]
     
@@ -291,9 +301,9 @@ def test_simulate_trades_uses_atr_stops_sl():
     )
     
     # Mock price movement to trigger ATR stop loss
-    entry_price = float(df.iloc[61]['Open'])
+    entry_price = float(df.iloc[251]['Open'])
     sl_price = entry_price - 10.0
-    df.iloc[62, df.columns.get_loc('Low')] = sl_price - 1.0
+    df.iloc[252, df.columns.get_loc('Low')] = sl_price - 1.0
     
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     

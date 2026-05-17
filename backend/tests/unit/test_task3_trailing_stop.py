@@ -27,7 +27,8 @@ def test_trailing_stop_triggered():
         "rsi": 50.0,
         "adx": 25.0,
         "ema_signal": "bullish",
-        "volume_breakout": False
+        "volume_breakout": True,
+        "above_200ema": True
     }]
     
     # Entry at day 11 Open. Price around 104.
@@ -63,7 +64,8 @@ def test_regime_filter_blocks_trade():
         "rsi": 50.0,
         "adx": 25.0,
         "ema_signal": "bullish",
-        "volume_breakout": False
+        "volume_breakout": True,
+        "above_200ema": True
     }]
     
     # Regime says FALSE for entry date (T+1)
@@ -84,7 +86,8 @@ def test_regime_filter_allows_trade():
         "rsi": 50.0,
         "adx": 25.0,
         "ema_signal": "bullish",
-        "volume_breakout": False
+        "volume_breakout": True,
+        "above_200ema": True
     }]
     
     # Regime says TRUE for entry date (T+1)
@@ -107,7 +110,8 @@ def test_volume_breakout_filter():
         "rsi": 50.0,
         "adx": 25.0,
         "ema_signal": "bullish",
-        "volume_breakout": False
+        "volume_breakout": False,
+        "above_200ema": True
     }]
     
     config = BacktestConfig(require_volume_breakout=True)
