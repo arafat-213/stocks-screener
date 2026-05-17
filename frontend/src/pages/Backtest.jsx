@@ -842,7 +842,9 @@ const Backtest = () => {
                   </div>
                   <div className="run-config-summary">
                     T:{run.config.score_threshold} | H:{run.config.holding_days}{' '}
-                    | SL:{run.config.stop_loss_pct}%
+                    | SL:{run.config.stop_loss_pct}%{' '}
+                    | W:{run.config.require_weekly_confirmation !== false ? '✓' : '✗'}{' '}
+                    | M:{run.config.require_monthly_confirmation ? '✓' : '✗'}
                   </div>
                 </div>
               ))}
