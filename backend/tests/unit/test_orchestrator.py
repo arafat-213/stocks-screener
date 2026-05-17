@@ -5,28 +5,6 @@ from app.db.models import PipelineRun, Stock, FundamentalCache, TechnicalSignal
 import datetime
 import pandas as pd
 
-# Define standard decorators to reuse across tests
-ORCHESTRATOR_PATCHES = [
-    patch('app.pipeline.orchestrator.get_nse_symbols'),
-    patch('app.pipeline.orchestrator.yf.download'),
-    patch('app.pipeline.orchestrator.slice_bulk_df'),
-    patch('app.pipeline.orchestrator.yf.Ticker'),
-    patch('app.pipeline.orchestrator.fetch_stock_data'),
-    patch('app.pipeline.orchestrator.passes_tier1_fast_filters'),
-    patch('app.pipeline.orchestrator.calculate_combined_score'),
-    patch('app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals'),
-    patch('app.pipeline.orchestrator.resample_ohlcv'),
-    patch('app.pipeline.orchestrator.fetch_market_snapshots'),
-    patch('app.pipeline.orchestrator.generate_daily_report'),
-    patch('app.screens.materializer.materialize_all_screens'),
-    patch('app.pipeline.orchestrator.compute_rs_ranks')
-]
-
-def apply_patches(func):
-    for p in ORCHESTRATOR_PATCHES:
-        func = p(func)
-    return func
-
 def setup_robust_db_mock(mock_db, profitability_streak=True):
     """Configures a mock DB session to handle the orchestrator's common patterns."""
     mock_combined = MagicMock(
@@ -41,7 +19,7 @@ def setup_robust_db_mock(mock_db, profitability_streak=True):
     
     # Track calls to return None for concurrency check (first call)
     call_idx = [0]
-    def first_side_effect():
+    def first_side_effect(*args, **kwargs):
         idx = call_idx[0]
         call_idx[0] += 1
         if idx == 0: return None # Concurrency check
@@ -80,21 +58,35 @@ def get_mock_ta_data(score=80, bullish=True):
         'volume_breakout': True
     }
 
-@apply_patches
+@patch('app.pipeline.orchestrator.get_nse_symbols')
+@patch('app.pipeline.orchestrator.yf.download')
+@patch('app.pipeline.orchestrator.slice_bulk_df')
+@patch('app.pipeline.orchestrator.yf.Ticker')
+@patch('app.pipeline.orchestrator.fetch_stock_data')
+@patch('app.pipeline.orchestrator.passes_tier1_fast_filters')
+@patch('app.pipeline.orchestrator.calculate_combined_score')
+@patch('app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals')
+@patch('app.pipeline.orchestrator.resample_ohlcv')
+@patch('app.pipeline.orchestrator.fetch_market_snapshots')
+@patch('app.pipeline.orchestrator.generate_daily_report')
+@patch('app.screens.materializer.materialize_all_screens')
+@patch('app.pipeline.orchestrator.compute_rs_ranks')
+@patch('app.pipeline.orchestrator._ohlcv_cache')
 def test_run_pipeline_tiered_flow(
-    mock_get_symbols,
-    mock_download,
-    mock_slice,
-    mock_ticker,
-    mock_fetch_data,
-    mock_t1_filter,
-    mock_calc_score,
-    mock_fetch_cache,
-    mock_resample,
-    mock_market,
-    mock_report,
+    mock_ohlcv_cache,
+    mock_rs_ranks,
     mock_materialize,
-    mock_rs_ranks
+    mock_report,
+    mock_market,
+    mock_resample,
+    mock_fetch_cache,
+    mock_calc_score,
+    mock_t1_filter,
+    mock_fetch_data,
+    mock_ticker,
+    mock_slice,
+    mock_download,
+    mock_get_symbols
 ):
     mock_db = MagicMock()
     setup_robust_db_mock(mock_db)
@@ -111,6 +103,8 @@ def test_run_pipeline_tiered_flow(
     mock_download.return_value = MagicMock()
     mock_slice.return_value = mock_hist
     
+    mock_ohlcv_cache.get.return_value = mock_hist
+
     mock_ticker_inst = MagicMock()
     mock_ticker_inst.fast_info = {'marketCap': 21_000_000_000, 'threeMonthAverageVolume': 1_000_000, 'lastPrice': 100}
     mock_ticker_inst.info = {'longName': 'Reliance', 'sector': 'Energy'}
@@ -126,21 +120,35 @@ def test_run_pipeline_tiered_flow(
     assert isinstance(run, PipelineRun)
     assert run.tier1_count >= 1
 
-@apply_patches
+@patch('app.pipeline.orchestrator.get_nse_symbols')
+@patch('app.pipeline.orchestrator.yf.download')
+@patch('app.pipeline.orchestrator.slice_bulk_df')
+@patch('app.pipeline.orchestrator.yf.Ticker')
+@patch('app.pipeline.orchestrator.fetch_stock_data')
+@patch('app.pipeline.orchestrator.passes_tier1_fast_filters')
+@patch('app.pipeline.orchestrator.calculate_combined_score')
+@patch('app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals')
+@patch('app.pipeline.orchestrator.resample_ohlcv')
+@patch('app.pipeline.orchestrator.fetch_market_snapshots')
+@patch('app.pipeline.orchestrator.generate_daily_report')
+@patch('app.screens.materializer.materialize_all_screens')
+@patch('app.pipeline.orchestrator.compute_rs_ranks')
+@patch('app.pipeline.orchestrator._ohlcv_cache')
 def test_run_pipeline_decoupled_scoring(
-    mock_get_symbols,
-    mock_download,
-    mock_slice,
-    mock_ticker,
-    mock_fetch_data,
-    mock_t1_filter,
-    mock_calc_score,
-    mock_fetch_cache,
-    mock_resample,
-    mock_market,
-    mock_report,
+    mock_ohlcv_cache,
+    mock_rs_ranks,
     mock_materialize,
-    mock_rs_ranks
+    mock_report,
+    mock_market,
+    mock_resample,
+    mock_fetch_cache,
+    mock_calc_score,
+    mock_t1_filter,
+    mock_fetch_data,
+    mock_ticker,
+    mock_slice,
+    mock_download,
+    mock_get_symbols
 ):
     mock_db = MagicMock()
     setup_robust_db_mock(mock_db, profitability_streak=False)
@@ -157,6 +165,8 @@ def test_run_pipeline_decoupled_scoring(
     mock_download.return_value = MagicMock()
     mock_slice.return_value = mock_hist
     
+    mock_ohlcv_cache.get.return_value = mock_hist
+
     mock_ticker_inst = MagicMock()
     mock_ticker_inst.fast_info = {'marketCap': 3000000000, 'threeMonthAverageVolume': 1000000, 'lastPrice': 100}
     mock_ticker_inst.info = {'longName': 'Failed Quality Corp'}
@@ -173,21 +183,35 @@ def test_run_pipeline_decoupled_scoring(
     assert run.tier1_count == 1
     assert run.stocks_scored == 1
 
-@apply_patches
+@patch('app.pipeline.orchestrator.get_nse_symbols')
+@patch('app.pipeline.orchestrator.yf.download')
+@patch('app.pipeline.orchestrator.slice_bulk_df')
+@patch('app.pipeline.orchestrator.yf.Ticker')
+@patch('app.pipeline.orchestrator.fetch_stock_data')
+@patch('app.pipeline.orchestrator.passes_tier1_fast_filters')
+@patch('app.pipeline.orchestrator.calculate_combined_score')
+@patch('app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals')
+@patch('app.pipeline.orchestrator.resample_ohlcv')
+@patch('app.pipeline.orchestrator.fetch_market_snapshots')
+@patch('app.pipeline.orchestrator.generate_daily_report')
+@patch('app.screens.materializer.materialize_all_screens')
+@patch('app.pipeline.orchestrator.compute_rs_ranks')
+@patch('app.pipeline.orchestrator._ohlcv_cache')
 def test_run_pipeline_lazy_loading(
-    mock_get_symbols,
-    mock_download,
-    mock_slice,
-    mock_ticker,
-    mock_fetch_data,
-    mock_t1_filter,
-    mock_calc_score,
-    mock_fetch_cache,
-    mock_resample,
-    mock_market,
-    mock_report,
+    mock_ohlcv_cache,
+    mock_rs_ranks,
     mock_materialize,
-    mock_rs_ranks
+    mock_report,
+    mock_market,
+    mock_resample,
+    mock_fetch_cache,
+    mock_calc_score,
+    mock_t1_filter,
+    mock_fetch_data,
+    mock_ticker,
+    mock_slice,
+    mock_download,
+    mock_get_symbols
 ):
     mock_db = MagicMock()
     setup_robust_db_mock(mock_db)
@@ -205,6 +229,8 @@ def test_run_pipeline_lazy_loading(
     mock_download.return_value = MagicMock()
     mock_slice.return_value = mock_hist
     
+    mock_ohlcv_cache.get.return_value = mock_hist
+
     mock_ticker_inst = MagicMock()
     mock_ticker_inst.fast_info = {'marketCap': 3000000000, 'threeMonthAverageVolume': 1000000, 'lastPrice': 100}
     mock_ticker_inst.info = {'longName': 'Test Stock'}
@@ -217,4 +243,4 @@ def test_run_pipeline_lazy_loading(
 
     run_pipeline(mock_db)
     
-    assert mock_fetch_data.call_count >= 300
+    assert mock_ohlcv_cache.get.call_count >= 300
