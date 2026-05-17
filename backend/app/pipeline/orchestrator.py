@@ -22,6 +22,7 @@ from app.pipeline.errors import classify_error
 from app.pipeline.rs_ranks import compute_rs_ranks
 from app.core.cache import response_cache
 from app.screens.cache import screen_cache
+from app.pipeline.ohlcv_cache import OHLCVCache
 import datetime
 import traceback
 import json
@@ -29,6 +30,8 @@ import yfinance as yf
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+_ohlcv_cache = OHLCVCache()
 
 def request_pipeline_stop(db: Session):
     run = db.query(PipelineRun).filter(PipelineRun.status == "running").order_by(PipelineRun.timestamp.desc()).first()
@@ -98,10 +101,12 @@ def process_symbol(symbol: str, db: Session, hist: pd.DataFrame = None, info: di
     Processes a single symbol across all timeframes and saves TechnicalSignals.
     Returns a list of created/updated TechnicalSignal objects.
     """
-    if hist is None or info is None:
+    if hist is None:
         from app.pipeline.fetcher import fetch_stock_data
-        hist, info = fetch_stock_data(symbol, period="3y")
-        if hist is None or info is None or hist.empty:
+        hist, fetched_info = fetch_stock_data(symbol, period="3y")
+        if info is None:
+            info = fetched_info
+        if hist is None or hist.empty:
             return []
 
     if scored_at is None:
@@ -214,7 +219,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         # 1. Tier 1 Screening (Bulk Download + Technical Filter)
         completed_t1 = _get_completed_symbols(db, run.run_id, "tier1")
         tier1_survivors = list(_get_completed_symbols(db, run.run_id, "tier1_survivors"))
-        hist_cache = {} # Temporary cache for hist data and info to avoid re-fetching
         
         fetched_count = run.stocks_fetched
         batch_size = 100
@@ -252,7 +256,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                             scores = calculate_combined_score(hist, None)
                             if scores['is_bullish'] or scores['combined_score'] > 40:
                                 tier1_survivors.append(symbol)
-                                hist_cache[symbol] = (hist, None)
                         
                         completed_t1.add(symbol)
                     except Exception as e:
@@ -335,12 +338,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             run.tier1_count = len(final_survivors)
             db.commit()
 
-        # MEMORY OPTIMIZATION: If survivors are many, clear hist_cache and re-fetch as needed
-        use_lazy_loading = len(final_survivors) > 300
-        if use_lazy_loading:
-            logger.info("Survivors > 300. Clearing hist_cache to save memory (Lazy Loading enabled).")
-            hist_cache.clear()
-
         # 2. Tier 2 Screening & Caching
         to_refresh = []
         seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
@@ -409,17 +406,13 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     continue
                     
                 tier2_survivors_count += 1
-                # Score (MEMORY OPTIMIZATION: Re-fetch if hist_cache was cleared)
-                cache_data = hist_cache.get(symbol)
-                if cache_data is None:
-                    # Lazy load if cleared for memory
-                    hist, info = fetch_stock_data(symbol, period="3y")
-                    if hist is None or info is None:
-                        completed_scoring.add(symbol)
-                        continue
-                else:
-                    hist, info = cache_data
+                # Score using persistent OHLCV cache
+                hist = _ohlcv_cache.get(symbol, append_ns=True, period="3y")
+                if hist is None:
+                    completed_scoring.add(symbol)
+                    continue
                 
+                info = None # Info is handled via FundamentalCache now
                 process_symbol(symbol, db, hist=hist, info=info, cache=cache, scored_at=scored_at)
                 
                 scored_count += 1
@@ -449,14 +442,9 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         final_signal_date = None
         # Use final_survivors as they are the ones actually processed in Tier 2/Scoring
         if final_survivors:
-            if final_survivors[0] in hist_cache:
-                first_hist, _ = hist_cache[final_survivors[0]]
+            first_hist = _ohlcv_cache.get(final_survivors[0], append_ns=True, period="3y")
+            if first_hist is not None and not first_hist.empty:
                 final_signal_date = first_hist.index[-1].date()
-            else:
-                # Re-fetch just one to get the date if cache was cleared
-                h, _ = fetch_stock_data(final_survivors[0], period="1d")
-                if h is not None and not h.empty:
-                    final_signal_date = h.index[-1].date()
         
         if not final_signal_date:
             final_signal_date = datetime.date.today()
