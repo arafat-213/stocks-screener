@@ -86,6 +86,10 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         # Hard Filter: Price must be above 200 EMA
         if ta_data.get('above_200ema') == False:  # explicitly False, not None
             total_score = 0.0
+            
+        # Hard Filter: RSI must not be overbought (> 70)
+        if ta_data.get('rsi', 0) > 70:
+            total_score = 0.0
         
         results.append({
             "date": df.index[i],

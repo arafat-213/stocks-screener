@@ -334,6 +334,11 @@ def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D',
         fund_score = calculate_fundamental_score(info, fund_cache=fund_cache)
     
     combined_score = ta_data['score'] + fund_score
+    
+    # Hard Filter: RSI must not be overbought (> 70)
+    if ta_data.get('rsi', 0) > 70:
+        combined_score = 0.0
+        
     # Ensure final score is in range 0-100
     combined_score = max(0.0, min(100.0, combined_score))
     
