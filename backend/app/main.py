@@ -9,6 +9,8 @@ from app.pipeline.orchestrator import run_pipeline, cleanup_zombie_runs
 from app.routers import stocks, dashboard, reports, screens, backtest
 from sqlalchemy import text
 from app.core.cache import response_cache
+from app.pipeline.ohlcv_cache import OHLCVCache
+_ohlcv_cache = OHLCVCache()
 from app.db.models import PipelineRun
 import datetime
 
@@ -125,6 +127,7 @@ def health_check():
         "status": status,
         "db": db_status,
         "cache": response_cache.stats(),
+        "ohlcv_cache": _ohlcv_cache.stats(),
         "pipeline": pipeline_info,
         "version": "2.1.0"
     }

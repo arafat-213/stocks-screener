@@ -63,7 +63,7 @@ class OHLCVCache:
         last_ts = df.index[-1]
         if hasattr(last_ts, "tzinfo") and last_ts.tzinfo is not None:
             last_ts = last_ts.tz_localize(None)
-        age_hours = (pd.Timestamp.utcnow().tz_localize(None) - last_ts).total_seconds() / 3600
+        age_hours = (pd.Timestamp.now('UTC').tz_localize(None) - last_ts).total_seconds() / 3600
         return age_hours < max_age_hours
 
     def _full_fetch(
@@ -84,7 +84,7 @@ class OHLCVCache:
             last_date = last_date.tz_localize(None)
 
         start_str = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-        end_str = (pd.Timestamp.utcnow() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        end_str = (pd.Timestamp.now('UTC') + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
         logger.info(
             "ohlcv_cache: STALE %s — incremental fetch %s → %s",
@@ -159,5 +159,5 @@ class OHLCVCache:
     # ------------------------------------------------------------------ #
 
     def _file_path(self, symbol: str) -> Path:
-        safe = symbol.replace("/", "_").replace("\\", "_").replace(":", "_")
+        safe = symbol.replace("^", "_").replace("/", "_").replace("\\", "_").replace(":", "_")
         return self._root / f"{safe}.parquet"

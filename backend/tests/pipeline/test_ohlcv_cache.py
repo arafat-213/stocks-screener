@@ -139,3 +139,59 @@ def test_get_force_refresh_bypasses_fresh_cache(tmp_path):
 
     mock_fetch.assert_called_once()
     assert len(result) == 20
+
+def test_corrupt_parquet_is_deleted_and_refetched(tmp_path):
+    """A corrupt Parquet file should be removed and a fresh fetch attempted."""
+    cache = OHLCVCache(cache_dir=str(tmp_path))
+    path = cache._file_path("CORRUPT")
+    path.write_bytes(b"this is not a parquet file")
+
+    fresh_df = _make_df(days=5)
+    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)):
+        result = cache.get("CORRUPT", append_ns=True, period="3y")
+
+    assert result is not None
+    assert len(result) == 5
+    assert path.exists()  # re-written with valid data
+
+
+def test_special_characters_in_symbol_name(tmp_path):
+    """Symbols like ^NSEI must produce a valid filename."""
+    cache = OHLCVCache(cache_dir=str(tmp_path))
+    fresh_df = _make_df(days=5)
+    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)):
+        cache.get("^NSEI", append_ns=False, period="3y")
+
+    files = list(cache._root.glob("*.parquet"))
+    assert len(files) == 1
+    assert "^" not in files[0].name  # caret must be sanitised
+
+
+def test_empty_dataframe_from_fetch_is_not_written(tmp_path):
+    """An empty DataFrame returned by yfinance should not be cached."""
+    cache = OHLCVCache(cache_dir=str(tmp_path))
+    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(pd.DataFrame(), None)):
+        result = cache.get("EMPTY", append_ns=True, period="3y")
+
+    assert result is None
+    assert not cache._file_path("EMPTY").exists()
+
+
+def test_incremental_no_new_data_returns_cached(tmp_path):
+    """If the incremental fetch returns empty (market closed), serve the cached file."""
+    cache = OHLCVCache(cache_dir=str(tmp_path))
+
+    old_end = pd.Timestamp.now(tz='UTC').replace(tzinfo=None) - pd.Timedelta(days=3)
+    old_df = _make_df(days=5)
+    old_idx = pd.date_range(end=old_end.floor('D'), periods=5, freq="D")
+    old_df.index = old_idx
+    old_df.to_parquet(cache._file_path("STABLE"))
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = pd.DataFrame()  # empty — weekend/holiday
+
+    with patch("yfinance.Ticker", return_value=mock_ticker):
+        result = cache.get("STABLE", append_ns=True, period="3y")
+
+    assert result is not None
+    assert len(result) == 5  # original cached rows returned unchanged
