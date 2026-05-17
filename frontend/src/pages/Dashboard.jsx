@@ -296,10 +296,10 @@ const Dashboard = () => {
       {(error || pipelineError || marketError) && (
         <ErrorBanner message={error || pipelineError || marketError} />
       )}
-      
+
       {pipeline?.is_stale && (
-        <StaleBanner 
-          lastUpdated={pipeline.scored_at} 
+        <StaleBanner
+          lastUpdated={pipeline.scored_at}
           dataAgeHours={pipeline.data_age_hours}
           onRunPipeline={handleRunPipeline}
           isBusy={isBusy}
@@ -314,7 +314,6 @@ const Dashboard = () => {
       <main className="dashboard-content">
         <header className="dashboard-header">
           <div className="flex justify-between items-center mb-6">
-            <h1 className="text-2xl font-bold">Dashboard</h1>
             <GlobalSearch />
           </div>
 
@@ -325,8 +324,12 @@ const Dashboard = () => {
                   <RefreshCcw size={16} className="spin" />
                   <div style={{ flex: 1 }}>
                     <span className="label">Pipeline Running</span>
-                    <span className="value fs-12" style={{ display: 'block', marginBottom: '4px' }}>
-                      {pipeline?.stocks_fetched || 0} fetched | {pipeline?.stocks_scored || 0} scored
+                    <span
+                      className="value fs-12"
+                      style={{ display: 'block', marginBottom: '4px' }}
+                    >
+                      {pipeline?.stocks_fetched || 0} fetched |{' '}
+                      {pipeline?.stocks_scored || 0} scored
                     </span>
                     <PipelineProgress
                       fetched={pipeline?.stocks_fetched || 0}
@@ -354,20 +357,26 @@ const Dashboard = () => {
             <div className="summary-item market">
               <span className="label">Nifty 50</span>
               <span className={`value ${isNiftyUp ? 'success' : 'danger'}`}>
-                {nifty.close?.toLocaleString('en-IN')} 
-                <small>({isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%)</small>
+                {nifty.close?.toLocaleString('en-IN')}
+                <small>
+                  ({isNiftyUp ? '▲' : '▼'}{' '}
+                  {Math.abs(nifty.change_pct)?.toFixed(2)}%)
+                </small>
               </span>
             </div>
             <div className="summary-item market">
               <span className="label">SENSEX</span>
               <span className={`value ${isSensexUp ? 'success' : 'danger'}`}>
-                {sensex.close?.toLocaleString('en-IN')} 
-                <small>({isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%)</small>
+                {sensex.close?.toLocaleString('en-IN')}
+                <small>
+                  ({isSensexUp ? '▲' : '▼'}{' '}
+                  {Math.abs(sensex.change_pct)?.toFixed(2)}%)
+                </small>
               </span>
             </div>
           </div>
 
-          <ChangeBanner 
+          <ChangeBanner
             changes={changesData?.changes || []}
             asOf={changesData?.as_of}
             prevDate={changesData?.prev_date}
@@ -383,16 +392,25 @@ const Dashboard = () => {
                     <h3 className="inline fs-14">Confluence</h3>
                   </div>
                   <div className="flex-row-gap-8">
-                    {['all', 'watchlist', '3', '2+'].map(c => (
-                      <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}>
-                        <input 
-                          type="radio" 
-                          name="confluence" 
-                          value={c} 
+                    {['all', 'watchlist', '3', '2+'].map((c) => (
+                      <label
+                        key={c}
+                        className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}
+                      >
+                        <input
+                          type="radio"
+                          name="confluence"
+                          value={c}
                           checked={confluenceFilter === c}
                           onChange={(e) => setConfluenceFilter(e.target.value)}
                         />
-                        {c === 'all' ? 'All Stocks' : c === 'watchlist' ? `Watchlist (${count})` : c === '3' ? '3/3 Only' : '2/3+'}
+                        {c === 'all'
+                          ? 'All Stocks'
+                          : c === 'watchlist'
+                            ? `Watchlist (${count})`
+                            : c === '3'
+                              ? '3/3 Only'
+                              : '2/3+'}
                       </label>
                     ))}
                   </div>
@@ -400,13 +418,21 @@ const Dashboard = () => {
 
                 <div className="filter-group sectors flex-1-min-300">
                   <div className="mb-12">
-                    <h3 className="fs-14">Sectors <span className="count ml-8">{availableSectors.length}</span></h3>
+                    <h3 className="fs-14">
+                      Sectors{' '}
+                      <span className="count ml-8">
+                        {availableSectors.length}
+                      </span>
+                    </h3>
                   </div>
                   <div className="checkbox-list flex-row-wrap-gap-8">
-                    {availableSectors.map(sector => (
-                      <label key={sector} className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`}>
-                        <input 
-                          type="checkbox" 
+                    {availableSectors.map((sector) => (
+                      <label
+                        key={sector}
+                        className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`}
+                      >
+                        <input
+                          type="checkbox"
                           checked={selectedSectors.includes(sector)}
                           onChange={() => toggleSector(sector)}
                           className="hidden"
@@ -432,31 +458,54 @@ const Dashboard = () => {
               </button>
 
               {isMobile && (
-                <button 
+                <button
                   className={`filter-mobile-btn ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'active' : ''}`}
                   onClick={() => setIsFilterSheetOpen(true)}
                 >
                   <Filter size={20} />
                   <span>Filters</span>
-                  {(confluenceFilter !== 'all' || selectedSectors.length > 0) && <span className="indicator" />}
+                  {(confluenceFilter !== 'all' ||
+                    selectedSectors.length > 0) && (
+                    <span className="indicator" />
+                  )}
                 </button>
               )}
-              
+
               {!isMobile && (
                 <div className="view-toggle view-toggle-container">
-                  <button 
+                  <button
                     className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
                     onClick={() => setViewMode('table')}
                     title="Table View"
-                    style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'table' ? 'var(--color-bullish)' : 'inherit' }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      color:
+                        viewMode === 'table'
+                          ? 'var(--color-bullish)'
+                          : 'inherit',
+                    }}
                   >
                     <List size={20} />
                   </button>
-                  <button 
+                  <button
                     className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
                     onClick={() => setViewMode('grid')}
                     title="Grid View"
-                    style={{ background: 'none', border: 'none', padding: '4px', cursor: 'pointer', display: 'flex', color: viewMode === 'grid' ? 'var(--color-bullish)' : 'inherit' }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      padding: '4px',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      color:
+                        viewMode === 'grid'
+                          ? 'var(--color-bullish)'
+                          : 'inherit',
+                    }}
                   >
                     <LayoutGrid size={20} />
                   </button>
@@ -472,7 +521,7 @@ const Dashboard = () => {
                     { value: 'confluence', label: 'Confluence' },
                     { value: 'score', label: 'Daily Score' },
                     { value: 'rsi', label: 'Low RSI' },
-                    { value: 'pe', label: 'Value (P/E)' }
+                    { value: 'pe', label: 'Value (P/E)' },
                   ]}
                   className="sort-select"
                 />
@@ -484,48 +533,69 @@ const Dashboard = () => {
         {stocks.length > 0 ? (
           viewMode === 'grid' ? (
             <div className="stock-grid">
-              {stocks.map(stock => (
-                <StockCard 
-                  key={stock.symbol} 
-                  stock={stock} 
-                  isWatched={isWatched(stock.symbol)} 
+              {stocks.map((stock) => (
+                <StockCard
+                  key={stock.symbol}
+                  stock={stock}
+                  isWatched={isWatched(stock.symbol)}
                   onToggleWatch={toggle}
                 />
               ))}
             </div>
           ) : (
-            <DataTable 
-              columns={columns} 
-              data={stocks} 
+            <DataTable
+              columns={columns}
+              data={stocks}
               initialSort={{ key: 'score', direction: 'desc' }}
               loading={loading && stocks.length === 0}
             />
           )
-        ) : !loading && (
-          <div className="no-results">
-            <Filter size={48} />
-            <h3>No stocks match filters</h3>
-            <p>Try adjusting your confluence or sector selections.</p>
-            <button onClick={resetFilters} className="text-button">Reset All Filters</button>
-          </div>
+        ) : (
+          !loading && (
+            <div className="no-results">
+              <Filter size={48} />
+              <h3>No stocks match filters</h3>
+              <p>Try adjusting your confluence or sector selections.</p>
+              <button onClick={resetFilters} className="text-button">
+                Reset All Filters
+              </button>
+            </div>
+          )
         )}
 
         {/* Sentinel and Footer UI */}
         {loading && stocks.length > 0 && (
-          <div className="loading-more" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', padding: '20px', color: 'var(--color-text-muted)' }}>
+          <div
+            className="loading-more"
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '20px',
+              color: 'var(--color-text-muted)',
+            }}
+          >
             <RefreshCcw size={20} className="spin" />
             <span>Loading more stocks...</span>
           </div>
         )}
         {!hasMore && stocks.length > 0 && (
-          <div className="no-more" style={{ textAlign: 'center', padding: '20px', color: 'var(--color-text-muted)' }}>
+          <div
+            className="no-more"
+            style={{
+              textAlign: 'center',
+              padding: '20px',
+              color: 'var(--color-text-muted)',
+            }}
+          >
             <p>No more stocks to show</p>
           </div>
         )}
         <div ref={sentinelRef} style={{ height: '20px', margin: '20px 0' }} />
       </main>
 
-      <FilterBottomSheet 
+      <FilterBottomSheet
         isOpen={isFilterSheetOpen}
         onClose={() => setIsFilterSheetOpen(false)}
         confluenceFilter={confluenceFilter}
