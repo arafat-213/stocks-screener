@@ -10,7 +10,7 @@ def test_health_check_enhanced_ok():
     # Mock response_cache.stats()
     # Mock PipelineRun query
     
-    with patch("app.main.SessionLocal") as mock_session_local:
+    with patch("app.db.session.SessionLocal") as mock_session_local:
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         
@@ -40,7 +40,7 @@ def test_health_check_enhanced_ok():
                 assert data["version"] == "2.1.0"
 
 def test_health_check_db_down():
-    with patch("app.main.SessionLocal") as mock_session_local:
+    with patch("app.db.session.SessionLocal") as mock_session_local:
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         mock_db.execute.side_effect = Exception("DB Down")
@@ -55,7 +55,7 @@ def test_health_check_db_down():
             assert data["db"] == "error"
 
 def test_health_check_stale_data():
-    with patch("app.main.SessionLocal") as mock_session_local:
+    with patch("app.db.session.SessionLocal") as mock_session_local:
         mock_db = MagicMock()
         mock_session_local.return_value = mock_db
         
