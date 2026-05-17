@@ -63,7 +63,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
     Uses calculate_technical_score as the single source of truth.
     O(n^2) implementation: for each bar, compute technical score on slice.
     """
-    if df is None or len(df) < 60:
+    if df is None or len(df) < 210:
         return []
 
     # Fundamental Score (computed once since we only have current data)
@@ -72,7 +72,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         fund_score = calculate_fundamental_score(None, fund_cache=fund_cache)
 
     results = []
-    MIN_BARS = 60
+    MIN_BARS = 210  # 200 EMA requires 200 bars; 10-bar buffer for stability
     
     # Iterate from MIN_BARS to end
     for i in range(MIN_BARS, len(df)):
