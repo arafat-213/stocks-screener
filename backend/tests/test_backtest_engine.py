@@ -91,3 +91,75 @@ class TestAbove200EMAGate:
         signal = self._make_signal(df, above_200ema=True)
         trades = simulate_trades("TEST", "Tech", df, [signal], self._base_config())
         assert len(trades) == 1, "above_200ema=True should produce a trade"
+
+class TestADXGate:
+    def _config(self, min_adx: float) -> BacktestConfig:
+        return BacktestConfig(
+            score_threshold=10.0,
+            stop_loss_pct=0.0,
+            target_pct=0.0,
+            holding_days=5,
+            use_regime_filter=False,
+            require_volume_breakout=False,
+            min_adx=min_adx,
+        )
+
+    def _signal(self, df, adx_value) -> dict:
+        return {
+            "date": df.index[250],
+            "score": 80.0,
+            "above_200ema": True,
+            "rsi": 55.0,
+            "adx": adx_value,
+            "ema_signal": "bullish",
+            "volume_signal": "bullish",
+            "rsi_signal": "bullish_strong",
+            "volume_breakout": True,
+            "atr": 2.0,
+        }
+
+    def test_adx_below_threshold_produces_no_trade(self):
+        """Signal with ADX < min_adx must be skipped."""
+        df = _make_ohlcv(300)
+        signal = self._signal(df, adx_value=15.0)
+        trades = simulate_trades("TEST", "Tech", df, [signal], self._config(min_adx=20))
+        assert trades == [], "ADX=15 below threshold=20 should produce no trade"
+
+    def test_adx_none_produces_no_trade(self):
+        """Signal with ADX=None must be skipped when min_adx > 0."""
+        df = _make_ohlcv(300)
+        signal = self._signal(df, adx_value=None)
+        trades = simulate_trades("TEST", "Tech", df, [signal], self._config(min_adx=20))
+        assert trades == [], "ADX=None should produce no trade when min_adx=20"
+
+    def test_adx_at_threshold_allows_trade(self):
+        """Signal with ADX exactly equal to min_adx must be allowed."""
+        df = _make_ohlcv(300)
+        signal = self._signal(df, adx_value=20.0)
+        trades = simulate_trades("TEST", "Tech", df, [signal], self._config(min_adx=20))
+        assert len(trades) == 1, "ADX=20 at threshold=20 should produce a trade"
+
+    def test_adx_gate_disabled_when_min_adx_zero(self):
+        """min_adx=0 must disable the gate; ADX=None signals are allowed."""
+        df = _make_ohlcv(300)
+        signal = self._signal(df, adx_value=None)
+        trades = simulate_trades("TEST", "Tech", df, [signal], self._config(min_adx=0))
+        assert len(trades) == 1, "min_adx=0 should disable ADX gate"
+
+    def test_backtest_config_default_min_adx_is_20(self):
+        """BacktestConfig default min_adx must be 20."""
+        config = BacktestConfig()
+        assert config.min_adx == 20
+
+class TestConfigDefaults:
+    def test_default_score_threshold_is_55(self):
+        config = BacktestConfig()
+        assert config.score_threshold == 55.0, (
+            f"Default score_threshold must be 55.0, got {config.score_threshold}"
+        )
+
+    def test_default_require_volume_breakout_is_true(self):
+        config = BacktestConfig()
+        assert config.require_volume_breakout is True, (
+            "Default require_volume_breakout must be True"
+        )

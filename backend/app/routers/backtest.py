@@ -13,8 +13,8 @@ import uuid
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 class BacktestRequest(BaseModel):
-    score_threshold: float = Field(default=45.0, ge=0, le=100,
-        description="Minimum score. Range 0-75 for tech-only, 0-100 with fundamentals. Crossover signals score ~45-55. Extended trend signals score ~20-35.")
+    score_threshold: float = Field(default=55.0, ge=0, le=100,
+        description="Minimum score. Recommended: 55–65 for technical-only signals, 45–55 with fundamentals.")
     holding_days: int = Field(default=20, ge=1, le=252)
     stop_loss_pct: float = Field(default=7.0, ge=0, le=50,
         description="0 disables stop-loss.")
@@ -22,16 +22,16 @@ class BacktestRequest(BaseModel):
         description="0 disables profit target.")
     trailing_stop_pct: float = Field(default=0.0, ge=0, le=50,
         description="Percentage drop from peak to trigger exit.")
-    require_volume_breakout: bool = Field(default=False,
-        description="If true, requires volume > 2x SMA20 for entry.")
-    use_regime_filter: bool = Field(default=True,
-        description="If true, only enters trades when Nifty is in a bull regime.")
+    require_volume_breakout: bool = Field(default=True,
+        description="Requires volume > 2x SMA20 for entry. Disabling increases trade count and stop-loss rate.")
+    use_regime_filter: bool = True
     atr_multiplier: float = Field(default=2.0, ge=1.0, le=10.0,
         description="Multiplier for ATR-based stop loss.")
     risk_reward_ratio: float = Field(default=2.5, ge=0.5, le=10.0,
         description="Target profit as a multiple of risk.")
-    use_atr_stops: bool = Field(default=False,
-        description="If true, uses ATR-based stops instead of flat percentage.")
+    use_atr_stops: bool = False
+    min_adx: float = Field(default=20.0, ge=0, le=50,
+        description="Minimum ADX required to enter a trade. 0 disables the filter.")
     include_fundamentals: bool = False
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
     screen_slug: Optional[str] = Field(default=None, description="Slug of the screen to filter symbols by.")
@@ -143,6 +143,7 @@ def start_backtest(
         atr_multiplier=request.atr_multiplier,
         risk_reward_ratio=request.risk_reward_ratio,
         use_atr_stops=request.use_atr_stops,
+        min_adx=request.min_adx,
         include_fundamentals=request.include_fundamentals,
         symbol_limit=request.symbol_limit,
         screen_slug=request.screen_slug,

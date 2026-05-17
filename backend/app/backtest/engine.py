@@ -22,16 +22,17 @@ _ohlcv_cache = OHLCVCache()
 
 @dataclass
 class BacktestConfig:
-    score_threshold: float = 45.0      # minimum score to trigger a trade
+    score_threshold: float = 55.0      # raised from 45 per SPEC-005
     holding_days: int = 20             # trading days to hold
     stop_loss_pct: float = 7.0         # exit if price drops this % (0 = disabled)
     target_pct: float = 0.0            # exit if price rises this % (0 = disabled)
     trailing_stop_pct: float = 0.0     # NEW: percentage drop from highest price
-    require_volume_breakout: bool = False # NEW: require volume > 2x SMA20
+    require_volume_breakout: bool = True # changed from False per SPEC-006
     use_regime_filter: bool = True     # NEW: Nifty > 50 EMA filter
     atr_multiplier: float = 2.0        # Multiplier for ATR-based stop loss
     risk_reward_ratio: float = 2.5     # Target profit as multiple of risk
     use_atr_stops: bool = False        # Whether to use ATR for stops/targets
+    min_adx: float = 20.0             # NEW: 0 disables the gate (SPEC-004)
     include_fundamentals: bool = False  # use current fundamental data
     timeframe: str = 'D'               # 'D' only for now
     date_from: datetime.date = None    # filter signals after this date
@@ -146,6 +147,12 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
         # 200 EMA null-safety gate (belt-and-suspenders; also enforced in score_series)
         if signal.get('above_200ema') is not True:
             continue
+
+        # ADX trend-strength gate (min_adx=0 disables)
+        if config.min_adx > 0:
+            adx_val = signal.get('adx')
+            if adx_val is None or adx_val < config.min_adx:
+                continue
             
         if signal['score'] >= config.score_threshold:
             # Entry: Next trading day's Open price
