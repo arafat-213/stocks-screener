@@ -248,7 +248,7 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                 crossing_50 = prev_rsi <= 50 and rsi > 50
                 
                 if recovering and fresh_ema_cross:
-                    score += 20
+                    score += 15   # capped at RSI budget; EMA cross already scored separately
                     rsi_signal = "bullish_recovery_confirmed"
                 elif recovering:
                     score += 15

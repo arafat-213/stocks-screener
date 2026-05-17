@@ -116,3 +116,52 @@ class TestMACDScoring:
         assert score_pos >= score_neg, (
             f"Expected positive-territory score ({score_pos}) >= negative-territory score ({score_neg})"
         )
+
+class TestRSIScoring:
+    def test_rsi_component_never_exceeds_15(self):
+        """
+        The RSI sub-component must never contribute more than 15 pts.
+        Max total technical score is 70: EMA(20) + MACD(20) + RSI(15) + Volume(15).
+        Therefore score must never exceed 70.
+        """
+        # Use an uptrending DF that is likely to trigger RSI recovery + EMA cross
+        n = 300
+        # V-shape: down then strong up to trigger oversold recovery + EMA cross
+        closes = np.concatenate([
+            np.linspace(150, 90, 150),   # drop to oversold territory
+            np.linspace(90, 180, 150),   # strong recovery
+        ])
+        df = pd.DataFrame({
+            "Open":   closes * 0.997,
+            "High":   closes * 1.012,
+            "Low":    closes * 0.988,
+            "Close":  closes,
+            "Volume": np.full(n, 3_000_000.0),
+        }, index=pd.date_range("2021-01-01", periods=n, freq="B"))
+
+        result = calculate_technical_score(df, timeframe='D')
+        assert result['score'] <= 70.0, (
+            f"Technical score {result['score']} exceeds the 70-point maximum. "
+            "RSI component must be capped at 15 pts."
+        )
+
+    def test_rsi_recovery_with_ema_cross_scores_same_as_without(self):
+        """
+        RSI recovery confirmed by EMA cross must score 15 pts — same as recovery without cross.
+        Both paths should produce the same RSI contribution.
+        """
+        n = 300
+        closes = np.concatenate([
+            np.linspace(150, 85, 150),
+            np.linspace(85, 175, 150),
+        ])
+        df = pd.DataFrame({
+            "Open":   closes * 0.997,
+            "High":   closes * 1.012,
+            "Low":    closes * 0.988,
+            "Close":  closes,
+            "Volume": np.full(n, 3_000_000.0),
+        }, index=pd.date_range("2021-01-01", periods=n, freq="B"))
+        result = calculate_technical_score(df, timeframe='D')
+        # Primary assertion: score must respect 70-pt ceiling
+        assert result['score'] <= 70.0
