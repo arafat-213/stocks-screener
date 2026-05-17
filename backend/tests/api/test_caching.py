@@ -40,33 +40,33 @@ def test_screens_cache_clear():
 def test_dashboard_live_market_caching(mock_get_market):
     mock_get_market.return_value = [{"symbol": "^NSEI", "close": 20000, "change_pct": 1.5}]
     # 1. First request - MISS
-    response = client.get("/api/market/live")
+    response = client.get("/api/dashboard/market/live")
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "MISS"
     
     # 2. Second request - HIT
-    response = client.get("/api/market/live")
+    response = client.get("/api/dashboard/market/live")
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "HIT"
 
 def test_dashboard_screener_results_caching():
     # 1. First request - MISS
-    response = client.get("/api/screener/results")
+    response = client.get("/api/dashboard/screener/results")
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "MISS"
     
     # 2. Second request - HIT
-    response = client.get("/api/screener/results")
+    response = client.get("/api/dashboard/screener/results")
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "HIT"
 
 def test_dashboard_pipeline_status_caching():
     # 1. First request - MISS
-    response = client.get("/api/pipeline/latest")
+    response = client.get("/api/dashboard/pipeline/latest")
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "MISS"
     
     # 2. Second request - HIT
-    response = client.get("/api/pipeline/latest")
+    response = client.get("/api/dashboard/pipeline/latest")
     assert response.status_code == 200
     assert response.headers["X-Cache"] == "HIT"

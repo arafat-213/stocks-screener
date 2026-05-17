@@ -124,10 +124,11 @@ def test_dashboard_enriched_fields(db, client):
     response_cache.invalidate()
     
     # Execute
-    response = client.get("/api/screener/results")
+    response = client.get("/api/dashboard/screener/results")
     assert response.status_code == 200
     data = response.json()
-    assert len(data) > 0
-    test_stock = next((item for item in data if item["symbol"] == "TEST.NS"), None)
+    assert "items" in data
+    assert len(data["items"]) > 0
+    test_stock = next((item for item in data["items"] if item["symbol"] == "TEST.NS"), None)
     assert test_stock is not None
     assert test_stock["fundamentals"]["roe"] == 16.0
