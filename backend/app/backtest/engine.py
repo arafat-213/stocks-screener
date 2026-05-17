@@ -12,11 +12,13 @@ from sqlalchemy import func
 from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
 from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data
+from app.pipeline.ohlcv_cache import OHLCVCache
 from app.screens.registry import SCREEN_REGISTRY
 
 from app.core.logging_manager import logging_manager
 
 logger = logging.getLogger(__name__)
+_ohlcv_cache = OHLCVCache()
 
 @dataclass
 class BacktestConfig:
@@ -385,7 +387,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             # 1. Fetch benchmark data (^NSEI)
             logger.info("Fetching benchmark data (^NSEI)")
-            benchmark_df, _ = fetch_stock_data("^NSEI", append_ns=False, period='3y', fetch_info=False)
+            benchmark_df = _ohlcv_cache.get("^NSEI", append_ns=False, period='3y')
             if benchmark_df is not None and benchmark_df.index.tz is not None:
                 benchmark_df.index = benchmark_df.index.tz_localize(None)
 
@@ -439,7 +441,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             for symbol in symbols:
                 try:
                     # Fetch historical OHLCV
-                    df, _ = fetch_stock_data(symbol, period='3y', fetch_info=False)
+                    df = _ohlcv_cache.get(symbol, period='3y')
                     if df is None or df.empty:
                         continue
                     
