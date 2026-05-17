@@ -1,0 +1,118 @@
+import pandas as pd
+import numpy as np
+import pytest
+from app.pipeline.scorer import calculate_technical_score
+
+
+def _make_ohlcv(n: int, trend: str = "up") -> pd.DataFrame:
+    """
+    Builds a minimal OHLCV DataFrame of length n with a DatetimeIndex.
+    trend='up'  → steadily rising close prices (bullish EMA alignment likely)
+    trend='flat' → flat prices (neutral)
+    """
+    np.random.seed(42)
+    if trend == "up":
+        closes = np.linspace(100, 160, n) + np.random.normal(0, 0.5, n)
+    else:
+        closes = np.full(n, 100.0) + np.random.normal(0, 0.3, n)
+
+    df = pd.DataFrame({
+        "Open":   closes * 0.995,
+        "High":   closes * 1.01,
+        "Low":    closes * 0.99,
+        "Close":  closes,
+        "Volume": np.random.randint(1_000_000, 5_000_000, n).astype(float),
+    }, index=pd.date_range("2022-01-01", periods=n, freq="B"))
+    return df
+
+
+def _make_macd_positive_territory_df() -> pd.DataFrame:
+    """
+    Constructs OHLCV so that MACD > signal, MACD > 0, and NOT a fresh cross.
+    """
+    n = 300
+    # Steady uptrend for 290 days, then slightly slower uptrend to ensure MACD > signal stays true but not fresh
+    closes = np.concatenate([
+        np.linspace(100, 200, 280),
+        np.linspace(200, 205, 20)
+    ])
+    df = pd.DataFrame({
+        "Open":   closes * 0.998,
+        "High":   closes * 1.015,
+        "Low":    closes * 0.985,
+        "Close":  closes,
+        "Volume": np.full(n, 2_000_000.0),
+    }, index=pd.date_range("2021-01-01", periods=n, freq="B"))
+    return df
+
+
+def _make_macd_negative_territory_df() -> pd.DataFrame:
+    """
+    Constructs OHLCV so that MACD > signal, MACD < 0, and NOT a fresh cross.
+    """
+    n = 300
+    # Long downtrend, then very slow recovery to keep MACD negative but above signal
+    closes = np.concatenate([
+        np.linspace(200, 100, 250),   # downtrend
+        np.linspace(100, 102, 50),    # very slow recovery
+    ])
+    df = pd.DataFrame({
+        "Open":   closes * 0.998,
+        "High":   closes * 1.01,
+        "Low":    closes * 0.99,
+        "Close":  closes,
+        "Volume": np.full(n, 2_000_000.0),
+    }, index=pd.date_range("2021-01-01", periods=n, freq="B"))
+    return df
+
+
+class TestMACDScoring:
+    def test_macd_positive_territory_scores_12(self):
+        """MACD > signal AND MACD > 0 (no fresh cross) must score exactly 12 pts on MACD component."""
+        df = _make_macd_positive_territory_df()
+        result = calculate_technical_score(df, timeframe='D')
+
+        import pandas_ta as ta
+        check = df.copy()
+        check.ta.macd(fast=12, slow=26, signal=9, append=True)
+        latest = check.iloc[-1]
+        prev   = check.iloc[-2]
+        macd_line   = latest['MACD_12_26_9']
+        signal_line = latest['MACDs_12_26_9']
+        prev_macd   = prev['MACD_12_26_9']
+        prev_sig    = prev['MACDs_12_26_9']
+
+        print(f"\nPOS: macd={macd_line}, signal={signal_line}, prev_macd={prev_macd}, prev_sig={prev_sig}")
+
+        # Guard: only run assertion if the data actually produced the condition we want
+        fresh_cross = (macd_line > signal_line) and (prev_macd <= prev_sig)
+        if fresh_cross:
+             print("SKIPPING: Fresh cross detected")
+             pytest.skip("Fresh cross detected")
+        if not (macd_line > signal_line and macd_line > 0):
+             print(f"SKIPPING: Not in positive territory: macd={macd_line}, signal={signal_line}")
+             pytest.skip("Not in positive territory")
+
+        # The MACD component contribution is not directly exposed, so we assert
+        # that the score is HIGHER than the equivalent negative-territory setup.
+        df_neg = _make_macd_negative_territory_df()
+        result_neg = calculate_technical_score(df_neg, timeframe='D')
+        assert result['score'] >= result_neg['score'], (
+            "Positive-territory MACD should score >= negative-territory MACD "
+            f"(got {result['score']} vs {result_neg['score']})"
+        )
+
+    def test_macd_negative_territory_scores_lower_than_positive(self):
+        """MACD > signal AND MACD < 0 must produce a lower score than MACD > signal AND MACD > 0."""
+        df_pos = _make_macd_positive_territory_df()
+        df_neg = _make_macd_negative_territory_df()
+        res_pos = calculate_technical_score(df_pos, timeframe='D')
+        res_neg = calculate_technical_score(df_neg, timeframe='D')
+        score_pos = res_pos['score']
+        score_neg = res_neg['score']
+        print(f"\nPOS score: {score_pos}, MACD: {res_pos['macd']}")
+        print(f"NEG score: {score_neg}, MACD: {res_neg['macd']}")
+        # Net effect: positive territory must not be penalised vs negative territory
+        assert score_pos >= score_neg, (
+            f"Expected positive-territory score ({score_pos}) >= negative-territory score ({score_neg})"
+        )

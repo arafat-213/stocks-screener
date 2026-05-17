@@ -233,9 +233,9 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                 )
                 if fresh_macd_cross:
                     score += 20
-                elif macd_line > signal_line and macd_line < 0:
-                    score += 12
                 elif macd_line > signal_line and macd_line > 0:
+                    score += 12
+                elif macd_line > signal_line and macd_line < 0:
                     score += 6
                 
             # 3. RSI 14 (15 pts)
