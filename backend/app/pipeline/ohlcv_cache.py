@@ -3,6 +3,8 @@ import logging
 import tempfile
 from pathlib import Path
 import pandas as pd
+import yfinance as yf
+from app.pipeline.fetcher import fetch_stock_data
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +69,6 @@ class OHLCVCache:
     def _full_fetch(
         self, symbol: str, append_ns: bool, period: str, path: Path
     ) -> pd.DataFrame | None:
-        from app.pipeline.fetcher import fetch_stock_data
         logger.info("ohlcv_cache: MISS %s — full fetch", symbol)
         df, _ = fetch_stock_data(symbol, append_ns=append_ns, period=period, fetch_info=False)
         if df is None or df.empty:
@@ -78,8 +79,42 @@ class OHLCVCache:
     def _incremental_fetch(
         self, symbol: str, cached_df: pd.DataFrame, append_ns: bool, path: Path
     ) -> pd.DataFrame | None:
-        # Stub for Task 4
-        return cached_df
+        last_date = cached_df.index[-1]
+        if hasattr(last_date, "tzinfo") and last_date.tzinfo is not None:
+            last_date = last_date.tz_localize(None)
+
+        start_str = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        end_str = (pd.Timestamp.utcnow() + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
+        logger.info(
+            "ohlcv_cache: STALE %s — incremental fetch %s → %s",
+            symbol, start_str, end_str,
+        )
+
+        ticker_sym = f"{symbol}.NS" if append_ns else symbol
+        try:
+            ticker = yf.Ticker(ticker_sym)
+            tail = ticker.history(start=start_str, end=end_str)
+        except Exception as exc:
+            logger.warning("ohlcv_cache: incremental fetch failed for %s: %s", symbol, exc)
+            return cached_df
+
+        if tail is None or tail.empty:
+            logger.info("ohlcv_cache: no new data for %s, serving cached rows", symbol)
+            return cached_df
+
+        if tail.index.tz is not None:
+            tail.index = tail.index.tz_localize(None)
+        if cached_df.index.tz is not None:
+            cached_df.index = cached_df.index.tz_localize(None)
+
+        combined = pd.concat([cached_df, tail])
+        combined = combined[~combined.index.duplicated(keep="last")]
+        combined.sort_index(inplace=True)
+
+        self._write_atomic(combined, path)
+        logger.info("ohlcv_cache: wrote %d rows for %s", len(combined), symbol)
+        return combined
 
     def _write_atomic(self, df: pd.DataFrame, path: Path) -> None:
         fd, tmp = tempfile.mkstemp(dir=path.parent, suffix=".parquet.tmp")
