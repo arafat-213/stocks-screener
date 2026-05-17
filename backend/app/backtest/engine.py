@@ -104,7 +104,8 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
             "close": price,
             "open": open_price,
             "volume_breakout": bool(ta_data.get('volume_breakout', False)),
-            "atr": ta_data.get('atr')
+            "atr": ta_data.get('atr'),
+            "above_200ema": ta_data.get('above_200ema'),
         })
         
     return results

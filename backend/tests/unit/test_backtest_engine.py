@@ -31,6 +31,8 @@ def test_score_series_returns_list():
         assert "rsi" in first
         assert "adx" in first
         assert "close" in first
+        assert "above_200ema" in first
+        assert isinstance(first["above_200ema"], (bool, type(None)))
 
 def test_score_series_no_future_leak():
     # Use more bars to let indicators stabilize a bit
@@ -77,14 +79,15 @@ def test_score_series_with_fundamentals():
     
     config = BacktestConfig(include_fundamentals=True)
     # Use trending data to avoid hard filters (RSI > 70, ADX < 20, etc.)
-    dates = pd.date_range(start='2020-01-01', periods=200)
-    close = np.linspace(100, 200, 200)
+    # Increase to 220 bars to pass MIN_BARS=210 guard
+    dates = pd.date_range(start='2020-01-01', periods=220)
+    close = np.linspace(100, 200, 220)
     df = pd.DataFrame({
         'Open': close * 0.99,
         'High': close * 1.01,
         'Low': close * 0.98,
         'Close': close,
-        'Volume': [5000] * 200
+        'Volume': [5000] * 220
     }, index=dates)
     
     # results = score_series(df, fund_cache=fund_cache, config=config)
@@ -97,6 +100,8 @@ def test_score_series_with_fundamentals():
     
     # Check if scores are higher than default
     results_no_fund = score_series(df)
+    
+    assert len(results) > 0, "No results returned for fundamentals test"
     
     for r_fund, r_no_fund in zip(results, results_no_fund):
         # Only check where filters didn't trigger
@@ -311,4 +316,43 @@ def test_simulate_trades_uses_atr_stops_sl():
     trade = trades[0]
     assert trade.exit_reason == 'stop_loss'
     assert trade.exit_price == pytest.approx(sl_price)
+
+def test_score_series_output_feeds_simulate_trades():
+    """Verify that score_series output contains all keys simulate_trades needs."""
+    df = create_dummy_df(400)
+    results = score_series(df)
+    assert len(results) > 0
+    
+    required_keys = {"score", "date", "rsi", "adx", "ema_signal",
+                     "volume_breakout", "atr", "above_200ema"}
+    for key in required_keys:
+        assert key in results[0], f"Missing key in score_series output: {key}"
+
+def test_score_series_to_simulate_trades_produces_trades():
+    """End-to-end: score_series output fed to simulate_trades must produce trades."""
+    df = create_dummy_df(500)
+    # Ensure trending up so signals are likely
+    close = 100 + np.linspace(0, 50, 500)
+    df['Close'] = close
+    df['Open'] = close - 0.5
+    df['High'] = close + 1.0
+    df['Low'] = close - 1.0
+    
+    config = BacktestConfig(
+        score_threshold=0.0,      # accept any score
+        min_adx=0,                # disable ADX gate
+        require_volume_breakout=False,
+        use_regime_filter=False,
+        stop_loss_pct=0.0,
+        target_pct=0.0,
+        holding_days=5,
+    )
+    results = score_series(df, config=config)
+    assert len(results) > 0, "score_series returned no signals"
+    
+    trades = simulate_trades("TEST", "Tech", df, results, config)
+    assert len(trades) > 0, (
+        "No trades produced from score_series output — "
+        "likely a missing key in score_series result dict"
+    )
 
