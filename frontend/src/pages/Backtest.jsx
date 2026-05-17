@@ -689,6 +689,18 @@ const Backtest = () => {
                     }
                     icon={Briefcase}
                   />
+                  <Toggle
+                    label="Weekly Confirmation"
+                    checked={config.require_weekly_confirmation}
+                    onChange={(val) => handleConfigChange('require_weekly_confirmation', val)}
+                    icon={TrendingUp}
+                  />
+                  <Toggle
+                    label="Monthly Confirmation"
+                    checked={config.require_monthly_confirmation}
+                    onChange={(val) => handleConfigChange('require_monthly_confirmation', val)}
+                    icon={BarChart3}
+                  />
                 </div>
               </div>
 
