@@ -142,6 +142,10 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
         
         if signal_idx is None or signal_idx <= last_exit_idx:
             continue
+
+        # 200 EMA null-safety gate (belt-and-suspenders; also enforced in score_series)
+        if signal.get('above_200ema') is not True:
+            continue
             
         if signal['score'] >= config.score_threshold:
             # Entry: Next trading day's Open price
