@@ -333,6 +333,8 @@ const Backtest = () => {
     risk_reward_ratio: 2.5,
     use_regime_filter: true,
     require_volume_breakout: false,
+    require_weekly_confirmation: true,
+    require_monthly_confirmation: false,
     starting_capital: 1000000,
     position_size:    10000,
     include_fundamentals: false,
@@ -422,6 +424,8 @@ const Backtest = () => {
       risk_reward_ratio: 2.5,
       use_regime_filter: true,
       require_volume_breakout: false,
+      require_weekly_confirmation: true,
+      require_monthly_confirmation: false,
       include_fundamentals: false,
       symbol_limit: 100,
       date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
