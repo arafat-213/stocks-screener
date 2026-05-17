@@ -7,9 +7,11 @@ import datetime
 import json
 import logging
 import traceback
+import bisect
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
+from app.pipeline.utils import resample_ohlcv
 from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data
 from app.pipeline.ohlcv_cache import OHLCVCache
@@ -29,6 +31,8 @@ class BacktestConfig:
     trailing_stop_pct: float = 0.0     # NEW: percentage drop from highest price
     require_volume_breakout: bool = True # changed from False per SPEC-006
     use_regime_filter: bool = True     # NEW: Nifty > 50 EMA filter
+    require_weekly_confirmation: bool = True
+    require_monthly_confirmation: bool = False
     atr_multiplier: float = 2.0        # Multiplier for ATR-based stop loss
     risk_reward_ratio: float = 2.5     # Target profit as multiple of risk
     use_atr_stops: bool = False        # Whether to use ATR for stops/targets
@@ -57,6 +61,44 @@ class TradeResult:
     rsi_at_signal: float
     adx_at_signal: float
     ema_signal: str
+
+def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
+    """
+    Resamples daily data to timeframe ('W' or 'M') and scores each bar.
+    Returns {date: is_bullish} mapping.
+    Ensures no look-ahead bias by scoring each bar using only previous data.
+    """
+    if df is None or df.empty:
+        return {}
+    
+    freq = 'W' if timeframe == 'W' else 'ME'
+    resampled = resample_ohlcv(df, freq=freq, drop_incomplete=True)
+    if resampled.empty:
+        return {}
+        
+    state_map = {}
+    # Technical scoring needs some history (60 bars for W, 24 for M)
+    min_bars = 24 if timeframe == 'M' else 60
+    
+    for i in range(len(resampled)):
+        # Important: only use data up to bar i to avoid look-ahead bias
+        bar_slice = resampled.iloc[: i + 1]
+        if len(bar_slice) < min_bars:
+            continue
+            
+        try:
+            ta_data = calculate_technical_score(bar_slice, timeframe=timeframe)
+        except Exception as e:
+            logger.error(f"Error scoring MTF bar {i} for {timeframe}: {e}")
+            continue
+            
+        bar_date = resampled.index[i]
+        if hasattr(bar_date, 'date'):
+            bar_date = bar_date.date()
+        
+        state_map[bar_date] = bool(ta_data.get('is_bullish', False))
+        
+    return state_map
 
 def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
     """
@@ -110,7 +152,34 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         
     return results
 
-def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: list[dict], config: BacktestConfig, regime_dict: dict = None):
+def _lookup_mtf_state(state_map: dict, signal_date: datetime.date) -> bool:
+    """
+    Looks up the most recent state in state_map for a date <= signal_date.
+    Uses binary search for efficiency.
+    Returns False if no bar predates the signal (fail-closed).
+    """
+    if not state_map:
+        return False
+    
+    sorted_dates = sorted(state_map.keys())
+    idx = bisect.bisect_right(sorted_dates, signal_date)
+    
+    if idx == 0:
+        return False
+        
+    match_date = sorted_dates[idx - 1]
+    return state_map[match_date]
+
+def simulate_trades(
+    symbol: str, 
+    sector: str, 
+    df: pd.DataFrame, 
+    scored_dates: list[dict], 
+    config: BacktestConfig, 
+    regime_dict: dict = None,
+    weekly_state_map: dict = None,
+    monthly_state_map: dict = None,
+):
     """
     Simulates trades based on scored signals.
     Entry: Next day's Open.
@@ -153,6 +222,16 @@ def simulate_trades(symbol: str, sector: str, df: pd.DataFrame, scored_dates: li
         if config.min_adx > 0:
             adx_val = signal.get('adx')
             if adx_val is None or adx_val < config.min_adx:
+                continue
+
+        # Weekly confirmation gate
+        if config.require_weekly_confirmation and weekly_state_map is not None:
+            if not _lookup_mtf_state(weekly_state_map, compare_date):
+                continue
+
+        # Monthly confirmation gate
+        if config.require_monthly_confirmation and monthly_state_map is not None:
+            if not _lookup_mtf_state(monthly_state_map, compare_date):
                 continue
             
         if signal['score'] >= config.score_threshold:
@@ -469,9 +548,22 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     # Run scoring
                     scored_dates = score_series(df, fund_cache=fund_cache, config=config)
                     
+                    # Multi-Timeframe Confirmation
+                    weekly_state_map = None
+                    monthly_state_map = None
+                    if config.require_weekly_confirmation:
+                        weekly_state_map = build_mtf_state_map(df, 'W')
+                    if config.require_monthly_confirmation:
+                        monthly_state_map = build_mtf_state_map(df, 'M')
+
                     # Run simulation
                     sector = stocks_info.get(symbol, "Unknown")
-                    trades = simulate_trades(symbol, sector, df, scored_dates, config, regime_dict=regime_dict)
+                    trades = simulate_trades(
+                        symbol, sector, df, scored_dates, config, 
+                        regime_dict=regime_dict,
+                        weekly_state_map=weekly_state_map,
+                        monthly_state_map=monthly_state_map
+                    )
                     
                     # Save trades to DB
                     db_trades = []

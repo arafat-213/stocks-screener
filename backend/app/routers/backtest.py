@@ -25,6 +25,14 @@ class BacktestRequest(BaseModel):
     require_volume_breakout: bool = Field(default=True,
         description="Requires volume > 2x SMA20 for entry. Disabling increases trade count and stop-loss rate.")
     use_regime_filter: bool = True
+    require_weekly_confirmation: bool = Field(
+        default=True,
+        description="Requires the Weekly signal to be bullish before entering a Daily signal."
+    )
+    require_monthly_confirmation: bool = Field(
+        default=False,
+        description="Additionally requires the Monthly signal to be bullish."
+    )
     atr_multiplier: float = Field(default=2.0, ge=1.0, le=10.0,
         description="Multiplier for ATR-based stop loss.")
     risk_reward_ratio: float = Field(default=2.5, ge=0.5, le=10.0,
@@ -140,6 +148,8 @@ def start_backtest(
         trailing_stop_pct=request.trailing_stop_pct,
         require_volume_breakout=request.require_volume_breakout,
         use_regime_filter=request.use_regime_filter,
+        require_weekly_confirmation=request.require_weekly_confirmation,
+        require_monthly_confirmation=request.require_monthly_confirmation,
         atr_multiplier=request.atr_multiplier,
         risk_reward_ratio=request.risk_reward_ratio,
         use_atr_stops=request.use_atr_stops,
