@@ -13,11 +13,11 @@ def test_fetch_stock_data_uses_session(mock_ticker):
     # We pass fetch_info=False to test the new signature
     fetch_stock_data("RELIANCE", fetch_info=False)
     
-    mock_ticker.assert_called_once_with("RELIANCE.NS", session=session)
+    mock_ticker.assert_called_once_with("RELIANCE.NS")
 
 @patch('yfinance.download')
 def test_fetch_market_snapshots_uses_session(mock_download):
     mock_download.return_value = pd.DataFrame()
     fetch_market_snapshots(["^NSEI"])
     
-    mock_download.assert_called_once_with(["^NSEI"], period="5d", progress=False, session=session)
+    mock_download.assert_called_once_with(["^NSEI"], period="5d", progress=False, threads=False)

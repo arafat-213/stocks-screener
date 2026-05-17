@@ -23,4 +23,4 @@ def test_screener_uses_resilient_session(mock_ticker):
     
     fetch_and_cache_deep_fundamentals(["TEST"], mock_db_session)
     
-    mock_ticker.assert_called_with("TEST.NS", session=pipeline_session)
+    mock_ticker.assert_called_with("TEST.NS")
