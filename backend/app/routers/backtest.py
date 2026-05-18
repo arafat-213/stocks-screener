@@ -13,8 +13,17 @@ import uuid
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 class BacktestRequest(BaseModel):
-    score_threshold: float = Field(default=55.0, ge=0, le=100,
-        description="Minimum score. Recommended: 55–65 for technical-only signals, 45–55 with fundamentals.")
+    score_threshold: float = Field(
+        default=55.0,
+        ge=0,
+        le=100,
+        description=(
+            "Signal quality bar on a 0–100 intention scale. "
+            "Automatically normalised: when include_fundamentals=False the "
+            "max possible score is 70, so a threshold of 60 becomes an effective "
+            "42 (60% of 70). With fundamentals enabled the threshold applies directly."
+        ),
+    )
     holding_days: int = Field(default=20, ge=1, le=252)
     stop_loss_pct: float = Field(default=7.0, ge=0, le=50,
         description="0 disables stop-loss.")
@@ -47,6 +56,38 @@ class BacktestRequest(BaseModel):
     date_to: Optional[str] = None     # "YYYY-MM-DD"
     starting_capital: float = Field(default=1000000.0, ge=10000)
     position_size: float = Field(default=10000.0, ge=100)
+    use_volatility_sizing: bool = Field(
+        default=False,
+        description=(
+            "When True, sizes each position so a stop-loss hit risks "
+            "risk_per_trade_pct% of starting_capital. Requires ATR data. "
+            "Falls back to flat position_size when ATR is unavailable."
+        ),
+    )
+    risk_per_trade_pct: float = Field(
+        default=1.0,
+        ge=0.1,
+        le=5.0,
+        description="% of starting_capital to risk per trade when use_volatility_sizing=True.",
+    )
+    max_position_pct: float = Field(
+        default=10.0,
+        ge=1.0,
+        le=50.0,
+        description="Maximum position size as % of starting_capital (volatility sizing cap).",
+    )
+    max_concurrent_positions: int = Field(
+        default=0,
+        ge=0,
+        le=50,
+        description="Maximum open positions at any time. 0 = unlimited (per-symbol independent simulation).",
+    )
+    max_sector_positions: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description="Maximum open positions in a single sector. 0 = unlimited.",
+    )
 
 def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
     config = json.loads(run.config) if run.config else {}
@@ -160,7 +201,12 @@ def start_backtest(
         date_from=date_from,
         date_to=date_to,
         starting_capital=request.starting_capital,
-        position_size=request.position_size
+        position_size=request.position_size,
+        use_volatility_sizing=request.use_volatility_sizing,
+        risk_per_trade_pct=request.risk_per_trade_pct,
+        max_position_pct=request.max_position_pct,
+        max_concurrent_positions=request.max_concurrent_positions,
+        max_sector_positions=request.max_sector_positions,
     )
     
     # Add to background tasks

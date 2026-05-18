@@ -58,7 +58,7 @@ def test_combined_score_timeframe_handling():
     # Daily: should include fundamental
     res_d = calculate_combined_score(df, info, timeframe='D')
     assert res_d["fundamental_score"] == 15.0
-    if res_d["rsi"] <= 70:
+    if res_d["rsi"] <= 80:
         assert res_d["score"] > 15.0
     else:
         assert res_d["score"] == 0.0

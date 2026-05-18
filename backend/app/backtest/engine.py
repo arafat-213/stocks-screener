@@ -45,6 +45,25 @@ class BacktestConfig:
     screen_slug: Optional[str] = None  # New field
     starting_capital: float = 1000000.0
     position_size: float = 10000.0
+    use_volatility_sizing: bool = False
+    risk_per_trade_pct: float = 1.0    # % of starting_capital to risk per trade
+    max_position_pct: float = 10.0     # max % of starting_capital per position
+    max_concurrent_positions: int = 0  # 0 = unlimited
+    max_sector_positions: int = 0      # 0 = unlimited
+
+    @property
+    def effective_score_threshold(self) -> float:
+        """
+        Normalises score_threshold to the actual score scale.
+
+        When include_fundamentals=False, calculate_technical_score returns a
+        maximum of 70 (not 100). A raw threshold of 60 on a 70-pt scale is an
+        85.7% bar — far too tight. We treat score_threshold as a 0-100 intention
+        and scale it down to match the active score ceiling.
+        """
+        if not self.include_fundamentals:
+            return self.score_threshold * 0.70
+        return self.score_threshold
 
 @dataclass
 class TradeResult:
@@ -61,6 +80,7 @@ class TradeResult:
     rsi_at_signal: float
     adx_at_signal: float
     ema_signal: str
+    position_size_used: float = 0.0   # actual rupee position, may differ from config.position_size
 
 def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
     """
@@ -100,56 +120,244 @@ def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
         
     return state_map
 
+def _compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Computes all pandas-ta indicators on the full DataFrame in a single pass.
+    Called once per symbol instead of once per bar.
+    Returns a new DataFrame with all indicator columns appended.
+    """
+    df = df.copy()
+    df.ta.ema(length=5, append=True)
+    df.ta.ema(length=13, append=True)
+    df.ta.ema(length=20, append=True)
+    df.ta.ema(length=26, append=True)
+    df.ta.ema(length=200, append=True)
+    df.ta.macd(fast=12, slow=26, signal=9, append=True)
+    df.ta.rsi(length=14, append=True)
+    df.ta.atr(length=14, append=True)
+    df.ta.adx(length=14, append=True)
+    if 'Volume' in df.columns:
+        df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    else:
+        df['VOL_SMA_20'] = pd.Series(dtype='float64')
+    # EMA slope: (EMA_20[i] - EMA_20[i-5]) / 5
+    ema20_col = 'EMA_20'
+    if ema20_col in df.columns:
+        df['EMA_SLOPE_20'] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
+    return df
+
+def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
+    """
+    Scores bar at index i using pre-computed indicator columns in df_ind.
+    Mirrors the Daily timeframe scoring in calculate_technical_score without
+    re-running pandas-ta. df_ind must be the output of _compute_all_indicators.
+    """
+    latest = df_ind.iloc[i]
+    prev = df_ind.iloc[i - 1] if i > 0 else latest
+
+    ema5  = latest.get('EMA_5')
+    ema13 = latest.get('EMA_13')
+    ema20 = latest.get('EMA_20')
+    ema26 = latest.get('EMA_26')
+    ema200 = latest.get('EMA_200')
+    price = latest.get('Close')
+    macd_line   = latest.get('MACD_12_26_9')
+    signal_line = latest.get('MACDs_12_26_9')
+    rsi         = latest.get('RSI_14')
+    prev_rsi    = prev.get('RSI_14')
+    atr         = latest.get('ATRr_14')
+    adx         = latest.get('ADX_14')
+    volume      = latest.get('Volume')
+    sma20_vol   = latest.get('VOL_SMA_20')
+    ema_slope_20 = latest.get('EMA_SLOPE_20')
+
+    prev_ema5  = prev.get('EMA_5')
+    prev_ema13 = prev.get('EMA_13')
+    prev_macd  = prev.get('MACD_12_26_9')
+    prev_sig   = prev.get('MACDs_12_26_9')
+
+    score = 0.0
+    ema_signal    = 'neutral'
+    volume_signal = 'neutral'
+    rsi_signal    = 'neutral'
+    is_bullish    = False
+
+    is_green = (
+        pd.notna(price) and pd.notna(latest.get('Open')) and
+        price > latest.get('Open')
+    )
+
+    # Volume breakout flag (2× threshold, matches scorer.py)
+    volume_breakout = (
+        pd.notna(volume) and pd.notna(sma20_vol) and
+        volume > 2.0 * sma20_vol and is_green
+    )
+
+    # 1. EMA Alignment (20 pts)
+    fresh_ema_cross = (
+        pd.notna(ema5) and pd.notna(ema13) and
+        pd.notna(prev_ema5) and pd.notna(prev_ema13) and
+        ema5 > ema13 and prev_ema5 <= prev_ema13
+    )
+    pullback_to_ema20 = (
+        pd.notna(ema20) and pd.notna(price) and
+        pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
+        ema5 > ema13 > ema26 and
+        abs(price - ema20) / ema20 < 0.02
+    )
+    if fresh_ema_cross:
+        score += 20
+        ema_signal = 'bullish_cross'
+    elif pullback_to_ema20:
+        score += 15
+        ema_signal = 'bullish_pullback'
+    elif (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
+          ema5 > ema13 > ema26 and price > ema26):
+        score += 8
+        ema_signal = 'bullish'
+    elif (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
+          ema5 < ema13 < ema26):
+        ema_signal = 'bearish'
+
+    # 2. MACD (15 pts — decoupled from EMA cross)
+    if pd.notna(macd_line) and pd.notna(signal_line):
+        fresh_macd_cross = (
+            pd.notna(prev_macd) and pd.notna(prev_sig) and
+            macd_line > signal_line and prev_macd <= prev_sig
+        )
+        if fresh_macd_cross and fresh_ema_cross:
+            score += 8
+        elif fresh_macd_cross:
+            score += 15
+        elif macd_line > signal_line and macd_line > 0:
+            score += 10
+        elif macd_line > signal_line and macd_line < 0:
+            score += 5
+
+    # 3. RSI (15 pts)
+    if pd.notna(rsi) and pd.notna(prev_rsi):
+        recent_rsi = df_ind['RSI_14'].iloc[max(0, i - 4): i + 1]
+        was_oversold = any(recent_rsi < 30)
+        recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
+        crossing_50 = prev_rsi <= 50 and rsi > 50
+        if recovering and fresh_ema_cross:
+            score += 15
+            rsi_signal = 'bullish_recovery_confirmed'
+        elif recovering:
+            score += 15
+            rsi_signal = 'bullish_recovery'
+        elif crossing_50:
+            score += 10
+            rsi_signal = 'bullish_crossing'
+        elif rsi > 50:
+            score += 3
+            rsi_signal = 'bullish_strong'
+
+    # 4. Volume (15 pts)
+    if pd.notna(volume) and pd.notna(sma20_vol):
+        if volume > 2.0 * sma20_vol and is_green:
+            score += 15
+            volume_signal = 'bullish'
+
+    # 5. ADX (5 pts)
+    if pd.notna(adx):
+        if adx >= 35:
+            score += 5
+        elif adx >= 25:
+            score += 3
+        elif adx >= 20:
+            score += 1
+
+    # is_bullish definition (same as scorer.py Daily)
+    is_bullish = bool(
+        (fresh_ema_cross or pullback_to_ema20 or (
+            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
+            ema5 > ema13 > ema26
+        )) and
+        pd.notna(macd_line) and pd.notna(signal_line) and macd_line > signal_line and
+        pd.notna(rsi) and rsi > 45
+    )
+
+    above_200ema = bool(price > ema200) if pd.notna(ema200) else None
+
+    # Momentum (lookback from full df_ind)
+    momentum_1m  = float((price / df_ind['Close'].iloc[i - 21]  - 1) * 100) if i >= 21  else None
+    momentum_3m  = float((price / df_ind['Close'].iloc[i - 63]  - 1) * 100) if i >= 63  else None
+    momentum_6m  = float((price / df_ind['Close'].iloc[i - 126] - 1) * 100) if i >= 126 else None
+    momentum_12m = float((price / df_ind['Close'].iloc[i - 252] - 1) * 100) if i >= 252 else None
+
+    return {
+        'score': float(score),
+        'rsi': float(rsi) if pd.notna(rsi) else 0.0,
+        'macd': float(macd_line) if pd.notna(macd_line) else 0.0,
+        'ema_signal': ema_signal,
+        'volume_signal': volume_signal,
+        'rsi_signal': rsi_signal,
+        'is_bullish': is_bullish,
+        'volume_breakout': bool(volume_breakout),
+        'atr': float(atr) if pd.notna(atr) else None,
+        'adx': float(adx) if pd.notna(adx) else None,
+        'above_200ema': above_200ema,
+        'ema_slope_20': float(ema_slope_20) if pd.notna(ema_slope_20) else None,
+        'momentum_1m': momentum_1m,
+        'momentum_3m': momentum_3m,
+        'momentum_6m': momentum_6m,
+        'momentum_12m': momentum_12m,
+    }
+
 def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
     """
-    Computes technical and fundamental scores for a series of OHLCV data.
-    Uses calculate_technical_score as the single source of truth.
-    O(n^2) implementation: for each bar, compute technical score on slice.
+    Computes per-bar scores for all bars in df using a single indicator pass (O(n)).
+
+    Previously O(n²) because calculate_technical_score was called on a growing
+    slice at every bar, recomputing all indicators from scratch each time.
+    Now: compute indicators once, score each bar from the precomputed columns.
     """
     if df is None or len(df) < 210:
         return []
 
-    # Fundamental Score (computed once since we only have current data)
     fund_score = 0.0
     if config and config.include_fundamentals and fund_cache:
+        from app.pipeline.scorer import calculate_fundamental_score
         fund_score = calculate_fundamental_score(None, fund_cache=fund_cache)
 
-    results = []
-    MIN_BARS = 210  # 200 EMA requires 200 bars; 10-bar buffer for stability
-    
-    # Iterate from MIN_BARS to end
-    for i in range(MIN_BARS, len(df)):
-        bar_df = df.iloc[:i+1]
-        ta_data = calculate_technical_score(bar_df, timeframe='D')
-        
-        price = float(bar_df['Close'].iloc[-1])
-        open_price = float(bar_df['Open'].iloc[-1])
-        total_score = ta_data['score'] + fund_score
+    # Single indicator computation pass — O(n)
+    df_ind = _compute_all_indicators(df)
 
-        # Hard Filter: Price must be above 200 EMA
-        if ta_data.get('above_200ema') == False:  # explicitly False, not None
+    results = []
+    MIN_BARS = 210
+
+    for i in range(MIN_BARS, len(df_ind)):
+        try:
+            bar_data = _score_bar_from_precomputed(df_ind, i)
+        except Exception as e:
+            logger.error("score_series bar %d error: %s", i, e)
+            continue
+
+        total_score = bar_data['score'] + fund_score
+
+        if bar_data.get('above_200ema') is False:
             total_score = 0.0
-            
-        # Hard Filter: RSI must not be overbought (> 70)
-        if ta_data.get('rsi', 0) > 70:
+
+        if bar_data.get('rsi', 0) > 80:
             total_score = 0.0
-        
+
         results.append({
-            "date": df.index[i],
-            "score": float(total_score),
-            "is_bullish": bool(ta_data['is_bullish']),
-            "rsi": float(ta_data['rsi']) if ta_data['rsi'] else 0.0,
-            "adx": float(ta_data['adx']) if ta_data.get('adx') is not None else 0.0,
-            "ema_signal": ta_data['ema_signal'],
-            "volume_signal": ta_data['volume_signal'],
-            "rsi_signal": ta_data['rsi_signal'],
-            "close": price,
-            "open": open_price,
-            "volume_breakout": bool(ta_data.get('volume_breakout', False)),
-            "atr": ta_data.get('atr'),
-            "above_200ema": ta_data.get('above_200ema'),
+            'date':           df_ind.index[i],
+            'score':          float(total_score),
+            'is_bullish':     bar_data['is_bullish'],
+            'rsi':            bar_data['rsi'],
+            'adx':            bar_data['adx'],
+            'ema_signal':     bar_data['ema_signal'],
+            'volume_signal':  bar_data['volume_signal'],
+            'rsi_signal':     bar_data['rsi_signal'],
+            'close':          float(df_ind['Close'].iloc[i]),
+            'open':           float(df_ind['Open'].iloc[i]),
+            'volume_breakout': bar_data['volume_breakout'],
+            'atr':            bar_data['atr'],
+            'above_200ema':   bar_data['above_200ema'],
         })
-        
+
     return results
 
 def _lookup_mtf_state(state_map: dict, signal_date: datetime.date) -> bool:
@@ -169,6 +377,33 @@ def _lookup_mtf_state(state_map: dict, signal_date: datetime.date) -> bool:
         
     match_date = sorted_dates[idx - 1]
     return state_map[match_date]
+
+def _compute_position_size(
+    config: BacktestConfig,
+    entry_price: float,
+    atr: float | None,
+) -> float:
+    """
+    Returns the rupee position size for a trade.
+
+    Flat mode (use_volatility_sizing=False):
+        Always returns config.position_size.
+
+    Volatility mode (use_volatility_sizing=True):
+        Sizes position so that a stop-loss hit (atr_multiplier × ATR away)
+        loses exactly risk_per_trade_pct% of starting_capital.
+        Capped at max_position_pct% of starting_capital.
+        Falls back to flat size when ATR is None or zero.
+    """
+    if not config.use_volatility_sizing or atr is None or atr <= 0 or entry_price <= 0:
+        return config.position_size
+
+    risk_amount = config.starting_capital * (config.risk_per_trade_pct / 100.0)
+    stop_distance_per_share = config.atr_multiplier * atr
+    shares = risk_amount / stop_distance_per_share
+    position_value = shares * entry_price
+    max_position = config.starting_capital * (config.max_position_pct / 100.0)
+    return min(position_value, max_position)
 
 def simulate_trades(
     symbol: str, 
@@ -234,7 +469,7 @@ def simulate_trades(
             if not _lookup_mtf_state(monthly_state_map, compare_date):
                 continue
             
-        if signal['score'] >= config.score_threshold:
+        if signal['score'] >= config.effective_score_threshold:
             # Entry: Next trading day's Open price
             entry_idx = signal_idx + 1
             if entry_idx >= len(df):
@@ -251,6 +486,12 @@ def simulate_trades(
 
             entry_price = df.iloc[entry_idx]['Open']
             
+            pos_size = _compute_position_size(
+                config,
+                entry_price=entry_price,
+                atr=signal.get('atr'),
+            )
+
             # Exit conditions
             exit_price = None
             exit_date = None
@@ -328,10 +569,90 @@ def simulate_trades(
                 return_pct=float(return_pct),
                 rsi_at_signal=signal['rsi'],
                 adx_at_signal=signal['adx'],
-                ema_signal=signal['ema_signal']
+                ema_signal=signal['ema_signal'],
+                position_size_used=pos_size,
             ))
             
     return trades
+
+def simulate_portfolio(
+    all_signals: dict[str, list[dict]],
+    all_dfs: dict[str, pd.DataFrame],
+    stocks_info: dict[str, str],
+    config: BacktestConfig,
+    regime_dict: dict = None,
+    weekly_state_maps: dict | None = None,
+    monthly_state_maps: dict | None = None,
+) -> list[TradeResult]:
+    """
+    Portfolio-level chronological simulation.
+
+    Aggregates signals from all symbols, sorts them by date, and processes
+    them in order — enforcing max_concurrent_positions and max_sector_positions
+    before allowing each entry.
+
+    Falls back to per-symbol simulate_trades for each accepted signal to
+    reuse the exact same exit logic (SL, target, holding period).
+    """
+    # Build flat chronological timeline of (date, symbol, signal)
+    timeline: list[tuple] = []
+    for symbol, signals in all_signals.items():
+        for sig in signals:
+            sig_date = sig['date']
+            compare = sig_date.date() if hasattr(sig_date, 'date') else sig_date
+            timeline.append((compare, symbol, sig))
+
+    timeline.sort(key=lambda x: x[0])
+
+    all_trades: list[TradeResult] = []
+    # symbol -> exit_date (datetime.date)
+    open_positions: dict[str, datetime.date] = {}
+
+    for compare_date, symbol, signal in timeline:
+        # Skip if already holding this exact symbol
+        if symbol in open_positions and open_positions[symbol] > compare_date:
+            continue
+
+        sector = stocks_info.get(symbol, 'Unknown')
+
+        # Enforce max_concurrent_positions
+        if config.max_concurrent_positions > 0:
+            active_count = sum(
+                1 for exit_d in open_positions.values() if exit_d > compare_date
+            )
+            if active_count >= config.max_concurrent_positions:
+                continue
+
+        # Enforce max_sector_positions
+        if config.max_sector_positions > 0:
+            sector_active = sum(
+                1 for sym, exit_d in open_positions.items()
+                if stocks_info.get(sym) == sector and exit_d > compare_date
+            )
+            if sector_active >= config.max_sector_positions:
+                continue
+
+        df = all_dfs.get(symbol)
+        if df is None:
+            continue
+
+        trades = simulate_trades(
+            symbol,
+            sector,
+            df,
+            [signal],
+            config,
+            regime_dict=regime_dict,
+            weekly_state_map=(weekly_state_maps or {}).get(symbol),
+            monthly_state_map=(monthly_state_maps or {}).get(symbol),
+        )
+
+        if trades:
+            trade = trades[0]
+            open_positions[symbol] = trade.exit_date
+            all_trades.append(trade)
+
+    return all_trades
 
 def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, config: BacktestConfig):
     """
@@ -386,7 +707,8 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     worst_trade_pct = min(returns)
     
     # Updated PnL and Total Return logic
-    total_pnl = sum((r / 100) * config.position_size for r in returns)
+    # Use position_size_used if available (new), fallback to config.position_size (legacy tests)
+    total_pnl = sum(t.return_pct / 100.0 * (t.position_size_used or config.position_size) for t in trades)
     total_return_pct = (total_pnl / config.starting_capital) * 100 if config.starting_capital > 0 else 0.0
     
     # Benchmark return
@@ -401,7 +723,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     for t in trades:
         d = t.exit_date
         # Profit/Loss in absolute rupees
-        pl = (t.return_pct / 100) * config.position_size
+        pl = (t.return_pct / 100.0) * (t.position_size_used or config.position_size)
         strat_returns_by_date[d] = strat_returns_by_date.get(d, 0) + pl
         
     equity_curve = []
@@ -533,6 +855,15 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             if config.include_fundamentals:
                 fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
 
+            # Collect scored signals and DataFrames for potential portfolio simulation
+            all_signals_map: dict[str, list[dict]] = {}
+            all_dfs_map: dict[str, pd.DataFrame] = {}
+            weekly_maps: dict[str, dict] = {}
+            monthly_maps: dict[str, dict] = {}
+            use_portfolio_sim = (
+                config.max_concurrent_positions > 0 or config.max_sector_positions > 0
+            )
+
             for symbol in symbols:
                 try:
                     # Fetch historical OHLCV
@@ -558,37 +889,48 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
                     # Run simulation
                     sector = stocks_info.get(symbol, "Unknown")
-                    trades = simulate_trades(
-                        symbol, sector, df, scored_dates, config, 
-                        regime_dict=regime_dict,
-                        weekly_state_map=weekly_state_map,
-                        monthly_state_map=monthly_state_map
-                    )
-                    
-                    # Save trades to DB
-                    db_trades = []
-                    for t in trades:
-                        db_trade = BacktestTrade(
-                            run_id=run_id,
-                            symbol=t.symbol,
-                            sector=t.sector,
-                            signal_date=t.signal_date,
-                            entry_date=t.entry_date,
-                            exit_date=t.exit_date,
-                            exit_reason=t.exit_reason,
-                            signal_score=t.signal_score,
-                            entry_price=t.entry_price,
-                            exit_price=t.exit_price,
-                            return_pct=t.return_pct,
-                            rsi_at_signal=t.rsi_at_signal,
-                            adx_at_signal=t.adx_at_signal,
-                            ema_signal=t.ema_signal
-                        )
-                        db_trades.append(db_trade)
-                        all_trades.append(t)
 
-                    if db_trades:
-                        db.bulk_save_objects(db_trades)
+                    if use_portfolio_sim:
+                        # Accumulate for cross-symbol chronological simulation
+                        all_signals_map[symbol] = scored_dates
+                        all_dfs_map[symbol] = df
+                        if weekly_state_map is not None:
+                            weekly_maps[symbol] = weekly_state_map
+                        if monthly_state_map is not None:
+                            monthly_maps[symbol] = monthly_state_map
+                    else:
+                        # Original per-symbol path (no portfolio limits)
+                        trades = simulate_trades(
+                            symbol, sector, df, scored_dates, config, 
+                            regime_dict=regime_dict,
+                            weekly_state_map=weekly_state_map,
+                            monthly_state_map=monthly_state_map
+                        )
+                        
+                        # Save trades to DB
+                        db_trades = []
+                        for t in trades:
+                            db_trade = BacktestTrade(
+                                run_id=run_id,
+                                symbol=t.symbol,
+                                sector=t.sector,
+                                signal_date=t.signal_date,
+                                entry_date=t.entry_date,
+                                exit_date=t.exit_date,
+                                exit_reason=t.exit_reason,
+                                signal_score=t.signal_score,
+                                entry_price=t.entry_price,
+                                exit_price=t.exit_price,
+                                return_pct=t.return_pct,
+                                rsi_at_signal=t.rsi_at_signal,
+                                adx_at_signal=t.adx_at_signal,
+                                ema_signal=t.ema_signal
+                            )
+                            db_trades.append(db_trade)
+                            all_trades.append(t)
+
+                        if db_trades:
+                            db.bulk_save_objects(db_trades)
 
                     symbols_processed += 1
                     
@@ -604,6 +946,35 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     logger.error(f"Error processing symbol {symbol}: {e}")
                     logger.error(traceback.format_exc())
                     continue
+
+            # Portfolio simulation path — runs after all signals are collected
+            if use_portfolio_sim and all_signals_map:
+                logger.info(
+                    "Running portfolio simulation with max_concurrent=%d, max_sector=%d",
+                    config.max_concurrent_positions,
+                    config.max_sector_positions,
+                )
+                all_trades = simulate_portfolio(
+                    all_signals_map, all_dfs_map, stocks_info, config,
+                    regime_dict=regime_dict,
+                    weekly_state_maps=weekly_maps if config.require_weekly_confirmation else None,
+                    monthly_state_maps=monthly_maps if config.require_monthly_confirmation else None,
+                )
+                db_trades = []
+                for t in all_trades:
+                    db_trade = BacktestTrade(
+                        run_id=run_id, symbol=t.symbol, sector=t.sector,
+                        signal_date=t.signal_date, entry_date=t.entry_date,
+                        exit_date=t.exit_date, exit_reason=t.exit_reason,
+                        signal_score=t.signal_score, entry_price=t.entry_price,
+                        exit_price=t.exit_price, return_pct=t.return_pct,
+                        rsi_at_signal=t.rsi_at_signal,
+                        adx_at_signal=t.adx_at_signal, ema_signal=t.ema_signal,
+                    )
+                    db_trades.append(db_trade)
+                if db_trades:
+                    db.bulk_save_objects(db_trades)
+                    db.commit()
 
             # 3. Finalize
             logger.info(f"Computing final metrics for {len(all_trades)} trades")

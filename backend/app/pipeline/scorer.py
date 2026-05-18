@@ -222,7 +222,10 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
             elif pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 < ema13 < ema26:
                 ema_signal = "bearish"
                 
-            # 2. MACD (20 pts)
+            # 2. MACD (15 pts — decoupled from EMA cross)
+            # When EMA cross and MACD cross occur on the same bar they measure
+            # the same price event. Cap the combined MACD bonus to 8 pts in that
+            # case to avoid awarding 35 pts for a single momentum burst.
             prev_macd = prev.get('MACD_12_26_9')
             prev_signal_line = prev.get('MACDs_12_26_9')
 
@@ -231,12 +234,15 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                     pd.notna(prev_macd) and pd.notna(prev_signal_line) and
                     macd_line > signal_line and prev_macd <= prev_signal_line
                 )
-                if fresh_macd_cross:
-                    score += 20
+                if fresh_macd_cross and fresh_ema_cross:
+                    # Correlated same-day event: award partial credit only
+                    score += 8
+                elif fresh_macd_cross:
+                    score += 15
                 elif macd_line > signal_line and macd_line > 0:
-                    score += 12
+                    score += 10
                 elif macd_line > signal_line and macd_line < 0:
-                    score += 6
+                    score += 5
                 
             # 3. RSI 14 (15 pts)
             if pd.notna(rsi) and pd.notna(prev_rsi):
@@ -263,9 +269,20 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
             # 4. Volume (15 pts)
             # (Note: we already checked volume_breakout above, but this is for the 70pt score)
             if pd.notna(volume) and pd.notna(sma20_vol):
-                if volume > 1.5 * sma20_vol and is_green:
+                if volume > 2.0 * sma20_vol and is_green:
                     score += 15
                     volume_signal = "bullish"
+            
+            # 5. ADX Trend Strength (5 pts)
+            # ADX was previously only a gate (min_adx). Higher ADX means a
+            # stronger, more sustained trend — reward it within the score.
+            if pd.notna(adx):
+                if adx >= 35:
+                    score += 5
+                elif adx >= 25:
+                    score += 3
+                elif adx >= 20:
+                    score += 1
                     
             # Define is_bullish for D
             is_bullish = (
@@ -335,8 +352,9 @@ def calculate_combined_score(df: pd.DataFrame, info: dict, timeframe: str = 'D',
     
     combined_score = ta_data['score'] + fund_score
     
-    # Hard Filter: RSI must not be overbought (> 70)
-    if ta_data.get('rsi', 0) > 70:
+    # Hard Filter: RSI must not be overbought (> 80)
+    # 70-80 is the normal territory for strong trending stocks; only cap true extremes.
+    if ta_data.get('rsi', 0) > 80:
         combined_score = 0.0
         
     # Ensure final score is in range 0-100

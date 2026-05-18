@@ -105,6 +105,22 @@ const BacktestResults = memo(
       return (
         <>
           {/* Metrics Grid */}
+          {metrics.total_trades < 100 && (
+            <div
+              className="disclaimer-banner"
+              style={{ borderColor: 'var(--color-warning, #f59e0b)', marginBottom: '16px' }}
+            >
+              <AlertTriangle size={20} className="shrink-0" style={{ color: 'var(--color-warning, #f59e0b)' }} />
+              <div>
+                <strong>Low sample size — metrics unreliable.</strong> Only{' '}
+                {metrics.total_trades} trades recorded. Statistical confidence
+                requires at least 100 trades. To increase trade count: lower{' '}
+                <em>Score Threshold</em> (try 40–45 for technical-only),
+                disable <em>Weekly Confirmation</em> and{' '}
+                <em>Volume Breakout</em>, or extend the date range.
+              </div>
+            </div>
+          )}
           <div className="metrics-grid">
             {[
               { label: 'Total Trades', value: metrics.total_trades },
@@ -568,6 +584,14 @@ const Backtest = () => {
                   min={0}
                   max={100}
                 />
+                <span
+                  className="form-hint text-muted"
+                  style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}
+                >
+                  {config.include_fundamentals
+                    ? `Effective: ${config.score_threshold.toFixed(0)} / 100 (fundamentals included)`
+                    : `Effective: ${(config.score_threshold * 0.70).toFixed(0)} / 70 (technical-only scale). Recommended: 40–50.`}
+                </span>
               </div>
               <div className="form-group">
                 <Slider

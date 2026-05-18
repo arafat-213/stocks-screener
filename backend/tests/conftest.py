@@ -67,3 +67,55 @@ def client(db):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
+
+
+import numpy as np
+import pandas as pd
+
+def make_trending_df(n: int = 300, base: float = 100.0, trend: float = 0.001) -> pd.DataFrame:
+    """
+    Synthetic OHLCV DataFrame with a smooth uptrend and enough history for
+    all indicators (EMA-200 needs 200 bars; we add 100 extra for stability).
+    Volume is set high enough that volume-breakout signals can fire.
+    """
+    rng = np.random.default_rng(42)
+    dates = pd.date_range("2021-01-01", periods=n, freq="B")
+    closes = base * (1 + trend) ** np.arange(n) + rng.normal(0, 0.3, n)
+    opens = closes * rng.uniform(0.997, 1.003, n)
+    highs = np.maximum(closes, opens) * rng.uniform(1.001, 1.012, n)
+    lows = np.minimum(closes, opens) * rng.uniform(0.988, 0.999, n)
+    volumes = rng.uniform(1_000_000, 2_500_000, n)
+    return pd.DataFrame(
+        {"Open": opens, "High": highs, "Low": lows, "Close": closes, "Volume": volumes},
+        index=dates,
+    )
+
+
+def make_signal(
+    df: pd.DataFrame,
+    idx: int,
+    score: float = 50.0,
+    above_200ema: bool = True,
+    volume_breakout: bool = False,
+    adx: float = 25.0,
+    rsi: float = 55.0,
+) -> dict:
+    """
+    Builds a minimal signal dict as returned by score_series, anchored to
+    a real row of df so date/index lookups in simulate_trades work correctly.
+    """
+    return {
+        "date": df.index[idx],
+        "score": score,
+        "is_bullish": True,
+        "rsi": rsi,
+        "adx": adx,
+        "ema_signal": "bullish",
+        "volume_signal": "neutral",
+        "rsi_signal": "bullish_strong",
+        "close": float(df.iloc[idx]["Close"]),
+        "open": float(df.iloc[idx]["Open"]),
+        "volume_breakout": volume_breakout,
+        "atr": float(df.iloc[idx]["Close"]) * 0.015,  # ~1.5% ATR
+        "above_200ema": above_200ema,
+    }
