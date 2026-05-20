@@ -729,12 +729,15 @@ def simulate_trades(
             stop_loss_price = min(base_stop, min_stop_price)  # min = lower price = wider stop
 
             actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
-            target_price = entry_price + config.risk_reward_ratio * actual_risk
+            if config.target_pct > 0:
+                target_price = entry_price * (1 + config.target_pct / 100)
+            else:
+                target_price = entry_price + config.risk_reward_ratio * actual_risk
 
             # Partial exits: recalculate around actual_risk
             if config.use_partial_exits:
                 t1_price = entry_price + 1.0 * actual_risk
-                t2_price = entry_price + config.risk_reward_ratio * actual_risk
+                t2_price = target_price
             else:
                 t1_price = None
                 t2_price = None
