@@ -453,6 +453,11 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         logger.info(f"Computing RS ranks for {final_signal_date}")
         compute_rs_ranks(db, final_signal_date)
 
+        # 3c. Compute sector rotation aggregates
+        from app.screens.sector_rotation import compute_sector_rotation
+        logger.info("Computing sector rotation snapshots")
+        compute_sector_rotation(db)
+
         indices = ["^NSEI", "^BSESN"]
         logger.info(f"Fetching market snapshots for {indices}")
         snapshots = fetch_market_snapshots(indices)

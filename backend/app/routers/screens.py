@@ -222,3 +222,41 @@ def get_screen_results(
     # 4. Cache write — after both paths
     screen_cache.set(cache_key, results, 60 if live else 900)
     return results
+
+@router.get("/data/sector-rotation")
+def get_sector_rotation(response: Response, db: Session = Depends(get_db)):
+    """Returns sector ranking by average RS score and bullish percentage."""
+    from app.screens.sector_rotation import compute_sector_rotation
+    from app.db.models import SectorSnapshot
+    from sqlalchemy import func
+    
+    cache_key = "sector_rotation"
+    cached_val = screen_cache.get(cache_key)
+    if cached_val is not None:
+        response.headers["X-Cache"] = "HIT"
+        return cached_val
+
+    snapshot_date = db.query(func.max(SectorSnapshot.date)).scalar()
+    if not snapshot_date:
+        return []
+
+    rows = (
+        db.query(SectorSnapshot)
+        .filter(SectorSnapshot.date == snapshot_date)
+        .order_by(SectorSnapshot.avg_rs.desc())
+        .all()
+    )
+    
+    result = [
+        {
+            "sector": r.sector,
+            "avg_rs": r.avg_rs,
+            "avg_momentum_3m": r.avg_momentum_3m,
+            "bullish_pct": r.bullish_pct,
+            "stock_count": r.stock_count,
+        }
+        for r in rows
+    ]
+    
+    screen_cache.set(cache_key, result, 900)
+    return result

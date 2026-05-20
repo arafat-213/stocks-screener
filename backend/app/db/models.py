@@ -205,3 +205,14 @@ class BacktestTrade(Base):
     rsi_at_signal   = Column(Float, nullable=True)
     adx_at_signal   = Column(Float, nullable=True)
     ema_signal      = Column(String, nullable=True)
+
+class SectorSnapshot(Base):
+    __tablename__ = "sector_snapshots"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(Date, nullable=False)
+    sector = Column(String, nullable=False)
+    avg_rs = Column(Float, nullable=True) # average RS percentile in sector
+    avg_momentum_3m = Column(Float, nullable=True)
+    bullish_pct = Column(Float, nullable=True) # % of stocks in sector that are bullish
+    stock_count = Column(Integer, nullable=True)
+    __table_args__ = (UniqueConstraint('date', 'sector'),)

@@ -1,5 +1,5 @@
 from app.screens.price_action import screen_52w_high, screen_52w_low, screen_near_breakout
-from app.screens.value import screen_low_debt_midcap, screen_undervalued_fundamentals, screen_steady_compounders
+from app.screens.value import screen_low_debt_midcap, screen_undervalued_fundamentals, screen_steady_compounders, screen_qarp, screen_dividend_growth
 from app.screens.momentum import (
     screen_momentum_monsters,
     screen_value_with_momentum,
@@ -7,6 +7,12 @@ from app.screens.momentum import (
     screen_volume_surge,
     screen_rsi_recovery,
 )
+from app.screens.confluence import (
+    screen_mtf_confluence,
+    screen_sector_leaders,
+    screen_fresh_52w_breakout,
+)
+from app.screens.sector_rotation import screen_hot_sectors
 
 SCREEN_REGISTRY = {
     # ── Price Action ─────────────────────────────────────────────────────────
@@ -48,6 +54,18 @@ SCREEN_REGISTRY = {
         "description": "Stocks recovering from oversold RSI with EMA20 support intact.",
         "category": "Signals"
     },
+    "mtf-confluence": {
+        "fn": screen_mtf_confluence,
+        "label": "Multi-Timeframe Confluence",
+        "description": "Daily, Weekly, and Monthly all simultaneously bullish. Highest-conviction setups.",
+        "category": "Signals"
+    },
+    "fresh-breakout": {
+        "fn": screen_fresh_52w_breakout,
+        "label": "Fresh 52W Breakout",
+        "description": "Price just crossed 52-week high with volume. No overhead resistance.",
+        "category": "Signals"
+    },
 
     # ── Momentum ──────────────────────────────────────────────────────────────
     "momentum-monsters": {
@@ -60,6 +78,18 @@ SCREEN_REGISTRY = {
         "fn": screen_value_with_momentum,
         "label": "Value with Momentum",
         "description": "Reasonable PEG with recent price strength and rising EMA slope.",
+        "category": "Momentum"
+    },
+    "sector-leaders": {
+        "fn": screen_sector_leaders,
+        "label": "Sector Leaders",
+        "description": "Top 3 RS-ranked stocks in each sector. Use for sector rotation.",
+        "category": "Momentum"
+    },
+    "hot-sectors": {
+        "fn": screen_hot_sectors,
+        "label": "Hot Sector Stocks",
+        "description": "Best stocks from the top 3 sectors by average RS. Combines macro and micro.",
         "category": "Momentum"
     },
 
@@ -80,6 +110,18 @@ SCREEN_REGISTRY = {
         "fn": screen_steady_compounders,
         "label": "Steady Compounders",
         "description": "High ROCE (>15%) with consistent dividend history above 200 EMA.",
+        "category": "Value"
+    },
+    "qarp": {
+        "fn": screen_qarp,
+        "label": "Quality at Reasonable Price",
+        "description": "High ROCE + ROE + FCF positive + low debt + PEG < 2.5.",
+        "category": "Value"
+    },
+    "dividend-growth": {
+        "fn": screen_dividend_growth,
+        "label": "Dividend Growth",
+        "description": "Consistent dividend payers with positive FCF and price above 200 EMA.",
         "category": "Value"
     },
 }
