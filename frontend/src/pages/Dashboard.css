@@ -419,6 +419,28 @@
 .animate-spin { animation: spin 1s linear infinite; }
 @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
+.fade-in {
+  animation: fadeIn 0.4s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.rs-bar-bg {
+  width: 80px;
+  height: 8px;
+  background: var(--color-bg-elevated);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.rs-bar-fill {
+  height: 100%;
+  transition: width 1s ease-out;
+}
+
 .empty-state, .no-results {
   display: flex;
   flex-direction: column;

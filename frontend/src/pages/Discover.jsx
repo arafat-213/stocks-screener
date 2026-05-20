@@ -30,6 +30,12 @@ const SCREEN_COLUMNS = {
   'ema-crossover':          ['symbol', 'name', 'ema_signal', 'adx', 'rsi', 'score'],
   'volume-surge':           ['symbol', 'name', 'volume_breakout', 'is_bullish', 'rsi', 'score'],
   'rsi-recovery':           ['symbol', 'name', 'rsi_signal', 'rsi', 'ema_slope', 'score'],
+  'mtf-confluence':         ['symbol', 'name', 'confluence_count', 'rsi', 'score'],
+  'fresh-breakout':         ['symbol', 'name', 'pct_from_52w_high', 'volume_breakout', 'adx', 'score'],
+  'sector-leaders':         ['symbol', 'name', 'rs_score', 'sector', 'score'],
+  'hot-sectors':            ['symbol', 'name', 'rs_score', 'sector', 'score'],
+  'qarp':                   ['symbol', 'name', 'roce', 'roe', 'peg_ratio', 'de_ratio', 'score'],
+  'dividend-growth':        ['symbol', 'name', 'dividend_yield', 'dividend_consistency', 'fcf_positive', 'score'],
   '_default':               ['symbol', 'name', 'score', 'rsi', 'confluence_count'],
 };
 
@@ -45,6 +51,7 @@ const COLUMN_META = {
     )
   },
   name: { label: 'Name', key: 'name', sortable: true },
+  sector: { label: 'Sector', key: 'sector', sortable: true },
   score: { 
     label: 'Score', 
     key: 'score', 
@@ -99,6 +106,13 @@ const COLUMN_META = {
     label: 'ROCE %', 
     key: 'roce', 
     sortable: true,
+    render: (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—' 
+  },
+  roe: { 
+    label: 'ROE %', 
+    key: 'roe', 
+    sortable: true,
+    accessor: (row) => row.indicators?.fundamental?.roe ?? row.roe,
     render: (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—' 
   },
   de_ratio: { 

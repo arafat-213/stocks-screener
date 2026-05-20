@@ -5,19 +5,32 @@ import {
   ChevronRight,
   ChevronDown,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  BarChart3,
+  History
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getReportList, getReportByDate } from '../api/client';
+import { getReportList, getReportByDate, getSectorRotation } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { DataTable } from '../components/ui/DataTable';
+import { SectorRotationTable } from '../components/SectorRotationTable';
 import './Dashboard.css';
 
 const Intelligence = () => {
+  const [activeView, setActiveView] = useState('rotation'); // 'rotation' | 'reports'
   const [selectedDate, setSelectedDate] = useState('');
   const [expandedMonths, setExpandedMonths] = useState({});
   const [showAllMonths, setShowAllMonths] = useState(false);
+
+  // Fetch Sector Rotation Data
+  const { 
+    data: rotationData = [], 
+    loading: loadingRotation, 
+    error: rotationError 
+  } = useFetch(getSectorRotation, {
+    autoFetch: activeView === 'rotation'
+  });
 
   // Fetch report list
   const { 
@@ -139,16 +152,41 @@ const Intelligence = () => {
   return (
     <div className="intelligence-page">
       <header className="page-header">
-        <h1>Market Intelligence</h1>
-        <p className="text-muted">Historical performance reports and deep-dive analysis.</p>
+        <div className="header-content">
+          <h1>Market Intelligence</h1>
+          <p className="text-muted">Macro sector rotation and historical session reports.</p>
+        </div>
+
+        <div className="tabs-container card">
+          <button 
+            className={`tab-btn ${activeView === 'rotation' ? 'active' : ''}`}
+            onClick={() => setActiveView('rotation')}
+          >
+            <BarChart3 size={18} />
+            <span>Sector Rotation</span>
+          </button>
+          <button 
+            className={`tab-btn ${activeView === 'reports' ? 'active' : ''}`}
+            onClick={() => setActiveView('reports')}
+          >
+            <History size={18} />
+            <span>Historical Reports</span>
+          </button>
+        </div>
       </header>
 
       {datesError && <ErrorBanner message={`Failed to load report list: ${datesError}`} />}
       {reportError && <ErrorBanner message={`Failed to load report: ${reportError}`} />}
+      {rotationError && <ErrorBanner message={`Failed to load rotation data: ${rotationError}`} />}
 
-      <div className="intelligence-grid">
-        {/* Date Selection Sidebar/List */}
-        <aside className="card h-fit p-24">
+      {activeView === 'rotation' ? (
+        <div className="rotation-view fade-in">
+          <SectorRotationTable data={rotationData} loading={loadingRotation} />
+        </div>
+      ) : (
+        <div className="intelligence-grid fade-in">
+          {/* Date Selection Sidebar/List */}
+          <aside className="card h-fit p-24">
           <div className="flex-center-gap-8 mb-12">
             <Calendar size={18} className="text-primary" />
             <h2 className="fs-14 bold">Past Sessions</h2>
