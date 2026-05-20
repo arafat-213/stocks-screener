@@ -21,7 +21,7 @@ def test_serialize_run_structure(client, db):
         symbols_total=10,
         symbols_done=10,
         total_trades=5,
-        win_rate=0.6,
+        win_rate=60.0,
         avg_return_pct=2.5,
         equity_curve_json=json.dumps([{"date": "2024-01-01", "equity": 10000}])
     )
@@ -47,7 +47,7 @@ def test_serialize_run_structure(client, db):
     
     # Check metrics
     assert data["metrics"]["total_trades"] == 5
-    assert data["metrics"]["win_rate"] == 0.6
+    assert data["metrics"]["win_rate"] == 60.0
     assert data["metrics"]["avg_return_pct"] == 2.5
     
     # Check config is parsed

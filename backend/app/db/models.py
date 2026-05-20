@@ -175,6 +175,8 @@ class BacktestRun(Base):
     max_drawdown_pct = Column(Float, nullable=True)
     sharpe_ratio     = Column(Float, nullable=True)
     total_return_pct = Column(Float, nullable=True)
+    gross_return_pct = Column(Float, nullable=True)
+    total_cost_drag_pct = Column(Float, nullable=True)
     benchmark_return_pct = Column(Float, nullable=True)
     equity_curve_json = Column(Text, nullable=True)
     starting_capital = Column(Float, nullable=True)

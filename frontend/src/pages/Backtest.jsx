@@ -108,16 +108,23 @@ const BacktestResults = memo(
           {metrics.total_trades < 100 && (
             <div
               className="disclaimer-banner"
-              style={{ borderColor: 'var(--color-warning, #f59e0b)', marginBottom: '16px' }}
+              style={{
+                borderColor: 'var(--color-warning, #f59e0b)',
+                marginBottom: '16px',
+              }}
             >
-              <AlertTriangle size={20} className="shrink-0" style={{ color: 'var(--color-warning, #f59e0b)' }} />
+              <AlertTriangle
+                size={20}
+                className="shrink-0"
+                style={{ color: 'var(--color-warning, #f59e0b)' }}
+              />
               <div>
                 <strong>Low sample size — metrics unreliable.</strong> Only{' '}
                 {metrics.total_trades} trades recorded. Statistical confidence
                 requires at least 100 trades. To increase trade count: lower{' '}
-                <em>Score Threshold</em> (try 40–45 for technical-only),
-                disable <em>Weekly Confirmation</em> and{' '}
-                <em>Volume Breakout</em>, or extend the date range.
+                <em>Score Threshold</em> (try 40–45 for technical-only), disable{' '}
+                <em>Weekly Confirmation</em> and <em>Volume Breakout</em>, or
+                extend the date range.
               </div>
             </div>
           )}
@@ -191,17 +198,38 @@ const BacktestResults = memo(
               className="exit-breakdown-card animate-fade-in"
               style={{ '--delay': '0.55s' }}
             >
-              <h3>Exit Reasons</h3>
-              <div className="exit-breakdown-grid">
+              <h3>
+                <Target size={18} /> Exit Analysis
+              </h3>
+              <div className="exit-breakdown-grid-v2">
                 {[
                   { key: 'target', label: 'Hit Target', color: 'positive' },
+                  {
+                    key: 'target_partial',
+                    label: 'Partial Target',
+                    color: 'positive',
+                  },
                   { key: 'stop_loss', label: 'Stop Loss', color: 'negative' },
                   {
                     key: 'trailing_stop',
                     label: 'Trailing Stop',
                     color: 'negative',
                   },
-                  { key: 'holding_period', label: 'Held to End', color: '' },
+                  {
+                    key: 'atr_trailing_stop',
+                    label: 'ATR Trail Stop',
+                    color: 'positive',
+                  },
+                  {
+                    key: 'signal_invalidated',
+                    label: 'Signal Invalid',
+                    color: 'negative',
+                  },
+                  {
+                    key: 'holding_period',
+                    label: 'Held to End',
+                    color: 'neutral',
+                  },
                 ].map(({ key, label, color }) => {
                   const count = metrics.exit_breakdown[key] || 0;
                   const pct =
@@ -209,10 +237,20 @@ const BacktestResults = memo(
                       ? ((count / metrics.total_trades) * 100).toFixed(0)
                       : 0;
                   return (
-                    <div key={key} className={`exit-item ${color}`}>
-                      <span className="exit-count">{count}</span>
-                      <span className="exit-label">{label}</span>
-                      <span className="exit-pct text-muted">({pct}%)</span>
+                    <div key={key} className="exit-item-v2">
+                      <div className="exit-item-header">
+                        <span className="exit-label">{label}</span>
+                        <span className="exit-stats">
+                          <span className="exit-count">{count}</span>
+                          <span className="exit-pct">({pct}%)</span>
+                        </span>
+                      </div>
+                      <div className="exit-progress-bar">
+                        <div
+                          className={`exit-progress-fill ${color}`}
+                          style={{ width: `${pct}%` }}
+                        ></div>
+                      </div>
                     </div>
                   );
                 })}
@@ -339,22 +377,31 @@ const Backtest = () => {
   // rerender-lazy-state-init: Initialize state once
   const [config, setConfig] = useState(() => ({
     screen_slug: 'all',
-    score_threshold: 60,
+    score_threshold: 55,
     holding_days: 20,
     stop_loss_pct: 7.0,
-    target_pct: 20.0,
+    target_pct: 0.0,
     trailing_stop_pct: 0.0,
-    use_atr_stops: false,
+    use_atr_stops: true,
     atr_multiplier: 2.0,
     risk_reward_ratio: 2.5,
+    use_atr_trailing_stop: true,
+    atr_trailing_multiplier: 2.0,
+    atr_trailing_activation: 2.0,
+    use_partial_exits: false,
+    use_signal_invalidation_exit: false,
+    invalidation_threshold_pct: 3.0,
     use_regime_filter: true,
     require_volume_breakout: false,
     require_weekly_confirmation: true,
     require_monthly_confirmation: false,
     starting_capital: 1000000,
-    position_size:    10000,
+    position_size: 10000,
+    use_volatility_sizing: true,
+    max_concurrent_positions: 0,
+    max_sector_positions: 0,
     include_fundamentals: false,
-    symbol_limit: 100,
+    symbol_limit: 350,
     date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
       .toISOString()
       .split('T')[0],
@@ -362,6 +409,7 @@ const Backtest = () => {
   }));
 
   const [activeRunId, setActiveRunId] = useState(null);
+  const [activeTab, setActiveTab] = useState('strategy');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [tradesPage, setTradesPage] = useState(1);
   const pageSize = 50;
@@ -433,23 +481,32 @@ const Backtest = () => {
       score_threshold: 60,
       holding_days: 20,
       stop_loss_pct: 7.0,
-      target_pct: 20.0,
+      target_pct: 0.0,
       trailing_stop_pct: 0.0,
-      use_atr_stops: false,
+      use_atr_stops: true,
       atr_multiplier: 2.0,
       risk_reward_ratio: 2.5,
+      use_atr_trailing_stop: true,
+      atr_trailing_multiplier: 2.0,
+      atr_trailing_activation: 2.0,
+      use_partial_exits: false,
+      use_signal_invalidation_exit: false,
+      invalidation_threshold_pct: 3.0,
       use_regime_filter: true,
-      require_volume_breakout: false,
+      require_volume_breakout: true,
       require_weekly_confirmation: true,
       require_monthly_confirmation: false,
       include_fundamentals: false,
-      symbol_limit: 100,
+      symbol_limit: 350,
       date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
         .toISOString()
         .split('T')[0],
       date_to: new Date().toISOString().split('T')[0],
       starting_capital: 1000000,
       position_size: 10000,
+      use_volatility_sizing: true,
+      max_concurrent_positions: 0,
+      max_sector_positions: 0,
     });
   }, []);
 
@@ -538,6 +595,45 @@ const Backtest = () => {
       <div className="backtest-grid">
         {/* Sidebar Configuration */}
         <aside className="sidebar-panel">
+          <section className="recent-runs-card">
+            <h2 className="flex items-center gap-2">
+              <History size={18} /> Recent Runs
+            </h2>
+            <div className="recent-runs-list">
+              {recentRuns?.map((run) => (
+                <div
+                  key={run.run_id}
+                  className={`run-item ${activeRunId === run.run_id ? 'active' : ''}`}
+                  onClick={() => handleSelectRun(run.run_id)}
+                >
+                  <div className="run-item-header">
+                    <span className="run-date">
+                      {new Date(run.created_at).toLocaleString([], {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
+                    <span className={`run-status-badge ${run.status}`}>
+                      {run.status}
+                    </span>
+                  </div>
+                  <div className="run-config-summary">
+                    T:{run.config.score_threshold} | H:{run.config.holding_days}{' '}
+                    | SL:{run.config.stop_loss_pct}% | W:
+                    {run.config.require_weekly_confirmation !== false
+                      ? '✓'
+                      : '✗'}
+                  </div>
+                </div>
+              ))}
+              {recentRuns?.length === 0 && (
+                <p className="text-center text-muted py-4">No recent runs</p>
+              )}
+            </div>
+          </section>
+
           <section className="config-card">
             <div className="config-header">
               <h2 className="flex items-center gap-2">
@@ -552,79 +648,162 @@ const Backtest = () => {
               </button>
             </div>
 
+            <div className="config-tabs">
+              {[
+                { id: 'strategy', label: 'Strategy', icon: Zap },
+                { id: 'risk', label: 'Risk', icon: ShieldCheck },
+                { id: 'account', label: 'Account', icon: Briefcase },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  <tab.icon size={14} />
+                  <span>{tab.label}</span>
+                </button>
+              ))}
+            </div>
+
             <div className="config-form">
-              <div className="form-group">
-                <label className="form-label flex items-center gap-2">
-                  <Layers size={13} /> Starting Universe
-                </label>
-                <select
-                  className="input-styled w-full"
-                  value={config.screen_slug}
-                  onChange={(e) =>
-                    handleConfigChange('screen_slug', e.target.value)
-                  }
-                >
-                  <option value="all">All Symbols (Default)</option>
-                  {screens?.map((screen) => (
-                    <option key={screen.slug} value={screen.slug}>
-                      {screen.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="form-group">
-                <Slider
-                  label={
-                    <span className="flex items-center gap-2">
-                      <Target size={13} /> Score Threshold
-                    </span>
-                  }
-                  value={config.score_threshold}
-                  onChange={(val) => handleConfigChange('score_threshold', val)}
-                  min={0}
-                  max={100}
-                />
-                <span
-                  className="form-hint text-muted"
-                  style={{ fontSize: '11px', marginTop: '4px', display: 'block' }}
-                >
-                  {config.include_fundamentals
-                    ? `Effective: ${config.score_threshold.toFixed(0)} / 100 (fundamentals included)`
-                    : `Effective: ${(config.score_threshold * 0.70).toFixed(0)} / 70 (technical-only scale). Recommended: 40–50.`}
-                </span>
-              </div>
-              <div className="form-group">
-                <Slider
-                  label={
-                    <span className="flex items-center gap-2">
-                      <Clock size={13} /> Holding Days
-                    </span>
-                  }
-                  value={config.holding_days}
-                  onChange={(val) => handleConfigChange('holding_days', val)}
-                  min={1}
-                  max={252}
-                />
-              </div>
+              {activeTab === 'strategy' && (
+                <div className="tab-content animate-fade-in">
+                  <div className="form-group">
+                    <label className="form-label flex items-center gap-2">
+                      <Layers size={13} /> Starting Universe
+                    </label>
+                    <select
+                      className="input-styled w-full"
+                      value={config.screen_slug}
+                      onChange={(e) =>
+                        handleConfigChange('screen_slug', e.target.value)
+                      }
+                    >
+                      <option value="all">All Symbols (Default)</option>
+                      {screens?.map((screen) => (
+                        <option key={screen.slug} value={screen.slug}>
+                          {screen.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <Slider
+                      label={
+                        <span className="flex items-center gap-2">
+                          <Target size={13} /> Score Threshold
+                        </span>
+                      }
+                      value={config.score_threshold}
+                      onChange={(val) =>
+                        handleConfigChange('score_threshold', val)
+                      }
+                      min={0}
+                      max={100}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <Slider
+                      label={
+                        <span className="flex items-center gap-2">
+                          <Clock size={13} /> Max Holding Days
+                        </span>
+                      }
+                      value={config.holding_days}
+                      onChange={(val) =>
+                        handleConfigChange('holding_days', val)
+                      }
+                      min={1}
+                      max={252}
+                    />
+                  </div>
 
-              <div className="risk-management-card">
-                <h3 className="risk-management-title">
-                  <ShieldCheck size={16} /> Risk Management
-                </h3>
+                  <div className="form-group">
+                    <Slider
+                      label={
+                        <span className="flex items-center gap-2">
+                          <Briefcase size={13} /> Symbol Limit
+                        </span>
+                      }
+                      value={config.symbol_limit}
+                      onChange={(val) =>
+                        handleConfigChange('symbol_limit', val)
+                      }
+                      min={10}
+                      max={500}
+                    />
+                  </div>
 
-                <div className="risk-management-toggle">
-                  <Toggle
-                    label="Use ATR-based Stops & Targets"
-                    checked={config.use_atr_stops}
-                    onChange={(val) => handleConfigChange('use_atr_stops', val)}
-                  />
+                  <div
+                    className="strategy-rules-section"
+                    style={{ borderBottom: 'none' }}
+                  >
+                    <h3 className="section-subtitle">Strategy Filters</h3>
+                    <div className="strategy-rules-list">
+                      <Toggle
+                        label="Include Fundamentals"
+                        checked={config.include_fundamentals}
+                        onChange={(val) =>
+                          handleConfigChange('include_fundamentals', val)
+                        }
+                        icon={Briefcase}
+                      />
+                      <Toggle
+                        label="Market Regime"
+                        checked={config.use_regime_filter}
+                        onChange={(val) =>
+                          handleConfigChange('use_regime_filter', val)
+                        }
+                        icon={ShieldCheck}
+                      />
+                      <Toggle
+                        label="Volume Breakout"
+                        checked={config.require_volume_breakout}
+                        onChange={(val) =>
+                          handleConfigChange('require_volume_breakout', val)
+                        }
+                        icon={Zap}
+                      />
+                      <Toggle
+                        label="Weekly Conf"
+                        checked={config.require_weekly_confirmation}
+                        onChange={(val) =>
+                          handleConfigChange('require_weekly_confirmation', val)
+                        }
+                        icon={TrendingUp}
+                      />
+                      <Toggle
+                        label="Monthly Conf"
+                        checked={config.require_monthly_confirmation}
+                        onChange={(val) =>
+                          handleConfigChange(
+                            'require_monthly_confirmation',
+                            val,
+                          )
+                        }
+                        icon={BarChart3}
+                      />
+                    </div>
+                  </div>
                 </div>
+              )}
 
-                <div className="risk-management-controls">
+              {activeTab === 'risk' && (
+                <div className="tab-content animate-fade-in">
+                  <div className="risk-management-toggle">
+                    <Toggle
+                      label="Use ATR-based Stops"
+                      checked={config.use_atr_stops}
+                      onChange={(val) =>
+                        handleConfigChange('use_atr_stops', val)
+                      }
+                    />
+                  </div>
+
                   {config.use_atr_stops ? (
                     <>
                       <Slider
-                        label="ATR Multiplier (Stop Loss)"
+                        label="ATR SL Multiplier"
                         min={1.0}
                         max={5.0}
                         step={0.1}
@@ -634,7 +813,7 @@ const Backtest = () => {
                         }
                       />
                       <Slider
-                        label="Risk/Reward Ratio (Targets)"
+                        label="Risk/Reward Ratio"
                         min={1.0}
                         max={10.0}
                         step={0.5}
@@ -666,164 +845,163 @@ const Backtest = () => {
                       />
                     </>
                   )}
-                </div>
-              </div>
 
-              <div className="form-group">
-                <Slider
-                  label={
-                    <span className="flex items-center gap-2">
-                      <TrendingDown size={13} /> Trailing Stop %
-                    </span>
-                  }
-                  value={config.trailing_stop_pct}
-                  onChange={(val) =>
-                    handleConfigChange('trailing_stop_pct', val)
-                  }
-                  min={0}
-                  max={20}
-                  step={0.5}
-                />
-              </div>
-
-              <div className="strategy-rules-section">
-                <h3 className="section-subtitle">Strategy Filters</h3>
-                <div className="strategy-rules-list">
-                  <Toggle
-                    label="Market Regime"
-                    checked={config.use_regime_filter}
-                    onChange={(val) =>
-                      handleConfigChange('use_regime_filter', val)
-                    }
-                    icon={ShieldCheck}
-                  />
-                  <Toggle
-                    label="Volume Breakout"
-                    checked={config.require_volume_breakout}
-                    onChange={(val) =>
-                      handleConfigChange('require_volume_breakout', val)
-                    }
-                    icon={Zap}
-                  />
-                  <Toggle
-                    label="Fundamentals"
-                    checked={config.include_fundamentals}
-                    onChange={(val) =>
-                      handleConfigChange('include_fundamentals', val)
-                    }
-                    icon={Briefcase}
-                  />
-                  <Toggle
-                    label="Weekly Confirmation"
-                    checked={config.require_weekly_confirmation}
-                    onChange={(val) => handleConfigChange('require_weekly_confirmation', val)}
-                    icon={TrendingUp}
-                  />
-                  <Toggle
-                    label="Monthly Confirmation"
-                    checked={config.require_monthly_confirmation}
-                    onChange={(val) => handleConfigChange('require_monthly_confirmation', val)}
-                    icon={BarChart3}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  <Briefcase size={13} /> Symbol Limit
-                </label>
-                <input
-                  type="number"
-                  className="input-styled w-full"
-                  value={config.symbol_limit}
-                  onChange={(e) =>
-                    handleConfigChange(
-                      'symbol_limit',
-                      parseInt(e.target.value) || 0,
-                    )
-                  }
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Starting Capital (₹)</label>
-                <input
-                  type="number"
-                  className="input-styled w-full"
-                  value={config.starting_capital}
-                  onChange={(e) =>
-                    handleConfigChange(
-                      'starting_capital',
-                      parseFloat(e.target.value) || 1000000,
-                    )
-                  }
-                  min={100000}
-                  step={100000}
-                />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  Position Size per Trade (₹)
-                </label>
-                <input
-                  type="number"
-                  className="input-styled w-full"
-                  value={config.position_size}
-                  onChange={(e) =>
-                    handleConfigChange(
-                      'position_size',
-                      parseFloat(e.target.value) || 10000,
-                    )
-                  }
-                  min={1000}
-                  step={1000}
-                />
-                <span
-                  className="form-hint text-muted"
-                  style={{
-                    fontSize: '11px',
-                    marginTop: '4px',
-                    display: 'block',
-                  }}
-                >
-                  {(
-                    (config.position_size / config.starting_capital) *
-                    100
-                  ).toFixed(1)}
-                  % of capital per trade
-                </span>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">
-                  <Calendar size={13} /> Date Range
-                </label>
-                <div className="date-range-grid">
-                  <div className="date-input-wrapper">
-                    <span className="date-input-label">From</span>
-                    <input
-                      type="date"
-                      className="input-styled"
-                      value={config.date_from}
-                      onChange={(e) =>
-                        handleConfigChange('date_from', e.target.value)
+                  <div className="form-group" style={{ marginTop: '8px' }}>
+                    <Slider
+                      label="Manual Trailing Stop %"
+                      min={0}
+                      max={20}
+                      step={0.5}
+                      value={config.trailing_stop_pct}
+                      onChange={(val) =>
+                        handleConfigChange('trailing_stop_pct', val)
                       }
                     />
                   </div>
-                  <div className="date-input-wrapper">
-                    <span className="date-input-label">To</span>
+
+                  <div
+                    className="strategy-rules-section"
+                    style={{ borderBottom: 'none', marginTop: '16px' }}
+                  >
+                    <h3 className="section-subtitle">Advanced Exit Rules</h3>
+                    <div className="strategy-rules-list">
+                      <Toggle
+                        label="ATR Trailing Stop"
+                        checked={config.use_atr_trailing_stop}
+                        onChange={(val) =>
+                          handleConfigChange('use_atr_trailing_stop', val)
+                        }
+                        icon={TrendingDown}
+                      />
+                      <Toggle
+                        label="Partial Exits (T1/T2)"
+                        checked={config.use_partial_exits}
+                        onChange={(val) =>
+                          handleConfigChange('use_partial_exits', val)
+                        }
+                        icon={Target}
+                      />
+                      <Toggle
+                        label="Signal Invalidation"
+                        checked={config.use_signal_invalidation_exit}
+                        onChange={(val) =>
+                          handleConfigChange(
+                            'use_signal_invalidation_exit',
+                            val,
+                          )
+                        }
+                        icon={ShieldCheck}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'account' && (
+                <div className="tab-content animate-fade-in">
+                  <div className="form-group">
+                    <label className="form-label">Starting Capital (₹)</label>
                     <input
-                      type="date"
-                      className="input-styled"
-                      value={config.date_to}
+                      type="number"
+                      className="input-styled w-full"
+                      value={config.starting_capital}
                       onChange={(e) =>
-                        handleConfigChange('date_to', e.target.value)
+                        handleConfigChange(
+                          'starting_capital',
+                          parseFloat(e.target.value) || 1000000,
+                        )
+                      }
+                      min={100000}
+                      step={100000}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Pos Size per Trade (₹)</label>
+                    <input
+                      type="number"
+                      className="input-styled w-full"
+                      value={config.position_size}
+                      onChange={(e) =>
+                        handleConfigChange(
+                          'position_size',
+                          parseFloat(e.target.value) || 10000,
+                        )
+                      }
+                      min={1000}
+                      step={1000}
+                    />
+                  </div>
+                  <div className="form-group">
+                    <Toggle
+                      label="Volatility Sizing"
+                      checked={config.use_volatility_sizing}
+                      onChange={(val) =>
+                        handleConfigChange('use_volatility_sizing', val)
                       }
                     />
                   </div>
+                  <div className="form-group-row">
+                    <div className="form-group flex-1">
+                      <label className="form-label text-xs">
+                        Max Concurrent
+                      </label>
+                      <input
+                        type="number"
+                        className="input-styled w-full"
+                        value={config.max_concurrent_positions}
+                        onChange={(e) =>
+                          handleConfigChange(
+                            'max_concurrent_positions',
+                            parseInt(e.target.value) || 0,
+                          )
+                        }
+                        min={1}
+                        max={50}
+                      />
+                    </div>
+                    <div className="form-group flex-1">
+                      <label className="form-label text-xs">Sector Cap</label>
+                      <input
+                        type="number"
+                        className="input-styled w-full"
+                        value={config.max_sector_positions}
+                        onChange={(e) =>
+                          handleConfigChange(
+                            'max_sector_positions',
+                            parseInt(e.target.value) || 0,
+                          )
+                        }
+                        min={1}
+                        max={10}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">
+                      <Calendar size={13} /> Date Range
+                    </label>
+                    <div className="date-range-grid">
+                      <input
+                        type="date"
+                        className="input-styled"
+                        value={config.date_from}
+                        onChange={(e) =>
+                          handleConfigChange('date_from', e.target.value)
+                        }
+                      />
+                      <input
+                        type="date"
+                        className="input-styled"
+                        value={config.date_to}
+                        onChange={(e) =>
+                          handleConfigChange('date_to', e.target.value)
+                        }
+                      />
+                    </div>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <button
                 className="run-button"
@@ -837,44 +1015,6 @@ const Backtest = () => {
                 )}
                 Run Backtest
               </button>
-            </div>
-          </section>
-
-          <section className="recent-runs-card">
-            <h2>
-              <History size={18} /> Recent Runs
-            </h2>
-            <div className="recent-runs-list">
-              {recentRuns?.map((run) => (
-                <div
-                  key={run.run_id}
-                  className={`run-item ${activeRunId === run.run_id ? 'active' : ''}`}
-                  onClick={() => handleSelectRun(run.run_id)}
-                >
-                  <div className="run-item-header">
-                    <span className="run-date">
-                      {new Date(run.created_at).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
-                    </span>
-                    <span className={`run-status-badge ${run.status}`}>
-                      {run.status}
-                    </span>
-                  </div>
-                  <div className="run-config-summary">
-                    T:{run.config.score_threshold} | H:{run.config.holding_days}{' '}
-                    | SL:{run.config.stop_loss_pct}%{' '}
-                    | W:{run.config.require_weekly_confirmation !== false ? '✓' : '✗'}{' '}
-                    | M:{run.config.require_monthly_confirmation ? '✓' : '✗'}
-                  </div>
-                </div>
-              ))}
-              {recentRuns?.length === 0 && (
-                <p className="text-center text-muted py-4">No recent runs</p>
-              )}
             </div>
           </section>
         </aside>

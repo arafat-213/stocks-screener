@@ -152,10 +152,10 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
     atr = latest.get('ATRr_14')
     adx = latest.get('ADX_14')
     
-    # Momentum
-    momentum_1m = ((price / df['Close'].iloc[-22] - 1) * 100) if len(df) >= 22 else None
-    momentum_3m = ((price / df['Close'].iloc[-64] - 1) * 100) if len(df) >= 64 else None
-    momentum_6m = ((price / df['Close'].iloc[-127] - 1) * 100) if len(df) >= 127 else None
+    # Momentum (lookback from full df)
+    momentum_1m  = ((price / df['Close'].iloc[-22]  - 1) * 100) if len(df) >= 22  else None
+    momentum_3m  = ((price / df['Close'].iloc[-64]  - 1) * 100) if len(df) >= 64  else None
+    momentum_6m  = ((price / df['Close'].iloc[-127] - 1) * 100) if len(df) >= 127 else None
     momentum_12m = ((price / df['Close'].iloc[-253] - 1) * 100) if len(df) >= 253 else None
 
     # Above 200 EMA
@@ -262,9 +262,14 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                 elif crossing_50:
                     score += 10
                     rsi_signal = "bullish_crossing"
-                elif rsi > 50:
-                    score += 3
+                elif 50 < rsi <= 65:
+                    score += 5
                     rsi_signal = "bullish_strong"
+                elif 65 < rsi <= 68:
+                    score += 0 # Extended RSI — not penalised but not rewarded; momentum may be exhausted
+                    rsi_signal = "bullish_extended"
+                elif rsi > 68:
+                    pass
                 
             # 4. Volume (15 pts)
             # (Note: we already checked volume_breakout above, but this is for the 70pt score)
@@ -273,16 +278,23 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = 'D') -> dict:
                     score += 15
                     volume_signal = "bullish"
             
-            # 5. ADX Trend Strength (5 pts)
-            # ADX was previously only a gate (min_adx). Higher ADX means a
-            # stronger, more sustained trend — reward it within the score.
+            # 5. Trend Quality: ADX + 3-Month Momentum (max 5 pts)
+            # ADX alone measures current trend strength; combining it with recent
+            # momentum ensures we're rewarding continuation moves, not temporary spikes.
+            trend_pts = 0
             if pd.notna(adx):
                 if adx >= 35:
-                    score += 5
+                    trend_pts += 3
                 elif adx >= 25:
-                    score += 3
+                    trend_pts += 2
                 elif adx >= 20:
-                    score += 1
+                    trend_pts += 1
+            if momentum_3m is not None:
+                if momentum_3m > 15:
+                    trend_pts += 2
+                elif momentum_3m > 5:
+                    trend_pts += 1
+            score += min(trend_pts, 5)  # Cap at 5 to preserve 70pt max
                     
             # Define is_bullish for D
             is_bullish = (

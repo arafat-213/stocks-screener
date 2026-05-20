@@ -110,7 +110,7 @@ def make_signal(
         "is_bullish": True,
         "rsi": rsi,
         "adx": adx,
-        "ema_signal": "bullish",
+        "ema_signal": "bullish_cross",
         "volume_signal": "neutral",
         "rsi_signal": "bullish_strong",
         "close": float(df.iloc[idx]["Close"]),

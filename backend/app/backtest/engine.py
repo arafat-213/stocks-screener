@@ -22,34 +22,51 @@ from app.core.logging_manager import logging_manager
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
 
+ROUND_TRIP_COST_PCT = 0.5  # 0.5% per trade: brokerage + STT + slippage
+
 @dataclass
 class BacktestConfig:
-    score_threshold: float = 55.0      # raised from 45 per SPEC-005
-    holding_days: int = 20             # trading days to hold
-    stop_loss_pct: float = 7.0         # exit if price drops this % (0 = disabled)
-    target_pct: float = 0.0            # exit if price rises this % (0 = disabled)
-    trailing_stop_pct: float = 0.0     # NEW: percentage drop from highest price
-    require_volume_breakout: bool = True # changed from False per SPEC-006
-    use_regime_filter: bool = True     # NEW: Nifty > 50 EMA filter
-    require_weekly_confirmation: bool = True
+    score_threshold: float = 60.0          # ← was 50.0; effective = 60*0.70 = 42 on 70pt scale
+    holding_days: int = 30
+    stop_loss_pct: float = 7.0
+    target_pct: float = 0.0
+    trailing_stop_pct: float = 0.0
+    require_volume_breakout: bool = False
+    use_regime_filter: bool = True
+    require_weekly_confirmation: bool = False
     require_monthly_confirmation: bool = False
-    atr_multiplier: float = 2.0        # Multiplier for ATR-based stop loss
-    risk_reward_ratio: float = 2.5     # Target profit as multiple of risk
-    use_atr_stops: bool = False        # Whether to use ATR for stops/targets
-    min_adx: float = 20.0             # NEW: 0 disables the gate (SPEC-004)
-    include_fundamentals: bool = False  # use current fundamental data
-    timeframe: str = 'D'               # 'D' only for now
-    date_from: datetime.date = None    # filter signals after this date
-    date_to: datetime.date = None      # filter signals before this date
-    symbol_limit: int = None           # limit number of symbols to process
-    screen_slug: Optional[str] = None  # New field
+    atr_multiplier: float = 2.0
+    risk_reward_ratio: float = 1.5
+    use_atr_stops: bool = True
+    min_adx: float = 0.0
+    include_fundamentals: bool = False
+    timeframe: str = 'D'
+    date_from: datetime.date = None
+    date_to: datetime.date = None
+    symbol_limit: int = None
+    screen_slug: Optional[str] = None
     starting_capital: float = 1000000.0
     position_size: float = 10000.0
-    use_volatility_sizing: bool = False
-    risk_per_trade_pct: float = 1.0    # % of starting_capital to risk per trade
-    max_position_pct: float = 10.0     # max % of starting_capital per position
-    max_concurrent_positions: int = 0  # 0 = unlimited
-    max_sector_positions: int = 0      # 0 = unlimited
+    use_volatility_sizing: bool = True
+    risk_per_trade_pct: float = 1.0
+    max_position_pct: float = 10.0
+    max_concurrent_positions: int = 0
+    max_sector_positions: int = 0
+    use_atr_trailing_stop: bool = True
+    atr_trailing_multiplier: float = 1.5
+    atr_trailing_activation: float = 2.5
+    use_partial_exits: bool = False
+    use_signal_invalidation_exit: bool = False
+    invalidation_threshold_pct: float = 3.0
+
+    # ── New fields ────────────────────────────────────────────────────────────
+    min_signal_tier: int = 2              # was 1; Run 5 validated Tier 2 quality
+    require_consolidation: bool = True    # only enter after a consolidation period
+    consolidation_bars: int = 15          # look-back window for consolidation check
+    consolidation_max_range_pct: float = 12.0   # max High-Low range to qualify
+    use_pullback_entry: bool = True       # wait for pullback to EMA20 after cross
+    pullback_max_wait_bars: int = 8       # was 5; allow setup to develop
+    pullback_tolerance_pct: float = 3.0  # was 2.0; NSE mid/smallcap needs room
 
     @property
     def effective_score_threshold(self) -> float:
@@ -193,6 +210,12 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         volume > 2.0 * sma20_vol and is_green
     )
 
+    # Momentum (lookback from full df_ind)
+    momentum_1m  = float((price / df_ind['Close'].iloc[i - 21]  - 1) * 100) if i >= 21  else None
+    momentum_3m  = float((price / df_ind['Close'].iloc[i - 63]  - 1) * 100) if i >= 63  else None
+    momentum_6m  = float((price / df_ind['Close'].iloc[i - 126] - 1) * 100) if i >= 126 else None
+    momentum_12m = float((price / df_ind['Close'].iloc[i - 252] - 1) * 100) if i >= 252 else None
+
     # 1. EMA Alignment (20 pts)
     fresh_ema_cross = (
         pd.notna(ema5) and pd.notna(ema13) and
@@ -249,9 +272,14 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         elif crossing_50:
             score += 10
             rsi_signal = 'bullish_crossing'
-        elif rsi > 50:
-            score += 3
+        elif 50 < rsi <= 65:
+            score += 5
             rsi_signal = 'bullish_strong'
+        elif 65 < rsi <= 68:
+            score += 0 # No bonus for extended RSI
+            rsi_signal = 'bullish_extended'
+        elif rsi > 68:
+            pass
 
     # 4. Volume (15 pts)
     if pd.notna(volume) and pd.notna(sma20_vol):
@@ -259,14 +287,21 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
             score += 15
             volume_signal = 'bullish'
 
-    # 5. ADX (5 pts)
+    # 5. Trend Quality: ADX + 3-Month Momentum (max 5 pts)
+    trend_pts = 0
     if pd.notna(adx):
         if adx >= 35:
-            score += 5
+            trend_pts += 3
         elif adx >= 25:
-            score += 3
+            trend_pts += 2
         elif adx >= 20:
-            score += 1
+            trend_pts += 1
+    if momentum_3m is not None:
+        if momentum_3m > 15:
+            trend_pts += 2
+        elif momentum_3m > 5:
+            trend_pts += 1
+    score += min(trend_pts, 5)
 
     # is_bullish definition (same as scorer.py Daily)
     is_bullish = bool(
@@ -279,12 +314,6 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     )
 
     above_200ema = bool(price > ema200) if pd.notna(ema200) else None
-
-    # Momentum (lookback from full df_ind)
-    momentum_1m  = float((price / df_ind['Close'].iloc[i - 21]  - 1) * 100) if i >= 21  else None
-    momentum_3m  = float((price / df_ind['Close'].iloc[i - 63]  - 1) * 100) if i >= 63  else None
-    momentum_6m  = float((price / df_ind['Close'].iloc[i - 126] - 1) * 100) if i >= 126 else None
-    momentum_12m = float((price / df_ind['Close'].iloc[i - 252] - 1) * 100) if i >= 252 else None
 
     return {
         'score': float(score),
@@ -303,6 +332,7 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         'momentum_3m': momentum_3m,
         'momentum_6m': momentum_6m,
         'momentum_12m': momentum_12m,
+        'ema20': float(ema20) if pd.notna(ema20) else None,
     }
 
 def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
@@ -325,7 +355,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
     df_ind = _compute_all_indicators(df)
 
     results = []
-    MIN_BARS = 210
+    MIN_BARS = 260
 
     for i in range(MIN_BARS, len(df_ind)):
         try:
@@ -342,6 +372,13 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         if bar_data.get('rsi', 0) > 80:
             total_score = 0.0
 
+        # Consolidation check uses OHLCV from df_ind (pre-computed)
+        is_consolidating = _is_consolidating(
+            df_ind, i,
+            lookback=15,
+            max_range_pct=12.0,
+        )
+
         results.append({
             'date':           df_ind.index[i],
             'score':          float(total_score),
@@ -356,6 +393,10 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
             'volume_breakout': bar_data['volume_breakout'],
             'atr':            bar_data['atr'],
             'above_200ema':   bar_data['above_200ema'],
+            'momentum_12m':   bar_data.get('momentum_12m'),
+            'momentum_3m':    bar_data.get('momentum_3m'),
+            'ema20':          bar_data.get('ema20'),
+            'is_consolidating': is_consolidating,
         })
 
     return results
@@ -405,6 +446,66 @@ def _compute_position_size(
     max_position = config.starting_capital * (config.max_position_pct / 100.0)
     return min(position_value, max_position)
 
+def _compute_signal_tier(signal: dict) -> int:
+    """
+    Computes the signal quality tier (1-4).
+    Tier 1/2 are considered high-quality and allowed to enter trades.
+    Tier 3/4 are filtered out.
+    """
+    ema = signal.get("ema_signal")
+    vol = signal.get("volume_breakout", False)
+    adx = signal.get("adx") or 0.0
+    rsi = signal.get("rsi") or 0.0
+    
+    is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
+    
+    if not is_core_ema:
+        return 4
+        
+    if rsi > 65.0:
+        return 3
+        
+    # Tier 1 & 2 require 40 <= RSI <= 65
+    if rsi < 40.0:
+        return 3
+        
+    if vol and adx >= 25.0:
+        return 1
+        
+    if vol or adx >= 25.0:
+        return 2
+        
+    return 3 # missing both volume breakout and strong ADX
+
+def _is_consolidating(
+    df: pd.DataFrame,
+    signal_idx: int,
+    lookback: int = 15,
+    max_range_pct: float = 12.0,
+) -> bool:
+    """
+    Returns True if the stock was in a tight trading range before the signal.
+
+    Prevents chasing EMA crosses on stocks that have already moved significantly.
+    A stock that consolidates (compresses) before a breakout has a much higher
+    probability of following through than one that crosses after a large move.
+
+    lookback: number of bars before signal_idx to examine
+    max_range_pct: (High - Low) / Low * 100 ceiling for the window
+    """
+    if signal_idx < lookback + 1:
+        return False
+
+    window = df.iloc[signal_idx - lookback: signal_idx]
+    period_high = window['High'].max()
+    period_low = window['Low'].min()
+
+    if period_low <= 0 or pd.isna(period_high) or pd.isna(period_low):
+        return False
+
+    range_pct = (period_high - period_low) / period_low * 100
+    return range_pct <= max_range_pct
+
 def simulate_trades(
     symbol: str, 
     sector: str, 
@@ -453,6 +554,13 @@ def simulate_trades(
         if signal.get('above_200ema') is not True:
             continue
 
+        # Relative strength gate: require positive 12m momentum.
+        # EMA crosses on stocks that are down year-over-year are almost always
+        # failed bounces in a structural downtrend, not new uptrends.
+        momentum_12m = signal.get('momentum_12m')
+        if momentum_12m is not None and momentum_12m < 0:
+            continue
+
         # ADX trend-strength gate (min_adx=0 disables)
         if config.min_adx > 0:
             adx_val = signal.get('adx')
@@ -468,24 +576,127 @@ def simulate_trades(
         if config.require_monthly_confirmation and monthly_state_map is not None:
             if not _lookup_mtf_state(monthly_state_map, compare_date):
                 continue
+
+        # Signal Quality Tier Gate
+        signal_tier = _compute_signal_tier(signal)
+        if signal_tier > config.min_signal_tier:   # default=1: require BOTH vol+ADX
+            continue
+            
+        rsi_at_signal = signal.get("rsi", 0.0) or 0.0
+        if rsi_at_signal > 65.0:
+            continue
             
         if signal['score'] >= config.effective_score_threshold:
-            # Entry: Next trading day's Open price
-            entry_idx = signal_idx + 1
-            if entry_idx >= len(df):
-                break
+
+            # ── Consolidation gate ────────────────────────────────────────────
+            if config.require_consolidation and not signal.get('is_consolidating', False):
+                continue
+
+            # ── Entry: pullback vs. immediate ─────────────────────────────────
+            signal_ema20 = signal.get('ema20')
+            ema_signal_type = signal.get('ema_signal', '')
+
+            entry_idx = None
+            entry_price = None
+            entry_date = None
+
+            use_pullback = (
+                config.use_pullback_entry
+                and ema_signal_type == 'bullish_cross'
+                and signal_ema20 is not None
+                and signal_ema20 > 0
+            )
+
+            entry_path = 'immediate'  # Track which path was used for stop logic
+
+            if use_pullback:
+                # Wait up to pullback_max_wait_bars for price to touch EMA20
+                tol = config.pullback_tolerance_pct / 100.0
                 
-            entry_date = df.index[entry_idx]
-            # Convert to date for regime check
-            entry_compare_date = entry_date.date() if hasattr(entry_date, 'date') else entry_date
-            
-            # Regime Filter (on ENTRY date)
-            if config.use_regime_filter and regime_dict is not None:
-                if not regime_dict.get(entry_compare_date, False):
+                # Track whether price held above EMA20 throughout the wait
+                all_bars_above_ema20 = True
+                closest_approach_pct = float('inf')  # How close price got to EMA20 (%)
+                
+                for wait_k in range(signal_idx + 1,
+                                    min(signal_idx + config.pullback_max_wait_bars + 1,
+                                        len(df))):
+                    wait_date = df.index[wait_k]
+                    wait_compare = wait_date.date() if hasattr(wait_date, 'date') else wait_date
+
+                    # Abort if regime turns bearish during the wait
+                    if config.use_regime_filter and regime_dict is not None:
+                        if not regime_dict.get(wait_compare, False):
+                            all_bars_above_ema20 = False
+                            break
+
+                    day_low   = df.iloc[wait_k]['Low']
+                    day_close = df.iloc[wait_k]['Close']
+                    day_open  = df.iloc[wait_k]['Open']
+
+                    # Invalidation: closed meaningfully below EMA20
+                    if day_close < signal_ema20 * (1 - 0.025):
+                        all_bars_above_ema20 = False
+                        break
+
+                    # Track closest approach to EMA20 from above
+                    approach_pct = (day_low - signal_ema20) / signal_ema20 * 100
+                    closest_approach_pct = min(closest_approach_pct, approach_pct)
+
+                    # Path A: Price pulled back to within tol% above EMA20 AND held
+                    touched_ema = day_low <= signal_ema20 * (1 + tol)
+                    # TIGHTENED: close must be AT or within 0.5% above EMA20 (was 1.5% below)
+                    # — confirms support held before we commit capital
+                    held_above = day_close >= signal_ema20 * 0.995
+
+                    if touched_ema and held_above:
+                        # Path A: confirmed EMA20 bounce — enter NEXT bar for confirmation
+                        # (avoids entering the same bar we test support; one bar confirms the hold)
+                        confirm_k = wait_k + 1
+                        if confirm_k >= len(df):
+                            break
+
+                        confirm_date = df.index[confirm_k]
+                        confirm_compare = confirm_date.date() if hasattr(confirm_date, 'date') else confirm_date
+
+                        # Check regime on confirmation bar
+                        if config.use_regime_filter and regime_dict is not None:
+                            if not regime_dict.get(confirm_compare, False):
+                                all_bars_above_ema20 = False
+                                break
+
+                        entry_path  = 'pullback_a'
+                        entry_idx   = confirm_k
+                        entry_date  = confirm_date
+                        entry_price = float(df.iloc[confirm_k]['Open'])
+                        break
+
+                # Path B: Momentum continuation — price never pulled back but
+                # consolidated above EMA20 throughout the wait window.
+                if entry_idx is None and all_bars_above_ema20 and closest_approach_pct != float('inf'):
+                    if closest_approach_pct <= 8.0:
+                        last_wait_k = min(signal_idx + config.pullback_max_wait_bars, len(df) - 1)
+                        entry_path  = 'momentum_b'
+                        entry_idx   = last_wait_k
+                        entry_date  = df.index[last_wait_k]
+                        entry_price = float(df.iloc[last_wait_k]['Open'])
+
+                if entry_idx is None:
                     continue
 
-            entry_price = df.iloc[entry_idx]['Open']
-            
+            else:
+                entry_idx = signal_idx + 1
+                if entry_idx >= len(df):
+                    break
+
+                entry_date = df.index[entry_idx]
+                entry_compare_date = entry_date.date() if hasattr(entry_date, 'date') else entry_date
+
+                if config.use_regime_filter and regime_dict is not None:
+                    if not regime_dict.get(entry_compare_date, False):
+                        continue
+
+                entry_price = float(df.iloc[entry_idx]['Open'])
+
             pos_size = _compute_position_size(
                 config,
                 entry_price=entry_price,
@@ -497,20 +708,66 @@ def simulate_trades(
             exit_date = None
             exit_reason = 'holding_period'
             
-            if config.use_atr_stops and signal.get('atr'):
-                atr = signal['atr']
-                stop_loss_price = entry_price - (config.atr_multiplier * atr)
-                target_price = entry_price + (config.atr_multiplier * config.risk_reward_ratio * atr)
+            t1_hit = False
+            t1_exit_trade = None
+
+            # ── Stop and Target ─────────────────────────────────────────────────────
+            # Path A (confirmed EMA20 bounce): structural stop below EMA20.
+            # The signal ATR is compressed during consolidation — using it creates stops
+            # that are far too tight for post-breakout volatility expansion.
+            # EMA20 is the actual support being tested; stop belongs below it.
+            if entry_path == 'pullback_a' and signal_ema20 and signal_ema20 > 0:
+                structural_stop = signal_ema20 * (1 - 0.030)      # 3% below EMA20 support
+                if config.use_atr_stops and signal.get('atr'):
+                    atr_val = signal['atr']
+                    atr_stop = entry_price - (config.atr_multiplier * atr_val)
+                    # Take the higher (less loss) — structural stop if ATR was compressed
+                    stop_loss_price = max(structural_stop, atr_stop)
+                else:
+                    stop_loss_price = structural_stop
+
+                actual_risk = entry_price - stop_loss_price
+                target_price = (
+                    entry_price + config.risk_reward_ratio * actual_risk
+                    if actual_risk > 0 else entry_price * 1.06
+                )
+
             else:
-                stop_loss_pct = config.stop_loss_pct
-                target_pct = config.target_pct
-                stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct > 0 else 0
-                target_price = entry_price * (1 + target_pct / 100) if target_pct > 0 else float('inf')
+                # Path B or immediate entry: use ATR from signal bar
+                if config.use_atr_stops and signal.get('atr'):
+                    atr_val = signal['atr']
+                    stop_loss_price = entry_price - (config.atr_multiplier * atr_val)
+                    target_price    = entry_price + (config.atr_multiplier * config.risk_reward_ratio * atr_val)
+                else:
+                    stop_loss_pct = config.stop_loss_pct
+                    target_pct    = config.target_pct
+                    stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct > 0 else 0
+                    target_price    = entry_price * (1 + target_pct / 100) if target_pct > 0 else float('inf')
+
+            # Partial exits: recalculate around actual_risk for Path A
+            if config.use_partial_exits:
+                if entry_path == 'pullback_a':
+                    actual_risk = entry_price - stop_loss_price
+                    t1_price = entry_price + (1.0 * actual_risk)
+                    t2_price = entry_price + (config.risk_reward_ratio * actual_risk)
+                elif signal.get('atr'):
+                    atr_val  = signal['atr']
+                    t1_price = entry_price + (1.5 * config.atr_multiplier * atr_val)
+                    t2_price = entry_price + (config.risk_reward_ratio * config.atr_multiplier * atr_val)
+                else:
+                    t1_price = None
+                    t2_price = None
+            else:
+                t1_price = None
+                t2_price = None
             
             # Walk forward up to config.holding_days
             final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
             
             highest_price_since_entry = entry_price
+            
+            consecutive_bearish_bars = 0
+            invalidation_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
             
             for k in range(entry_idx, final_idx + 1):
                 day_low = df.iloc[k]['Low']
@@ -519,6 +776,26 @@ def simulate_trades(
                 
                 highest_price_since_entry = max(highest_price_since_entry, day_high)
                 
+                # Signal Invalidation Exit
+                if config.use_signal_invalidation_exit:
+                    day_close = df.iloc[k]['Close']
+                    if day_close < invalidation_floor:
+                        consecutive_bearish_bars += 1
+                    else:
+                        consecutive_bearish_bars = 0
+
+                    if consecutive_bearish_bars >= 2:
+                        next_k = k + 1
+                        if next_k < len(df):
+                            exit_price = df.iloc[next_k]['Open']
+                            exit_date = df.index[next_k]
+                        else:
+                            exit_price = df.iloc[k]['Close']
+                            exit_date = df.index[k]
+                        exit_reason = 'signal_invalidated'
+                        last_exit_idx = next_k if next_k < len(df) else k
+                        break
+
                 # Check Stop Loss first (conservative)
                 if day_low <= stop_loss_price:
                     exit_price = stop_loss_price
@@ -527,24 +804,71 @@ def simulate_trades(
                     last_exit_idx = k
                     break
                     
-                # Check Trailing Stop
-                if config.trailing_stop_pct > 0:
-                    trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
-                    if day_low <= trailing_stop_price:
-                        # If it gapped down below stop, exit at open
-                        exit_price = min(trailing_stop_price, day_open)
-                        exit_date = df.index[k]
-                        exit_reason = 'trailing_stop'
-                        last_exit_idx = k
-                        break
-                
-                # Check Profit Target
+                # Partial exit T1
+                if not t1_hit and t1_price is not None and day_high >= t1_price:
+                    t1_hit = True
+                    t1_exit_trade = TradeResult(
+                        symbol=symbol,
+                        sector=sector,
+                        signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
+                        entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
+                        exit_date=df.index[k].date() if hasattr(df.index[k], 'date') else df.index[k],
+                        exit_reason='target_partial',
+                        signal_score=signal['score'],
+                        entry_price=float(entry_price),
+                        exit_price=float(t1_price),
+                        return_pct=float(((t1_price - entry_price) / entry_price) * 100),
+                        rsi_at_signal=signal['rsi'],
+                        adx_at_signal=signal['adx'],
+                        ema_signal=signal['ema_signal'],
+                        position_size_used=pos_size * 0.5,
+                    )
+                    # Move stop to breakeven for the remainder
+                    stop_loss_price = entry_price
+                    # Update target to T2
+                    target_price = t2_price
+
+                # Check Profit Target — evaluated before trailing stops.
+                # A bar that touches the target high and the trailing-stop low on the
+                # same candle should record a target exit: price reached the objective
+                # first, then pulled back. Checking target before trailing stops prevents
+                # the trailing stop from stealing a target hit.
                 if day_high >= target_price:
                     exit_price = target_price
                     exit_date = df.index[k]
                     exit_reason = 'target'
                     last_exit_idx = k
                     break
+
+                # Check Trailing Stop (% based)
+                if config.trailing_stop_pct > 0:
+                    trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
+                    if day_low <= trailing_stop_price:
+                        exit_price = min(trailing_stop_price, day_open)
+                        exit_date = df.index[k]
+                        exit_reason = 'trailing_stop'
+                        last_exit_idx = k
+                        break
+
+                # ATR Trailing Stop
+                if config.use_atr_trailing_stop and signal.get('atr'):
+                    atr_val = signal['atr']
+                    activation_threshold = entry_price + (config.atr_trailing_activation * atr_val)
+                    if highest_price_since_entry >= activation_threshold:
+                        # Floor at entry_price: trailing stop must never fire below breakeven.
+                        # Without this floor, if activation=1.0 and multiplier=1.5,
+                        # the stop = peak - 1.5 ATR = entry + 1.0 ATR - 1.5 ATR = entry - 0.5 ATR
+                        # which causes losses on trailing stop exits.
+                        atr_trail_stop = max(
+                            entry_price,
+                            highest_price_since_entry - (config.atr_trailing_multiplier * atr_val),
+                        )
+                        if day_low <= atr_trail_stop:
+                            exit_price = max(atr_trail_stop, day_open)
+                            exit_date = df.index[k]
+                            exit_reason = 'atr_trailing_stop'
+                            last_exit_idx = k
+                            break
             
             if exit_price is None:
                 # Exit on last day's Close
@@ -554,6 +878,11 @@ def simulate_trades(
                 exit_reason = 'holding_period'
                 last_exit_idx = exit_idx
                 
+            if t1_exit_trade is not None:
+                trades.append(t1_exit_trade)
+                # The main TradeResult for the remainder uses half position size
+                pos_size = pos_size * 0.5
+
             return_pct = ((exit_price - entry_price) / entry_price) * 100
             
             trades.append(TradeResult(
@@ -677,10 +1006,15 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             "profit_factor":  0.0,
             "avg_win_pct":    0.0,
             "avg_loss_pct":   0.0,
-            "exit_breakdown": {"stop_loss": 0, "target": 0, "trailing_stop": 0, "holding_period": 0},
+            "exit_breakdown": {"stop_loss": 0, "target": 0, "target_partial": 0, "trailing_stop": 0, "signal_invalidated": 0, "holding_period": 0, "atr_trailing_stop": 0},
         }
         
-    returns = [t.return_pct for t in trades]
+    # Apply round-trip transaction costs to every trade's return.
+    # This models brokerage, STT, exchange fees, and slippage.
+    # At 0.5% per trade, 152 trades = ~7.6% total drag on capital — real and material.
+    cost_adjusted_returns = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
+
+    returns = cost_adjusted_returns   # use cost-adjusted throughout
     total_trades = len(trades)
     winning_trades = [r for r in returns if r > 0]
     win_rate = len(winning_trades) / total_trades
@@ -695,10 +1029,13 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
 
     reason_counts  = Counter(t.exit_reason for t in trades)
     exit_breakdown = {
-        "stop_loss":      reason_counts.get('stop_loss', 0),
-        "target":         reason_counts.get('target', 0),
-        "trailing_stop":  reason_counts.get('trailing_stop', 0),
-        "holding_period": reason_counts.get('holding_period', 0),
+        "stop_loss":           reason_counts.get('stop_loss', 0),
+        "target":              reason_counts.get('target', 0),
+        "target_partial":      reason_counts.get('target_partial', 0),
+        "trailing_stop":       reason_counts.get('trailing_stop', 0),
+        "atr_trailing_stop":   reason_counts.get('atr_trailing_stop', 0),
+        "signal_invalidated":  reason_counts.get('signal_invalidated', 0),
+        "holding_period":      reason_counts.get('holding_period', 0),
     }
     
     avg_return_pct = sum(returns) / total_trades
@@ -706,9 +1043,11 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     best_trade_pct = max(returns)
     worst_trade_pct = min(returns)
     
-    # Updated PnL and Total Return logic
-    # Use position_size_used if available (new), fallback to config.position_size (legacy tests)
-    total_pnl = sum(t.return_pct / 100.0 * (t.position_size_used or config.position_size) for t in trades)
+    # Cost-adjusted PnL: cost already baked into cost_adjusted_returns
+    total_pnl = sum(
+        (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
+        for t in trades
+    )
     total_return_pct = (total_pnl / config.starting_capital) * 100 if config.starting_capital > 0 else 0.0
     
     # Benchmark return
@@ -722,8 +1061,8 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     strat_returns_by_date = {}
     for t in trades:
         d = t.exit_date
-        # Profit/Loss in absolute rupees
-        pl = (t.return_pct / 100.0) * (t.position_size_used or config.position_size)
+        # Cost-adjusted P&L
+        pl = (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
         strat_returns_by_date[d] = strat_returns_by_date.get(d, 0) + pl
         
     equity_curve = []
@@ -768,7 +1107,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     return {
         "total_trades": total_trades,
         "winning_trades": len(winning_trades),
-        "win_rate": float(win_rate),
+        "win_rate": float(win_rate * 100),
         "avg_return_pct": float(avg_return_pct),
         "median_return_pct": float(median_return_pct),
         "best_trade_pct": float(best_trade_pct),
@@ -776,6 +1115,16 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         "max_drawdown_pct": float(max_drawdown_pct),
         "sharpe_ratio": float(sharpe_ratio),
         "total_return_pct": float(total_return_pct),
+        "gross_return_pct": float(  # New: pre-cost return
+            sum(t.return_pct / 100.0 * (t.position_size_used or config.position_size) for t in trades)
+            / config.starting_capital * 100
+        ),
+        "total_cost_drag_pct": float(  # New: explicit cost drag
+            len(trades) * (ROUND_TRIP_COST_PCT / 100.0) *   # pct → decimal
+            (sum(t.position_size_used or config.position_size for t in trades) / len(trades))
+            / config.starting_capital * 100
+            if trades else 0.0
+        ),
         "benchmark_return_pct": float(benchmark_return_pct),
         "equity_curve": equity_curve,
         "expectancy":     float(expectancy),
@@ -804,18 +1153,28 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             # 1. Fetch benchmark data (^NSEI)
             logger.info("Fetching benchmark data (^NSEI)")
-            benchmark_df = _ohlcv_cache.get("^NSEI", append_ns=False, period='3y')
+            benchmark_df = _ohlcv_cache.get("^NSEI", append_ns=False, period='5y')
             if benchmark_df is not None and benchmark_df.index.tz is not None:
                 benchmark_df.index = benchmark_df.index.tz_localize(None)
 
             regime_dict = {}
             if benchmark_df is not None and not benchmark_df.empty:
                 benchmark_df.ta.ema(length=50, append=True)
-                # Map index date to boolean
-                valid = benchmark_df[benchmark_df['EMA_50'].notna()]
+                benchmark_df.ta.ema(length=200, append=True)
+                # Require price above BOTH 50 EMA (short-term trend) and 200 EMA (macro trend).
+                # Nifty above 50 EMA alone allows entries during corrections; the 200 EMA
+                # confirms the macro bull market is intact before taking any long position.
+                valid = benchmark_df[
+                    benchmark_df['EMA_50'].notna() & benchmark_df['EMA_200'].notna()
+                ]
                 regime_dict = dict(zip(
                     valid.index.date,
-                    valid['Close'] > valid['EMA_50']
+                    (valid['Close'] > valid['EMA_50']) &
+                    (valid['Close'] > valid['EMA_200']) &
+                    (valid['EMA_50'] > valid['EMA_200'])   # Golden cross: 50 EMA above 200 EMA confirms
+                                                        # structural bull market, not just a bounce.
+                                                        # Blocks entries when index recovered above EMAs
+                                                        # but the trend hasn't structurally reversed yet.
                 ))
 
             # 2. Select symbols
@@ -867,7 +1226,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             for symbol in symbols:
                 try:
                     # Fetch historical OHLCV
-                    df = _ohlcv_cache.get(symbol, period='3y')
+                    df = _ohlcv_cache.get(symbol, period='5y')
                     if df is None or df.empty:
                         continue
                     
@@ -878,6 +1237,14 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     
                     # Run scoring
                     scored_dates = score_series(df, fund_cache=fund_cache, config=config)
+
+                    # Temporary diagnostic — remove after validation run:
+                    above_ema_count = sum(1 for s in scored_dates if s.get('above_200ema') is True)
+                    none_count = sum(1 for s in scored_dates if s.get('above_200ema') is None)
+                    logger.debug(
+                        "%s: %d scored bars, %d above_200ema=True, %d above_200ema=None",
+                        symbol, len(scored_dates), above_ema_count, none_count
+                    )
                     
                     # Multi-Timeframe Confirmation
                     weekly_state_map = None
@@ -1003,6 +1370,8 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             run.max_drawdown_pct = metrics['max_drawdown_pct']
             run.sharpe_ratio = metrics['sharpe_ratio']
             run.total_return_pct = metrics['total_return_pct']
+            run.gross_return_pct = metrics['gross_return_pct']
+            run.total_cost_drag_pct = metrics['total_cost_drag_pct']
             run.benchmark_return_pct = metrics['benchmark_return_pct']
             run.expectancy = metrics['expectancy']
             run.profit_factor = metrics['profit_factor']

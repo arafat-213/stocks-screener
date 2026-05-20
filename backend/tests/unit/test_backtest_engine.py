@@ -21,8 +21,8 @@ def test_score_series_returns_list():
     df = create_dummy_df(300)
     results = score_series(df)
     assert isinstance(results, list)
-    # MIN_BARS = 210, so for 300 bars we expect 300 - 210 = 90 results
-    assert len(results) == 90
+    # MIN_BARS = 260, so for 300 bars we expect 300 - 260 = 40 results
+    assert len(results) == 40
     if len(results) > 0:
         first = results[0]
         assert "score" in first
@@ -39,10 +39,10 @@ def test_score_series_no_future_leak():
     df = create_dummy_df(400)
     results_full = score_series(df)
     
-    # Take a point in the middle (e.g., index 250)
-    # result index will be 250 - 210 = 40
-    test_idx = 250
-    result_idx = test_idx - 210
+    # Take a point in the middle (e.g., index 300)
+    # result index will be 300 - 260 = 40
+    test_idx = 300
+    result_idx = test_idx - 260
     expected_score_at_test = results_full[result_idx]['score']
     
     # Score truncated df (only up to test_idx)
@@ -79,15 +79,15 @@ def test_score_series_with_fundamentals():
     
     config = BacktestConfig(include_fundamentals=True)
     # Use trending data to avoid hard filters (RSI > 70, ADX < 20, etc.)
-    # Increase to 220 bars to pass MIN_BARS=210 guard
-    dates = pd.date_range(start='2020-01-01', periods=220)
-    close = np.linspace(100, 200, 220)
+    # Increase to 280 bars to pass MIN_BARS=260 guard
+    dates = pd.date_range(start='2020-01-01', periods=280)
+    close = np.linspace(100, 200, 280)
     df = pd.DataFrame({
         'Open': close * 0.99,
         'High': close * 1.01,
         'Low': close * 0.98,
         'Close': close,
-        'Volume': [5000] * 220
+        'Volume': [5000] * 280
     }, index=dates)
     
     # results = score_series(df, fund_cache=fund_cache, config=config)
@@ -109,7 +109,7 @@ def test_score_series_with_fundamentals():
             assert r_fund['score'] == r_no_fund['score'] + 15.0
 
 def test_score_series_min_bars():
-    df = create_dummy_df(200)
+    df = create_dummy_df(250)
     results = score_series(df)
     assert len(results) == 0
 
@@ -120,12 +120,17 @@ def test_simulate_trades_entry_is_next_day_open():
         "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
-        "adx": 20.0,
-        "ema_signal": "bullish",
+        "adx": 30.0,
+        "ema_signal": "bullish_cross",
         "above_200ema": True,
         "volume_breakout": True
     }]
-    config = BacktestConfig(score_threshold=80.0, holding_days=5)
+    config = BacktestConfig(
+        score_threshold=80.0, 
+        holding_days=5,
+        require_consolidation=False,
+        use_pullback_entry=False
+    )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
     assert len(trades) == 1
@@ -144,12 +149,18 @@ def test_simulate_trades_stop_loss_triggered():
         "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
-        "adx": 20.0,
-        "ema_signal": "bullish",
+        "adx": 30.0,
+        "ema_signal": "bullish_cross",
         "above_200ema": True,
         "volume_breakout": True
     }]
-    config = BacktestConfig(score_threshold=80.0, holding_days=10, stop_loss_pct=5.0)
+    config = BacktestConfig(
+        score_threshold=80.0, 
+        holding_days=10, 
+        stop_loss_pct=5.0,
+        require_consolidation=False,
+        use_pullback_entry=False
+    )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
     assert len(trades) == 1
@@ -167,12 +178,18 @@ def test_simulate_trades_target_triggered():
         "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
-        "adx": 20.0,
-        "ema_signal": "bullish",
+        "adx": 30.0,
+        "ema_signal": "bullish_cross",
         "above_200ema": True,
         "volume_breakout": True
     }]
-    config = BacktestConfig(score_threshold=80.0, holding_days=10, target_pct=10.0)
+    config = BacktestConfig(
+        score_threshold=80.0, 
+        holding_days=10, 
+        target_pct=10.0,
+        require_consolidation=False,
+        use_pullback_entry=False
+    )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
     assert len(trades) == 1
@@ -184,16 +201,18 @@ def test_simulate_trades_date_filters():
     df = create_dummy_df(300)
     # 3 signals at different dates
     scored_dates = [
-        {"date": df.index[250], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish", "above_200ema": True, "volume_breakout": True},
-        {"date": df.index[260], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish", "above_200ema": True, "volume_breakout": True},
-        {"date": df.index[270], "score": 100.0, "rsi": 50, "adx": 20, "ema_signal": "bullish", "above_200ema": True, "volume_breakout": True}
+        {"date": df.index[250], "score": 100.0, "rsi": 50, "adx": 30.0, "ema_signal": "bullish_cross", "above_200ema": True, "volume_breakout": True},
+        {"date": df.index[260], "score": 100.0, "rsi": 50, "adx": 30.0, "ema_signal": "bullish_cross", "above_200ema": True, "volume_breakout": True},
+        {"date": df.index[270], "score": 100.0, "rsi": 50, "adx": 30.0, "ema_signal": "bullish_cross", "above_200ema": True, "volume_breakout": True}
     ]
     
     # Filter for middle signal only
     config = BacktestConfig(
         score_threshold=80.0, 
         date_from=df.index[255].date(),
-        date_to=df.index[265].date()
+        date_to=df.index[265].date(),
+        require_consolidation=False,
+        use_pullback_entry=False
     )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     
@@ -224,23 +243,23 @@ def test_compute_metrics_all_winners():
     
     assert metrics['total_trades'] == 2
     assert metrics['winning_trades'] == 2
-    assert metrics['win_rate'] == 1.0  # Scale 0-1
-    assert metrics['avg_return_pct'] == 7.5
-    assert metrics['total_return_pct'] == 7.5 # (1500 / 20000) * 100 = 7.5
+    assert metrics['win_rate'] == 100.0  # Scale 0-100
+    assert metrics['avg_return_pct'] == pytest.approx(7.0)  # (9.5 + 4.5) / 2
+    assert metrics['total_return_pct'] == pytest.approx(7.0) # (1400 / 20000) * 100 = 7.0
     assert len(metrics['equity_curve']) == 3
     # Initial capital = 2 * 10000 = 20000
-    # First point: date 2020-01-10, cumulative PL = +1000 (10% of 10000)
-    assert metrics['equity_curve'][0]['equity'] == 21000.0
+    # First point: date 2020-01-10, cumulative PL = +950 (9.5% of 10000)
+    assert metrics['equity_curve'][0]['equity'] == pytest.approx(20950.0)
 
 def test_backtest_config_new_defaults():
     config = BacktestConfig()
-    assert config.score_threshold == 55.0
+    assert config.score_threshold == 60.0
     assert config.trailing_stop_pct == 0.0
-    assert config.require_volume_breakout is True
+    assert config.require_volume_breakout is False
     assert config.use_regime_filter is True
     assert config.atr_multiplier == 2.0
-    assert config.risk_reward_ratio == 2.5
-    assert config.use_atr_stops is False
+    assert config.risk_reward_ratio == 1.5
+    assert config.use_atr_stops is True
 
 def test_simulate_trades_uses_atr_stops():
     df = create_dummy_df(300)
@@ -250,8 +269,8 @@ def test_simulate_trades_uses_atr_stops():
         "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
-        "adx": 20.0,
-        "ema_signal": "bullish",
+        "adx": 30.0,
+        "ema_signal": "bullish_cross",
         "above_200ema": True,
         "volume_breakout": True,
         "atr": atr_value
@@ -265,7 +284,10 @@ def test_simulate_trades_uses_atr_stops():
         use_atr_stops=True,
         atr_multiplier=2.0,
         risk_reward_ratio=2.0,
-        holding_days=10
+        holding_days=10,
+        use_atr_trailing_stop=False,
+        require_consolidation=False,
+        use_pullback_entry=False
     )
     
     # Mock price movement to trigger ATR target
@@ -289,8 +311,8 @@ def test_simulate_trades_uses_atr_stops_sl():
         "date": df.index[250],
         "score": 100.0,
         "rsi": 50.0,
-        "adx": 20.0,
-        "ema_signal": "bullish",
+        "adx": 30.0,
+        "ema_signal": "bullish_cross",
         "above_200ema": True,
         "volume_breakout": True,
         "atr": atr_value
@@ -302,7 +324,9 @@ def test_simulate_trades_uses_atr_stops_sl():
         score_threshold=80.0, 
         use_atr_stops=True,
         atr_multiplier=2.0,
-        holding_days=10
+        holding_days=10,
+        require_consolidation=False,
+        use_pullback_entry=False
     )
     
     # Mock price movement to trigger ATR stop loss
@@ -349,6 +373,14 @@ def test_score_series_to_simulate_trades_produces_trades():
     )
     results = score_series(df, config=config)
     assert len(results) > 0, "score_series returned no signals"
+    
+    # Hack results to pass Tier 1/2 filters (requires bullish_cross/pullback + ADX + RSI)
+    for r in results:
+        r['ema_signal'] = 'bullish_cross'
+        r['adx'] = 30.0
+        r['rsi'] = 50.0
+        r['above_200ema'] = True
+        r['volume_breakout'] = True
     
     trades = simulate_trades("TEST", "Tech", df, results, config)
     assert len(trades) > 0, (

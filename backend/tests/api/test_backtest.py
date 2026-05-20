@@ -52,8 +52,8 @@ def test_backtest_request_default_values():
     request = BacktestRequest()
     # Check that new fields have expected defaults
     assert request.atr_multiplier == 2.0
-    assert request.risk_reward_ratio == 2.5
-    assert request.use_atr_stops is False
+    assert request.risk_reward_ratio == 1.5
+    assert request.use_atr_stops is True
 
 def test_backtest_config_dataclass():
     config = BacktestConfig(
@@ -68,5 +68,5 @@ def test_backtest_config_dataclass():
 def test_backtest_config_defaults():
     config = BacktestConfig()
     assert config.atr_multiplier == 2.0
-    assert config.risk_reward_ratio == 2.5
-    assert config.use_atr_stops is False
+    assert config.risk_reward_ratio == 1.5
+    assert config.use_atr_stops is True

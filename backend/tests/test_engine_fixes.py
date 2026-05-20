@@ -55,6 +55,9 @@ class TestAbove200EMAGate:
             holding_days=5,
             use_regime_filter=False,
             require_volume_breakout=False,
+            min_signal_tier=2,
+            require_consolidation=False,
+            use_pullback_entry=False,
         )
 
     def _make_signal(self, df, above_200ema, score=80.0) -> dict:
@@ -64,7 +67,7 @@ class TestAbove200EMAGate:
             "above_200ema": above_200ema,
             "rsi": 55.0,
             "adx": 25.0,
-            "ema_signal": "bullish",
+            "ema_signal": "bullish_cross",
             "volume_signal": "bullish",
             "rsi_signal": "bullish_strong",
             "volume_breakout": True,
@@ -102,6 +105,9 @@ class TestADXGate:
             use_regime_filter=False,
             require_volume_breakout=False,
             min_adx=min_adx,
+            min_signal_tier=2,
+            require_consolidation=False,
+            use_pullback_entry=False,
         )
 
     def _signal(self, df, adx_value) -> dict:
@@ -111,7 +117,7 @@ class TestADXGate:
             "above_200ema": True,
             "rsi": 55.0,
             "adx": adx_value,
-            "ema_signal": "bullish",
+            "ema_signal": "bullish_cross",
             "volume_signal": "bullish",
             "rsi_signal": "bullish_strong",
             "volume_breakout": True,
@@ -147,19 +153,19 @@ class TestADXGate:
         assert len(trades) == 1, "min_adx=0 should disable ADX gate"
 
     def test_backtest_config_default_min_adx_is_20(self):
-        """BacktestConfig default min_adx must be 20."""
+        """BacktestConfig default min_adx must be 25."""
         config = BacktestConfig()
-        assert config.min_adx == 20
+        assert config.min_adx == 25.0
 
 class TestConfigDefaults:
     def test_default_score_threshold_is_55(self):
         config = BacktestConfig()
-        assert config.score_threshold == 55.0, (
-            f"Default score_threshold must be 55.0, got {config.score_threshold}"
+        assert config.score_threshold == 60.0, (
+            f"Default score_threshold must be 60.0, got {config.score_threshold}"
         )
 
     def test_default_require_volume_breakout_is_true(self):
         config = BacktestConfig()
-        assert config.require_volume_breakout is True, (
-            "Default require_volume_breakout must be True"
+        assert config.require_volume_breakout is False, (
+            "Default require_volume_breakout must be False"
         )
