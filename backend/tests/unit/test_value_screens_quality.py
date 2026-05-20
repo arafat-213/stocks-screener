@@ -31,7 +31,8 @@ def db_session():
         ev_to_ebitda=10,
         dividend_yield=0.02,
         roce=0.20,
-        dividend_consistency=True
+        dividend_consistency=True,
+        market_cap_category='midcap'
     ))
     db.add(TechnicalSignal(
         symbol="PASS.NS",
@@ -53,7 +54,8 @@ def db_session():
         ev_to_ebitda=10,
         dividend_yield=0.02,
         roce=0.20,
-        dividend_consistency=True
+        dividend_consistency=True,
+        market_cap_category='midcap'
     ))
     db.add(TechnicalSignal(
         symbol="FAIL_STREAK.NS",
@@ -75,7 +77,8 @@ def db_session():
         ev_to_ebitda=10,
         dividend_yield=0.02,
         roce=0.20,
-        dividend_consistency=True
+        dividend_consistency=True,
+        market_cap_category='midcap'
     ))
     db.add(TechnicalSignal(
         symbol="FAIL_DE.NS",

@@ -1,42 +1,39 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
-from app.db.models import TechnicalSignal, FundamentalCache, Stock
+from sqlalchemy import and_, func
+from app.db.models import TechnicalSignal, FundamentalCache
 from app.screens.base import get_latest_signal_date
 
 def screen_low_debt_midcap(db: Session, timeframe: str = 'D'):
     """
-    market cap < 20,000 Cr, de_check_passed, fcf_positive, profitability_streak_passed.
-    Optimized to use a single join.
+    True midcaps (5,000–20,000 Cr) with low debt, positive FCF, and sustained profitability.
+    Above 200 EMA required for trend context.
     """
     date = get_latest_signal_date(db, timeframe)
-    
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
-    ).join(
-        Stock, TechnicalSignal.symbol == Stock.symbol
     ).filter(
         and_(
-            TechnicalSignal.date == date,
+            func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
+            TechnicalSignal.above_200ema == True,
+            FundamentalCache.market_cap_category == 'midcap',
             FundamentalCache.de_check_passed == True,
             FundamentalCache.fcf_positive == True,
             FundamentalCache.profitability_streak_passed == True,
-            Stock.market_cap < 20000 * 1e7 # 20,000 Cr
         )
     ).order_by(TechnicalSignal.entry_score.desc()).all()
-
     return results
 
 def screen_undervalued_fundamentals(db: Session, timeframe: str = 'D'):
     """
-    peg_ratio between 0 and 1.5, roe >= 0.15, dividend_yield > 0, ev_to_ebitda < 20, above_200ema, de_check_passed.
+    Low PEG (<1.5), high ROE (>15%), dividend yield, EV/EBITDA < 20.
     """
     date = get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
         and_(
-            TechnicalSignal.date == date,
+            func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
             TechnicalSignal.above_200ema == True,
             FundamentalCache.peg_ratio > 0,
@@ -52,14 +49,14 @@ def screen_undervalued_fundamentals(db: Session, timeframe: str = 'D'):
 
 def screen_steady_compounders(db: Session, timeframe: str = 'D'):
     """
-    roce >= 0.15, dividend_consistency, above_200ema, profitability_streak_passed.
+    High ROCE (>15%) with consistent dividend history above 200 EMA.
     """
     date = get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
         and_(
-            TechnicalSignal.date == date,
+            func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
             TechnicalSignal.above_200ema == True,
             FundamentalCache.roce >= 0.15,

@@ -27,6 +27,9 @@ const SCREEN_COLUMNS = {
   'low-debt-midcap':        ['symbol', 'name', 'market_cap_category', 'de_ratio', 'fcf_positive', 'score'],
   'undervalued-fundamentals':['symbol', 'name', 'peg_ratio', 'ev_to_ebitda', 'dividend_yield', 'score'],
   'steady-compounders':     ['symbol', 'name', 'roce', 'dividend_consistency', 'above_200ema', 'score'],
+  'ema-crossover':          ['symbol', 'name', 'ema_signal', 'adx', 'rsi', 'score'],
+  'volume-surge':           ['symbol', 'name', 'volume_breakout', 'is_bullish', 'rsi', 'score'],
+  'rsi-recovery':           ['symbol', 'name', 'rsi_signal', 'rsi', 'ema_slope', 'score'],
   '_default':               ['symbol', 'name', 'score', 'rsi', 'confluence_count'],
 };
 
@@ -176,6 +179,24 @@ const COLUMN_META = {
     key: 'rsi', 
     sortable: true,
     render: (v) => v != null ? v.toFixed(1) : '—' 
+  },
+  ema_signal: { 
+    label: 'EMA Signal', 
+    key: 'ema_signal', 
+    sortable: true,
+    render: (v) => v ? v.replace('_', ' ') : '—' 
+  },
+  rsi_signal: { 
+    label: 'RSI Signal', 
+    key: 'rsi_signal', 
+    sortable: true,
+    render: (v) => v ? v.replace('_', ' ') : '—' 
+  },
+  is_bullish: { 
+    label: 'Bullish', 
+    key: 'is_bullish', 
+    sortable: true,
+    render: (v) => v ? '✓' : '—' 
   },
 };
 

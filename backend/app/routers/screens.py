@@ -45,6 +45,9 @@ def _build_screen_response(symbol, name, rank, score, sector, market_cap, tech, 
         "price": tech.close_price if tech else None,
         "change_pct": tech.price_change_pct if tech else None,
         "rsi": tech.rsi if tech else None,
+        "ema_signal": tech.ema_signal if tech else None,
+        "rsi_signal": tech.rsi_signal if tech else None,
+        "is_bullish": tech.is_bullish if tech else None,
         "setup": setup,
         "indicators": {
             "fundamental": {
