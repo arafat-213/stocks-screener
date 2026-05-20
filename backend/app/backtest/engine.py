@@ -375,8 +375,8 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         # Consolidation check uses OHLCV from df_ind (pre-computed)
         is_consolidating = _is_consolidating(
             df_ind, i,
-            lookback=15,
-            max_range_pct=12.0,
+            lookback=config.consolidation_bars if config else 15,
+            max_range_pct=config.consolidation_max_range_pct if config else 12.0,
         )
 
         results.append({
@@ -649,25 +649,14 @@ def simulate_trades(
                     held_above = day_close >= signal_ema20 * 0.995
 
                     if touched_ema and held_above:
-                        # Path A: confirmed EMA20 bounce — enter NEXT bar for confirmation
-                        # (avoids entering the same bar we test support; one bar confirms the hold)
-                        confirm_k = wait_k + 1
-                        if confirm_k >= len(df):
-                            break
-
-                        confirm_date = df.index[confirm_k]
-                        confirm_compare = confirm_date.date() if hasattr(confirm_date, 'date') else confirm_date
-
-                        # Check regime on confirmation bar
-                        if config.use_regime_filter and regime_dict is not None:
-                            if not regime_dict.get(confirm_compare, False):
-                                all_bars_above_ema20 = False
-                                break
-
-                        entry_path  = 'pullback_a'
-                        entry_idx   = confirm_k
-                        entry_date  = confirm_date
-                        entry_price = float(df.iloc[confirm_k]['Open'])
+                        # Path A: price bounced from EMA20 and closed above it.
+                        # Enter at this bar's close — the close confirms support held.
+                        # Using next-bar open risks entering after a gap-up with the same
+                        # structural stop, making the effective risk distance tighter.
+                        entry_path = 'pullback_a'
+                        entry_idx = wait_k
+                        entry_date = wait_date
+                        entry_price = float(df.iloc[wait_k]['Close'])
                         break
 
                 # Path B: Momentum continuation — price never pulled back but
@@ -703,64 +692,61 @@ def simulate_trades(
                 atr=signal.get('atr'),
             )
 
+            # ── Stop and Target ────────────────────────────────────────────────────
+            # The ATR at signal time is measured DURING consolidation — it's compressed
+            # by design. Using it for stops creates levels that normal post-breakout
+            # noise blows through. The consolidation period LOW is the correct structural
+            # stop: if price returns below where it consolidated, the breakout thesis
+            # is invalid. This is path-agnostic (applies to both pullback and momentum).
+            MIN_STOP_PCT = 0.05  # 5% minimum: hard floor against compressed ATR
+            atr_val = signal.get('atr')
+
+            # Consolidation low as natural structural stop
+            consol_start = max(0, signal_idx - config.consolidation_bars)
+            consol_window = df.iloc[consol_start:signal_idx]
+            consol_low = float(consol_window['Low'].min()) if len(consol_window) > 0 else None
+
+            # 2% buffer below consolidation low — allows for wick through without
+            # invalidation, but a close below means the structure has broken
+            structural_stop = (consol_low * 0.98) if (consol_low and consol_low > 0) else None
+
+            # ATR stop as secondary reference
+            atr_stop = (entry_price - config.atr_multiplier * atr_val) if atr_val else None
+
+            # Use the WIDER stop (lower price) — gives the trade room to breathe
+            if structural_stop and atr_stop:
+                base_stop = min(structural_stop, atr_stop)
+            elif structural_stop:
+                base_stop = structural_stop
+            elif atr_stop:
+                base_stop = atr_stop
+            else:
+                base_stop = entry_price * (1 - config.stop_loss_pct / 100) if config.stop_loss_pct > 0 else entry_price * 0.93
+
+            # Enforce 5% minimum — if consolidation was very tight, base_stop
+            # can be only 2-3% away, which is noise on NSE stocks
+            min_stop_price = entry_price * (1 - MIN_STOP_PCT)
+            stop_loss_price = min(base_stop, min_stop_price)  # min = lower price = wider stop
+
+            actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
+            target_price = entry_price + config.risk_reward_ratio * actual_risk
+
+            # Partial exits: recalculate around actual_risk
+            if config.use_partial_exits:
+                t1_price = entry_price + 1.0 * actual_risk
+                t2_price = entry_price + config.risk_reward_ratio * actual_risk
+            else:
+                t1_price = None
+                t2_price = None
+
             # Exit conditions
             exit_price = None
             exit_date = None
             exit_reason = 'holding_period'
-            
+
             t1_hit = False
             t1_exit_trade = None
 
-            # ── Stop and Target ─────────────────────────────────────────────────────
-            # Path A (confirmed EMA20 bounce): structural stop below EMA20.
-            # The signal ATR is compressed during consolidation — using it creates stops
-            # that are far too tight for post-breakout volatility expansion.
-            # EMA20 is the actual support being tested; stop belongs below it.
-            if entry_path == 'pullback_a' and signal_ema20 and signal_ema20 > 0:
-                structural_stop = signal_ema20 * (1 - 0.030)      # 3% below EMA20 support
-                if config.use_atr_stops and signal.get('atr'):
-                    atr_val = signal['atr']
-                    atr_stop = entry_price - (config.atr_multiplier * atr_val)
-                    # Take the higher (less loss) — structural stop if ATR was compressed
-                    stop_loss_price = max(structural_stop, atr_stop)
-                else:
-                    stop_loss_price = structural_stop
-
-                actual_risk = entry_price - stop_loss_price
-                target_price = (
-                    entry_price + config.risk_reward_ratio * actual_risk
-                    if actual_risk > 0 else entry_price * 1.06
-                )
-
-            else:
-                # Path B or immediate entry: use ATR from signal bar
-                if config.use_atr_stops and signal.get('atr'):
-                    atr_val = signal['atr']
-                    stop_loss_price = entry_price - (config.atr_multiplier * atr_val)
-                    target_price    = entry_price + (config.atr_multiplier * config.risk_reward_ratio * atr_val)
-                else:
-                    stop_loss_pct = config.stop_loss_pct
-                    target_pct    = config.target_pct
-                    stop_loss_price = entry_price * (1 - stop_loss_pct / 100) if stop_loss_pct > 0 else 0
-                    target_price    = entry_price * (1 + target_pct / 100) if target_pct > 0 else float('inf')
-
-            # Partial exits: recalculate around actual_risk for Path A
-            if config.use_partial_exits:
-                if entry_path == 'pullback_a':
-                    actual_risk = entry_price - stop_loss_price
-                    t1_price = entry_price + (1.0 * actual_risk)
-                    t2_price = entry_price + (config.risk_reward_ratio * actual_risk)
-                elif signal.get('atr'):
-                    atr_val  = signal['atr']
-                    t1_price = entry_price + (1.5 * config.atr_multiplier * atr_val)
-                    t2_price = entry_price + (config.risk_reward_ratio * config.atr_multiplier * atr_val)
-                else:
-                    t1_price = None
-                    t2_price = None
-            else:
-                t1_price = None
-                t2_price = None
-            
             # Walk forward up to config.holding_days
             final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
             

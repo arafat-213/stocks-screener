@@ -14,13 +14,13 @@ router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 class BacktestRequest(BaseModel):
     score_threshold: float = Field(
-        default=50.0,
+        default=60.0,
         ge=0,
         le=100,
         description=(
             "Signal quality bar on a 0–100 intention scale. "
             "Automatically normalised: when include_fundamentals=False the "
-            "max possible score is 70, so a threshold of 50 becomes an effective "
+            "max possible score is 70, so a threshold of 60 becomes an effective "
             "35 (50% of 70). With fundamentals enabled the threshold applies directly. "
             "Note: the MACD same-day cap (8 pts) means a fresh EMA+MACD cross without "
             "volume scores ~38, which requires this threshold to be ≤54 to pass."

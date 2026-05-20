@@ -153,9 +153,9 @@ class TestADXGate:
         assert len(trades) == 1, "min_adx=0 should disable ADX gate"
 
     def test_backtest_config_default_min_adx_is_20(self):
-        """BacktestConfig default min_adx must be 25."""
+        """BacktestConfig default min_adx must be 0.0 (disabled)."""
         config = BacktestConfig()
-        assert config.min_adx == 25.0
+        assert config.min_adx == 0.0
 
 class TestConfigDefaults:
     def test_default_score_threshold_is_55(self):
