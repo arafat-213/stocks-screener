@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date, ForeignKey, func
+from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date, ForeignKey, func, Index
 from sqlalchemy.orm import declarative_base
 import datetime
 import uuid
@@ -61,7 +61,17 @@ class TechnicalSignal(Base):
     
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
     
-    __table_args__ = (UniqueConstraint('symbol', 'date', 'timeframe'),)
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', 'timeframe'),
+        # Screens filter by (timeframe, date) and sort by various columns
+        Index('ix_ts_timeframe_date', 'timeframe', 'date'),
+        # Stock detail page: (symbol, timeframe) ordered by date desc
+        Index('ix_ts_symbol_timeframe_date', 'symbol', 'timeframe', 'date'),
+        # Momentum/RS screens
+        Index('ix_ts_rs_score', 'rs_score'),
+        # Regime-dependent screens
+        Index('ix_ts_above_200ema', 'above_200ema'),
+    )
 
 class FundamentalData(Base):
     __tablename__ = "fundamental_data"

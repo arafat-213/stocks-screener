@@ -27,7 +27,7 @@ ROUND_TRIP_COST_PCT = 0.5  # 0.5% per trade: brokerage + STT + slippage
 @dataclass
 class BacktestConfig:
     score_threshold: float = 60.0          # ← was 50.0; effective = 60*0.70 = 42 on 70pt scale
-    holding_days: int = 30
+    holding_days: int = 35          # was 30; 5 extra days for 1.5R targets
     stop_loss_pct: float = 7.0
     target_pct: float = 0.0
     trailing_stop_pct: float = 0.0
@@ -36,7 +36,7 @@ class BacktestConfig:
     require_weekly_confirmation: bool = False
     require_monthly_confirmation: bool = False
     atr_multiplier: float = 2.0
-    risk_reward_ratio: float = 1.5
+    risk_reward_ratio: float = 1.5  # was 2.0; 1.5R reachable within holding period
     use_atr_stops: bool = True
     min_adx: float = 0.0
     include_fundamentals: bool = False
@@ -52,10 +52,10 @@ class BacktestConfig:
     max_position_pct: float = 10.0
     max_concurrent_positions: int = 0
     max_sector_positions: int = 0
-    use_atr_trailing_stop: bool = True
-    atr_trailing_multiplier: float = 1.5
-    atr_trailing_activation: float = 2.5
-    use_partial_exits: bool = False
+    use_atr_trailing_stop: bool = True      # was False — re-enable
+    atr_trailing_multiplier: float = 1.0   # trail 1 ATR below peak (was 1.5)
+    atr_trailing_activation: float = 1.0   # activate after 1R gain (was 2.5 — too late)
+    use_partial_exits: bool = False         # disable — confirmed harmful
     use_signal_invalidation_exit: bool = False
     invalidation_threshold_pct: float = 3.0
 
@@ -699,6 +699,7 @@ def simulate_trades(
             # stop: if price returns below where it consolidated, the breakout thesis
             # is invalid. This is path-agnostic (applies to both pullback and momentum).
             MIN_STOP_PCT = 0.05  # 5% minimum: hard floor against compressed ATR
+            MAX_STOP_PCT = 0.08  # 8% maximum distance (ceiling — limits per-trade loss)
             atr_val = signal.get('atr')
 
             # Consolidation low as natural structural stop
@@ -715,7 +716,7 @@ def simulate_trades(
 
             # Use the WIDER stop (lower price) — gives the trade room to breathe
             if structural_stop and atr_stop:
-                base_stop = min(structural_stop, atr_stop)
+                base_stop = min(structural_stop, atr_stop)   # wider of the two
             elif structural_stop:
                 base_stop = structural_stop
             elif atr_stop:
@@ -723,10 +724,14 @@ def simulate_trades(
             else:
                 base_stop = entry_price * (1 - config.stop_loss_pct / 100) if config.stop_loss_pct > 0 else entry_price * 0.93
 
-            # Enforce 5% minimum — if consolidation was very tight, base_stop
-            # can be only 2-3% away, which is noise on NSE stocks
+            # Floor: stop must be at least MIN_STOP_PCT below entry (don't go tighter)
             min_stop_price = entry_price * (1 - MIN_STOP_PCT)
-            stop_loss_price = min(base_stop, min_stop_price)  # min = lower price = wider stop
+            # Ceiling: stop must be at most MAX_STOP_PCT below entry (don't go wider)
+            max_stop_price = entry_price * (1 - MAX_STOP_PCT)
+
+            # Apply both bounds: wider than floor, tighter than ceiling
+            stop_loss_price = min(base_stop, min_stop_price)   # respect floor (wider)
+            stop_loss_price = max(stop_loss_price, max_stop_price)  # enforce ceiling (tighter)
 
             actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
             if config.target_pct > 0:
@@ -736,8 +741,8 @@ def simulate_trades(
 
             # Partial exits: recalculate around actual_risk
             if config.use_partial_exits:
-                t1_price = entry_price + 1.0 * actual_risk
-                t2_price = target_price
+                t1_price = entry_price + 1.0 * actual_risk    # 1R: bank 50%
+                t2_price = target_price                       # full target: exit rest
             else:
                 t1_price = None
                 t2_price = None
@@ -754,6 +759,7 @@ def simulate_trades(
             final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
             
             highest_price_since_entry = entry_price
+            breakeven_activated = False
             
             consecutive_bearish_bars = 0
             invalidation_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
@@ -764,6 +770,11 @@ def simulate_trades(
                 day_open = df.iloc[k]['Open']
                 
                 highest_price_since_entry = max(highest_price_since_entry, day_high)
+
+                # Breakeven stop — must reference actual_risk from outer scope
+                if not breakeven_activated and highest_price_since_entry >= entry_price + actual_risk:
+                    stop_loss_price     = max(stop_loss_price, entry_price)
+                    breakeven_activated = True
                 
                 # Signal Invalidation Exit
                 if config.use_signal_invalidation_exit:
@@ -816,6 +827,7 @@ def simulate_trades(
                     stop_loss_price = entry_price
                     # Update target to T2
                     target_price = t2_price
+                    breakeven_activated = True     # Sync with Fix 2 tracking
 
                 # Check Profit Target — evaluated before trailing stops.
                 # A bar that touches the target high and the trailing-stop low on the
@@ -973,10 +985,6 @@ def simulate_portfolio(
     return all_trades
 
 def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, config: BacktestConfig):
-    """
-    Calculates aggregate metrics and equity curve.
-    Uses starting_capital and position_size from config.
-    """
     if not trades:
         return {
             "total_trades": 0,
@@ -989,56 +997,94 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             "max_drawdown_pct": 0.0,
             "sharpe_ratio": 0.0,
             "total_return_pct": 0.0,
+            "gross_return_pct": 0.0,
+            "total_cost_drag_pct": 0.0,
             "benchmark_return_pct": 0.0,
             "equity_curve": [],
-            "expectancy":     0.0,
-            "profit_factor":  0.0,
-            "avg_win_pct":    0.0,
-            "avg_loss_pct":   0.0,
-            "exit_breakdown": {"stop_loss": 0, "target": 0, "target_partial": 0, "trailing_stop": 0, "signal_invalidated": 0, "holding_period": 0, "atr_trailing_stop": 0},
+            "expectancy": 0.0,
+            "profit_factor": 0.0,
+            "avg_win_pct": 0.0,
+            "avg_loss_pct": 0.0,
+            "exit_breakdown": {
+                "stop_loss": 0, "target": 0, "target_partial": 0,
+                "trailing_stop": 0, "signal_invalidated": 0,
+                "holding_period": 0, "atr_trailing_stop": 0
+            },
         }
-        
-    # Apply round-trip transaction costs to every trade's return.
-    # This models brokerage, STT, exchange fees, and slippage.
-    # At 0.5% per trade, 152 trades = ~7.6% total drag on capital — real and material.
-    cost_adjusted_returns = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
 
-    returns = cost_adjusted_returns   # use cost-adjusted throughout
-    total_trades = len(trades)
-    winning_trades = [r for r in returns if r > 0]
-    win_rate = len(winning_trades) / total_trades
-    losing_returns = [r for r in returns if r <= 0]
-    avg_win_pct    = sum(winning_trades) / len(winning_trades) if winning_trades else 0.0
-    avg_loss_pct   = sum(losing_returns)  / len(losing_returns)  if losing_returns  else 0.0
-    expectancy     = (win_rate * avg_win_pct) + ((1 - win_rate) * avg_loss_pct)
-    profit_factor  = (
+    cost_adjusted_returns = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
+    position_sizes        = [t.position_size_used or config.position_size for t in trades]
+    total_deployed        = sum(position_sizes)
+    total_trades          = len(trades)
+
+    # ── Position-size weighted metrics ────────────────────────────────────────
+    # A ₹5k partial-exit trade must not count the same as a ₹100k full trade.
+    # Unweighted metrics inflated win_rate by ~8pp and profit_factor by ~0.6
+    # in runs that used partial exits, making a losing system look profitable.
+    winning_mask   = [r > 0 for r in cost_adjusted_returns]
+    losing_mask    = [not w for w in winning_mask]
+
+    winning_ps     = [ps for w, ps in zip(winning_mask, position_sizes) if w]
+    losing_ps      = [ps for l, ps in zip(losing_mask, position_sizes) if l]
+    winning_rets   = [r  for w, r  in zip(winning_mask, cost_adjusted_returns) if w]
+    losing_rets    = [r  for l, r  in zip(losing_mask,  cost_adjusted_returns) if l]
+
+    win_weight     = sum(winning_ps)
+    loss_weight    = sum(losing_ps)
+
+    # win_rate: fraction of CAPITAL deployed that won, not fraction of trade count
+    win_rate       = win_weight / total_deployed if total_deployed > 0 else 0.0
+    winning_trades = sum(winning_mask)   # kept as integer count for display
+
+    avg_win_pct = (
+        sum(r * ps for r, ps in zip(winning_rets, winning_ps)) / win_weight
+        if win_weight > 0 else 0.0
+    )
+    avg_loss_pct = (
+        sum(r * ps for r, ps in zip(losing_rets, losing_ps)) / loss_weight
+        if loss_weight > 0 else 0.0
+    )
+
+    expectancy    = (win_rate * avg_win_pct) + ((1 - win_rate) * avg_loss_pct)
+    profit_factor = (
         (win_rate * avg_win_pct) / ((1 - win_rate) * abs(avg_loss_pct))
-        if losing_returns and avg_loss_pct != 0 else 0.0
+        if losing_rets and avg_loss_pct != 0 else 0.0
     )
 
     reason_counts  = Counter(t.exit_reason for t in trades)
     exit_breakdown = {
-        "stop_loss":           reason_counts.get('stop_loss', 0),
-        "target":              reason_counts.get('target', 0),
-        "target_partial":      reason_counts.get('target_partial', 0),
-        "trailing_stop":       reason_counts.get('trailing_stop', 0),
-        "atr_trailing_stop":   reason_counts.get('atr_trailing_stop', 0),
-        "signal_invalidated":  reason_counts.get('signal_invalidated', 0),
-        "holding_period":      reason_counts.get('holding_period', 0),
+        "stop_loss":          reason_counts.get('stop_loss', 0),
+        "target":             reason_counts.get('target', 0),
+        "target_partial":     reason_counts.get('target_partial', 0),
+        "trailing_stop":      reason_counts.get('trailing_stop', 0),
+        "atr_trailing_stop":  reason_counts.get('atr_trailing_stop', 0),
+        "signal_invalidated": reason_counts.get('signal_invalidated', 0),
+        "holding_period":     reason_counts.get('holding_period', 0),
     }
-    
-    avg_return_pct = sum(returns) / total_trades
-    median_return_pct = float(pd.Series(returns).median())
-    best_trade_pct = max(returns)
-    worst_trade_pct = min(returns)
-    
-    # Cost-adjusted PnL: cost already baked into cost_adjusted_returns
+
+    avg_return_pct    = sum(cost_adjusted_returns) / total_trades
+    median_return_pct = float(pd.Series(cost_adjusted_returns).median())
+    best_trade_pct    = max(cost_adjusted_returns)
+    worst_trade_pct   = min(cost_adjusted_returns)
+
+    # ── P&L (position-size weighted, cost-adjusted) ───────────────────────────
     total_pnl = sum(
         (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
         for t in trades
     )
     total_return_pct = (total_pnl / config.starting_capital) * 100 if config.starting_capital > 0 else 0.0
-    
+
+    gross_pnl = sum(
+        t.return_pct / 100.0 * (t.position_size_used or config.position_size)
+        for t in trades
+    )
+    gross_return_pct = (gross_pnl / config.starting_capital) * 100
+
+    avg_pos = total_deployed / total_trades if total_trades > 0 else config.position_size
+    total_cost_drag_pct = (
+        total_trades * (ROUND_TRIP_COST_PCT / 100.0) * avg_pos / config.starting_capital * 100
+    )
+
     # Benchmark return
     benchmark_return_pct = 0.0
     if benchmark_data is not None and len(benchmark_data) > 1:
@@ -1095,7 +1141,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
                 
     return {
         "total_trades": total_trades,
-        "winning_trades": len(winning_trades),
+        "winning_trades": winning_trades,
         "win_rate": float(win_rate * 100),
         "avg_return_pct": float(avg_return_pct),
         "median_return_pct": float(median_return_pct),
@@ -1338,7 +1384,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             # Slice benchmark data to match backtest range
             if all_trades and benchmark_df is not None:
                 first_entry = min(t.entry_date for t in all_trades)
-                effective_from = config.date_from or first_entry
+                effective_from = first_entry
                 effective_to = config.date_to or datetime.date.today()
 
                 benchmark_df = benchmark_df[

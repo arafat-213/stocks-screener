@@ -85,16 +85,46 @@ def test_get_cache_hit_no_network_call(tmp_path):
     # Write a file whose last row is within the past 24 hours
     now = pd.Timestamp.now(tz='UTC').replace(tzinfo=None)
     df = _make_df(days=5)
+    # Start date is now - 4 days
     idx = pd.date_range(end=now.floor('D'), periods=len(df), freq="D")
     df.index = idx
     df.to_parquet(cache._file_path("TCS"))
 
+    # Use a short period to avoid triggering backfill
     with patch("app.pipeline.ohlcv_cache.fetch_stock_data") as mock_fetch:
-        result = cache.get("TCS", append_ns=True, period="3y")
+        result = cache.get("TCS", append_ns=True, period="5d")
 
     mock_fetch.assert_not_called()
     assert result is not None
     assert len(result) == 5
+
+
+def test_get_triggers_backfill(tmp_path):
+    """If requested period is longer than cached, trigger backfill."""
+    cache = OHLCVCache(cache_dir=str(tmp_path))
+    
+    # Cache has 10 days of data
+    now = pd.Timestamp.now(tz='UTC').replace(tzinfo=None)
+    df = _make_df(days=10)
+    idx = pd.date_range(end=now.floor('D'), periods=10, freq="D")
+    df.index = idx
+    df.to_parquet(cache._file_path("BACKFILL_STOCK"))
+    
+    # Mock backfill data (e.g., 20 more days)
+    backfill_df = _make_df(days=20)
+    backfill_idx = pd.date_range(end=idx[0] - pd.Timedelta(days=1), periods=20, freq="D")
+    backfill_df.index = backfill_idx
+    
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = backfill_df
+    
+    with patch("yfinance.Ticker", return_value=mock_ticker) as mock_yf:
+        # Request 1 month (30 days), cache only has 10
+        result = cache.get("BACKFILL_STOCK", append_ns=True, period="1mo")
+        
+    mock_yf.assert_called()
+    assert result is not None
+    assert len(result) == 30 # 10 original + 20 backfilled
 
 
 def test_get_stale_file_triggers_incremental_fetch(tmp_path):
@@ -114,10 +144,12 @@ def test_get_stale_file_triggers_incremental_fetch(tmp_path):
     tail_df.index = tail_idx
 
     mock_ticker = MagicMock()
+    # First call might be backfill (if period is long), second is incremental
+    # We'll use a short period to avoid backfill
     mock_ticker.history.return_value = tail_df
 
     with patch("yfinance.Ticker", return_value=mock_ticker):
-        result = cache.get("INFY", append_ns=True, period="3y")
+        result = cache.get("INFY", append_ns=True, period="10d")
 
     mock_ticker.history.assert_called_once()
     assert result is not None

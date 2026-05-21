@@ -44,6 +44,18 @@ class OHLCVCache:
         if not force_refresh and path.exists():
             try:
                 cached_df = pd.read_parquet(path)
+
+                # --- BACKFILL CHECK ---
+                requested_start = self._get_requested_start(period)
+                actual_start = cached_df.index[0]
+                if hasattr(actual_start, "tzinfo") and actual_start.tzinfo is not None:
+                    actual_start = actual_start.tz_localize(None)
+
+                # If requested start is significantly older than actual start, backfill
+                if requested_start < actual_start - pd.Timedelta(days=7):
+                    cached_df = self._backfill_fetch(symbol, cached_df, requested_start, append_ns, path)
+                # ----------------------
+
                 if self._is_fresh(cached_df):
                     logger.info("ohlcv_cache: HIT %s (rows=%d)", symbol, len(cached_df))
                     return cached_df
@@ -56,14 +68,42 @@ class OHLCVCache:
         # Cold miss or force_refresh
         return self._full_fetch(symbol, append_ns, period, path)
 
+    def _get_requested_start(self, period: str) -> pd.Timestamp:
+        """Converts yfinance period string into a naive pd.Timestamp."""
+        now = pd.Timestamp.now().floor("D")
+        if period == "ytd":
+            return pd.Timestamp(now.year, 1, 1)
+        if period == "max":
+            return pd.Timestamp(1970, 1, 1)
+
+        num_str = "".join(filter(str.isdigit, period))
+        num = int(num_str) if num_str else 1
+        unit = "".join(filter(str.isalpha, period)).lower()
+
+        if unit == "d":
+            return now - pd.DateOffset(days=num)
+        if unit == "mo":
+            return now - pd.DateOffset(months=num)
+        if unit == "y":
+            return now - pd.DateOffset(years=num)
+
+        return now - pd.DateOffset(years=3)  # Default
+
     def _is_fresh(self, df: pd.DataFrame) -> bool:
         if df.empty:
             return False
         max_age_hours = int(os.environ.get("OHLCV_CACHE_MAX_AGE_HOURS", "24"))
         last_ts = df.index[-1]
+        
+        # tz_convert(None) converts to UTC first, then drops tz — correct behaviour.
+        # tz_localize(None) would strip the label without converting, giving wrong times
+        # if the stored timestamps are not already in UTC.
         if hasattr(last_ts, "tzinfo") and last_ts.tzinfo is not None:
-            last_ts = last_ts.tz_localize(None)
-        age_hours = (pd.Timestamp.now('UTC').tz_localize(None) - last_ts).total_seconds() / 3600
+            last_ts = last_ts.tz_convert(None)
+            
+        # Ensure now is naive UTC to match last_ts
+        now_utc_naive = pd.Timestamp.now(tz='UTC').tz_localize(None)
+        age_hours = (now_utc_naive - last_ts).total_seconds() / 3600
         return age_hours < max_age_hours
 
     def _full_fetch(
@@ -75,6 +115,55 @@ class OHLCVCache:
             return None
         self._write_atomic(df, path)
         return df
+
+    def _backfill_fetch(
+        self,
+        symbol: str,
+        cached_df: pd.DataFrame,
+        requested_start: pd.Timestamp,
+        append_ns: bool,
+        path: Path,
+    ) -> pd.DataFrame:
+        actual_start = cached_df.index[0]
+        if hasattr(actual_start, "tzinfo") and actual_start.tzinfo is not None:
+            actual_start = actual_start.tz_localize(None)
+
+        start_str = requested_start.strftime("%Y-%m-%d")
+        # Go up to the start of current cache to bridge the gap
+        end_str = (actual_start + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+
+        logger.info(
+            "ohlcv_cache: BACKFILL %s — %s → %s",
+            symbol,
+            start_str,
+            end_str,
+        )
+
+        ticker_sym = f"{symbol}.NS" if append_ns else symbol
+        try:
+            ticker = yf.Ticker(ticker_sym)
+            head = ticker.history(start=start_str, end=end_str)
+        except Exception as exc:
+            logger.warning("ohlcv_cache: backfill fetch failed for %s: %s", symbol, exc)
+            return cached_df
+
+        if head is None or head.empty:
+            logger.info("ohlcv_cache: no backfill data for %s", symbol)
+            return cached_df
+
+        if head.index.tz is not None:
+            head.index = head.index.tz_localize(None)
+        if cached_df.index.tz is not None:
+            cached_df.index = cached_df.index.tz_localize(None)
+
+        combined = pd.concat([head, cached_df])
+        # deduplicate: keep original cached rows in case of overlap
+        combined = combined[~combined.index.duplicated(keep="last")]
+        combined.sort_index(inplace=True)
+
+        self._write_atomic(combined, path)
+        logger.info("ohlcv_cache: backfilled %d rows for %s", len(head), symbol)
+        return combined
 
     def _incremental_fetch(
         self, symbol: str, cached_df: pd.DataFrame, append_ns: bool, path: Path

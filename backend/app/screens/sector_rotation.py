@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, cast, Date, func, Float
+from sqlalchemy import and_, cast, Date, func, Float, Integer
 from app.db.models import TechnicalSignal, Stock, SectorSnapshot
 from app.screens.base import get_latest_signal_date
 import datetime
@@ -17,7 +17,7 @@ def compute_sector_rotation(db: Session) -> list[dict]:
             func.avg(TechnicalSignal.rs_score).label("avg_rs"),
             func.avg(TechnicalSignal.momentum_3m).label("avg_momentum_3m"),
             func.avg(
-                func.cast(TechnicalSignal.is_bullish, Float)
+                func.cast(func.cast(TechnicalSignal.is_bullish, Integer), Float)
             ).label("bullish_pct"),
             func.count(TechnicalSignal.symbol).label("stock_count"),
         )
