@@ -22,7 +22,7 @@ from app.core.logging_manager import logging_manager
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
 
-ROUND_TRIP_COST_PCT = 0.5  # 0.5% per trade: brokerage + STT + slippage
+ROUND_TRIP_COST_PCT = 0.25  # 0.25% per trade: brokerage + STT + slippage
 
 @dataclass
 class BacktestConfig:
