@@ -166,6 +166,16 @@ def process_symbol(symbol: str, db: Session, hist: pd.DataFrame = None, info: di
         signal.pct_from_resistance = ta_data.get('pct_from_resistance')
         signal.volume_breakout = ta_data.get('volume_breakout', False)
         
+        # Consolidation check (requiresRaw OHLCV)
+        if tf == 'D' and len(working_df) >= 17: # lookback(15) + buffer
+            from app.backtest.engine import _is_consolidating
+            signal.is_consolidating = _is_consolidating(
+                working_df, 
+                len(working_df) - 1, 
+                lookback=15, 
+                max_range_pct=12.0
+            )
+        
         signal.scored_at = scored_at
         
         # Capture price snapshots for Daily timeframe

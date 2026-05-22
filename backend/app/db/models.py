@@ -59,6 +59,9 @@ class TechnicalSignal(Base):
     # Volume Breakout
     volume_breakout = Column(Boolean, nullable=True, default=False)
     
+    # Consolidation
+    is_consolidating = Column(Boolean, nullable=True, default=None)
+    
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     __table_args__ = (
@@ -68,7 +71,7 @@ class TechnicalSignal(Base):
         # Covers per-symbol history queries and stock detail page
         Index('ix_ts_symbol_timeframe_date', 'symbol', 'timeframe', 'date'),
         # Covers above_200ema + is_bullish filter combos used in most screens
-        Index('ix_ts_screener_core', 'timeframe', 'date', 'above_200ema', 'is_bullish'),
+        Index('ix_ts_screener_core', 'timeframe', 'date', 'above_200ema', 'is_bullish', 'is_consolidating'),
     )
 
 class FundamentalData(Base):

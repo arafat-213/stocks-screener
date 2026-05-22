@@ -12,8 +12,9 @@ import logging
 router = APIRouter(prefix="/screens", tags=["screens"])
 logger = logging.getLogger(__name__)
 
-def _build_screen_response(symbol, name, rank, score, sector, market_cap, tech, fund):
-    setup = compute_trade_setup(tech) if tech else None
+def _build_screen_response(symbol, name, rank, score, sector, market_cap, tech, fund,
+                            capital: float = 1_000_000.0, risk_pct: float = 3.0):
+    setup = compute_trade_setup(tech, capital=capital, risk_pct=risk_pct) if tech else None
     
     return {
         "symbol": symbol,
@@ -78,12 +79,14 @@ def get_screen_results(
     slug: str, 
     response: Response,
     live: bool = Query(False),
+    capital: float = Query(default=1_000_000.0, description="Your trading capital for position sizing"),
+    risk_pct: float = Query(default=3.0, ge=0.5, le=10.0, description="% of capital to risk per trade"),
     db: Session = Depends(get_db)
 ):
     if slug not in SCREEN_REGISTRY:
         raise HTTPException(status_code=404, detail="Screen not found")
     
-    cache_key = f"screen:{slug}:{live}"
+    cache_key = f"screen:{slug}:{live}:{capital}:{risk_pct}"
     cached_val = screen_cache.get(cache_key)
     if cached_val is not None:
         response.headers["X-Cache"] = "HIT"
@@ -150,7 +153,9 @@ def get_screen_results(
                         sector=stock.sector,
                         market_cap=stock.market_cap,
                         tech=tech,
-                        fund=fund
+                        fund=fund,
+                        capital=capital,
+                        risk_pct=risk_pct
                     )
                 )
 
@@ -212,7 +217,9 @@ def get_screen_results(
                                 sector=stock.sector,
                                 market_cap=stock.market_cap,
                                 tech=tech,
-                                fund=fund
+                                fund=fund,
+                                capital=capital,
+                                risk_pct=risk_pct
                             )
                         )
         except Exception as e:

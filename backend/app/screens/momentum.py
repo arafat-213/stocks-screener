@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, func
+from sqlalchemy import and_, or_, func
 from app.db.models import TechnicalSignal, FundamentalCache
 from app.screens.base import get_latest_signal_date
 
@@ -102,4 +102,36 @@ def screen_rsi_recovery(db: Session, timeframe: str = 'D'):
         )
     ).order_by(TechnicalSignal.entry_score.desc()).all()
     
+    return results
+
+def screen_actionable_entries(db: Session, timeframe: str = 'D'):
+    """
+    Ready-to-trade EMA crossover signals that pass the same gates as the
+    backtested strategy: cross above 200 EMA, RSI 40-65, positive 12m momentum,
+    prior consolidation, AND (volume breakout OR ADX >= 25).
+
+    These are the signals to act on the next trading day.
+    """
+    date = get_latest_signal_date(db, timeframe)
+    results = (
+        db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
+        .filter(
+            and_(
+                func.date(TechnicalSignal.date) == date,
+                TechnicalSignal.timeframe == timeframe,
+                TechnicalSignal.ema_signal == 'bullish_cross',
+                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.rsi >= 40,
+                TechnicalSignal.rsi <= 65,
+                TechnicalSignal.momentum_12m > 0,
+                TechnicalSignal.is_consolidating == True,
+                or_(
+                    TechnicalSignal.volume_breakout == True,
+                    TechnicalSignal.adx >= 25,
+                ),
+            )
+        )
+        .order_by(TechnicalSignal.entry_score.desc())
+        .all()
+    )
     return results

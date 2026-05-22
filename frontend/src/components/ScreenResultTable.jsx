@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 
 const SCREEN_COLUMNS = {
+  'actionable-entries':     ['symbol', 'name', 'price', 'change_pct', 'rsi', 'volume_breakout', 'shares', 'position_value', 'score'],
   'momentum-monsters':      ['symbol', 'name', 'rs_score', 'momentum_3m', 'adx', 'score'],
   'value-with-momentum':    ['symbol', 'name', 'peg_ratio', 'momentum_1m', 'ema_slope', 'score'],
   'near-breakout':          ['symbol', 'name', 'pct_from_resistance', 'volume_breakout', 'score'],
@@ -38,6 +39,10 @@ const COLUMN_META = {
   ema_slope:            { label: 'EMA Trend',    fmt: v => v != null ? (v > 0 ? <span className="text-green-500 font-black">↑</span> : <span className="text-red-500 font-black">↓</span>) : '—' },
   confluence_count:     { label: 'Conf.',        fmt: v => <span className={`px-2 py-0.5 rounded-md font-black text-xs ${v === 3 ? 'bg-green-500 text-white' : v === 2 ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{v}/3</span> },
   rsi:                  { label: 'RSI',          fmt: v => <span className={`font-bold ${v <= 30 ? 'text-green-500' : v >= 70 ? 'text-red-500' : ''}`}>{v?.toFixed(1) ?? '—'}</span> },
+  price:                { label: 'Price',        fmt: v => <span className="font-mono font-bold text-xs">₹{v?.toLocaleString('en-IN', { minimumFractionDigits: 1 })}</span> },
+  change_pct:           { label: 'Change %',     fmt: v => <span className={`px-2 py-1 rounded-md font-mono font-bold text-[10px] ${v >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>{v >= 0 ? '+' : ''}{v?.toFixed(2)}%</span> },
+  shares:               { label: 'Shares',       fmt: (v, row) => <span className="font-black text-blue-600 dark:text-blue-400">{row.setup?.position_sizing?.shares ?? '—'}</span> },
+  position_value:       { label: 'Pos. Value',   fmt: (v, row) => <span className="font-mono text-xs font-bold text-slate-600 dark:text-slate-400">{row.setup?.position_sizing?.position_value ? `₹${row.setup.position_sizing.position_value.toLocaleString('en-IN')}` : '—'}</span> },
 };
 
 const ScreenResultTable = ({ results, slug, loading }) => {
@@ -91,10 +96,10 @@ const ScreenResultTable = ({ results, slug, loading }) => {
                 <td key={c} className="px-6 py-4 text-sm font-medium">
                   {c === 'symbol' ? (
                     <Link to={`/stocks/${row.symbol}`} className="no-underline group-hover:translate-x-1 transition-transform inline-block">
-                      {COLUMN_META[c].fmt(row[c])}
+                      {COLUMN_META[c].fmt(row[c], row)}
                     </Link>
                   ) : (
-                    COLUMN_META[c].fmt(row[c])
+                    COLUMN_META[c].fmt(row[c], row)
                   )}
                 </td>
               ))}

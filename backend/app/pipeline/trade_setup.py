@@ -4,7 +4,7 @@ from app.db.models import TechnicalSignal
 ATR_STOP_MULTIPLIER = 2.0
 TARGET_R_LEVELS = [1.5, 2.5]
 
-def compute_trade_setup(signal: TechnicalSignal) -> dict | None:
+def compute_trade_setup(signal: TechnicalSignal, capital: float = 1_000_000.0, risk_pct: float = 3.0) -> dict | None:
     if not signal:
         return None
 
@@ -43,7 +43,7 @@ def compute_trade_setup(signal: TechnicalSignal) -> dict | None:
     if risk <= 0:
         return None
 
-    return {
+    setup = {
         "setup_type": setup_type,
         "entry_zone": {
             "low": round(entry_low, 2),
@@ -62,3 +62,20 @@ def compute_trade_setup(signal: TechnicalSignal) -> dict | None:
         "atr": round(atr, 2),
         "risk_per_share": round(risk, 2),
     }
+
+    # Position sizing — computed from caller-supplied capital and risk %
+    if risk > 0 and capital > 0:
+        risk_amount   = capital * (risk_pct / 100.0)
+        shares        = int(risk_amount / risk)          # floor — never size up
+        position_val  = round(shares * entry_mid, 2)
+        setup["position_sizing"] = {
+            "capital":           capital,
+            "risk_pct":          risk_pct,
+            "risk_amount":       round(risk_amount, 2),
+            "shares":            shares,
+            "position_value":    position_val,
+            "position_pct":      round(position_val / capital * 100, 1),
+            "formula":           f"shares = floor({capital:,.0f} × {risk_pct}% / {risk:.2f})",
+        }
+
+    return setup

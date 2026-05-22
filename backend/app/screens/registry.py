@@ -6,6 +6,7 @@ from app.screens.momentum import (
     screen_ema_crossover_signals,
     screen_volume_surge,
     screen_rsi_recovery,
+    screen_actionable_entries,
 )
 from app.screens.confluence import (
     screen_mtf_confluence,
@@ -15,6 +16,17 @@ from app.screens.confluence import (
 from app.screens.sector_rotation import screen_hot_sectors
 
 SCREEN_REGISTRY = {
+    # ── Actionable Entries ───────────────────────────────────────────────────
+    "actionable-entries": {
+        "fn": screen_actionable_entries,
+        "label": "Actionable Entries",
+        "description": (
+            "EMA crossover signals passing the full backtest filter: above 200 EMA, "
+            "RSI 40–65, positive 12m momentum, prior consolidation, "
+            "and volume breakout or ADX ≥ 25. Act on these the next trading day."
+        ),
+        "category": "Signals",
+    },
     # ── Price Action ─────────────────────────────────────────────────────────
     "52w-high": {
         "fn": screen_52w_high,
