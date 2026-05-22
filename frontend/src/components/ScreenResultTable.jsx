@@ -1,4 +1,7 @@
 import { Link } from 'react-router-dom';
+import { map, size } from 'lodash/fp';
+
+const mapWithIdx = map.convert({ cap: false });
 
 const SCREEN_COLUMNS = {
   'actionable-entries':     ['symbol', 'name', 'price', 'change_pct', 'rsi', 'volume_breakout', 'shares', 'position_value', 'score'],
@@ -48,29 +51,29 @@ const COLUMN_META = {
 const ScreenResultTable = ({ results, slug, loading }) => {
   const cols = SCREEN_COLUMNS[slug] || SCREEN_COLUMNS['_default'];
 
-  if (loading && results.length === 0) {
+  if (loading && size(results) === 0) {
     return (
       <div className="w-full overflow-x-auto bg-bg-secondary border-2 border-border rounded-2xl shadow-sm">
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-900 border-b-2 border-border">
-              {cols.map(c => (
+              {map(c => (
                 <th key={c} className="px-6 py-4 text-left text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
                   {COLUMN_META[c].label}
                 </th>
-              ))}
+              ), cols)}
             </tr>
           </thead>
           <tbody>
-            {[...Array(8)].map((_, i) => (
+            {mapWithIdx((_, i) => (
               <tr key={i} className="border-b border-border">
-                {cols.map(c => (
+                {map(c => (
                   <td key={c} className="px-6 py-4">
                     <div className="h-6 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse w-full"></div>
                   </td>
-                ))}
+                ), cols)}
               </tr>
-            ))}
+            ), [...Array(8)])}
           </tbody>
         </table>
       </div>
@@ -82,17 +85,17 @@ const ScreenResultTable = ({ results, slug, loading }) => {
       <table className="w-full border-collapse">
         <thead>
           <tr className="bg-slate-50 dark:bg-slate-900 border-b-2 border-border">
-            {cols.map(c => (
+            {map(c => (
               <th key={c} className="px-6 py-4 text-left text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
                 {COLUMN_META[c].label}
               </th>
-            ))}
+            ), cols)}
           </tr>
         </thead>
         <tbody>
-          {Array.isArray(results) && results.map((row, idx) => (
+          {mapWithIdx((row, idx) => (
             <tr key={`${row.symbol}-${idx}`} className="border-b border-border hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors group">
-              {cols.map(c => (
+              {map(c => (
                 <td key={c} className="px-6 py-4 text-sm font-medium">
                   {c === 'symbol' ? (
                     <Link to={`/stocks/${row.symbol}`} className="no-underline group-hover:translate-x-1 transition-transform inline-block">
@@ -102,12 +105,12 @@ const ScreenResultTable = ({ results, slug, loading }) => {
                     COLUMN_META[c].fmt(row[c], row)
                   )}
                 </td>
-              ))}
+              ), cols)}
             </tr>
-          ))}
-          {results.length === 0 && !loading && (
+          ), results)}
+          {size(results) === 0 && !loading && (
             <tr>
-              <td colSpan={cols.length} className="text-center py-20">
+              <td colSpan={size(cols)} className="text-center py-20">
                 <div className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">No matches found for this screen</div>
               </td>
             </tr>
