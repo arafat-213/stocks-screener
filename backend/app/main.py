@@ -6,6 +6,7 @@ import os
 from contextlib import asynccontextmanager
 from app.db import session as db_session
 from app.pipeline.orchestrator import run_pipeline, cleanup_zombie_runs
+from app.pipeline.cleanup import run_cleanup
 from app.routers import stocks, dashboard, reports, screens, backtest
 from sqlalchemy import text
 from app.core.cache import response_cache
@@ -40,6 +41,13 @@ def scheduled_pipeline():
     finally:
         db.close()
 
+def scheduled_cleanup():
+    db = db_session.SessionLocal()
+    try:
+        run_cleanup(db)
+    finally:
+        db.close()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -50,6 +58,7 @@ async def lifespan(app: FastAPI):
         db.close()
         
     scheduler.add_job(scheduled_pipeline, 'cron', day_of_week='mon-fri', hour=16, minute=5)
+    scheduler.add_job(scheduled_cleanup, 'cron', hour=2, minute=30)
     scheduler.start()
     logger.info("Scheduler started")
     yield

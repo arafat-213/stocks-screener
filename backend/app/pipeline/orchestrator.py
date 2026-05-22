@@ -54,9 +54,15 @@ def cleanup_zombie_runs(db: Session):
     zombies = db.query(PipelineRun).filter(PipelineRun.status == "running").all()
     if zombies:
         logger.info(f"Cleaning up {len(zombies)} zombie pipeline runs.")
+        zombie_ids = [run.run_id for run in zombies]
         for run in zombies:
             run.status = "failed"
             run.errors = "Interrupted by system restart or crash"
+        
+        # Also clear checkpoints for zombie runs so they don't block a fresh resume
+        db.query(PipelineCheckpoint).filter(
+            PipelineCheckpoint.run_id.in_(zombie_ids)
+        ).delete(synchronize_session=False)
         db.commit()
 
 def _is_stop_requested(db: Session, run_id: str) -> bool:
