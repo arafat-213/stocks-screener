@@ -58,7 +58,7 @@ const StockDetail = () => {
   const renderScoreCard = (tf, label) => {
     const scoreData = latest_scores?.[tf];
     if (!scoreData) return (
-      <div className="score-bg-bg-secondary border border-border rounded-lg shadow-sm" key={tf}>
+      <div className="score-card" key={tf}>
         <h3>{label} Timeframe</h3>
         <div className="score-display">
           <div className="score-value" style={{ color: 'var(--color-text-muted)' }}>--</div>
@@ -72,7 +72,7 @@ const StockDetail = () => {
     const isBullish = scoreData.ema_signal?.toLowerCase() === 'bullish';
 
     return (
-      <div className="score-bg-bg-secondary border border-border rounded-lg shadow-sm" key={tf}>
+      <div className="score-card" key={tf}>
         <h3>{label} Timeframe</h3>
         <div className="score-display">
           <div className="score-value">{scoreData.score?.toFixed(1) || scoreData.score}</div>
@@ -172,7 +172,7 @@ const StockDetail = () => {
             {renderScoreCard('W', 'Weekly')}
             {renderScoreCard('M', 'Monthly')}
 
-            <section className="score-bg-bg-secondary border border-border rounded-lg shadow-sm">
+            <section className="score-card">
               <h3><Activity size={16} /> Technical Insights</h3>
               <div className="fundamentals-grid">
                 <div className="fundamental-item">
@@ -210,7 +210,7 @@ const StockDetail = () => {
               </div>
             </section>
 
-            <div className="score-bg-bg-secondary border border-border rounded-lg shadow-sm">
+            <div className="score-card">
               <h3><Info size={16} /> Fundamental Data</h3>
               <div className="fundamentals-grid">
                 <div className="fundamental-item">
@@ -233,7 +233,7 @@ const StockDetail = () => {
             </div>
 
             {dailyScore && (
-              <div className="score-bg-bg-secondary border border-border rounded-lg shadow-sm">
+              <div className="score-card">
                 <h3>Score Breakdown</h3>
                 <ScoreBreakdown breakdown={breakdown} totalScore={dailyScore.score} />
               </div>

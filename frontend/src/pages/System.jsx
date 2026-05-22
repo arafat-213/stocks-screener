@@ -51,8 +51,8 @@ const System = () => {
 
       <div className="system-grid">
         {/* Pipeline Control Card */}
-        <section className="bg-bg-secondary border border-border rounded-lg shadow-sm system-bg-bg-secondary border border-border rounded-lg shadow-sm">
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header-row">
+        <section className="bg-bg-secondary border border-border rounded-lg shadow-sm system-card">
+          <div className="card-header-row">
             <Activity className="text-primary" />
             <h2>Pipeline Engine</h2>
           </div>
@@ -112,8 +112,8 @@ const System = () => {
         </section>
 
         {/* Preferences Card */}
-        <section className="bg-bg-secondary border border-border rounded-lg shadow-sm system-bg-bg-secondary border border-border rounded-lg shadow-sm">
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header-row">
+        <section className="bg-bg-secondary border border-border rounded-lg shadow-sm system-card">
+          <div className="card-header-row">
             <Monitor className="text-primary" />
             <h2>Preferences</h2>
           </div>
@@ -132,7 +132,7 @@ const System = () => {
           </div>
 
           <div className="data-sources">
-            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header-row">
+            <div className="card-header-row">
               <Database className="text-primary" />
               <h2>Data Sources</h2>
             </div>

@@ -306,8 +306,8 @@ const Intelligence = () => {
                 <p>We couldn't find any session data for {selectedDate}.</p>
               </div>
             ) : (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
-                <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
+                <div className="card-header">
                   <div className="report-header-flex">
                     <TrendingUp size={20} className="text-bullish" />
                     <h3 className="m-0">Session Report: {selectedDate}</h3>

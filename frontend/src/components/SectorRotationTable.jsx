@@ -59,8 +59,8 @@ export const SectorRotationTable = ({ data, loading }) => {
   ], []);
 
   return (
-    <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
-      <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
+    <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
+      <div className="card-header">
         <div className="report-header-flex">
           <BarChart3 size={20} className="text-primary" />
           <h3 className="m-0">Sector Rotation Analysis</h3>

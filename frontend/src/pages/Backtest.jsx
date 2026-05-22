@@ -89,8 +89,8 @@ const BacktestResults = memo(
 
     if (activeRun.status === 'failed') {
       return (
-        <div className="error-bg-bg-secondary border border-border rounded-lg shadow-sm">
-          <h3 className="error-bg-bg-secondary border border-border rounded-lg shadow-sm-title">
+        <div className="error-card">
+          <h3 className="error-card-title">
             <AlertTriangle size={20} /> Backtest Failed
           </h3>
           <p>
@@ -182,7 +182,7 @@ const BacktestResults = memo(
             ].map((m, idx) => (
               <div
                 key={m.label}
-                className="metric-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
+                className="metric-card animate-fade-in"
                 style={{ '--delay': `${idx * 0.05}s` }}
               >
                 <span className="metric-label">{m.label}</span>
@@ -195,7 +195,7 @@ const BacktestResults = memo(
 
           {metrics.exit_breakdown && (
             <div
-              className="exit-breakdown-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
+              className="exit-breakdown-card animate-fade-in"
               style={{ '--delay': '0.55s' }}
             >
               <h3>
@@ -260,7 +260,7 @@ const BacktestResults = memo(
 
           {/* Equity Chart */}
           <div
-            className="chart-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
+            className="chart-card animate-fade-in"
             style={{ '--delay': '0.5s' }}
           >
             <h3>
@@ -326,7 +326,7 @@ const BacktestResults = memo(
 
           {/* Trades Table */}
           <div
-            className="trades-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
+            className="trades-card animate-fade-in"
             style={{ '--delay': '0.6s' }}
           >
             <div className="trades-table-header">
@@ -334,7 +334,7 @@ const BacktestResults = memo(
                 <Layers size={18} /> Detailed Trades
               </h3>
               <div className="pagination-controls">
-                <span className="text-muted text-sm">
+                <span className="text-text-muted text-sm">
                   Showing {(tradesPage - 1) * pageSize + 1} -{' '}
                   {Math.min(tradesPage * pageSize, totalTradesCount)} of{' '}
                   {totalTradesCount}
@@ -595,7 +595,7 @@ const Backtest = () => {
       <div className="backtest-grid">
         {/* Sidebar Configuration */}
         <aside className="sidebar-panel">
-          <section className="recent-runs-bg-bg-secondary border border-border rounded-lg shadow-sm">
+          <section className="recent-runs-card">
             <h2 className="flex items-center gap-2">
               <History size={18} /> Recent Runs
             </h2>
@@ -629,12 +629,12 @@ const Backtest = () => {
                 </div>
               ))}
               {recentRuns?.length === 0 && (
-                <p className="text-center text-muted py-4">No recent runs</p>
+                <p className="text-center text-text-muted py-4">No recent runs</p>
               )}
             </div>
           </section>
 
-          <section className="config-bg-bg-secondary border border-border rounded-lg shadow-sm">
+          <section className="config-card">
             <div className="config-header">
               <h2 className="flex items-center gap-2">
                 <Settings size={18} /> Configuration

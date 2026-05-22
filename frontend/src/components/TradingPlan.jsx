@@ -5,7 +5,7 @@ const TradingPlan = ({ setup }) => {
   if (!setup) return null;
 
   return (
-    <div className="trading-plan-bg-bg-secondary border border-border rounded-lg shadow-sm">
+    <div className="trading-plan-card">
       <div className="plan-header">
         <Zap size={18} className="text-primary" />
         <h3>Trading Plan: {setup.setup_type.replace(/_/g, ' ')}</h3>

@@ -3,8 +3,8 @@ import './StockCard.css';
 
 const StockCardSkeleton = () => {
   return (
-    <div className="stock-bg-bg-secondary border border-border rounded-lg shadow-sm skeleton">
-      <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-top">
+    <div className="stock-card skeleton">
+      <div className="card-top">
         <div className="symbol-section">
           <div className="skeleton-line title" style={{ width: '80px' }}></div>
           <div className="skeleton-line text" style={{ width: '120px' }}></div>

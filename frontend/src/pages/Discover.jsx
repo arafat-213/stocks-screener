@@ -310,7 +310,7 @@ const Discover = () => {
           <div className="stock-grid mb-32">
             {loadingScreens ? (
               [...Array(3)].map((_, i) => (
-                <div key={i} className="bg-bg-secondary border border-border rounded-lg shadow-sm skeleton-bg-bg-secondary border border-border rounded-lg shadow-sm skeleton-h-140" />
+                <div key={i} className="bg-bg-secondary border border-border rounded-lg shadow-sm skeleton-card skeleton-h-140" />
               ))
             ) : (
               screens.map(screen => (
@@ -325,8 +325,8 @@ const Discover = () => {
           </div>
 
           {selectedSlug && (
-            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
+            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
+              <div className="card-header">
                 <h3>
                   {screens.find(s => s.slug === selectedSlug)?.label}
                   <span className="count-badge">{strategyResults.length} hits</span>
@@ -396,8 +396,8 @@ const Discover = () => {
             </div>
           </div>
 
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
-            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
+          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
+            <div className="card-header">
               <h3>Results <span className="count-badge">{filteredStocks.length} stocks</span></h3>
               <ExportButton 
                 data={filteredStocks}

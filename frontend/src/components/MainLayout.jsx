@@ -47,7 +47,7 @@ const MainLayout = ({ children }) => {
       </header>
 
       {/* Desktop Sidebar */}
-      <aside className={`sidebar card ${isSidebarOpen ? 'open' : ''}`}>
+      <aside className={`sidebar bg-bg-secondary border border-border rounded-lg shadow-sm ${isSidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-header">
           <div className="brand">
             <Activity size={28} className="text-bullish" />
