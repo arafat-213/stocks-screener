@@ -6,13 +6,15 @@ import {
 import { 
   AlertCircle,
   Info,
+  ShieldCheck,
+  Clock,
 } from 'lucide-react';
 import { 
   getPaperPortfolio, 
   getPaperPending, 
   getPaperPositions, 
   getPaperTrades,
-  getStatus
+  fetchPipelineStatus
 } from '../api/client';
 
 // Mock backtest constants
@@ -34,11 +36,11 @@ const BACKTEST_BENCHMARKS = {
 
 const PaperTrading = () => {
   const [activeTab, setActiveTab] = useState('overview');
-  const [status, setStatus] = useState(null);
+  const [pipeline, setPipeline] = useState(null);
   const [portfolio, setPortfolio] = useState(null);
   
   useEffect(() => {
-    getStatus().then(res => setStatus(res.data));
+    fetchPipelineStatus().then(res => setPipeline(res.data));
     getPaperPortfolio().then(res => setPortfolio(res.data));
   }, []);
 
@@ -59,14 +61,14 @@ const PaperTrading = () => {
         </div>
         
         <div className="flex items-center">
-          {status && (
+          {pipeline && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
-              status.pipeline.is_stale 
+              pipeline.is_stale 
                 ? 'bg-slate-100 dark:bg-slate-800 text-text-muted border-border' 
                 : 'bg-bullish/10 text-bullish border-green-500/20'
             }`}>
-              {!status.pipeline.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
-              <span>{status.pipeline.is_stale ? 'Stale — pipeline not run today' : `Updated ${status.pipeline.data_age_hours}h ago`}</span>
+              {!pipeline.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
+              <span>{pipeline.is_stale ? 'Stale — pipeline not run today' : `Updated ${pipeline.data_age_hours}h ago`}</span>
             </div>
           )}
         </div>
@@ -670,7 +672,7 @@ const AnalyticsView = () => {
         </div>
         <div className="mt-6 p-4 bg-bg-elevated rounded-2xl border border-border">
           <p className="text-sm font-bold text-text">
-            Paper trading is tracking the backtest equivalent within acceptable variance over {portfolio.total_trades} trades.
+            Paper trading is tracking the backtest equivalent within acceptable variance over {portfolio?.total_trades || 0} trades.
           </p>
         </div>
       </section>
@@ -787,7 +789,7 @@ const AnalyticsView = () => {
 };
 
 const ReadinessBanner = ({ portfolio }) => {
-  if (!portfolio) return null;
+  if (!portfolio || portfolio.status === 'no_portfolio') return null;
   
   const dots = [
     portfolio.total_trades >= 30,
