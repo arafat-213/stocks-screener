@@ -235,3 +235,82 @@ class SectorSnapshot(Base):
     stock_count = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint('date', 'sector'),)
 
+class PaperPortfolio(Base):
+    __tablename__ = "paper_portfolio"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    name = Column(String, nullable=False, default="default")
+    starting_capital = Column(Float, nullable=False, default=1000000.0)
+    is_active = Column(Boolean, default=True)
+
+class PaperPosition(Base):
+    """
+    A virtual position tracking state from signal (pending) to entry (open) to exit (closed).
+    States: 'pending' | 'open' | 'closed' | 'expired'
+    """
+    __tablename__ = "paper_positions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey('paper_portfolio.id'), nullable=False)
+    symbol = Column(String, nullable=False)
+    sector = Column(String, nullable=True)
+    
+    # Discovery state
+    signal_date = Column(Date, nullable=False)
+    signal_score = Column(Float, nullable=True)
+    ema_signal = Column(String, nullable=True)
+    atr_at_signal = Column(Float, nullable=True)
+    ema20_at_signal = Column(Float, nullable=True)
+    
+    # Pullback tracking (for 'pending' state)
+    status = Column(String, nullable=False, default='pending')
+    wait_days_elapsed = Column(Integer, default=0)
+    pending_highest_closeness_pct = Column(Float, default=999.0) # How close we got to EMA20
+    is_invalidated = Column(Boolean, default=False)
+    
+    # Active state (for 'open' state)
+    entry_date = Column(Date, nullable=True)
+    entry_price = Column(Float, nullable=True)
+    entry_type = Column(String, nullable=True) # 'pullback_a' | 'momentum_b' | 'immediate'
+    position_size = Column(Float, nullable=True) # rupee value
+    shares = Column(Float, nullable=True)
+    stop_loss_price = Column(Float, nullable=True)
+    target_price = Column(Float, nullable=True)
+    highest_price = Column(Float, nullable=True) # updated daily for trailing stop
+    atr_trail_active = Column(Boolean, default=False)
+    
+    opened_at = Column(DateTime, default=datetime.datetime.utcnow)
+    closed_at = Column(DateTime, nullable=True)
+    exit_reason = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index('ix_pp_portfolio_status', 'portfolio_id', 'status'),
+        Index('ix_pp_symbol', 'symbol'),
+    )
+
+class PaperTrade(Base):
+    """A completed paper trade record."""
+    __tablename__ = "paper_trades"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey('paper_portfolio.id'), nullable=False)
+    symbol = Column(String, nullable=False)
+    sector = Column(String, nullable=True)
+    signal_date = Column(Date, nullable=False)
+    entry_date = Column(Date, nullable=False)
+    exit_date = Column(Date, nullable=False)
+    entry_price = Column(Float, nullable=False)
+    exit_price = Column(Float, nullable=False)
+    shares = Column(Float, nullable=False)
+    position_size = Column(Float, nullable=False)
+    return_pct = Column(Float, nullable=False)
+    pnl = Column(Float, nullable=False) # rupees
+    exit_reason = Column(String, nullable=False)
+    signal_score = Column(Float, nullable=True)
+    ema_signal = Column(String, nullable=True)
+    holding_days = Column(Integer, nullable=False)
+    closed_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_pt_portfolio_id', 'portfolio_id'),
+    )
+
+
