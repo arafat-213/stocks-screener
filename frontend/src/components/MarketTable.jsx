@@ -1,23 +1,21 @@
 import { Link } from 'react-router-dom';
-import './MarketTable.css';
 
 const MarketTable = ({ stocks }) => {
 
   return (
-    <div className="market-table-container">
-      <div className="market-table">
-        <div className="market-table-header">
-          <div className="header-cell">Symbol</div>
-          <div className="header-cell cell-numeric">Price</div>
-          <div className="header-cell cell-numeric">Change %</div>
-          <div className="header-cell cell-numeric">Score</div>
-          <div className="header-cell cell-numeric">RS</div>
-          <div className="header-cell cell-numeric">ADX</div>
-          <div className="header-cell cell-numeric">ROE %</div>
-          <div className="header-cell cell-numeric">P/E</div>
-          <div className="header-cell">Sector</div>
+    <div className="w-full overflow-x-auto bg-bg-secondary border border-border rounded-md mt-4">
+      <div className="grid min-w-[800px] grid-cols-[140px_100px_80px_70px_70px_100px_70px_1fr]">
+        <div className="contents">
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-[11] left-0">Symbol</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">Price</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">Change %</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">Score</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">RS</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">ADX</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">ROE %</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10">Sector</div>
         </div>
-        <div className="market-table-body">
+        <div className="contents">
           {stocks.map((stock) => {
             const daily = stock.timeframes?.D || {};
             const isPositive = stock.price_change_pct >= 0;
@@ -26,33 +24,30 @@ const MarketTable = ({ stocks }) => {
               <Link 
                 key={stock.symbol} 
                 to={`/stocks/${stock.symbol}`} 
-                className="table-row"
+                className="contents group no-underline text-inherit"
               >
-                <div className="table-cell cell-symbol">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-bold text-text sticky left-0 z-[2] bg-inherit group-hover:bg-bg-elevated cursor-pointer">
                   {stock.symbol.replace('.NS', '')}
                 </div>
-                <div className="table-cell cell-numeric">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-mono justify-end text-right group-hover:bg-bg-elevated cursor-pointer">
                   ₹{stock.close_price?.toLocaleString('en-IN', { minimumFractionDigits: 1 })}
                 </div>
-                <div className={`table-cell cell-numeric ${isPositive ? 'text-positive' : 'text-negative'}`}>
+                <div className={`p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-mono justify-end text-right group-hover:bg-bg-elevated cursor-pointer ${isPositive ? 'text-bullish' : 'text-bearish'}`}>
                   {isPositive ? '+' : ''}{stock.price_change_pct?.toFixed(2)}%
                 </div>
-                <div className="table-cell cell-numeric bold">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-mono justify-end text-right font-bold group-hover:bg-bg-elevated cursor-pointer">
                   {daily.score || '-'}
                 </div>
-                <div className="table-cell cell-numeric text-primary bold">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-mono justify-end text-right text-primary font-bold group-hover:bg-bg-elevated cursor-pointer">
                   {daily.rs_score?.toFixed(0) || '-'}
                 </div>
-                <div className="table-cell cell-numeric">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-mono justify-end text-right group-hover:bg-bg-elevated cursor-pointer">
                   {daily.adx?.toFixed(1) || '-'}
                 </div>
-                <div className="table-cell cell-numeric">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden font-mono justify-end text-right group-hover:bg-bg-elevated cursor-pointer">
                   {stock.fundamentals?.roe?.toFixed(1) || '-'}%
                 </div>
-                <div className="table-cell cell-numeric">
-                  {stock.fundamentals?.pe?.toFixed(1) || '-'}
-                </div>
-                <div className="table-cell cell-sector">
+                <div className="p-2.5 px-4 text-sm border-b border-border flex items-center overflow-hidden text-text-muted whitespace-nowrap truncate group-hover:bg-bg-elevated cursor-pointer">
                   {stock.sector}
                 </div>
               </Link>
@@ -66,29 +61,26 @@ const MarketTable = ({ stocks }) => {
 
 export const MarketTableSkeleton = ({ rows = 10 }) => {
   return (
-    <div className="market-table-container">
-      <div className="market-table">
-        <div className="market-table-header">
-          <div className="header-cell">Symbol</div>
-          <div className="header-cell cell-numeric">Price</div>
-          <div className="header-cell cell-numeric">Change %</div>
-          <div className="header-cell cell-numeric">Score</div>
-          <div className="header-cell cell-numeric">RSI</div>
-          <div className="header-cell">EMA</div>
-          <div className="header-cell cell-numeric">P/E</div>
-          <div className="header-cell">Sector</div>
+    <div className="w-full overflow-x-auto bg-bg-secondary border border-border rounded-md mt-4">
+      <div className="grid min-w-[800px] grid-cols-[140px_100px_80px_70px_70px_100px_70px_1fr]">
+        <div className="contents">
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-[11] left-0">Symbol</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">Price</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">Change %</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">Score</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">RSI</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10">EMA</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10 text-right">P/E</div>
+          <div className="bg-bg-elevated p-3 px-4 text-[12px] font-semibold uppercase tracking-wider text-text-muted border-b-2 border-border sticky top-0 z-10">Sector</div>
         </div>
-        <div className="market-table-body">
+        <div className="contents">
           {Array.from({ length: rows }).map((_, i) => (
-            <div key={i} className="table-row">
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
-              <div className="table-cell"><div className="skeleton-cell"></div></div>
+            <div key={i} className="contents">
+              {Array.from({ length: 8 }).map((_, j) => (
+                <div key={j} className={`p-2.5 px-4 border-b border-border flex items-center ${j === 0 ? 'sticky left-0 z-[2] bg-inherit' : ''}`}>
+                  <div className="h-5 bg-gradient-to-r from-bg-elevated via-border to-bg-elevated bg-[length:200%_100%] animate-[skeleton-loading_1.5s_infinite] rounded w-full"></div>
+                </div>
+              ))}
             </div>
           ))}
         </div>
