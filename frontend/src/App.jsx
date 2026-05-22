@@ -10,8 +10,6 @@ import Intelligence from './pages/Intelligence';
 import System from './pages/System';
 import Backtest from './pages/Backtest';
 
-import './App.css';
-
 function App() {
   return (
     <ThemeProvider>
