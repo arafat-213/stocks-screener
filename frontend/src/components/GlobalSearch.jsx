@@ -61,8 +61,15 @@ export const GlobalSearch = () => {
       setQuery('');
       setResults([]);
       setSelectedIndex(-1);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
 
   const handleQueryChange = (e) => {
     const val = e.target.value;
