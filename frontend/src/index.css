@@ -1,5 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   /* Light Theme - Clean Glassmorphic */
   --color-bg: #F8FAFC;
@@ -47,10 +51,6 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-}
-
 body {
   margin: 0;
   background-color: var(--color-bg);
@@ -60,43 +60,6 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   overflow-x: hidden;
-}
-
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.025em;
-}
-
-button, input, select, textarea {
-  font-family: inherit;
-  color: inherit;
-}
-
-.mono {
-  font-family: var(--font-mono);
-}
-
-/* Base interactive elements */
-button {
-  cursor: pointer;
-  border: none;
-  background: none;
-  padding: 0;
-  transition: all var(--transition-standard);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-a {
-  text-decoration: none;
-  color: inherit;
 }
 
 /* Scrollbar styling */
@@ -124,98 +87,14 @@ a {
   min-height: 100vh;
 }
 
-/* Utilities */
+/* Base custom components that use variables */
 .card {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  @apply bg-bg-secondary border border-border rounded-lg shadow-sm;
 }
 
 .glass {
   background: rgba(var(--color-bg-secondary-rgb), 0.7);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-}
-
-.text-bullish { color: var(--color-bullish); }
-.text-bearish { color: var(--color-bearish); }
-.text-muted { color: var(--color-text-muted); }
-
-/* Utility Classes */
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.gap-1 { gap: 4px; }
-.gap-1\.5 { gap: 6px; }
-.gap-2 { gap: 8px; }
-.gap-3 { gap: 12px; }
-.gap-4 { gap: 16px; }
-.shrink-0 { flex-shrink: 0; }
-.text-2xl { font-size: 1.5rem; }
-.font-bold { font-weight: 700; }
-.w-full { width: 100%; }
-.h-full { height: 100%; }
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Global Input/Select Enhancements */
-input[type="text"], 
-input[type="number"], 
-input[type="email"],
-input[type="password"],
-input[type="date"],
-select, 
-textarea {
-  background-color: var(--color-bg-secondary);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  font-size: 0.9rem;
-  transition: all var(--transition-standard);
-  width: 100%;
-}
-
-input:focus, 
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--color-text-muted);
-  opacity: 0.7;
-}
-
-/* Custom Number Input Hide Spinners */
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-input[type=number] {
-  -moz-appearance: textfield;
-}
-
-/* Technical Range Input (Base) */
-input[type="range"] {
-  accent-color: var(--color-primary);
-}
-
-[data-theme="dark"] select {
-  color-scheme: dark;
+  @apply border border-border;
 }
