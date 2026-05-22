@@ -366,7 +366,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
 
         total_score = bar_data['score'] + fund_score
 
-        if bar_data.get('above_200ema') is False:
+        if bar_data.get('above_200ema') is not True:
             total_score = 0.0
 
         if bar_data.get('rsi', 0) > 80:
@@ -1073,13 +1073,19 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
                 "benchmark_equity": float(bench_equity)
             })
     
-    # Updated Sharpe Ratio using daily returns from equity curve
+    # Updated Sharpe Ratio using trade returns instead of flat equity curve returns
     sharpe_ratio = 0.0
-    if len(equity_curve) > 1:
-        equity_series = pd.Series([pt['equity'] for pt in equity_curve])
-        daily_returns = equity_series.pct_change().dropna()
-        if not daily_returns.empty and daily_returns.std() > 0:
-            sharpe_ratio = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
+    if len(returns) > 1:
+        r_series = pd.Series(returns)
+        if r_series.std() > 0:
+            # Annualise assuming average 20 trades/year per symbol universe
+            # Use trades per year ratio relative to a 252-day year
+            date_range_days = max(
+                (max(t.exit_date for t in trades) - min(t.entry_date for t in trades)).days,
+                1
+            )
+            trades_per_year = len(returns) / (date_range_days / 252)
+            sharpe_ratio = (r_series.mean() / r_series.std()) * (trades_per_year ** 0.5)
 
     # Max Drawdown from equity curve
     max_drawdown_pct = 0.0
