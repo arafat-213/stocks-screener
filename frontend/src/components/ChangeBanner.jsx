@@ -30,8 +30,11 @@ const ChangeBanner = ({ changes = [], asOf, prevDate, loading }) => {
   const turnedBearish = changes.filter(c => ['turned_bearish', 'confluence_dropped'].includes(c.change_type));
 
   return (
-    <div className="mb-6 border-l-3 border-primary p-0 overflow-hidden bg-bg-secondary border border-border rounded-lg shadow-sm">
-      <button className="w-full flex justify-between items-center px-4 py-3 bg-none border-none cursor-pointer font-semibold text-text transition-colors duration-200 hover:bg-bg-elevated" onClick={toggle}>
+    <div className="mb-6 border-l-4 border-primary overflow-hidden bg-bg-secondary border border-border rounded-lg shadow-sm">
+      <button 
+        className="w-full flex justify-between items-center px-4 py-3 bg-transparent border-0 cursor-pointer font-semibold text-text transition-colors duration-200 hover:bg-bg-elevated focus:outline-none" 
+        onClick={toggle}
+      >
         <div className="flex items-center gap-2.5">
           <Zap size={16} className="text-primary" />
           <span>Signal Changes Since {prevDate}</span>
