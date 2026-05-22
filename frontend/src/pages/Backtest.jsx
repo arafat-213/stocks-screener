@@ -749,6 +749,12 @@ const Backtest = () => {
                     <h3 className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1">Advanced Exits</h3>
                     <div className="space-y-4">
                       <Toggle label="ATR Trailing Stop" checked={config.use_atr_trailing_stop} onChange={(v) => handleConfigChange('use_atr_trailing_stop', v)} />
+                      {config.use_atr_trailing_stop && (
+                        <>
+                          <Slider label="ATR Trail Multiplier" min={0.5} max={5.0} step={0.1} value={config.atr_trailing_multiplier} onChange={(v) => handleConfigChange('atr_trailing_multiplier', v)} />
+                          <Slider label="ATR Trail Activation (×ATR profit)" min={0.5} max={5.0} step={0.1} value={config.atr_trailing_activation} onChange={(v) => handleConfigChange('atr_trailing_activation', v)} />
+                        </>
+                      )}
                       <Toggle label="Partial Take-Profit" checked={config.use_partial_exits} onChange={(v) => handleConfigChange('use_partial_exits', v)} />
                       <Toggle label="Signal Invalidation" checked={config.use_signal_invalidation_exit} onChange={(v) => handleConfigChange('use_signal_invalidation_exit', v)} />
                     </div>
