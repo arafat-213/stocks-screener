@@ -33,6 +33,17 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
             latest_close = float(df.iloc[-1]['Close'])
             unrealised_pnl += (latest_close - pos.entry_price) * pos.shares
             
+    avg_win = sum(t.return_pct for t in wins) / len(wins) if wins else 0.0
+    avg_loss = sum(t.return_pct for t in losses) / len(losses) if losses else 0.0
+    profit_factor = (
+        (len(wins) * avg_win) / (len(losses) * abs(avg_loss))
+        if losses and avg_loss != 0 else 0.0
+    )
+    avg_holding = (
+        round(sum((t.exit_date - t.entry_date).days for t in closed_trades) / total_trades)
+        if total_trades else 0
+    )
+
     return {
         "portfolio_id": portfolio.id,
         "started_at": portfolio.created_at.isoformat(),
@@ -45,6 +56,8 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
         "pending_orders": len(pending_orders),
         "win_rate": round(len(wins) / total_trades * 100, 2) if total_trades else 0,
         "avg_return_pct": round(sum(t.return_pct for t in closed_trades) / total_trades, 2) if total_trades else 0,
+        "profit_factor": round(profit_factor, 2),
+        "avg_holding_days": avg_holding,
     }
 
 @router.get("/pending")
