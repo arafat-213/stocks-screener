@@ -78,7 +78,7 @@ export const MarketTableSkeleton = ({ rows = 10 }) => {
             <div key={i} className="contents">
               {Array.from({ length: 8 }).map((_, j) => (
                 <div key={j} className={`p-2.5 px-4 border-b border-border flex items-center ${j === 0 ? 'sticky left-0 z-[2] bg-inherit' : ''}`}>
-                  <div className="h-5 bg-gradient-to-r from-bg-elevated via-border to-bg-elevated bg-[length:200%_100%] animate-[skeleton-loading_1.5s_infinite] rounded w-full"></div>
+                  <div className="h-5 bg-gradient-to-r from-bg-elevated via-border to-bg-elevated bg-[length:200%_100%] animate-skeleton-loading rounded w-full"></div>
                 </div>
               ))}
             </div>
