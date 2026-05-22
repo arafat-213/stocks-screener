@@ -15,7 +15,6 @@ import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { DataTable } from '../components/ui/DataTable';
 import { SectorRotationTable } from '../components/SectorRotationTable';
-import './Dashboard.css';
 
 const Intelligence = () => {
   const [activeView, setActiveView] = useState('rotation'); // 'rotation' | 'reports'
@@ -107,7 +106,7 @@ const Intelligence = () => {
       label: 'Symbol', 
       sortable: true,
       render: (val) => (
-        <Link to={`/stocks/${val}`} className="table-link mono bold">
+        <Link to={`/stocks/${val}`} className="text-bullish font-bold no-underline hover:underline font-mono">
           {val.replace('.NS', '')}
         </Link>
       )
@@ -118,7 +117,7 @@ const Intelligence = () => {
       sortable: true,
       accessor: (row) => row.confluence_count,
       render: (val, row) => (
-        <span className={`status-badge ${row.confluence_count >= 2 ? 'bullish' : 'neutral'}`}>
+        <span className={`py-1 px-2 rounded-md text-[12px] font-semibold inline-flex items-center ${row.confluence_count >= 2 ? 'bg-bullish/10 text-bullish' : 'bg-bg-elevated text-text-muted'}`}>
           {row.confluence}
         </span>
       )
@@ -127,19 +126,19 @@ const Intelligence = () => {
       key: 'daily_score', 
       label: 'Daily Score', 
       sortable: true,
-      render: (val) => <span className="mono">{val?.toFixed(1) || 'N/A'}</span>
+      render: (val) => <span className="font-mono">{val?.toFixed(1) || 'N/A'}</span>
     },
     { 
       key: 'rsi', 
       label: 'RSI', 
       sortable: true,
-      render: (val) => <span className="mono">{val?.toFixed(1) || 'N/A'}</span>
+      render: (val) => <span className="font-mono">{val?.toFixed(1) || 'N/A'}</span>
     }
   ], []);
 
   if (loadingDates && !dates.length) {
     return (
-      <div className="loading-state h-80vh">
+      <div className="flex flex-col items-center justify-center p-16 gap-4 text-text-muted h-[80vh]">
         <Loader2 className="animate-spin" size={40} />
         <p>Loading market intelligence...</p>
       </div>
@@ -150,25 +149,25 @@ const Intelligence = () => {
   const hasMoreMonths = groupedMonths.length > 3;
 
   return (
-    <div className="intelligence-page">
-      <header className="page-header">
-        <div className="header-content">
-          <h1>Market Intelligence</h1>
+    <div className="w-full">
+      <header className="mb-8">
+        <div>
+          <h1 className="text-2xl font-bold">Market Intelligence</h1>
           <p className="text-text-muted">
             Macro sector rotation and historical session reports.
           </p>
         </div>
 
-        <div className="tabs-container bg-bg-secondary border border-border rounded-lg shadow-sm">
+        <div className="flex p-1 gap-1 mt-6 max-w-fit bg-bg-secondary border border-border rounded-lg shadow-sm">
           <button
-            className={`tab-btn ${activeView === 'rotation' ? 'active' : ''}`}
+            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeView === 'rotation' ? 'bg-bg-elevated text-primary' : ''}`}
             onClick={() => setActiveView('rotation')}
           >
             <BarChart3 size={18} />
             <span>Sector Rotation</span>
           </button>
           <button
-            className={`tab-btn ${activeView === 'reports' ? 'active' : ''}`}
+            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeView === 'reports' ? 'bg-bg-elevated text-primary' : ''}`}
             onClick={() => setActiveView('reports')}
           >
             <History size={18} />
@@ -190,37 +189,26 @@ const Intelligence = () => {
       )}
 
       {activeView === 'rotation' ? (
-        <div className="rotation-view fade-in">
+        <div className="animate-fade-in">
           <SectorRotationTable data={rotationData} loading={loadingRotation} />
         </div>
       ) : (
-        <div className="intelligence-grid fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 animate-fade-in">
           {/* Date Selection Sidebar/List */}
-          <aside className="bg-bg-secondary border border-border rounded-lg shadow-sm h-fit p-24">
-            <div className="flex-center-gap-8 mb-12">
+          <aside className="bg-bg-secondary border border-border rounded-lg shadow-sm h-fit p-6">
+            <div className="flex items-center gap-2 mb-3">
               <Calendar size={18} className="text-primary" />
-              <h2 className="fs-14 bold">Past Sessions</h2>
+              <h2 className="text-sm font-bold">Past Sessions</h2>
             </div>
 
-            <div className="month-groups flex-col-gap-12">
+            <div className="flex flex-col gap-3">
               {displayedMonths.map((month) => (
-                <div key={month.key} className="month-section">
+                <div key={month.key} className="flex flex-col">
                   <button
                     onClick={() => toggleMonth(month.key)}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      width: '100%',
-                      padding: '8px 0',
-                      background: 'none',
-                      border: 'none',
-                      borderBottom: '1px solid var(--color-border)',
-                      cursor: 'pointer',
-                      marginBottom: '8px',
-                    }}
+                    className="flex items-center justify-between w-full py-2 bg-transparent border-0 border-b border-border cursor-pointer mb-2"
                   >
-                    <span className="month-section-label">{month.label}</span>
+                    <span className="text-[0.85rem] font-bold text-text-muted">{month.label}</span>
                     {expandedMonths[month.key] ? (
                       <ChevronDown size={14} />
                     ) : (
@@ -229,40 +217,17 @@ const Intelligence = () => {
                   </button>
 
                   {expandedMonths[month.key] && (
-                    <div className="date-list flex-col-gap-4">
+                    <div className="flex flex-col gap-1">
                       {month.dates.map((date) => (
                         <button
                           key={date}
-                          className={`date-btn ${selectedDate === date ? 'active' : ''}`}
+                          className={`w-full flex justify-between p-2 px-3 rounded-sm text-[0.85rem] font-medium transition-all cursor-pointer border ${selectedDate === date ? 'font-bold bg-bg-elevated text-primary border-primary' : 'bg-transparent text-text border-transparent hover:bg-bg-elevated'}`}
                           onClick={() => setSelectedDate(date)}
-                          style={{
-                            width: '100%',
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            padding: '8px 12px',
-                            borderRadius: 'var(--radius-sm)',
-                            fontSize: '0.85rem',
-                            fontWeight: selectedDate === date ? 700 : 500,
-                            background:
-                              selectedDate === date
-                                ? 'var(--color-bg-elevated)'
-                                : 'transparent',
-                            color:
-                              selectedDate === date
-                                ? 'var(--color-primary)'
-                                : 'var(--color-text)',
-                            border: '1px solid',
-                            borderColor:
-                              selectedDate === date
-                                ? 'var(--color-primary)'
-                                : 'transparent',
-                            cursor: 'pointer',
-                          }}
                         >
                           <span>{date}</span>
                           <ChevronRight
                             size={14}
-                            opacity={selectedDate === date ? 1 : 0.3}
+                            className={selectedDate === date ? 'opacity-100' : 'opacity-30'}
                           />
                         </button>
                       ))}
@@ -273,18 +238,8 @@ const Intelligence = () => {
 
               {hasMoreMonths && !showAllMonths && (
                 <button
-                  className="btn-link"
+                  className="mt-2 text-[0.8rem] text-primary bg-transparent border-0 cursor-pointer text-left py-1 hover:underline"
                   onClick={() => setShowAllMonths(true)}
-                  style={{
-                    marginTop: '8px',
-                    fontSize: '0.8rem',
-                    color: 'var(--color-primary)',
-                    background: 'none',
-                    border: 'none',
-                    cursor: 'pointer',
-                    textAlign: 'left',
-                    padding: '4px 0',
-                  }}
                 >
                   Show older months
                 </button>
@@ -293,26 +248,26 @@ const Intelligence = () => {
           </aside>
 
           {/* Report Content Area */}
-          <section className="report-content">
+          <section>
             {loadingReport ? (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm loading-state mt-32">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm flex flex-col items-center justify-center p-16 gap-4 text-text-muted mt-8">
                 <Loader2 className="animate-spin" size={32} />
                 <p>Compiling report for {selectedDate}...</p>
               </div>
             ) : reportData.length === 0 ? (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm no-results p-64">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm flex flex-col items-center justify-center py-16 text-center text-text-muted p-16">
                 <AlertCircle size={48} />
-                <h3>No data found</h3>
+                <h3 className="text-text my-4 text-lg font-bold">No data found</h3>
                 <p>We couldn't find any session data for {selectedDate}.</p>
               </div>
             ) : (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
-                <div className="card-header">
-                  <div className="report-header-flex">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm overflow-hidden">
+                <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+                  <div className="flex items-center gap-3">
                     <TrendingUp size={20} className="text-bullish" />
-                    <h3 className="m-0">Session Report: {selectedDate}</h3>
+                    <h3 className="m-0 text-[1.1rem]">Session Report: {selectedDate}</h3>
                   </div>
-                  <span className="count-badge">
+                  <span className="text-[0.75rem] font-medium py-0.5 px-2 bg-bg-elevated rounded-full text-text-muted ml-3">
                     {reportData.length} stocks tracked
                   </span>
                 </div>

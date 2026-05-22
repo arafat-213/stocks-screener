@@ -16,7 +16,6 @@ import { DataTable } from '../components/ui/DataTable';
 import Select from '../components/ui/Select';
 import Slider from '../components/ui/Slider';
 import { ExportButton } from '../components/ui/ExportButton';
-import './Dashboard.css';
 
 const SCREEN_COLUMNS = {
   'momentum-monsters':      ['symbol', 'name', 'rs_score', 'momentum_3m', 'adx', 'score'],
@@ -45,7 +44,7 @@ const COLUMN_META = {
     key: 'symbol', 
     sortable: true,
     render: (v) => (
-      <Link to={`/stocks/${v}`} className="symbol-link">
+      <Link to={`/stocks/${v}`} className="font-bold text-inherit no-underline hover:text-primary">
         {v}
       </Link>
     )
@@ -280,23 +279,23 @@ const Discover = () => {
   const defaultColumns = useMemo(() => getColumnsForSlug('_default'), []);
 
   return (
-    <div className="discover-page">
-      <header className="page-header">
-        <div className="header-content">
-          <h1>Discovery</h1>
+    <div className="w-full">
+      <header className="mb-8">
+        <div>
+          <h1 className="text-2xl font-bold">Discovery</h1>
           <p className="text-text-muted">Explore strategies or create your own market screens.</p>
         </div>
         
-        <div className="tabs-container bg-bg-secondary border border-border rounded-lg shadow-sm">
+        <div className="flex p-1 gap-1 mt-6 max-w-fit bg-bg-secondary border border-border rounded-lg shadow-sm">
           <button 
-            className={`tab-btn ${activeTab === 'strategies' ? 'active' : ''}`}
+            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeTab === 'strategies' ? 'bg-bg-elevated text-primary' : ''}`}
             onClick={() => setActiveTab('strategies')}
           >
             <Target size={18} />
             <span>Strategies</span>
           </button>
           <button 
-            className={`tab-btn ${activeTab === 'interactive' ? 'active' : ''}`}
+            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeTab === 'interactive' ? 'bg-bg-elevated text-primary' : ''}`}
             onClick={() => setActiveTab('interactive')}
           >
             <Search size={18} />
@@ -306,11 +305,11 @@ const Discover = () => {
       </header>
 
       {activeTab === 'strategies' ? (
-        <section className="strategies-tab">
-          <div className="stock-grid mb-32">
+        <section>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
             {loadingScreens ? (
               [...Array(3)].map((_, i) => (
-                <div key={i} className="bg-bg-secondary border border-border rounded-lg shadow-sm skeleton-card skeleton-h-140" />
+                <div key={i} className="bg-bg-secondary border border-border rounded-lg shadow-sm animate-pulse h-[140px]" />
               ))
             ) : (
               screens.map(screen => (
@@ -325,13 +324,13 @@ const Discover = () => {
           </div>
 
           {selectedSlug && (
-            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
-              <div className="card-header">
-                <h3>
+            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+                <h3 className="text-[1.1rem] flex items-center">
                   {screens.find(s => s.slug === selectedSlug)?.label}
-                  <span className="count-badge">{strategyResults.length} hits</span>
+                  <span className="text-[0.75rem] font-medium py-0.5 px-2 bg-bg-elevated rounded-full text-text-muted ml-3">{strategyResults.length} hits</span>
                 </h3>
-                <div className="header-actions" style={{ display: 'flex', gap: '8px' }}>
+                <div className="flex gap-2">
                   <ExportButton 
                     data={strategyResults}
                     columns={currentColumns}
@@ -340,7 +339,7 @@ const Discover = () => {
                   />
                   <button 
                     onClick={() => setLiveMode(!liveMode)}
-                    className={`live-toggle ${liveMode ? 'active' : ''}`}
+                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-md text-[0.8rem] font-semibold border border-border text-text-muted transition-colors ${liveMode ? 'text-bullish border-bullish bg-bullish/10' : ''}`}
                   >
                     <RefreshCw size={14} className={loadingStrategyResults ? "animate-spin" : ""} />
                     Live Mode
@@ -356,9 +355,9 @@ const Discover = () => {
           )}
         </section>
       ) : (
-        <section className="interactive-tab">
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm filter-panel mb-24 p-24">
-            <div className="filter-grid">
+        <section>
+          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm mb-6 p-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
               <Select 
                 label="Sector"
                 value={interactiveFilters.sector}
@@ -383,22 +382,22 @@ const Discover = () => {
                 min={0}
                 max={100}
               />
-              <div className="filter-item">
-                <label className="filter-label-styled">Max P/E</label>
+              <div className="flex flex-col">
+                <label className="block text-[0.75rem] font-bold uppercase text-text-muted mb-2 tracking-wider">Max P/E</label>
                 <input 
                   type="number" placeholder="e.g. 30"
                   value={interactiveFilters.maxPE}
                   onChange={(e) => setInteractiveFilters({...interactiveFilters, maxPE: e.target.value})}
-                  className="custom-number-input"
+                  className="w-full py-2.5 px-3.5 bg-bg-secondary border border-border rounded-md text-[0.9rem] text-text focus:outline-none focus:border-primary"
                   
                 />
               </div>
             </div>
           </div>
 
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-card">
-            <div className="card-header">
-              <h3>Results <span className="count-badge">{filteredStocks.length} stocks</span></h3>
+          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex justify-between items-center">
+              <h3 className="text-lg font-bold">Results <span className="text-[0.75rem] font-medium py-0.5 px-2 bg-bg-elevated rounded-full text-text-muted ml-3">{filteredStocks.length} stocks</span></h3>
               <ExportButton 
                 data={filteredStocks}
                 columns={defaultColumns}

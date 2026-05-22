@@ -1,5 +1,3 @@
-import './PipelineProgress.css';
-
 const PipelineProgress = ({ fetched, scored, total, tier1Count }) => {
   // Phase 1: Fetching (0% to 50% of bar)
   // Phase 2: Scoring (50% to 100% of bar)
@@ -15,14 +13,14 @@ const PipelineProgress = ({ fetched, scored, total, tier1Count }) => {
     : fetchPct;
 
   return (
-    <div className="pipeline-progress">
-      <div className="progress-bar-track">
+    <div className="w-full mt-2">
+      <div className="h-1 bg-bg-elevated rounded-sm overflow-hidden">
         <div 
-          className="progress-bar-fill"
+          className="h-full bg-bullish rounded-sm transition-[width] duration-500 ease-in-out"
           style={{ width: `${overallPct}%` }}
         />
       </div>
-      <div className="progress-labels">
+      <div className="flex justify-between text-[0.7rem] text-text-muted mt-1">
         <span>Fetch: {fetched}{total > 0 ? `/${total}` : ''}</span>
         <span>{overallPct.toFixed(0)}%</span>
         <span>Score: {scored}{tier1Count > 0 ? `/${tier1Count}` : ''}</span>
