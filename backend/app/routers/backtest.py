@@ -189,8 +189,6 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
 
         if include_curve and run.equity_curve_json:
             result["equity_curve"] = json.loads(run.equity_curve_json)
-        if include_curve and run.equity_curve_json:
-            result["equity_curve"] = json.loads(run.equity_curve_json)
     return result
 
 def _serialize_trade(trade: models.BacktestTrade):
