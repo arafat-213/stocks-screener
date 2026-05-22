@@ -1,3 +1,5 @@
+import { Activity } from 'lucide-react';
+
 const ScoreBreakdown = ({ breakdown, totalScore }) => {
   const technical = breakdown.filter(b => b.category === 'technical');
   const fundamental = breakdown.filter(b => b.category === 'fundamental');
