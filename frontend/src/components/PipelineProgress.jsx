@@ -1,5 +1,3 @@
-import './PipelineProgress.css';
-
 const PipelineProgress = ({ fetched, scored, total, tier1Count }) => {
   // Phase 1: Fetching (0% to 50% of bar)
   // Phase 2: Scoring (50% to 100% of bar)
@@ -15,17 +13,19 @@ const PipelineProgress = ({ fetched, scored, total, tier1Count }) => {
     : fetchPct;
 
   return (
-    <div className="pipeline-progress">
-      <div className="progress-bar-track">
+    <div className="w-full mt-4">
+      <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-border shadow-inner">
         <div 
-          className="progress-bar-fill"
+          className="h-full bg-blue-600 rounded-full transition-[width] duration-700 ease-in-out shadow-[0_0_8px_rgba(37,99,235,0.5)]"
           style={{ width: `${overallPct}%` }}
         />
       </div>
-      <div className="progress-labels">
-        <span>Fetch: {fetched}{total > 0 ? `/${total}` : ''}</span>
-        <span>{overallPct.toFixed(0)}%</span>
-        <span>Score: {scored}{tier1Count > 0 ? `/${tier1Count}` : ''}</span>
+      <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest text-slate-500 dark:text-slate-400 mt-2">
+        <div className="flex gap-3">
+            <span>FETCH: <span className="text-text">{fetched}{total > 0 ? `/${total}` : ''}</span></span>
+            <span>SCORE: <span className="text-blue-500">{scored}{tier1Count > 0 ? `/${tier1Count}` : ''}</span></span>
+        </div>
+        <span className="bg-blue-600 text-white px-2 py-0.5 rounded-lg shadow-sm">{overallPct.toFixed(0)}%</span>
       </div>
     </div>
   );

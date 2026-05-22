@@ -1,13 +1,11 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Zap, ChevronDown } from 'lucide-react';
-import './ChangeBanner.css';
 
 const ChangeChip = ({ item }) => (
-  <Link to={`/stocks/${item.symbol}`} className="change-chip">
-    <span className="chip-symbol">{item.symbol.replace('.NS', '')}</span>
-    <span className="chip-score">{item.curr_score?.toFixed(0)}</span>
-    <span className={`chip-change ${item.price_change_pct >= 0 ? 'positive' : 'negative'}`}>
+  <Link to={`/stocks/${item.symbol}`} className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-900 border-2 border-border no-underline text-text transition-all duration-200 hover:border-blue-500 hover:-translate-y-0.5 hover:shadow-md group">
+    <span className="font-black text-xs tracking-tighter group-hover:text-blue-500">{item.symbol.replace('.NS', '')}</span>
+    <span className={`font-black text-[10px] px-1.5 py-0.5 rounded shadow-sm ${item.price_change_pct >= 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
       {item.price_change_pct >= 0 ? '+' : ''}{item.price_change_pct?.toFixed(1)}%
     </span>
   </Link>
@@ -31,38 +29,43 @@ const ChangeBanner = ({ changes = [], asOf, prevDate, loading }) => {
   const turnedBearish = changes.filter(c => ['turned_bearish', 'confluence_dropped'].includes(c.change_type));
 
   return (
-    <div className="change-banner card">
-      <button className="change-banner-toggle" onClick={toggle}>
-        <div className="toggle-left">
-          <Zap size={16} className="zap-icon" />
-          <span>Signal Changes Since {prevDate}</span>
-          <span className="change-count-pill">{changes.length}</span>
+    <div className="mb-6 overflow-hidden bg-bg-secondary border-2 border-border rounded-2xl shadow-sm">
+      <button 
+        className="w-full flex justify-between items-center px-4 py-3 sm:px-6 sm:py-4 bg-transparent border-0 cursor-pointer font-black text-text transition-colors duration-200 hover:bg-slate-50 dark:hover:bg-slate-900 focus:outline-none" 
+        onClick={toggle}
+      >
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Zap size={18} className="text-amber-500 fill-amber-500 sm:size-5" />
+          <span className="uppercase tracking-[0.1em] text-xs sm:text-sm">Signal Changes Since {prevDate}</span>
+          <span className="bg-blue-600 text-white text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-black shadow-lg shadow-blue-500/20">{changes.length}</span>
         </div>
-        <ChevronDown size={14} className={`chevron ${isOpen ? 'rotated' : ''}`} />
+        <ChevronDown size={18} className={`transition-transform duration-300 text-slate-400 ${isOpen ? 'rotate-180' : ''}`} />
       </button>
       
       {isOpen && (
-        <div className="change-banner-body">
+        <div className="px-4 pb-4 sm:px-6 sm:pb-6 flex flex-col gap-5 sm:gap-6 border-t-2 border-border/50 pt-4 sm:pt-6 animate-fade-in">
           {newlyBullish.length > 0 && (
-            <div className="change-group">
-              <span className="change-group-label bullish">↑ Turned Bullish / Improved</span>
-              <div className="chip-container">
+            <div className="flex flex-col gap-2.5 sm:gap-3">
+              <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-green-600 dark:text-green-400 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-green-500 rounded-full animate-pulse"></span>
+                Turned Bullish
+              </span>
+              <div className="flex flex-wrap gap-2 sm:gap-2.5">
                 {newlyBullish.map(c => <ChangeChip key={c.symbol} item={c} />)}
               </div>
             </div>
           )}
           
           {turnedBearish.length > 0 && (
-            <div className="change-group">
-              <span className="change-group-label bearish">↓ Turned Bearish / Dropped</span>
-              <div className="chip-container">
+            <div className="flex flex-col gap-2.5 sm:gap-3">
+              <span className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-red-600 dark:text-red-400 flex items-center gap-2">
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-red-500 rounded-full animate-pulse"></span>
+                Turned Bearish
+              </span>
+              <div className="flex flex-wrap gap-2 sm:gap-2.5">
                 {turnedBearish.map(c => <ChangeChip key={c.symbol} item={c} />)}
               </div>
             </div>
-          )}
-
-          {changes.length === 0 && (
-            <div className="no-changes">No signal changes since last run.</div>
           )}
         </div>
       )}

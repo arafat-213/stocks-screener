@@ -18,7 +18,6 @@ import ChangeBanner from '../components/ChangeBanner';
 import WatchlistStar from '../components/WatchlistStar';
 import PipelineProgress from '../components/PipelineProgress';
 import SetupBadge from '../components/SetupBadge';
-import './Dashboard.css';
 
 const Dashboard = () => {
   // Data Fetching Hooks
@@ -73,7 +72,19 @@ const Dashboard = () => {
         setStocks(data.items);
         setOffset(50);
       } else {
-        setStocks(prev => [...prev, ...data.items]);
+        setStocks(prev => {
+          const combined = [...prev, ...data.items];
+          // Deduplicate by symbol
+          const unique = [];
+          const seen = new Set();
+          for (const item of combined) {
+            if (!seen.has(item.symbol)) {
+              seen.add(item.symbol);
+              unique.push(item);
+            }
+          }
+          return unique;
+        });
         setOffset(currentOffset + 50);
       }
 
@@ -129,7 +140,7 @@ const Dashboard = () => {
   // Derived: Available Sectors (only from current stocks)
   const availableSectors = useMemo(() => {
     if (!stocks || stocks.length === 0) return [];
-    const sectors = new Set(stocks.map(s => s.sector).filter(Boolean));
+    const sectors = new Set(stocks?.map(s => s.sector).filter(Boolean));
     return Array.from(sectors).sort();
   }, [stocks]);
 
@@ -152,7 +163,7 @@ const Dashboard = () => {
       label: 'Symbol', 
       sortable: true,
       render: (val) => (
-        <Link to={`/stocks/${val}`} className="table-link">
+        <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 font-black no-underline hover:underline transition-all tracking-tighter">
           {val.replace('.NS', '')}
         </Link>
       )
@@ -175,7 +186,7 @@ const Dashboard = () => {
       label: 'Change %', 
       sortable: true,
       render: (val) => (
-        <span className={val >= 0 ? 'text-positive' : 'text-negative'}>
+        <span className={`px-2 py-1 rounded-md font-mono font-bold text-xs ${val >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
           {val >= 0 ? '+' : ''}{val?.toFixed(2)}%
         </span>
       )
@@ -185,14 +196,22 @@ const Dashboard = () => {
       label: 'Score', 
       sortable: true,
       accessor: (row) => row.timeframes?.D?.score || 0,
-      render: (val) => <span className="bold">{val || '-'}</span>
+      render: (val) => (
+        <span className={`font-black text-sm px-2 py-1 rounded ${val >= 70 ? 'bg-green-500 text-white' : val >= 50 ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+          {val || '-'}
+        </span>
+      )
     },
     { 
       key: 'rs_score', 
       label: 'RS', 
       sortable: true,
       accessor: (row) => row.timeframes?.D?.rs_score || 0,
-      render: (val) => <span className="text-primary bold">{val?.toFixed(0) || '-'}</span>
+      render: (val) => (
+        <span className={`font-black text-sm ${val >= 80 ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
+          {val?.toFixed(0) || '-'}
+        </span>
+      )
     },
     { 
       key: 'adx', 
@@ -237,28 +256,36 @@ const Dashboard = () => {
 
   if (loading && !hasData) {
     return (
-      <div className="dashboard-page">
-        <main className="dashboard-content">
-          <div className="summary-bar">
+      <div className="w-full">
+        <main className="flex-1">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => (
-              <div key={i} className="summary-item">
-                <div className="skeleton-line skeleton-h-40"></div>
+              <div key={i} className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
+                <div className="h-10 w-full bg-bg-elevated rounded-md animate-pulse"></div>
               </div>
             ))}
           </div>
-          <div className="mt-32">
+          <div className="mt-8">
             {viewMode === 'grid' ? (
-              <div className="stock-grid">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {[1, 2, 3, 4, 5, 6].map(i => <StockCardSkeleton key={i} />)}
               </div>
             ) : (
-              <div className="data-table-container skeleton">
-                <div className="table-header">
-                  {columns.map(col => <div key={col.key} className="header-cell">{col.label}</div>)}
+              <div className="bg-bg-secondary rounded-xl border border-border mt-4 overflow-hidden">
+                <div className="flex bg-bg-elevated border-bottom border-border min-w-fit">
+                  {columns.map(col => (
+                    <div key={col.key} className="px-4 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 flex-1 min-w-[120px]">
+                      {col.label}
+                    </div>
+                  ))}
                 </div>
                 {Array.from({ length: 10 }).map((_, i) => (
-                  <div key={i} className="table-row">
-                    {columns.map(col => <div key={col.key} className="table-cell"><div className="skeleton-line" /></div>)}
+                  <div key={i} className="flex border-b border-border transition-colors hover:bg-bg-elevated">
+                    {columns.map(col => (
+                      <div key={col.key} className="p-4 text-sm text-text flex-1 min-w-[120px] flex items-center">
+                        <div className="h-4 w-full bg-bg-elevated rounded-sm animate-pulse" />
+                      </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -271,12 +298,16 @@ const Dashboard = () => {
 
   if (pipeline?.status === 'never_run') {
     return (
-      <div className="empty-state">
+      <div className="flex flex-col items-center justify-center py-20 text-center text-text-muted">
         <AlertCircle size={64} />
-        <h1>No Data Available</h1>
+        <h1 className="text-text my-4 text-2xl font-bold">No Data Available</h1>
         <p>The pipeline hasn't been run yet. Start it to see market analysis.</p>
-        <button className="primary-button" onClick={() => handleRunPipeline()} disabled={isBusy}>
-          <Play size={20} /> Run Initial Pipeline
+        <button 
+          className="mt-8 bg-blue-600 text-white border-none py-4 px-8 rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 cursor-pointer transition-all hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-[0.98]" 
+          onClick={() => handleRunPipeline()} 
+          disabled={isBusy}
+        >
+          <Play size={18} fill="currentColor" /> Initialize Analysis Engine
         </button>
       </div>
     );
@@ -292,7 +323,7 @@ const Dashboard = () => {
   const hasMarketData = market.length > 0;
 
   return (
-    <div className="dashboard-page">
+    <div className="w-full animate-fade-in">
       {(error || pipelineError || marketError) && (
         <ErrorBanner message={error || pipelineError || marketError} />
       )}
@@ -307,72 +338,81 @@ const Dashboard = () => {
       )}
 
       {!hasMarketData && !loading && (
-        <div className="info-banner">Market data is currently unavailable.</div>
+        <div className="bg-bg-secondary p-4 mb-4 rounded-lg border border-border text-text-muted">
+          Market data is currently unavailable.
+        </div>
       )}
 
       {/* Main Content */}
-      <main className="dashboard-content">
-        <header className="dashboard-header">
-          <div className="flex justify-between items-center mb-6">
+      <main className="flex-1">
+        <header className="mb-8 sm:mb-10 flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1 uppercase">Market Dashboard</h1>
+              <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-[10px]">Real-time intelligence and automated technical screening.</p>
+            </div>
             <GlobalSearch />
           </div>
 
-          <div className="summary-bar">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {status === 'running' && (
-              <div className="summary-item status-badge running">
-                <div className="flex-center-gap-12">
-                  <RefreshCcw size={16} className="spin" />
-                  <div style={{ flex: 1 }}>
-                    <span className="label">Pipeline Running</span>
-                    <span
-                      className="value fs-12"
-                      style={{ display: 'block', marginBottom: '4px' }}
+              <div className="bg-blue-600 border-2 border-blue-700 p-5 rounded-2xl flex flex-col gap-4 shadow-lg shadow-blue-500/20 col-span-1 sm:col-span-2 lg:col-span-1 animate-fade-in">
+                <div className="flex justify-between items-start">
+                    <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-black text-white/70 uppercase tracking-[0.2em]">Live Analysis</span>
+                        <div className="flex items-center gap-2">
+                             <RefreshCcw size={14} className="animate-spin text-white" />
+                             <span className="text-sm font-black text-white uppercase tracking-tight">Engine Active</span>
+                        </div>
+                    </div>
+                    <button 
+                        className="bg-white/20 hover:bg-white/30 text-white border-none py-1 px-2.5 rounded-lg font-black text-[9px] uppercase tracking-tighter cursor-pointer transition-colors backdrop-blur-md" 
+                        onClick={handleStopPipeline}
+                        disabled={status === 'stopping'}
                     >
-                      {pipeline?.stocks_fetched || 0} fetched |{' '}
-                      {pipeline?.stocks_scored || 0} scored
-                    </span>
+                        {status === 'stopping' ? 'Stopping' : 'Stop'}
+                    </button>
+                </div>
+                
+                <div className="flex flex-col">
+                    <div className="flex justify-between items-end mb-1">
+                        <span className="text-[10px] font-black text-white">PROGRESS</span>
+                        <span className="text-[10px] font-black text-white">{pipeline?.stocks_scored || 0} / {pipeline?.tier1_count || 0}</span>
+                    </div>
                     <PipelineProgress
                       fetched={pipeline?.stocks_fetched || 0}
                       scored={pipeline?.stocks_scored || 0}
                       total={pipeline?.total_symbols || 0}
                       tier1Count={pipeline?.tier1_count || 0}
                     />
-                  </div>
-                  <button
-                    className="stop-button"
-                    onClick={handleStopPipeline}
-                    disabled={status === 'stopping'}
-                    title="Stop Pipeline"
-                  >
-                    <Square size={14} fill="currentColor" />
-                    {status === 'stopping' ? 'Stopping...' : 'Stop'}
-                  </button>
                 </div>
               </div>
             )}
-            <div className="summary-item">
-              <span className="label">Total Scored</span>
-              <span className="value">{stocks?.length || 0}</span>
+            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
+              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Total Scored</span>
+              <span className="text-3xl font-black text-text tracking-tighter">{stocks?.length || 0}</span>
             </div>
-            <div className="summary-item market">
-              <span className="label">Nifty 50</span>
-              <span className={`value ${isNiftyUp ? 'success' : 'danger'}`}>
-                {nifty.close?.toLocaleString('en-IN')}
-                <small>
-                  ({isNiftyUp ? '▲' : '▼'}{' '}
-                  {Math.abs(nifty.change_pct)?.toFixed(2)}%)
-                </small>
-              </span>
+            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
+              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Nifty 50</span>
+              <div className="flex flex-col">
+                <span className="text-2xl font-black text-text tracking-tighter">
+                  {nifty.close?.toLocaleString('en-IN')}
+                </span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isNiftyUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}>
+                  {isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%
+                </span>
+              </div>
             </div>
-            <div className="summary-item market">
-              <span className="label">SENSEX</span>
-              <span className={`value ${isSensexUp ? 'success' : 'danger'}`}>
-                {sensex.close?.toLocaleString('en-IN')}
-                <small>
-                  ({isSensexUp ? '▲' : '▼'}{' '}
-                  {Math.abs(sensex.change_pct)?.toFixed(2)}%)
-                </small>
-              </span>
+            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
+              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">SENSEX</span>
+              <div className="flex flex-col">
+                <span className="text-2xl font-black text-text tracking-tighter">
+                  {sensex.close?.toLocaleString('en-IN')}
+                </span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isSensexUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}>
+                  {isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%
+                </span>
+              </div>
             </div>
           </div>
 
@@ -384,18 +424,18 @@ const Dashboard = () => {
           />
 
           {!isMobile && (
-            <div className="filters-container card">
-              <div className="filter-flex-wrap">
-                <div className="filter-group">
-                  <div className="mb-12">
-                    <Filter size={16} className="mr-8 inline" />
-                    <h3 className="inline fs-14">Confluence</h3>
+            <div className="p-6 bg-bg-secondary border-2 border-border rounded-2xl shadow-sm">
+              <div className="flex flex-wrap gap-10 items-start">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <Filter size={18} className="text-blue-500" />
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confluence</h3>
                   </div>
-                  <div className="flex-row-gap-8">
+                  <div className="flex flex-row gap-2.5">
                     {['all', 'watchlist', '3', '2+'].map((c) => (
                       <label
                         key={c}
-                        className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}
+                        className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
                       >
                         <input
                           type="radio"
@@ -403,6 +443,7 @@ const Dashboard = () => {
                           value={c}
                           checked={confluenceFilter === c}
                           onChange={(e) => setConfluenceFilter(e.target.value)}
+                          className="hidden"
                         />
                         {c === 'all'
                           ? 'All Stocks'
@@ -416,20 +457,20 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="filter-group sectors flex-1-min-300">
-                  <div className="mb-12">
-                    <h3 className="fs-14">
-                      Sectors{' '}
-                      <span className="count ml-8">
-                        {availableSectors.length}
-                      </span>
+                <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                      Sectors Selection
                     </h3>
+                    <span className="text-[10px] bg-blue-500 text-white py-0.5 px-2 rounded-full font-black shadow-sm">
+                        {availableSectors.length} AVAILABLE
+                    </span>
                   </div>
-                  <div className="checkbox-list flex-row-wrap-gap-8">
+                  <div className="flex flex-row flex-wrap gap-2 max-h-[240px] overflow-y-auto pr-2">
                     {availableSectors.map((sector) => (
                       <label
                         key={sector}
-                        className={`checkbox-label ${selectedSectors.includes(sector) ? 'active' : ''}`}
+                        className={`flex items-center gap-2.5 py-1.5 px-3.5 rounded-full text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all border-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
                       >
                         <input
                           type="checkbox"
@@ -446,74 +487,52 @@ const Dashboard = () => {
             </div>
           )}
 
-          <div className="action-bar">
-            <h2>Market Screener</h2>
-            <div style={{ display: 'flex', gap: '12px' }}>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <h2 className="text-3xl font-black m-0 tracking-tighter text-text uppercase">Live Market Control</h2>
+            <div className="flex gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
               <button
-                className="secondary-button"
+                className="bg-slate-100 dark:bg-slate-800 border-2 border-border py-2 px-5 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer text-text transition-all hover:border-blue-500 disabled:opacity-50 shadow-sm"
                 onClick={() => handleRunPipeline(50)}
                 disabled={isBusy}
               >
-                <Play size={16} /> Test (50)
+                {isBusy && status !== 'running' ? <RefreshCcw size={16} className="animate-spin" /> : <Play size={16} />}
+                RAPID TEST (50)
               </button>
 
               {isMobile && (
                 <button
-                  className={`filter-mobile-btn ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'active' : ''}`}
+                  className={`flex items-center gap-2 bg-bg-secondary border-2 border-border py-2 px-5 rounded-xl font-black text-[10px] uppercase tracking-widest text-text cursor-pointer relative transition-all shadow-sm ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'border-blue-600 text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'hover:border-blue-500'}`}
                   onClick={() => setIsFilterSheetOpen(true)}
                 >
-                  <Filter size={20} />
+                  <Filter size={18} />
                   <span>Filters</span>
-                  {(confluenceFilter !== 'all' ||
-                    selectedSectors.length > 0) && (
-                    <span className="indicator" />
+                  {(confluenceFilter !== 'all' || selectedSectors.length > 0) && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full border-2 border-white dark:border-slate-900" />
                   )}
                 </button>
               )}
 
               {!isMobile && (
-                <div className="view-toggle view-toggle-container">
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border-2 border-border shadow-inner">
                   <button
-                    className={`toggle-btn ${viewMode === 'table' ? 'active' : ''}`}
+                    className={`p-2 rounded-lg cursor-pointer flex transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-text'}`}
                     onClick={() => setViewMode('table')}
                     title="Table View"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: '4px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      color:
-                        viewMode === 'table'
-                          ? 'var(--color-bullish)'
-                          : 'inherit',
-                    }}
                   >
-                    <List size={20} />
+                    <List size={18} />
                   </button>
                   <button
-                    className={`toggle-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                    className={`p-2 rounded-lg cursor-pointer flex transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-text'}`}
                     onClick={() => setViewMode('grid')}
                     title="Grid View"
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      padding: '4px',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      color:
-                        viewMode === 'grid'
-                          ? 'var(--color-bullish)'
-                          : 'inherit',
-                    }}
                   >
                     <LayoutGrid size={20} />
                   </button>
                 </div>
               )}
 
-              <div className="flex-center-gap-8">
-                <ArrowUpDown size={16} className="text-muted" />
+              <div className="flex items-center gap-2 flex-1 sm:flex-none justify-center">
+                <ArrowUpDown size={16} className="text-text-muted" />
                 <Select
                   value={sortBy}
                   onChange={setSortBy}
@@ -523,7 +542,7 @@ const Dashboard = () => {
                     { value: 'rsi', label: 'Low RSI' },
                     { value: 'pe', label: 'Value (P/E)' },
                   ]}
-                  className="sort-select"
+                  className="w-full sm:w-[150px]"
                 />
               </div>
             </div>
@@ -532,8 +551,8 @@ const Dashboard = () => {
 
         {stocks.length > 0 ? (
           viewMode === 'grid' ? (
-            <div className="stock-grid">
-              {stocks.map((stock) => (
+            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 sm:gap-6">
+              {stocks?.map((stock) => (
                 <StockCard
                   key={stock.symbol}
                   stock={stock}
@@ -552,12 +571,12 @@ const Dashboard = () => {
           )
         ) : (
           !loading && (
-            <div className="no-results">
+            <div className="flex flex-col items-center justify-center py-20 text-center text-text-muted">
               <Filter size={48} />
-              <h3>No stocks match filters</h3>
+              <h3 className="text-text my-4 text-lg font-bold">No stocks match filters</h3>
               <p>Try adjusting your confluence or sector selections.</p>
-              <button onClick={resetFilters} className="text-button">
-                Reset All Filters
+              <button onClick={resetFilters} className="bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest text-[10px] py-2 px-4 rounded-xl border-2 border-transparent hover:border-blue-500 cursor-pointer mt-4 transition-all">
+                Reset Selection
               </button>
             </div>
           )
@@ -565,34 +584,17 @@ const Dashboard = () => {
 
         {/* Sentinel and Footer UI */}
         {loading && stocks.length > 0 && (
-          <div
-            className="loading-more"
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '20px',
-              color: 'var(--color-text-muted)',
-            }}
-          >
-            <RefreshCcw size={20} className="spin" />
-            <span>Loading more stocks...</span>
+          <div className="flex flex-col justify-center items-center gap-4 py-12 text-slate-500 animate-pulse bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-border border-dashed mt-8">
+            <RefreshCcw size={32} className="animate-spin text-blue-500" />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synchronizing Deep Market Data...</span>
           </div>
         )}
         {!hasMore && stocks.length > 0 && (
-          <div
-            className="no-more"
-            style={{
-              textAlign: 'center',
-              padding: '20px',
-              color: 'var(--color-text-muted)',
-            }}
-          >
+          <div className="text-center py-5 text-text-muted">
             <p>No more stocks to show</p>
           </div>
         )}
-        <div ref={sentinelRef} style={{ height: '20px', margin: '20px 0' }} />
+        <div ref={sentinelRef} className="h-5 my-5" />
       </main>
 
       <FilterBottomSheet

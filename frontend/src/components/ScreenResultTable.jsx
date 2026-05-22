@@ -1,4 +1,3 @@
-
 import { Link } from 'react-router-dom';
 
 const SCREEN_COLUMNS = {
@@ -14,31 +13,31 @@ const SCREEN_COLUMNS = {
 };
 
 const COLUMN_META = {
-  symbol:               { label: 'Symbol',      fmt: v => v },
-  name:                 { label: 'Name',         fmt: v => v },
-  score:                { label: 'Score',        fmt: v => v?.toFixed(1) ?? '—' },
-  rs_score:             { label: 'RS Score',     fmt: v => v?.toFixed(0) ?? '—' },
-  momentum_1m:          { label: '1M Mom %',     fmt: v => v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—' },
-  momentum_3m:          { label: '3M Mom %',     fmt: v => v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—' },
-  adx:                  { label: 'ADX',          fmt: v => v?.toFixed(1) ?? '—' },
-  peg_ratio:            { label: 'PEG',          fmt: v => v?.toFixed(2) ?? '—' },
+  symbol:               { label: 'Symbol',      fmt: v => <span className="text-blue-600 dark:text-blue-400 font-black tracking-tighter">{v.replace('.NS', '')}</span> },
+  name:                 { label: 'Name',         fmt: v => <span className="text-slate-500 dark:text-slate-400 font-bold text-xs truncate max-w-[120px] inline-block">{v}</span> },
+  score:                { label: 'Score',        fmt: v => <span className={`font-black text-sm px-2 py-1 rounded ${v >= 70 ? 'bg-green-500 text-white' : v >= 50 ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800'}`}>{v?.toFixed(1) ?? '—'}</span> },
+  rs_score:             { label: 'RS Score',     fmt: v => <span className="text-blue-600 dark:text-blue-400 font-black">{v?.toFixed(0) ?? '—'}</span> },
+  momentum_1m:          { label: '1M Mom %',     fmt: v => <span className={`font-black text-[11px] px-2 py-0.5 rounded shadow-sm ${v > 0 ? 'bg-green-500 text-white' : v < 0 ? 'bg-red-500 text-white' : 'bg-slate-100'}`}>{v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—'}</span> },
+  momentum_3m:          { label: '3M Mom %',     fmt: v => <span className={`font-black text-[11px] px-2 py-0.5 rounded shadow-sm ${v > 0 ? 'bg-green-500 text-white' : v < 0 ? 'bg-red-500 text-white' : 'bg-slate-100'}`}>{v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—'}</span> },
+  adx:                  { label: 'ADX',          fmt: v => <span className="font-bold">{v?.toFixed(1) ?? '—'}</span> },
+  peg_ratio:            { label: 'PEG',          fmt: v => <span className={`font-bold ${v < 1 ? 'text-green-500' : ''}`}>{v?.toFixed(2) ?? '—'}</span> },
   ev_to_ebitda:         { label: 'EV/EBITDA',   fmt: v => v?.toFixed(1) ?? '—' },
   dividend_yield:       { label: 'Div Yield',    fmt: v => v != null ? `${(v * 100).toFixed(2)}%` : '—' },
-  roce:                 { label: 'ROCE %',       fmt: v => v != null ? `${(v * 100).toFixed(1)}%` : '—' },
-  de_ratio:             { label: 'D/E',          fmt: v => v?.toFixed(2) ?? '—' },
-  pct_from_52w_high:    { label: '% from High',  fmt: v => v != null ? `${v.toFixed(1)}%` : '—' },
-  pct_from_52w_low:     { label: '% from Low',   fmt: v => v != null ? `${v.toFixed(1)}%` : '—' },
-  week52_high:          { label: '52W High',     fmt: v => v != null ? `₹${v.toLocaleString('en-IN')}` : '—' },
-  week52_low:           { label: '52W Low',      fmt: v => v != null ? `₹${v.toLocaleString('en-IN')}` : '—' },
-  pct_from_resistance:  { label: '% to Break',   fmt: v => v != null ? `${v.toFixed(1)}%` : '—' },
-  volume_breakout:      { label: 'Vol Break',    fmt: v => v ? '✓' : '—' },
-  fcf_positive:         { label: 'FCF+',         fmt: v => v ? '✓' : '—' },
-  dividend_consistency: { label: 'Div 3Y',       fmt: v => v ? '✓' : '—' },
-  above_200ema:         { label: '>200 EMA',     fmt: v => v ? '✓' : '—' },
-  market_cap_category:  { label: 'Cap',          fmt: v => v ?? '—' },
-  ema_slope:            { label: 'EMA Trend',    fmt: v => v != null ? (v > 0 ? '↑' : '↓') : '—' },
-  confluence_count:     { label: 'Conf.',        fmt: v => v != null ? `${v}/3` : '—' },
-  rsi:                  { label: 'RSI',          fmt: v => v?.toFixed(1) ?? '—' },
+  roce:                 { label: 'ROCE %',       fmt: v => <span className={`font-bold ${v > 0.2 ? 'text-green-500' : ''}`}>{v != null ? `${(v * 100).toFixed(1)}%` : '—'}</span> },
+  de_ratio:             { label: 'D/E',          fmt: v => <span className={v > 1.5 ? 'text-red-500 font-bold' : ''}>{v?.toFixed(2) ?? '—'}</span> },
+  pct_from_52w_high:    { label: '% from High',  fmt: v => <span className={`font-bold ${Math.abs(v) < 5 ? 'text-green-500' : ''}`}>{v != null ? `${v.toFixed(1)}%` : '—'}</span> },
+  pct_from_52w_low:     { label: '% from Low',   fmt: v => <span className={`font-bold ${Math.abs(v) < 10 ? 'text-red-500' : ''}`}>{v != null ? `${v.toFixed(1)}%` : '—'}</span> },
+  week52_high:          { label: '52W High',     fmt: v => <span className="font-mono text-xs">₹{v?.toLocaleString('en-IN')}</span> },
+  week52_low:           { label: '52W Low',      fmt: v => <span className="font-mono text-xs">₹{v?.toLocaleString('en-IN')}</span> },
+  pct_from_resistance:  { label: '% to Break',   fmt: v => <span className={`font-bold ${v < 3 ? 'text-green-500' : ''}`}>{v != null ? `${v.toFixed(1)}%` : '—'}</span> },
+  volume_breakout:      { label: 'Vol Break',    fmt: v => v ? <span className="bg-blue-600 text-white px-2 py-0.5 rounded-md text-[10px] font-black uppercase">DETECTED</span> : '—' },
+  fcf_positive:         { label: 'FCF+',         fmt: v => v ? <span className="text-green-500 font-black">✓</span> : '—' },
+  dividend_consistency: { label: 'Div 3Y',       fmt: v => v ? <span className="text-green-500 font-black">✓</span> : '—' },
+  above_200ema:         { label: '>200 EMA',     fmt: v => v ? <span className="text-green-500 font-black">✓</span> : <span className="text-red-500 font-black">✗</span> },
+  market_cap_category:  { label: 'Cap',          fmt: v => <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded text-[10px] font-black uppercase text-slate-500">{v ?? '—'}</span> },
+  ema_slope:            { label: 'EMA Trend',    fmt: v => v != null ? (v > 0 ? <span className="text-green-500 font-black">↑</span> : <span className="text-red-500 font-black">↓</span>) : '—' },
+  confluence_count:     { label: 'Conf.',        fmt: v => <span className={`px-2 py-0.5 rounded-md font-black text-xs ${v === 3 ? 'bg-green-500 text-white' : v === 2 ? 'bg-amber-500 text-white' : 'bg-slate-100 text-slate-500'}`}>{v}/3</span> },
+  rsi:                  { label: 'RSI',          fmt: v => <span className={`font-bold ${v <= 30 ? 'text-green-500' : v >= 70 ? 'text-red-500' : ''}`}>{v?.toFixed(1) ?? '—'}</span> },
 };
 
 const ScreenResultTable = ({ results, slug, loading }) => {
@@ -46,16 +45,24 @@ const ScreenResultTable = ({ results, slug, loading }) => {
 
   if (loading && results.length === 0) {
     return (
-      <div className="table-container">
-        <table className="stocks-table">
+      <div className="w-full overflow-x-auto bg-bg-secondary border-2 border-border rounded-2xl shadow-sm">
+        <table className="w-full border-collapse">
           <thead>
-            <tr>{cols.map(c => <th key={c}>{COLUMN_META[c].label}</th>)}</tr>
+            <tr className="bg-slate-50 dark:bg-slate-900 border-b-2 border-border">
+              {cols.map(c => (
+                <th key={c} className="px-6 py-4 text-left text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                  {COLUMN_META[c].label}
+                </th>
+              ))}
+            </tr>
           </thead>
           <tbody>
             {[...Array(8)].map((_, i) => (
-              <tr key={i}>
+              <tr key={i} className="border-b border-border">
                 {cols.map(c => (
-                  <td key={c}><div style={{height: '20px', background: 'var(--color-bg-elevated)', borderRadius: '4px'}}></div></td>
+                  <td key={c} className="px-6 py-4">
+                    <div className="h-6 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse w-full"></div>
+                  </td>
                 ))}
               </tr>
             ))}
@@ -66,20 +73,24 @@ const ScreenResultTable = ({ results, slug, loading }) => {
   }
 
   return (
-    <div className="table-container" style={{ opacity: loading ? 0.5 : 1, transition: 'opacity 0.2s' }}>
-      <table className="stocks-table">
+    <div className={`w-full overflow-x-auto bg-bg-secondary border-2 border-border rounded-2xl shadow-sm transition-all duration-300 ${loading ? 'opacity-50' : 'opacity-100'}`}>
+      <table className="w-full border-collapse">
         <thead>
-          <tr>
-            {cols.map(c => <th key={c}>{COLUMN_META[c].label}</th>)}
+          <tr className="bg-slate-50 dark:bg-slate-900 border-b-2 border-border">
+            {cols.map(c => (
+              <th key={c} className="px-6 py-4 text-left text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                {COLUMN_META[c].label}
+              </th>
+            ))}
           </tr>
         </thead>
         <tbody>
-          {results.map((row) => (
-            <tr key={row.symbol}>
+          {Array.isArray(results) && results.map((row, idx) => (
+            <tr key={`${row.symbol}-${idx}`} className="border-b border-border hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors group">
               {cols.map(c => (
-                <td key={c}>
+                <td key={c} className="px-6 py-4 text-sm font-medium">
                   {c === 'symbol' ? (
-                    <Link to={`/stocks/${row.symbol}`} style={{ fontWeight: 'bold', color: 'inherit', textDecoration: 'none' }}>
+                    <Link to={`/stocks/${row.symbol}`} className="no-underline group-hover:translate-x-1 transition-transform inline-block">
                       {COLUMN_META[c].fmt(row[c])}
                     </Link>
                   ) : (
@@ -91,8 +102,8 @@ const ScreenResultTable = ({ results, slug, loading }) => {
           ))}
           {results.length === 0 && !loading && (
             <tr>
-              <td colSpan={cols.length} style={{ textAlign: 'center', padding: '40px', color: 'var(--color-text-muted)' }}>
-                No stocks match this screen right now. Results update after each pipeline run.
+              <td colSpan={cols.length} className="text-center py-20">
+                <div className="text-slate-400 font-black uppercase tracking-[0.2em] text-[10px]">No matches found for this screen</div>
               </td>
             </tr>
           )}

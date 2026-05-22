@@ -11,8 +11,6 @@ import System from './pages/System';
 import Backtest from './pages/Backtest';
 import PaperTrading from './pages/PaperTrading';
 
-import './App.css';
-
 function App() {
   return (
     <ThemeProvider>

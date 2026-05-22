@@ -16,28 +16,28 @@ const CandlestickChart = ({ data, isDark, containerHeight = 400 }) => {
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: isDark ? '#161616' : '#FFFFFF' },
-        textColor: isDark ? '#FFFFFF' : '#111827',
+        background: { type: ColorType.Solid, color: isDark ? '#020617' : '#F8FAFC' },
+        textColor: isDark ? '#F8FAFC' : '#0F172A',
       },
       grid: {
-        vertLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
-        horzLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
+        vertLines: { color: isDark ? '#1E293B' : '#E2E8F0' },
+        horzLines: { color: isDark ? '#1E293B' : '#E2E8F0' },
       },
       width: chartContainerRef.current.clientWidth,
       height: containerHeight,
       timeScale: {
-        borderColor: isDark ? '#1F1F1F' : '#F0F2F1',
+        borderColor: isDark ? '#1E293B' : '#E2E8F0',
       },
     });
 
     chartRef.current = chart;
 
     const candlestickSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#26a69a',
-      downColor: '#ef5350',
+      upColor: '#22C55E',
+      downColor: '#EF4444',
       borderVisible: false,
-      wickUpColor: '#26a69a',
-      wickDownColor: '#ef5350',
+      wickUpColor: '#22C55E',
+      wickDownColor: '#EF4444',
     });
 
     candlestickSeries.setData(data);
@@ -55,18 +55,18 @@ const CandlestickChart = ({ data, isDark, containerHeight = 400 }) => {
     if (chartRef.current) {
       chartRef.current.applyOptions({
         layout: {
-          background: { color: isDark ? '#161616' : '#FFFFFF' },
-          textColor: isDark ? '#FFFFFF' : '#111827',
+          background: { color: isDark ? '#020617' : '#F8FAFC' },
+          textColor: isDark ? '#F8FAFC' : '#0F172A',
         },
         grid: {
-          vertLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
-          horzLines: { color: isDark ? '#1F1F1F' : '#F0F2F1' },
+          vertLines: { color: isDark ? '#1E293B' : '#E2E8F0' },
+          horzLines: { color: isDark ? '#1E293B' : '#E2E8F0' },
         }
       });
     }
   }, [isDark]);
 
-  return <div ref={chartContainerRef} style={{ width: '100%' }} />;
+  return <div ref={chartContainerRef} className="w-full" />;
 };
 
 export default CandlestickChart;

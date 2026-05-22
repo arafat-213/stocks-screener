@@ -1,6 +1,5 @@
 import Papa from 'papaparse';
 import { Download } from 'lucide-react';
-import './ExportButton.css';
 
 export const ExportButton = ({ data = [], columns = [], filename = 'export.csv', disabled = false }) => {
   const handleExport = () => {
@@ -35,13 +34,13 @@ export const ExportButton = ({ data = [], columns = [], filename = 'export.csv',
 
   return (
     <button 
-      className="export-btn" 
+      className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 border-border bg-transparent text-slate-500 cursor-pointer transition-all duration-300 hover:enabled:border-blue-500 hover:enabled:text-blue-600 dark:hover:enabled:text-blue-400 hover:enabled:bg-blue-50 dark:hover:enabled:bg-blue-900/10 disabled:opacity-30 disabled:not-allowed shadow-sm active:scale-95" 
       onClick={handleExport}
       disabled={disabled || data.length === 0}
       title="Export to CSV"
     >
       <Download size={14} />
-      <span>CSV</span>
+      <span className="leading-none">Export CSV</span>
     </button>
   );
 };

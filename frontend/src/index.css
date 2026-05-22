@@ -1,9 +1,14 @@
 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Fira+Sans:wght@300;400;500;600;700&display=swap');
 
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 :root {
   /* Light Theme - Clean Glassmorphic */
   --color-bg: #F8FAFC;
   --color-bg-secondary: #FFFFFF;
+  --color-bg-secondary-rgb: 255, 255, 255;
   --color-bg-elevated: #F1F5F9;
   --color-text: #0F172A;
   --color-text-muted: #64748B;
@@ -11,8 +16,11 @@
   --color-primary: #3B82F6;
   --color-primary-rgb: 59, 130, 246;
   --color-bullish: #22C55E;
+  --color-bullish-rgb: 34, 197, 94;
   --color-bearish: #EF4444;
+  --color-bearish-rgb: 239, 68, 68;
   --color-warning: #F59E0B;
+  --color-warning-rgb: 245, 158, 11;
   
   --font-main: 'Fira Sans', sans-serif;
   --font-mono: 'Fira Code', monospace;
@@ -35,187 +43,87 @@
   /* Dark Theme - OLED Technical */
   --color-bg: #020617;
   --color-bg-secondary: #0F172A;
+  --color-bg-secondary-rgb: 15, 23, 42;
   --color-bg-elevated: #1E293B;
   --color-text: #F8FAFC;
   --color-text-muted: #94A3B8;
   --color-border: #1E293B;
   --color-primary: #3B82F6;
   --color-primary-rgb: 59, 130, 246;
+  --color-bullish: #22C55E;
+  --color-bullish-rgb: 34, 197, 94;
+  --color-bearish: #EF4444;
+  --color-bearish-rgb: 239, 68, 68;
+  --color-warning: #F59E0B;
+  --color-warning-rgb: 245, 158, 11;
   
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-}
+@layer base {
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-main);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
 
-body {
-  margin: 0;
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-main);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  overflow-x: hidden;
-}
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-h1, h2, h3, h4, h5, h6 {
-  font-weight: 700;
-  margin: 0;
-  letter-spacing: -0.025em;
-}
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
 
-button, input, select, textarea {
-  font-family: inherit;
-  color: inherit;
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 10px;
+  }
 
-.mono {
-  font-family: var(--font-mono);
-}
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
 
-/* Base interactive elements */
-button {
-  cursor: pointer;
-  border: none;
-  background: none;
-  padding: 0;
-  transition: all var(--transition-standard);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
+  #root {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  
+  /* Global Input/Select Enhancements */
+  input[type="text"], 
+  input[type="number"], 
+  input[type="email"],
+  input[type="password"],
+  input[type="date"],
+  select, 
+  textarea {
+    @apply bg-bg-secondary text-text border border-border rounded-md px-[14px] py-[10px] text-[0.9rem] transition-all duration-200 w-full;
+  }
 
-button:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
+  input:focus, 
+  select:focus,
+  textarea:focus {
+    @apply outline-none border-primary ring-2 ring-primary/10;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.025em;
+  }
 
-a {
-  text-decoration: none;
-  color: inherit;
-}
-
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--color-bg);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 10px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
-}
-
-#root {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
-
-/* Utilities */
-.card {
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
-}
-
-.glass {
-  background: rgba(var(--color-bg-secondary-rgb), 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--color-border);
-}
-
-.text-bullish { color: var(--color-bullish); }
-.text-bearish { color: var(--color-bearish); }
-.text-muted { color: var(--color-text-muted); }
-
-/* Utility Classes */
-.flex { display: flex; }
-.flex-col { flex-direction: column; }
-.items-center { align-items: center; }
-.justify-between { justify-content: space-between; }
-.gap-1 { gap: 4px; }
-.gap-1\.5 { gap: 6px; }
-.gap-2 { gap: 8px; }
-.gap-3 { gap: 12px; }
-.gap-4 { gap: 16px; }
-.shrink-0 { flex-shrink: 0; }
-.text-2xl { font-size: 1.5rem; }
-.font-bold { font-weight: 700; }
-.w-full { width: 100%; }
-.h-full { height: 100%; }
-
-.animate-spin {
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
-}
-
-/* Global Input/Select Enhancements */
-input[type="text"], 
-input[type="number"], 
-input[type="email"],
-input[type="password"],
-input[type="date"],
-select, 
-textarea {
-  background-color: var(--color-bg-secondary);
-  color: var(--color-text);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: 10px 14px;
-  font-size: 0.9rem;
-  transition: all var(--transition-standard);
-  width: 100%;
-}
-
-input:focus, 
-select:focus,
-textarea:focus {
-  outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-input::placeholder,
-textarea::placeholder {
-  color: var(--color-text-muted);
-  opacity: 0.7;
-}
-
-/* Custom Number Input Hide Spinners */
-input::-webkit-outer-spin-button,
-input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-input[type=number] {
-  -moz-appearance: textfield;
-}
-
-/* Technical Range Input (Base) */
-input[type="range"] {
-  accent-color: var(--color-primary);
-}
-
-[data-theme="dark"] select {
-  color-scheme: dark;
+  button, input, select, textarea {
+    font-family: inherit;
+    color: inherit;
+  }
 }
