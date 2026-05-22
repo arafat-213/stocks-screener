@@ -484,6 +484,16 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         # 6. Materialize Named Screens
         from app.screens.materializer import materialize_all_screens
         materialize_all_screens(db)
+
+        # 7. Paper Trading daily cycle
+        try:
+            from app.paper_trading.engine import run_paper_trading_cycle
+            pt_result = run_paper_trading_cycle(db)
+            logger.info("Paper trading cycle result: %s", pt_result)
+        except Exception as e:
+            logger.error("Paper trading cycle failed (non-fatal): %s", e)
+            import traceback
+            logger.error(traceback.format_exc())
             
         run.status = "complete"
         run.stocks_fetched = fetched_count
