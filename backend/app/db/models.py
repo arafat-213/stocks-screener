@@ -1,4 +1,4 @@
-from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date, ForeignKey, func
+from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Text, Integer, Boolean, UniqueConstraint, Date, ForeignKey, func, Index
 from sqlalchemy.orm import declarative_base
 import datetime
 import uuid
@@ -61,7 +61,15 @@ class TechnicalSignal(Base):
     
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
     
-    __table_args__ = (UniqueConstraint('symbol', 'date', 'timeframe'),)
+    __table_args__ = (
+        UniqueConstraint('symbol', 'date', 'timeframe'),
+        # Covers every screen query: WHERE timeframe='D' AND date(date)=X
+        Index('ix_ts_timeframe_date', 'timeframe', 'date'),
+        # Covers per-symbol history queries and stock detail page
+        Index('ix_ts_symbol_timeframe_date', 'symbol', 'timeframe', 'date'),
+        # Covers above_200ema + is_bullish filter combos used in most screens
+        Index('ix_ts_screener_core', 'timeframe', 'date', 'above_200ema', 'is_bullish'),
+    )
 
 class FundamentalData(Base):
     __tablename__ = "fundamental_data"
@@ -138,6 +146,10 @@ class PipelineError(Base):
     traceback = Column(Text, nullable=True)
     occurred_at = Column(DateTime, default=datetime.datetime.utcnow)
 
+    __table_args__ = (
+        Index('ix_pe_run_id', 'run_id'),
+    )
+
 class MarketSnapshot(Base):
     __tablename__ = "market_snapshots"
     date = Column(Date, primary_key=True)
@@ -206,6 +218,12 @@ class BacktestTrade(Base):
     adx_at_signal   = Column(Float, nullable=True)
     ema_signal      = Column(String, nullable=True)
 
+    __table_args__ = (
+        # Every trade fetch is filtered by run_id — this index is critical
+        Index('ix_bt_run_id', 'run_id'),
+        Index('ix_bt_run_id_exit_reason', 'run_id', 'exit_reason'),
+    )
+
 class SectorSnapshot(Base):
     __tablename__ = "sector_snapshots"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -216,3 +234,4 @@ class SectorSnapshot(Base):
     bullish_pct = Column(Float, nullable=True) # % of stocks in sector that are bullish
     stock_count = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint('date', 'sector'),)
+
