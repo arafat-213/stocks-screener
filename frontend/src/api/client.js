@@ -30,3 +30,9 @@ export const getBacktestRun = (runId)  => apiClient.get(`/backtest/${runId}`);
 export const getBacktestRuns = ()      => apiClient.get('/backtest/runs');
 export const getBacktestTrades = (runId, params) =>
   apiClient.get(`/backtest/${runId}/trades`, { params });
+
+// Paper Trading
+export const getPaperPortfolio = () => apiClient.get('/paper-trading/portfolio');
+export const getPaperPending   = () => apiClient.get('/paper-trading/pending');
+export const getPaperPositions = () => apiClient.get('/paper-trading/positions');
+export const getPaperTrades    = (params) => apiClient.get('/paper-trading/trades', { params });

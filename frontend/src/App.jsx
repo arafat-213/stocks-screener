@@ -9,6 +9,7 @@ import Discover from './pages/Discover';
 import Intelligence from './pages/Intelligence';
 import System from './pages/System';
 import Backtest from './pages/Backtest';
+import PaperTrading from './pages/PaperTrading';
 
 import './App.css';
 
@@ -20,6 +21,7 @@ function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/stocks/:symbol" element={<StockDetail />} />
           <Route path="/discover" element={<Discover />} />
+          <Route path="/paper" element={<PaperTrading />} />
           <Route path="/intel" element={<Intelligence />} />
           <Route path="/system" element={<System />} />
           <Route path="/backtest" element={<Backtest />} />
