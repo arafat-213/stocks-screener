@@ -1,15 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { 
-  Calendar, 
-  Loader2, 
-  ChevronRight,
-  ChevronDown,
-  TrendingUp,
-  AlertCircle,
-  BarChart3,
-  History,
-  Activity
-} from 'lucide-react';
+import { Calendar, Loader2, ChevronRight, ChevronDown, TrendingUp, AlertCircle, BarChart3, History, Activity, RefreshCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getReportList, getReportByDate, getSectorRotation } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
