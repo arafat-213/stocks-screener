@@ -4,19 +4,8 @@ import {
   BarChart, Bar, Cell, PieChart, Pie, Legend
 } from 'recharts';
 import { 
-  TrendingUp, 
-  TrendingDown, 
-  Clock, 
   AlertCircle,
-  CheckCircle2,
-  ExternalLink,
   Info,
-  Calendar,
-  Filter,
-  ChevronDown,
-  ChevronUp,
-  Target,
-  ShieldCheck
 } from 'lucide-react';
 import { 
   getPaperPortfolio, 
@@ -25,7 +14,6 @@ import {
   getPaperTrades,
   getStatus
 } from '../api/client';
-import './PaperTrading.css';
 
 // Mock backtest constants
 const BACKTEST_BENCHMARKS = {
@@ -50,8 +38,8 @@ const PaperTrading = () => {
   const [portfolio, setPortfolio] = useState(null);
   
   useEffect(() => {
-    getStatus().then(setStatus);
-    getPaperPortfolio().then(setPortfolio);
+    getStatus().then(res => setStatus(res.data));
+    getPaperPortfolio().then(res => setPortfolio(res.data));
   }, []);
 
   const tabs = [
@@ -63,28 +51,36 @@ const PaperTrading = () => {
   ];
 
   return (
-    <div className="paper-trading-page animate-in">
-      <header className="page-header">
-        <div className="header-left">
-          <h1>Paper Trading</h1>
-          <p className="text-muted">Live strategy verification without real capital</p>
+    <div className="flex flex-col gap-6 pb-24 animate-fade-in">
+      <header className="flex justify-between items-start">
+        <div className="flex flex-col">
+          <h1 className="text-3xl font-black tracking-tight text-text">Paper Trading</h1>
+          <p className="text-text-muted">Live strategy verification without real capital</p>
         </div>
         
-        <div className="header-right">
+        <div className="flex items-center">
           {status && (
-            <div className={`status-pill ${status.pipeline.is_stale ? 'stale' : 'current'}`}>
-              <div className="pulse-dot"></div>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
+              status.pipeline.is_stale 
+                ? 'bg-slate-100 dark:bg-slate-800 text-text-muted border-border' 
+                : 'bg-bullish/10 text-bullish border-green-500/20'
+            }`}>
+              {!status.pipeline.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
               <span>{status.pipeline.is_stale ? 'Stale — pipeline not run today' : `Updated ${status.pipeline.data_age_hours}h ago`}</span>
             </div>
           )}
         </div>
       </header>
 
-      <nav className="tabs-nav card glass">
+      <nav className="flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl w-fit overflow-x-auto no-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.id}
-            className={`tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+            className={`px-5 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${
+              activeTab === tab.id 
+                ? 'bg-bg-elevated text-text shadow-sm' 
+                : 'text-text-muted hover:text-text hover:bg-bg-elevated/50'
+            }`}
             onClick={() => setActiveTab(tab.id)}
           >
             {tab.label}
@@ -92,7 +88,7 @@ const PaperTrading = () => {
         ))}
       </nav>
 
-      <div className="tab-content">
+      <div className="min-h-[400px]">
         {activeTab === 'overview' && <OverviewView portfolio={portfolio} setPortfolio={setPortfolio} />}
         {activeTab === 'pending' && <PendingView />}
         {activeTab === 'positions' && <PositionsView />}
@@ -112,22 +108,23 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
   const [loading, setLoading] = useState(!portfolio);
 
   useEffect(() => {
-    const p1 = portfolio ? Promise.resolve(portfolio) : getPaperPortfolio();
+    const p1 = portfolio ? Promise.resolve({ data: portfolio }) : getPaperPortfolio();
     Promise.all([p1, getPaperTrades({ limit: 100 })])
       .then(([p, t]) => {
-        setPortfolio(p);
-        setTrades(t);
+        setPortfolio(p.data);
+        setTrades(t.data);
         setLoading(false);
       });
   }, [portfolio, setPortfolio]);
 
-  if (loading) return <div className="loading-spinner">Loading Overview...</div>;
+  if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Overview...</div>;
+  
   if (portfolio?.status === 'no_portfolio') {
     return (
-      <div className="view-placeholder">
-        <AlertCircle size={48} className="text-muted" />
-        <h2>No Active Portfolio</h2>
-        <p>Run a pipeline cycle to initialize the paper trading portfolio.</p>
+      <div className="flex flex-col items-center justify-center p-20 bg-bg-secondary border-2 border-dashed border-border rounded-3xl text-center">
+        <AlertCircle size={48} className="text-text-muted mb-4" />
+        <h2 className="text-xl font-bold mb-2">No Active Portfolio</h2>
+        <p className="text-text-muted">Run a pipeline cycle to initialize the paper trading portfolio.</p>
       </div>
     );
   }
@@ -146,26 +143,26 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
   })() : [];
 
   const StatCard = ({ label, value, color, comparison, subLabel }) => (
-    <div className="stat-card card">
-      <div className="stat-label">{label}</div>
-      <div className={`stat-value ${color || ''}`}>{value}</div>
+    <div className="flex flex-col gap-1 p-6 bg-bg-secondary border border-border rounded-2xl shadow-sm">
+      <div className="text-xs font-bold uppercase tracking-widest text-text-muted">{label}</div>
+      <div className={`text-3xl font-black tracking-tight ${color || 'text-text'}`}>{value}</div>
       {comparison !== undefined && (
-        <div className="stat-comparison">
-          {comparison} {subLabel && <span className="text-muted">vs {subLabel}</span>}
+        <div className="text-[11px] font-medium text-text-muted mt-1">
+          <span className="font-black text-text">{comparison}</span> {subLabel && <span className="opacity-60">vs {subLabel}</span>}
         </div>
       )}
     </div>
   );
 
-  const getDivergenceClass = (live, backtest) => {
+  const getDivergenceStyle = (live, backtest) => {
     if (!live || !backtest) return '';
     const diff = Math.abs(live - backtest) / backtest;
-    return diff > 0.1 ? 'divergence-highlight' : '';
+    return diff > 0.1 ? 'bg-warning/10' : '';
   };
 
   return (
-    <div className="overview-view animate-in">
-      <div className="stats-grid">
+    <div className="flex flex-col gap-6 animate-fade-in">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
           label="Total Return %" 
           value={`${portfolio.total_return_pct}%`}
@@ -193,34 +190,34 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
         />
       </div>
 
-      <div className="overview-main mt-6">
-        <div className="pnl-chart-container card">
-          <div className="pnl-chart-header">
-            <h3 className="m-0">Cumulative P&L</h3>
-            <p className="text-muted text-sm">Equity curve in Rupees based on realized trades</p>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mt-2">
+        <div className="lg:col-span-3 p-6 bg-bg-secondary border border-border rounded-2xl shadow-sm">
+          <div className="flex flex-col mb-8">
+            <h3 className="text-lg font-black uppercase tracking-tight text-text">Cumulative P&L</h3>
+            <p className="text-xs text-text-muted uppercase tracking-widest font-bold">Realized Equity Curve (₹)</p>
           </div>
-          <div style={{ width: '100%', height: 300 }}>
+          <div style={{ width: '100%', height: 320 }}>
             <ResponsiveContainer>
               <LineChart data={pnlData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
                 <XAxis 
                   dataKey="date" 
-                  stroke="var(--text-muted)" 
-                  fontSize={12}
+                  stroke="var(--color-text-muted)" 
+                  fontSize={10}
                   tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                 />
-                <YAxis stroke="var(--text-muted)" fontSize={12} />
+                <YAxis stroke="var(--color-text-muted)" fontSize={10} />
                 <Tooltip 
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
                       const data = payload[0].payload;
                       return (
-                        <div className="chart-tooltip card glass p-2">
-                          <p className="m-0 font-bold">{new Date(data.date).toLocaleDateString()}</p>
-                          <p className={`m-0 ${data.trade.pnl >= 0 ? 'text-bullish' : 'text-bearish'}`}>
+                        <div className="p-3 bg-bg-secondary/90 backdrop-blur-md border border-border rounded-xl shadow-xl">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">{new Date(data.date).toLocaleDateString()}</p>
+                          <p className={`text-lg font-black ${data.trade.pnl >= 0 ? 'text-bullish' : 'text-bearish'}`}>
                             ₹{data.pnl.toLocaleString()}
                           </p>
-                          <p className="text-xs text-muted m-0">
+                          <p className="text-[10px] font-bold text-text-muted uppercase tracking-tight mt-1 border-t border-border pt-1">
                             Last: {data.trade.symbol} ({data.trade.return_pct.toFixed(1)}%)
                           </p>
                         </div>
@@ -229,20 +226,21 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
                     return null;
                   }}
                 />
-                <ReferenceLine y={0} stroke="var(--text-muted)" strokeDasharray="3 3" />
+                <ReferenceLine y={0} stroke="var(--color-text-muted)" strokeDasharray="3 3" />
                 <Line 
                   type="monotone" 
                   dataKey="pnl" 
-                  stroke="var(--accent-color)" 
-                  strokeWidth={2} 
+                  stroke="var(--color-primary)" 
+                  strokeWidth={3} 
                   dot={(props) => {
                     const { cx, cy, payload } = props;
                     return (
                       <circle 
                         key={payload.date} 
                         cx={cx} cy={cy} r={4} 
-                        fill={payload.trade.return_pct >= 0 ? 'var(--bullish-color)' : 'var(--bearish-color)'} 
-                        stroke="none" 
+                        fill={payload.trade.return_pct >= 0 ? 'var(--color-bullish)' : 'var(--color-bearish)'} 
+                        stroke="var(--color-bg-secondary)"
+                        strokeWidth={2}
                       />
                     );
                   }}
@@ -252,41 +250,41 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
           </div>
         </div>
 
-        <div className="comparison-panel card">
-          <h3 className="m-0">Strategy Drift</h3>
-          <table className="comparison-table">
+        <div className="lg:col-span-2 p-6 bg-bg-secondary border border-border rounded-2xl shadow-sm">
+          <h3 className="text-lg font-black uppercase tracking-tight text-text mb-6">Strategy Drift</h3>
+          <table className="w-full border-collapse">
             <thead>
-              <tr>
-                <th>Metric</th>
-                <th>Paper (Live)</th>
-                <th>Backtest</th>
+              <tr className="border-b border-border text-[10px] uppercase tracking-widest text-text-muted">
+                <th className="text-left pb-3 font-bold">Metric</th>
+                <th className="text-right pb-3 font-bold">Paper</th>
+                <th className="text-right pb-3 font-bold">Backtest</th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="text-sm font-medium">
+              <tr className="border-b border-border/50">
+                <td className="py-4 text-text-muted">Total Trades</td>
+                <td className="py-4 text-right font-black">{portfolio.total_trades}</td>
+                <td className="py-4 text-right opacity-40">N/A</td>
+              </tr>
+              <tr className={`border-b border-border/50 ${getDivergenceStyle(portfolio.win_rate, BACKTEST_BENCHMARKS.win_rate)}`}>
+                <td className="py-4 text-text-muted">Win Rate</td>
+                <td className="py-4 text-right font-black">{portfolio.win_rate}%</td>
+                <td className="py-4 text-right font-bold text-text-muted">{BACKTEST_BENCHMARKS.win_rate}%</td>
+              </tr>
+              <tr className={`border-b border-border/50 ${getDivergenceStyle(portfolio.avg_return_pct, 5.4)}`}>
+                <td className="py-4 text-text-muted">Avg Return %</td>
+                <td className="py-4 text-right font-black">{portfolio.avg_return_pct}%</td>
+                <td className="py-4 text-right font-bold text-text-muted">5.4%</td>
+              </tr>
+              <tr className={`border-b border-border/50 ${getDivergenceStyle(portfolio.profit_factor, BACKTEST_BENCHMARKS.profit_factor)}`}>
+                <td className="py-4 text-text-muted">Profit Factor</td>
+                <td className="py-4 text-right font-black">{portfolio.profit_factor}</td>
+                <td className="py-4 text-right font-bold text-text-muted">{BACKTEST_BENCHMARKS.profit_factor}</td>
+              </tr>
               <tr>
-                <td>Total Trades</td>
-                <td>{portfolio.total_trades}</td>
-                <td>N/A</td>
-              </tr>
-              <tr className={getDivergenceClass(portfolio.win_rate, BACKTEST_BENCHMARKS.win_rate)}>
-                <td>Win Rate</td>
-                <td>{portfolio.win_rate}%</td>
-                <td>{BACKTEST_BENCHMARKS.win_rate}%</td>
-              </tr>
-              <tr className={getDivergenceClass(portfolio.avg_return_pct, (BACKTEST_BENCHMARKS.avg_win_pct + BACKTEST_BENCHMARKS.avg_loss_pct)/2)}>
-                <td>Avg Return %</td>
-                <td>{portfolio.avg_return_pct}%</td>
-                <td>5.4%</td>
-              </tr>
-              <tr className={getDivergenceClass(portfolio.profit_factor, BACKTEST_BENCHMARKS.profit_factor)}>
-                <td>Profit Factor</td>
-                <td>{portfolio.profit_factor}</td>
-                <td>{BACKTEST_BENCHMARKS.profit_factor}</td>
-              </tr>
-              <tr>
-                <td>Avg Holding Days</td>
-                <td>{portfolio.avg_holding_days || 0}</td>
-                <td>{BACKTEST_BENCHMARKS.avg_holding_days}</td>
+                <td className="py-4 text-text-muted">Avg Holding Days</td>
+                <td className="py-4 text-right font-black">{portfolio.avg_holding_days || 0}d</td>
+                <td className="py-4 text-right font-bold text-text-muted">{BACKTEST_BENCHMARKS.avg_holding_days}d</td>
               </tr>
             </tbody>
           </table>
@@ -301,84 +299,90 @@ const PendingView = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPaperPending().then(data => {
-      setPending(data);
+    getPaperPending().then(res => {
+      setPending(res.data);
       setLoading(false);
     });
   }, []);
 
-  if (loading) return <div className="loading-spinner">Loading Pending Orders...</div>;
+  if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Pending Orders...</div>;
 
   return (
-    <div className="pending-view animate-in">
-      <div className="pending-banner mb-4">
-        <Info size={16} className="inline mr-2" />
-        These orders will be evaluated at tomorrow's market open. Entry is at the close of the bar where price confirms EMA20 support.
+    <div className="flex flex-col gap-4 animate-fade-in">
+      <div className="flex items-center gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-text leading-snug">
+        <Info size={18} className="text-blue-500 flex-shrink-0" />
+        <p className="text-sm font-medium">These orders will be evaluated at tomorrow's market open. Entry is at the close of the bar where price confirms EMA20 support.</p>
       </div>
 
-      <div className="pending-table-container card">
-        <table className="pending-table">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Signal Date</th>
-              <th>EMA20 Target</th>
-              <th>Current Distance</th>
-              <th>Progress</th>
-              <th>Score</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {pending.length === 0 ? (
-              <tr>
-                <td colSpan="7" className="text-center text-muted py-8">No pending orders currently being watched.</td>
+      <div className="bg-bg-secondary border border-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-bg-elevated border-b border-border text-[10px] uppercase tracking-widest text-text-muted font-black">
+                <th className="text-left p-4">Symbol</th>
+                <th className="text-left p-4">Signal Date</th>
+                <th className="text-left p-4">EMA20 Target</th>
+                <th className="text-left p-4">Current Distance</th>
+                <th className="text-left p-4">Progress</th>
+                <th className="text-left p-4">Score</th>
+                <th className="text-left p-4">Status</th>
               </tr>
-            ) : (
-              pending.map(pos => {
-                const distance = pos.closeness_pct;
-                let distanceClass = 'grey';
-                if (distance !== null) {
-                  if (distance <= 2) distanceClass = 'green';
-                  else if (distance <= 5) distanceClass = 'amber';
-                }
+            </thead>
+            <tbody className="text-sm">
+              {pending.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="text-center text-text-muted py-20 font-bold uppercase tracking-widest text-xs opacity-50">No pending orders being watched.</td>
+                </tr>
+              ) : (
+                pending.map(pos => {
+                  const distance = pos.closeness_pct;
+                  let distanceClass = 'bg-slate-100 dark:bg-slate-800 text-text-muted';
+                  if (distance !== null) {
+                    if (distance <= 2) distanceClass = 'bg-bullish/10 text-bullish';
+                    else if (distance <= 5) distanceClass = 'bg-warning/10 text-warning';
+                  }
 
-                return (
-                  <tr key={pos.id}>
-                    <td>
-                      <div className="font-bold">{pos.symbol}</div>
-                      <div className="text-xs text-muted">{pos.sector}</div>
-                    </td>
-                    <td>{new Date(pos.signal_date).toLocaleDateString()}</td>
-                    <td>
-                      <div className="text-xs text-muted">touch target</div>
-                      <div className="font-mono">₹{pos.ema20_at_signal?.toFixed(2) || 'N/A'}</div>
-                    </td>
-                    <td>
-                      <span className={`distance-tag ${distanceClass}`}>
-                        {distance !== null ? `${distance.toFixed(1)}% above` : 'Pending data'}
-                      </span>
-                    </td>
-                    <td>
-                      <div className="progress-container">
-                        <div className="text-xs mb-1">Day {pos.wait_days} of 8</div>
-                        <div className="progress-bar">
-                          <div className="progress-fill" style={{ width: `${(pos.wait_days / 8) * 100}%` }}></div>
+                  return (
+                    <tr key={pos.id} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors">
+                      <td className="p-4">
+                        <div className="font-black text-blue-600 dark:text-blue-400 tracking-tight">{pos.symbol}</div>
+                        <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">{pos.sector}</div>
+                      </td>
+                      <td className="p-4 text-text-muted font-medium">{new Date(pos.signal_date).toLocaleDateString()}</td>
+                      <td className="p-4">
+                        <div className="text-[9px] font-black uppercase text-text-muted tracking-widest leading-none mb-1">touch target</div>
+                        <div className="font-mono font-black">₹{pos.ema20_at_signal?.toFixed(2) || 'N/A'}</div>
+                      </td>
+                      <td className="p-4">
+                        <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-tight ${distanceClass}`}>
+                          {distance !== null ? `${distance.toFixed(1)}% above` : 'Pending'}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1.5 w-24">
+                          <div className="text-[10px] font-bold text-text-muted uppercase">Day {pos.wait_days} of 8</div>
+                          <div className="h-1 bg-border rounded-full overflow-hidden">
+                            <div className="h-full bg-blue-500 transition-all duration-500" style={{ width: `${(pos.wait_days / 8) * 100}%` }}></div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td><div className="score-badge">{pos.signal_score}</div></td>
-                    <td>
-                      <div className="status-label text-sm font-medium">
-                        {pos.wait_days >= 6 ? 'Momentum path' : distance <= 2 ? 'Close to entry' : 'Watching'}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                      </td>
+                      <td className="p-4">
+                        <div className={`inline-flex px-2 py-0.5 rounded font-black text-xs ${
+                          pos.signal_score >= 60 ? 'bg-bullish text-white' : 'bg-blue-500 text-white'
+                        }`}>{pos.signal_score}</div>
+                      </td>
+                      <td className="p-4">
+                        <div className="text-[11px] font-black uppercase tracking-wider text-text-muted">
+                          {pos.wait_days >= 6 ? 'Momentum path' : distance <= 2 ? 'Close to entry' : 'Watching'}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -390,8 +394,8 @@ const PositionsView = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPaperPositions().then(data => {
-      setPositions(data);
+    getPaperPositions().then(res => {
+      setPositions(res.data);
       setLoading(false);
     });
   }, []);
@@ -403,101 +407,114 @@ const PositionsView = () => {
     });
   }, [positions, sortBy]);
 
-  if (loading) return <div className="loading-spinner">Loading Positions...</div>;
+  if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Positions...</div>;
 
   return (
-    <div className="positions-view animate-in">
-      <div className="view-actions mb-4">
-        <div className="tabs-nav card glass inline-flex">
-          <button 
-            className={`tab-btn ${sortBy === 'pnl' ? 'active' : ''}`}
-            onClick={() => setSortBy('pnl')}
-          >
-            Winners First
-          </button>
-          <button 
-            className={`tab-btn ${sortBy === 'expiry' ? 'active' : ''}`}
-            onClick={() => setSortBy('expiry')}
-          >
-            Closing Soon
-          </button>
-        </div>
+    <div className="flex flex-col gap-6 animate-fade-in">
+      <div className="flex p-1 bg-bg-secondary border border-border rounded-xl w-fit">
+        <button 
+          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            sortBy === 'pnl' ? 'bg-bg-elevated text-text shadow-sm' : 'text-text-muted'
+          }`}
+          onClick={() => setSortBy('pnl')}
+        >
+          Winners First
+        </button>
+        <button 
+          className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
+            sortBy === 'expiry' ? 'bg-bg-elevated text-text shadow-sm' : 'text-text-muted'
+          }`}
+          onClick={() => setSortBy('expiry')}
+        >
+          Closing Soon
+        </button>
       </div>
 
-      <div className="positions-grid">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
         {sortedPositions.length === 0 ? (
-          <div className="view-placeholder w-full" style={{ gridColumn: '1 / -1' }}>
-            <p>No open positions. Check pending orders for upcoming entries.</p>
+          <div className="md:col-span-2 xl:col-span-3 flex flex-col items-center justify-center p-20 bg-bg-secondary border-2 border-dashed border-border rounded-3xl text-center">
+            <p className="font-bold uppercase tracking-widest text-xs text-text-muted">No open positions. Check pending orders for upcoming entries.</p>
           </div>
         ) : (
           sortedPositions.map(pos => {
             const range = pos.target - pos.stop_loss;
-            const currentPos = ((pos.current_price - pos.stop_loss) / range) * 100;
+            const currentPos = Math.min(Math.max(((pos.current_price - pos.stop_loss) / range) * 100, 0), 100);
             const entryPos = ((pos.entry_price - pos.stop_loss) / range) * 100;
             const pnlColor = pos.unrealised_pct >= 0 ? 'text-bullish' : 'text-bearish';
+            const pnlBg = pos.unrealised_pct >= 0 ? 'bg-bullish' : 'bg-bearish';
 
             return (
-              <div key={pos.symbol} className="position-card card">
-                <div className="pos-header">
-                  <div className="pos-id">
-                    <h3>{pos.symbol}</h3>
-                    <div className="text-xs text-muted">{pos.sector}</div>
+              <div key={pos.symbol} className="flex flex-col bg-bg-secondary border border-border rounded-3xl overflow-hidden shadow-md hover:shadow-xl transition-all group">
+                <div className="flex justify-between items-start p-6 border-b border-border/50">
+                  <div className="flex flex-col">
+                    <h3 className="text-2xl font-black tracking-tighter text-blue-600 dark:text-blue-400 leading-none mb-1">{pos.symbol}</h3>
+                    <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">{pos.sector}</div>
                   </div>
-                  <div className="pos-entry-date text-xs text-muted">
-                    Entered {new Date(pos.entry_date).toLocaleDateString()}
+                  <div className="text-[10px] font-black uppercase tracking-widest text-text-muted bg-bg-elevated px-2.5 py-1 rounded-full border border-border">
+                    In {new Date(pos.entry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </div>
                 </div>
 
-                <div className="pos-body">
-                  <div className="pnl-summary flex justify-between items-end">
-                    <div className={`stat-value ${pnlColor}`}>
+                <div className="flex flex-col gap-6 p-6">
+                  <div className="flex justify-between items-end">
+                    <div className={`text-3xl font-black tracking-tight ${pnlColor}`}>
                       {pos.unrealised_pct >= 0 ? '+' : ''}{pos.unrealised_pct?.toFixed(2)}%
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted">Unrealised P&L</div>
-                      <div className={`font-bold ${pnlColor}`}>
+                    <div className="flex flex-col items-end">
+                      <div className="text-[9px] font-black uppercase tracking-widest text-text-muted leading-none mb-1">Unrealised P&L</div>
+                      <div className={`text-xl font-black ${pnlColor} tracking-tight`}>
                         ₹{((pos.current_price - pos.entry_price) * (pos.position_size / pos.entry_price)).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </div>
                     </div>
                   </div>
 
-                  <div className="price-range-container">
-                    <div className="range-bar">
-                      <div className="range-tick" style={{ left: `${entryPos}%` }}></div>
-                      <div className={`range-dot ${pnlColor.replace('text-', 'bg-')}`} style={{ left: `${currentPos}%` }}></div>
+                  <div className="flex flex-col gap-2">
+                    <div className="relative h-2 rounded-full overflow-hidden flex">
+                      <div className="h-full bg-bearish/20" style={{ width: `${entryPos}%` }}></div>
+                      <div className="h-full bg-bullish/20" style={{ width: `${100 - entryPos}%` }}></div>
+                      <div className="absolute top-0 bottom-0 w-[2px] bg-text shadow-lg z-10" style={{ left: `${entryPos}%` }}></div>
+                      <div className={`absolute top-0 bottom-0 w-3 h-3 -mt-0.5 rounded-full border-2 border-bg-secondary shadow-lg z-20 ${pnlBg}`} style={{ left: `${currentPos}%`, transform: 'translateX(-50%)' }}></div>
                     </div>
-                    <div className="range-labels">
-                      <span>-{((pos.entry_price - pos.stop_loss)/pos.entry_price * 100).toFixed(1)}% (stop)</span>
-                      <span>+{((pos.target - pos.entry_price)/pos.entry_price * 100).toFixed(1)}% (target)</span>
+                    <div className="flex justify-between text-[10px] font-black tracking-widest text-text-muted uppercase">
+                      <span>-{((pos.entry_price - pos.stop_loss)/pos.entry_price * 100).toFixed(1)}% SL</span>
+                      <span>+{((pos.target - pos.entry_price)/pos.entry_price * 100).toFixed(1)}% TGT</span>
                     </div>
                   </div>
 
-                  <div className="pos-details grid grid-cols-2 gap-4">
-                    <div>
-                      <div className="text-xs text-muted">Holding</div>
-                      <div className="text-sm font-medium">Day {pos.holding_days} of 50</div>
-                      <div className="progress-bar mt-1">
-                        <div className="progress-fill" style={{ width: `${(pos.holding_days / 50) * 100}%` }}></div>
+                  <div className="grid grid-cols-2 gap-8 pt-2">
+                    <div className="flex flex-col gap-2">
+                      <div className="flex justify-between items-center">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">Holding</div>
+                        <div className="text-[10px] font-black text-text">Day {pos.holding_days}/50</div>
+                      </div>
+                      <div className="h-1 bg-border rounded-full overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: `${(pos.holding_days / 50) * 100}%` }}></div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-xs text-muted">Size</div>
-                      <div className="text-sm font-medium">₹{pos.position_size.toLocaleString()}</div>
-                      <div className="text-xs text-muted">{Math.floor(pos.position_size / pos.entry_price)} shares</div>
+                    <div className="flex flex-col items-end">
+                      <div className="text-[10px] font-black uppercase tracking-widest text-text-muted leading-none mb-1">Position Size</div>
+                      <div className="text-sm font-black tracking-tight text-text">₹{pos.position_size.toLocaleString()}</div>
+                      <div className="text-[9px] font-bold text-text-muted uppercase tracking-tighter">{Math.floor(pos.position_size / pos.entry_price)} SHARES</div>
                     </div>
                   </div>
                 </div>
 
-                <div className="pos-footer">
-                  <div className="stop-status">
+                <div className="flex justify-between items-center px-6 py-4 bg-bg-elevated/50 border-t border-border">
+                  <div className="flex items-center">
                     {pos.atr_trail_active ? (
-                      <span className="distance-tag amber">Trailing active — floor at ₹{pos.highest_price?.toFixed(1)}</span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-500/10 text-amber-600 rounded-lg border border-amber-500/20 shadow-sm shadow-amber-500/5">
+                        <ShieldCheck size={12} className="fill-amber-500/10" />
+                        <span className="text-[10px] font-black uppercase tracking-wider">Trailing Active: ₹{pos.highest_price?.toFixed(1)}</span>
+                      </div>
                     ) : (
-                      <span className="text-xs text-muted">Trail activates at +2.5 ATR</span>
+                      <div className="text-[10px] font-black uppercase tracking-widest text-text-muted flex items-center gap-1.5 opacity-50">
+                        <Clock size={12} />
+                        <span>Trail at +2.5 ATR</span>
+                      </div>
                     )}
                   </div>
-                  <div className="text-xs text-muted">
-                    High: ₹{pos.highest_price?.toFixed(1)}
+                  <div className="text-[10px] font-black uppercase tracking-widest text-text-muted">
+                    Peak: <span className="text-text">₹{pos.highest_price?.toFixed(1)}</span>
                   </div>
                 </div>
               </div>
@@ -514,59 +531,75 @@ const HistoryView = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    getPaperTrades({ limit: 200 }).then(data => {
-      setTrades(data);
+    getPaperTrades({ limit: 200 }).then(res => {
+      setTrades(res.data);
       setLoading(false);
     });
   }, []);
 
-  if (loading) return <div className="loading-spinner">Loading Trade History...</div>;
+  if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Trade History...</div>;
 
-  const getReasonColor = (reason) => {
+  const getReasonStyles = (reason) => {
     switch(reason) {
-      case 'stop_loss': return 'bearish';
-      case 'target': return 'bullish';
-      case 'atr_trailing_stop': return 'accent';
-      case 'holding_period': return 'muted';
-      default: return 'warning';
+      case 'stop_loss': return 'bg-bearish/10 text-bearish';
+      case 'target': return 'bg-bullish/10 text-bullish';
+      case 'atr_trailing_stop': return 'bg-blue-500/10 text-blue-500';
+      case 'holding_period': return 'bg-slate-100 dark:bg-slate-800 text-text-muted';
+      default: return 'bg-warning/10 text-warning';
     }
   };
 
   return (
-    <div className="history-view animate-in">
-      <div className="pending-table-container card">
-        <table className="pending-table">
-          <thead>
-            <tr>
-              <th>Symbol</th>
-              <th>Period</th>
-              <th>Holding</th>
-              <th>Entry → Exit</th>
-              <th>Return</th>
-              <th>P&L</th>
-              <th>Reason</th>
-              <th>Score</th>
-            </tr>
-          </thead>
-          <tbody>
-            {trades.map((t, idx) => (
-              <tr key={idx}>
-                <td><div className="font-bold">{t.symbol}</div></td>
-                <td><div className="text-xs">{new Date(t.entry_date).toLocaleDateString()} → {new Date(t.exit_date).toLocaleDateString()}</div></td>
-                <td>{t.holding_days}d</td>
-                <td>₹{t.entry_price.toFixed(1)} → ₹{t.exit_price.toFixed(1)}</td>
-                <td><span className={t.return_pct >= 0 ? 'text-bullish font-bold' : 'text-bearish font-bold'}>{t.return_pct >= 0 ? '+' : ''}{t.return_pct.toFixed(1)}%</span></td>
-                <td>₹{t.pnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}</td>
-                <td>
-                  <span className={`distance-tag ${getReasonColor(t.exit_reason)}`}>
-                    {t.exit_reason.replace('_', ' ')}
-                  </span>
-                </td>
-                <td><div className="score-badge">{t.signal_score}</div></td>
+    <div className="flex flex-col gap-4 animate-fade-in">
+      <div className="bg-bg-secondary border border-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="bg-bg-elevated border-b border-border text-[10px] uppercase tracking-widest text-text-muted font-black">
+                <th className="text-left p-4">Symbol</th>
+                <th className="text-left p-4">Period</th>
+                <th className="text-left p-4">Holding</th>
+                <th className="text-left p-4">Entry → Exit</th>
+                <th className="text-right p-4">Return %</th>
+                <th className="text-right p-4">P&L (₹)</th>
+                <th className="text-center p-4">Reason</th>
+                <th className="text-center p-4">Score</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="text-sm font-medium">
+              {trades.map((t, idx) => (
+                <tr key={idx} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors">
+                  <td className="p-4 font-black text-text tracking-tight">{t.symbol}</td>
+                  <td className="p-4">
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">
+                      {new Date(t.entry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} → {new Date(t.exit_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </div>
+                  </td>
+                  <td className="p-4 text-text-muted font-black text-xs">{t.holding_days}d</td>
+                  <td className="p-4 font-mono text-xs text-text-muted">
+                    <span className="font-black text-text">₹{t.entry_price.toFixed(1)}</span> → <span>₹{t.exit_price.toFixed(1)}</span>
+                  </td>
+                  <td className={`p-4 text-right font-black ${t.return_pct >= 0 ? 'text-bullish' : 'text-bearish'}`}>
+                    {t.return_pct >= 0 ? '+' : ''}{t.return_pct.toFixed(1)}%
+                  </td>
+                  <td className={`p-4 text-right font-black ${t.pnl >= 0 ? 'text-bullish' : 'text-bearish'}`}>
+                    ₹{t.pnl.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                  </td>
+                  <td className="p-4 text-center">
+                    <span className={`px-2 py-0.5 rounded-[4px] text-[9px] font-black uppercase tracking-widest ${getReasonStyles(t.exit_reason)}`}>
+                      {t.exit_reason.replace('_', ' ')}
+                    </span>
+                  </td>
+                  <td className="p-4 text-center">
+                    <div className="inline-flex px-1.5 py-0.5 bg-bg-elevated border border-border rounded font-black text-[10px] text-text-muted">
+                      {t.signal_score}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
@@ -580,8 +613,8 @@ const AnalyticsView = () => {
   useEffect(() => {
     Promise.all([getPaperPortfolio(), getPaperTrades({ limit: 500 })])
       .then(([p, t]) => {
-        setPortfolio(p);
-        setTrades(t);
+        setPortfolio(p.data);
+        setTrades(t.data);
         setLoading(false);
       });
   }, []);
@@ -616,87 +649,113 @@ const AnalyticsView = () => {
     }));
   }, [trades]);
 
-  if (loading) return <div className="loading-spinner">Loading Analytics...</div>;
+  if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Analytics...</div>;
 
   return (
-    <div className="analytics-view animate-in space-y-8">
-      <section className="analytics-section card p-6">
-        <h3 className="mt-0">Equity Curve Comparison</h3>
+    <div className="flex flex-col gap-8 animate-fade-in">
+      <section className="p-8 bg-bg-secondary border border-border rounded-3xl shadow-sm">
+        <h3 className="text-xl font-black uppercase tracking-tight text-text mb-8">Equity Curve Comparison</h3>
         <div style={{ width: '100%', height: 350 }}>
           <ResponsiveContainer>
-            <LineChart data={[] /* Real comparison would merge backtest results for same period */}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border-color)" />
+            <LineChart data={[]}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-border)" />
               <XAxis dataKey="date" hide />
-              <YAxis />
-              <Legend />
-              <Line name="Paper Trading" type="monotone" dataKey="paper" stroke="var(--accent-color)" strokeWidth={3} />
-              <Line name="Backtest Equivalent" type="monotone" dataKey="backtest" stroke="var(--accent-color)" strokeDasharray="5 5" opacity={0.5} />
-              <Line name="Nifty 50" type="monotone" dataKey="nifty" stroke="#888" strokeWidth={1} />
+              <YAxis stroke="var(--color-text-muted)" fontSize={10} />
+              <Legend verticalAlign="top" height={36}/>
+              <Line name="Paper Trading" type="monotone" dataKey="paper" stroke="var(--color-primary)" strokeWidth={3} />
+              <Line name="Backtest Equivalent" type="monotone" dataKey="backtest" stroke="var(--color-primary)" strokeDasharray="5 5" opacity={0.5} />
+              <Line name="Nifty 50" type="monotone" dataKey="nifty" stroke="var(--color-text-muted)" strokeWidth={1} />
             </LineChart>
           </ResponsiveContainer>
         </div>
-        <p className="mt-4 p-3 bg-muted rounded text-sm">
-          Paper trading is tracking the backtest equivalent within acceptable variance over {portfolio.total_trades} trades.
-        </p>
+        <div className="mt-6 p-4 bg-bg-elevated rounded-2xl border border-border">
+          <p className="text-sm font-bold text-text">
+            Paper trading is tracking the backtest equivalent within acceptable variance over {portfolio.total_trades} trades.
+          </p>
+        </div>
       </section>
 
-      <div className="donut-charts-container">
-        <div className="donut-chart-card card">
-          <h4 className="mt-0 text-center">Backtest Exits</h4>
-          <div style={{ height: 200 }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-6 bg-bg-secondary border border-border rounded-3xl shadow-sm flex flex-col items-center">
+          <h4 className="text-sm font-black uppercase tracking-widest text-text-muted mb-8">Backtest Exit Breakdown</h4>
+          <div style={{ width: '100%', height: 220 }}>
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={BACKTEST_BENCHMARKS.exit_reasons} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                <Pie data={BACKTEST_BENCHMARKS.exit_reasons} innerRadius={65} outerRadius={85} paddingAngle={5} dataKey="value" stroke="none">
                   {BACKTEST_BENCHMARKS.exit_reasons.map((entry, index) => (
-                    <Cell key={index} fill={['#ef4444', '#0ea5e9', '#22c55e', '#64748b'][index % 4]} />
+                    <Cell key={index} fill={['#EF4444', '#3B82F6', '#22C55E', '#94A3B8'][index % 4]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: '12px' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex justify-center gap-4 text-xs mt-2">
-            {BACKTEST_BENCHMARKS.exit_reasons.map((r, i) => <span key={i}>{r.name}: {r.value}%</span>)}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4">
+            {BACKTEST_BENCHMARKS.exit_reasons.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#EF4444', '#3B82F6', '#22C55E', '#94A3B8'][i % 4] }}></div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-text-muted">{r.name}</span>
+                <span className="text-[10px] font-black ml-auto">{r.value}%</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        <div className="donut-chart-card card">
-          <h4 className="mt-0 text-center">Paper Exits</h4>
-          <div style={{ height: 200 }}>
+        <div className="p-6 bg-bg-secondary border border-border rounded-3xl shadow-sm flex flex-col items-center">
+          <h4 className="text-sm font-black uppercase tracking-widest text-text-muted mb-8">Live Paper Exits</h4>
+          <div style={{ width: '100%', height: 220 }}>
             <ResponsiveContainer>
               <PieChart>
-                <Pie data={exitData} innerRadius={60} outerRadius={80} paddingAngle={5} dataKey="value">
+                <Pie data={exitData} innerRadius={65} outerRadius={85} paddingAngle={5} dataKey="value" stroke="none">
                   {exitData.map((entry, index) => (
-                    <Cell key={index} fill={['#ef4444', '#0ea5e9', '#22c55e', '#64748b'][index % 4]} />
+                    <Cell key={index} fill={['#EF4444', '#3B82F6', '#22C55E', '#94A3B8'][index % 4]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: '12px' }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </div>
-          <div className="flex justify-center gap-4 text-xs mt-2">
-            {exitData.length > 0 ? exitData.map((r, i) => <span key={i}>{r.name}: {r.value}%</span>) : <span>No data</span>}
+          <div className="grid grid-cols-2 gap-x-8 gap-y-2 mt-4 w-full px-8">
+            {exitData.length > 0 ? exitData.map((r, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{ backgroundColor: ['#EF4444', '#3B82F6', '#22C55E', '#94A3B8'][i % 4] }}></div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-text-muted whitespace-nowrap">{r.name}</span>
+                <span className="text-[10px] font-black ml-auto">{r.value}%</span>
+              </div>
+            )) : <div className="col-span-2 text-center text-[10px] font-bold text-text-muted uppercase tracking-widest opacity-50 py-4">No completed trades</div>}
           </div>
         </div>
       </div>
 
-      <div className="analytics-notes space-y-2">
+      <div className="flex flex-col gap-3">
         {(() => {
-          const paperStopPct = exitData.find(d => d.name === 'stop loss')?.value || 0;
+          const paperStopPct = exitData.find(d => d.name.toLowerCase() === 'stop loss')?.value || 0;
           const backtestStopPct = BACKTEST_BENCHMARKS.exit_reasons.find(d => d.name === 'Stop Loss')?.value || 0;
-          const paperHoldPct = exitData.find(d => d.name === 'holding period')?.value || 0;
+          const paperHoldPct = exitData.find(d => d.name.toLowerCase() === 'holding period')?.value || 0;
           const backtestHoldPct = BACKTEST_BENCHMARKS.exit_reasons.find(d => d.name === 'Held')?.value || 0;
           
           return (
             <>
               {paperStopPct > backtestStopPct + 10 && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded text-sm">
-                  <span className="font-bold text-amber-500">Note:</span> More stops than expected. Consider whether current market conditions favour a tighter regime filter or whether entries are occurring in lower-quality setups.
+                <div className="p-4 bg-warning/5 border border-warning/20 rounded-2xl flex gap-3 items-start">
+                  <AlertCircle size={18} className="text-warning flex-shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium leading-relaxed">
+                    <span className="font-black text-warning uppercase tracking-widest text-[10px] mr-2">Advisory:</span> 
+                    More stops than expected. Consider whether current market conditions favour a tighter regime filter or whether entries are occurring in lower-quality setups.
+                  </p>
                 </div>
               )}
               {paperHoldPct > backtestHoldPct + 5 && (
-                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded text-sm">
-                  <span className="font-bold text-amber-500">Note:</span> More positions expiring without hitting stop or target. Momentum may not be developing after entry — review sector conditions.
+                <div className="p-4 bg-warning/5 border border-warning/20 rounded-2xl flex gap-3 items-start">
+                  <AlertCircle size={18} className="text-warning flex-shrink-0 mt-0.5" />
+                  <p className="text-sm font-medium leading-relaxed">
+                    <span className="font-black text-warning uppercase tracking-widest text-[10px] mr-2">Advisory:</span> 
+                    More positions expiring without hitting stop or target. Momentum may not be developing after entry — review sector conditions.
+                  </p>
                 </div>
               )}
             </>
@@ -704,18 +763,21 @@ const AnalyticsView = () => {
         })()}
       </div>
 
-      <section className="analytics-section card p-6">
-        <h4 className="mt-0">Signal Quality vs Outcome</h4>
-        <div style={{ width: '100%', height: 300 }}>
+      <section className="p-8 bg-bg-secondary border border-border rounded-3xl shadow-sm">
+        <h4 className="text-lg font-black uppercase tracking-tight text-text mb-8">Signal Quality vs Outcome</h4>
+        <div style={{ width: '100%', height: 320 }}>
           <ResponsiveContainer>
-            <BarChart data={scoreData} layout="vertical">
-              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border-color)" />
+            <BarChart data={scoreData} layout="vertical" margin={{ left: 20 }}>
+              <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--color-border)" />
               <XAxis type="number" hide />
-              <YAxis dataKey="range" type="category" stroke="var(--text-muted)" />
-              <Tooltip cursor={{fill: 'rgba(255,255,255,0.05)'}} />
-              <Legend />
-              <Bar dataKey="win" name="Wins" stackId="a" fill="var(--bullish-color)" />
-              <Bar dataKey="loss" name="Losses" stackId="a" fill="var(--bearish-color)" />
+              <YAxis dataKey="range" type="category" stroke="var(--color-text-muted)" fontSize={11} fontWeight={700} />
+              <Tooltip 
+                cursor={{fill: 'var(--color-bg-elevated)', opacity: 0.5}}
+                contentStyle={{ backgroundColor: 'var(--color-bg-secondary)', border: '1px solid var(--color-border)', borderRadius: '12px' }}
+              />
+              <Legend verticalAlign="top" align="right" height={36}/>
+              <Bar dataKey="win" name="Wins" stackId="a" fill="var(--color-bullish)" radius={[0, 0, 0, 0]} />
+              <Bar dataKey="loss" name="Losses" stackId="a" fill="var(--color-bearish)" radius={[0, 4, 4, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -727,7 +789,6 @@ const AnalyticsView = () => {
 const ReadinessBanner = ({ portfolio }) => {
   if (!portfolio) return null;
   
-  // Logic for dots
   const dots = [
     portfolio.total_trades >= 30,
     Math.abs(portfolio.win_rate - BACKTEST_BENCHMARKS.win_rate) <= 8,
@@ -742,27 +803,39 @@ const ReadinessBanner = ({ portfolio }) => {
     : "Tracking within acceptable range — continue paper trading";
 
   return (
-    <div className="readiness-banner card glass">
-      <div className="readiness-left">
-        <div className="readiness-label font-bold">Paper Trading Readiness</div>
-        <div className="readiness-dots">
-          {dots.map((active, i) => <span key={i} className={`dot ${active ? 'active' : ''}`}></span>)}
+    <div className="fixed bottom-0 left-0 lg:left-[280px] right-0 h-auto sm:h-20 p-4 sm:p-0 flex flex-col sm:flex-row justify-between items-center z-50 bg-bg-secondary/95 backdrop-blur-xl border-t border-border shadow-[0_-8px_30px_rgb(0,0,0,0.12)]">
+      <div className="flex flex-col items-center sm:items-start sm:pl-10 mb-3 sm:mb-0">
+        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted leading-none mb-2">Paper Trading Readiness</div>
+        <div className="flex gap-1.5">
+          {dots.map((active, i) => (
+            <div key={i} className={`w-2.5 h-2.5 rounded-full transition-all duration-700 ${
+              active ? 'bg-bullish shadow-[0_0_10px_rgba(34,197,94,0.4)] scale-110' : 'bg-border'
+            }`}></div>
+          ))}
         </div>
       </div>
-      <div className="readiness-center">
-        <div className="readiness-stats">
-          <span>{portfolio.total_trades} trades completed</span>
-          <span className="separator px-2">·</span>
-          <span>Win rate {portfolio.win_rate}%</span>
-          <span className="separator px-2">·</span>
-          <span>Profit factor {portfolio.profit_factor}</span>
+      
+      <div className="flex flex-col items-center flex-1">
+        <div className="flex items-center gap-3 text-sm font-black tracking-tight text-text">
+          <span>{portfolio.total_trades} TRADES</span>
+          <div className="w-1 h-1 rounded-full bg-border"></div>
+          <span className="text-bullish">{portfolio.win_rate}% WIN RATE</span>
+          <div className="w-1 h-1 rounded-full bg-border"></div>
+          <span className="text-blue-500">PF {portfolio.profit_factor}</span>
         </div>
-        <div className="readiness-targets text-muted">
-          Backtest targets: Win rate {BACKTEST_BENCHMARKS.win_rate}% · Profit factor {BACKTEST_BENCHMARKS.profit_factor}
+        <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-60">
+          Targets: {BACKTEST_BENCHMARKS.win_rate}% Win · {BACKTEST_BENCHMARKS.profit_factor} Profit Factor
         </div>
       </div>
-      <div className="readiness-right">
-        <div className={`readiness-status ${filledCount === 5 ? 'text-bullish' : ''}`}>{statusMessage}</div>
+      
+      <div className="sm:pr-10 mt-3 sm:mt-0">
+        <div className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${
+          filledCount === 5 
+            ? 'bg-bullish text-white border-green-400 shadow-lg shadow-green-500/30 animate-pulse' 
+            : 'bg-bg-elevated text-text-muted border-border'
+        }`}>
+          {statusMessage}
+        </div>
       </div>
     </div>
   );
