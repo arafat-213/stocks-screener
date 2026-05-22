@@ -284,10 +284,10 @@ const Discover = () => {
       <header className="page-header">
         <div className="header-content">
           <h1>Discovery</h1>
-          <p className="text-muted">Explore strategies or create your own market screens.</p>
+          <p className="text-text-muted">Explore strategies or create your own market screens.</p>
         </div>
         
-        <div className="tabs-container card">
+        <div className="tabs-container bg-bg-secondary border border-border rounded-lg shadow-sm">
           <button 
             className={`tab-btn ${activeTab === 'strategies' ? 'active' : ''}`}
             onClick={() => setActiveTab('strategies')}
@@ -310,7 +310,7 @@ const Discover = () => {
           <div className="stock-grid mb-32">
             {loadingScreens ? (
               [...Array(3)].map((_, i) => (
-                <div key={i} className="card skeleton-card skeleton-h-140" />
+                <div key={i} className="bg-bg-secondary border border-border rounded-lg shadow-sm skeleton-bg-bg-secondary border border-border rounded-lg shadow-sm skeleton-h-140" />
               ))
             ) : (
               screens.map(screen => (
@@ -325,8 +325,8 @@ const Discover = () => {
           </div>
 
           {selectedSlug && (
-            <div className="card results-card">
-              <div className="card-header">
+            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
                 <h3>
                   {screens.find(s => s.slug === selectedSlug)?.label}
                   <span className="count-badge">{strategyResults.length} hits</span>
@@ -357,7 +357,7 @@ const Discover = () => {
         </section>
       ) : (
         <section className="interactive-tab">
-          <div className="card filter-panel mb-24 p-24">
+          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm filter-panel mb-24 p-24">
             <div className="filter-grid">
               <Select 
                 label="Sector"
@@ -396,8 +396,8 @@ const Discover = () => {
             </div>
           </div>
 
-          <div className="card results-card">
-            <div className="card-header">
+          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
+            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
               <h3>Results <span className="count-badge">{filteredStocks.length} stocks</span></h3>
               <ExportButton 
                 data={filteredStocks}

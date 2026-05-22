@@ -89,8 +89,8 @@ const BacktestResults = memo(
 
     if (activeRun.status === 'failed') {
       return (
-        <div className="error-card">
-          <h3 className="error-card-title">
+        <div className="error-bg-bg-secondary border border-border rounded-lg shadow-sm">
+          <h3 className="error-bg-bg-secondary border border-border rounded-lg shadow-sm-title">
             <AlertTriangle size={20} /> Backtest Failed
           </h3>
           <p>
@@ -182,7 +182,7 @@ const BacktestResults = memo(
             ].map((m, idx) => (
               <div
                 key={m.label}
-                className="metric-card animate-fade-in"
+                className="metric-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
                 style={{ '--delay': `${idx * 0.05}s` }}
               >
                 <span className="metric-label">{m.label}</span>
@@ -195,7 +195,7 @@ const BacktestResults = memo(
 
           {metrics.exit_breakdown && (
             <div
-              className="exit-breakdown-card animate-fade-in"
+              className="exit-breakdown-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
               style={{ '--delay': '0.55s' }}
             >
               <h3>
@@ -260,7 +260,7 @@ const BacktestResults = memo(
 
           {/* Equity Chart */}
           <div
-            className="chart-card animate-fade-in"
+            className="chart-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
             style={{ '--delay': '0.5s' }}
           >
             <h3>
@@ -326,7 +326,7 @@ const BacktestResults = memo(
 
           {/* Trades Table */}
           <div
-            className="trades-card animate-fade-in"
+            className="trades-bg-bg-secondary border border-border rounded-lg shadow-sm animate-fade-in"
             style={{ '--delay': '0.6s' }}
           >
             <div className="trades-table-header">
@@ -587,7 +587,7 @@ const Backtest = () => {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <History className="text-primary" /> Backtest Engine
         </h1>
-        <p className="text-muted">
+        <p className="text-text-muted">
           Simulate strategies against historical NSE data.
         </p>
       </header>
@@ -595,7 +595,7 @@ const Backtest = () => {
       <div className="backtest-grid">
         {/* Sidebar Configuration */}
         <aside className="sidebar-panel">
-          <section className="recent-runs-card">
+          <section className="recent-runs-bg-bg-secondary border border-border rounded-lg shadow-sm">
             <h2 className="flex items-center gap-2">
               <History size={18} /> Recent Runs
             </h2>
@@ -634,7 +634,7 @@ const Backtest = () => {
             </div>
           </section>
 
-          <section className="config-card">
+          <section className="config-bg-bg-secondary border border-border rounded-lg shadow-sm">
             <div className="config-header">
               <h2 className="flex items-center gap-2">
                 <Settings size={18} /> Configuration

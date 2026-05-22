@@ -54,19 +54,19 @@ export const SectorRotationTable = ({ data, loading }) => {
       key: 'stock_count',
       label: 'Stocks',
       sortable: true,
-      render: (val) => <span className="text-muted">{val}</span>
+      render: (val) => <span className="text-text-muted">{val}</span>
     }
   ], []);
 
   return (
-    <div className="card results-card">
-      <div className="card-header">
+    <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
+      <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
         <div className="report-header-flex">
           <BarChart3 size={20} className="text-primary" />
           <h3 className="m-0">Sector Rotation Analysis</h3>
         </div>
         <div className="flex-center-gap-12">
-            <span className="fs-12 text-muted">Latest Daily Snapshot</span>
+            <span className="fs-12 text-text-muted">Latest Daily Snapshot</span>
             <span className="count-badge">{data.length} sectors</span>
         </div>
       </div>

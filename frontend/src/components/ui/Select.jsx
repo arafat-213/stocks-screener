@@ -39,7 +39,7 @@ const Select = ({ value, onChange, options, placeholder = "Select option", label
       </div>
       
       {isOpen && (
-        <div className="select-dropdown glass">
+        <div className="select-dropdown bg-bg-secondary/70 backdrop-blur-md border border-border">
           {options.map((option) => (
             <div 
               key={option.value} 

@@ -31,7 +31,7 @@ const ChangeBanner = ({ changes = [], asOf, prevDate, loading }) => {
   const turnedBearish = changes.filter(c => ['turned_bearish', 'confluence_dropped'].includes(c.change_type));
 
   return (
-    <div className="change-banner card">
+    <div className="change-banner bg-bg-secondary border border-border rounded-lg shadow-sm">
       <button className="change-banner-toggle" onClick={toggle}>
         <div className="toggle-left">
           <Zap size={16} className="zap-icon" />

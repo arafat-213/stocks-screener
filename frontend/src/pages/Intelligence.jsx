@@ -154,12 +154,12 @@ const Intelligence = () => {
       <header className="page-header">
         <div className="header-content">
           <h1>Market Intelligence</h1>
-          <p className="text-muted">
+          <p className="text-text-muted">
             Macro sector rotation and historical session reports.
           </p>
         </div>
 
-        <div className="tabs-container card">
+        <div className="tabs-container bg-bg-secondary border border-border rounded-lg shadow-sm">
           <button
             className={`tab-btn ${activeView === 'rotation' ? 'active' : ''}`}
             onClick={() => setActiveView('rotation')}
@@ -196,7 +196,7 @@ const Intelligence = () => {
       ) : (
         <div className="intelligence-grid fade-in">
           {/* Date Selection Sidebar/List */}
-          <aside className="card h-fit p-24">
+          <aside className="bg-bg-secondary border border-border rounded-lg shadow-sm h-fit p-24">
             <div className="flex-center-gap-8 mb-12">
               <Calendar size={18} className="text-primary" />
               <h2 className="fs-14 bold">Past Sessions</h2>
@@ -295,19 +295,19 @@ const Intelligence = () => {
           {/* Report Content Area */}
           <section className="report-content">
             {loadingReport ? (
-              <div className="card loading-state mt-32">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm loading-state mt-32">
                 <Loader2 className="animate-spin" size={32} />
                 <p>Compiling report for {selectedDate}...</p>
               </div>
             ) : reportData.length === 0 ? (
-              <div className="card no-results p-64">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm no-results p-64">
                 <AlertCircle size={48} />
                 <h3>No data found</h3>
                 <p>We couldn't find any session data for {selectedDate}.</p>
               </div>
             ) : (
-              <div className="card results-card">
-                <div className="card-header">
+              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm results-bg-bg-secondary border border-border rounded-lg shadow-sm">
+                <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-header">
                   <div className="report-header-flex">
                     <TrendingUp size={20} className="text-bullish" />
                     <h3 className="m-0">Session Report: {selectedDate}</h3>

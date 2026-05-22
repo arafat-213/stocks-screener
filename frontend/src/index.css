@@ -56,50 +56,57 @@
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5);
 }
 
-body {
-  margin: 0;
-  background-color: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-main);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-  overflow-x: hidden;
-}
+@layer base {
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-main);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    overflow-x: hidden;
+  }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
 
-::-webkit-scrollbar-track {
-  background: var(--color-bg);
-}
+  ::-webkit-scrollbar-track {
+    background: var(--color-bg);
+  }
 
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 10px;
-}
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-border);
+    border-radius: 10px;
+  }
 
-::-webkit-scrollbar-thumb:hover {
-  background: var(--color-text-muted);
-}
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-text-muted);
+  }
 
-#root {
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-}
+  #root {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+  }
+  
+  /* Global Input/Select Enhancements */
+  input[type="text"], 
+  input[type="number"], 
+  input[type="email"],
+  input[type="password"],
+  input[type="date"],
+  select, 
+  textarea {
+    @apply bg-bg-secondary text-text border border-border rounded-md px-[14px] py-[10px] text-[0.9rem] transition-all duration-200 w-full;
+  }
 
-/* Base custom components that use variables */
-.card {
-  @apply bg-bg-secondary border border-border rounded-lg shadow-sm;
-}
-
-.glass {
-  background: rgba(var(--color-bg-secondary-rgb), 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  @apply border border-border;
+  input:focus, 
+  select:focus,
+  textarea:focus {
+    @apply outline-none border-primary ring-2 ring-primary/10;
+  }
 }

@@ -35,7 +35,7 @@ const MainLayout = ({ children }) => {
   return (
     <div className="main-layout">
       {/* Mobile Header */}
-      <header className="mobile-header glass">
+      <header className="mobile-header bg-bg-secondary/70 backdrop-blur-md border border-border">
         <div className="brand">
           <Activity size={24} className="text-bullish" />
           <span>Screener AI</span>
@@ -74,7 +74,7 @@ const MainLayout = ({ children }) => {
 
         <div className="sidebar-footer">
           <ThemeToggle />
-          <div className="version-info text-muted">v2.1.0</div>
+          <div className="version-info text-text-muted">v2.1.0</div>
         </div>
       </aside>
 
@@ -87,7 +87,7 @@ const MainLayout = ({ children }) => {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="bottom-nav glass">
+      <nav className="bottom-nav bg-bg-secondary/70 backdrop-blur-md border border-border">
         {navItems.map((item) => (
           <NavLink 
             key={item.to} 

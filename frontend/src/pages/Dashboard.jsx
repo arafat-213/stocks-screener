@@ -384,7 +384,7 @@ const Dashboard = () => {
           />
 
           {!isMobile && (
-            <div className="filters-container card">
+            <div className="filters-container bg-bg-secondary border border-border rounded-lg shadow-sm">
               <div className="filter-flex-wrap">
                 <div className="filter-group">
                   <div className="mb-12">
@@ -513,7 +513,7 @@ const Dashboard = () => {
               )}
 
               <div className="flex-center-gap-8">
-                <ArrowUpDown size={16} className="text-muted" />
+                <ArrowUpDown size={16} className="text-text-muted" />
                 <Select
                   value={sortBy}
                   onChange={setSortBy}

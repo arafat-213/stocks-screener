@@ -40,9 +40,9 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
   };
 
   return (
-    <Link to={`/stocks/${symbol}`} className="stock-card-link">
-      <div className="stock-card">
-        <div className="card-top">
+    <Link to={`/stocks/${symbol}`} className="stock-bg-bg-secondary border border-border rounded-lg shadow-sm-link">
+      <div className="stock-bg-bg-secondary border border-border rounded-lg shadow-sm">
+        <div className="bg-bg-secondary border border-border rounded-lg shadow-sm-top">
           <div className="symbol-section">
             <div className="symbol-row">
               <span className="stock-symbol">{symbol.replace('.NS', '')}</span>

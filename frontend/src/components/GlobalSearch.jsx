@@ -116,7 +116,7 @@ export const GlobalSearch = () => {
         <div className="search-overlay" onClick={() => setIsOpen(false)}>
           <div className="search-modal" onClick={e => e.stopPropagation()}>
             <div className="search-input-wrapper">
-              <Search size={20} className="text-muted" />
+              <Search size={20} className="text-text-muted" />
               <input 
                 ref={inputRef}
                 value={query} 
@@ -139,9 +139,9 @@ export const GlobalSearch = () => {
                   >
                     <div className="result-main">
                       <span className="result-symbol">{s.symbol}</span>
-                      <span className="result-name text-muted">{s.name}</span>
+                      <span className="result-name text-text-muted">{s.name}</span>
                     </div>
-                    <span className="result-sector text-xs text-muted">{s.sector}</span>
+                    <span className="result-sector text-xs text-text-muted">{s.sector}</span>
                   </div>
                 ))
               ) : query.length >= 2 ? (
