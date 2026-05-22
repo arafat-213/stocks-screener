@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, or_, func
+from sqlalchemy import desc, or_, func, and_
 from app.db.session import get_db
 from app.db.models import TechnicalSignal, PipelineRun, Stock, FundamentalData, FundamentalCache
 from app.pipeline.orchestrator import run_pipeline
@@ -84,30 +84,55 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     # 4. Latest Scores (MTF)
     scores = {}
     daily_signal_obj = None
-    for tf in ['D', 'W', 'M']:
-        signal = db.query(TechnicalSignal).filter(
+    
+    # Subquery: latest date per timeframe for this symbol
+    latest_per_tf = (
+        db.query(
+            TechnicalSignal.timeframe,
+            func.max(TechnicalSignal.date).label("max_date"),
+        )
+        .filter(
             TechnicalSignal.symbol == clean_symbol,
-            TechnicalSignal.timeframe == tf
-        ).order_by(desc(TechnicalSignal.date)).first()
-        
-        if tf == 'D':
-            daily_signal_obj = signal
+            TechnicalSignal.timeframe.in_(['D', 'W', 'M']),
+        )
+        .group_by(TechnicalSignal.timeframe)
+        .subquery()
+    )
 
-        if signal:
-            scores[tf] = {
-                "score": signal.entry_score,
-                "ema_signal": signal.ema_signal,
-                "volume_signal": signal.volume_signal,
-                "rsi_signal": signal.rsi_signal,
-                "rsi": signal.rsi,
-                "adx": signal.adx,
-                "rs_score": signal.rs_score,
-                "momentum_1m": signal.momentum_1m,
-                "momentum_3m": signal.momentum_3m,
-                "momentum_6m": signal.momentum_6m,
-                "momentum_12m": signal.momentum_12m
-            }
-        else:
+    all_signals = (
+        db.query(TechnicalSignal)
+        .join(
+            latest_per_tf,
+            and_(
+                TechnicalSignal.symbol == clean_symbol,
+                TechnicalSignal.timeframe == latest_per_tf.c.timeframe,
+                TechnicalSignal.date == latest_per_tf.c.max_date,
+            ),
+        )
+        .all()
+    )
+
+    for signal in all_signals:
+        if signal.timeframe == 'D':
+            daily_signal_obj = signal
+            
+        scores[signal.timeframe] = {
+            "score": signal.entry_score,
+            "ema_signal": signal.ema_signal,
+            "volume_signal": signal.volume_signal,
+            "rsi_signal": signal.rsi_signal,
+            "rsi": signal.rsi,
+            "adx": signal.adx,
+            "rs_score": signal.rs_score,
+            "momentum_1m": signal.momentum_1m,
+            "momentum_3m": signal.momentum_3m,
+            "momentum_6m": signal.momentum_6m,
+            "momentum_12m": signal.momentum_12m
+        }
+    
+    # Fill missing timeframes with None
+    for tf in ['D', 'W', 'M']:
+        if tf not in scores:
             scores[tf] = None
 
     # 4b. Trade Setup (from daily signal)
