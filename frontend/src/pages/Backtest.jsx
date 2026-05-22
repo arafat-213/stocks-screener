@@ -66,18 +66,18 @@ const BacktestResults = memo(
 
     if (activeRun.status === 'running' || activeRun.status === 'pending') {
       return (
-        <div className="bg-bg-elevated border border-border rounded-xl p-6 text-center">
-          <div className="flex justify-between items-center mb-3">
-            <h3 className="text-lg font-bold text-text">Backtest in Progress...</h3>
-            <span className="font-bold text-text">{activeRun.progress.pct}%</span>
+        <div className="bg-bg-secondary border-2 border-border rounded-2xl p-8 text-center shadow-sm">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-xl font-black text-text uppercase tracking-tight">Backtest in Progress...</h3>
+            <span className="font-black text-blue-500 text-2xl">{activeRun.progress.pct}%</span>
           </div>
-          <div className="h-2 bg-bg-secondary rounded-full overflow-hidden mb-2">
+          <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4 border border-border">
             <div
-              className="h-full bg-primary transition-all duration-300"
+              className="h-full bg-blue-600 shadow-[0_0_12px_rgba(37,99,235,0.4)] transition-all duration-300"
               style={{ width: `${activeRun.progress.pct}%` }}
             ></div>
           </div>
-          <p className="text-[0.85rem] text-text-muted">
+          <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
             Processing symbols: {activeRun.progress.symbols_done} /{' '}
             {activeRun.progress.symbols_total}
           </p>
@@ -87,11 +87,11 @@ const BacktestResults = memo(
 
     if (activeRun.status === 'failed') {
       return (
-        <div className="bg-bearish/10 border border-bearish rounded-xl p-6">
-          <h3 className="text-bearish flex items-center gap-2 mb-2 font-semibold">
-            <AlertTriangle size={20} /> Backtest Failed
+        <div className="bg-red-500/10 border-2 border-red-500/30 rounded-2xl p-6 shadow-sm">
+          <h3 className="text-red-600 dark:text-red-400 flex items-center gap-2 mb-3 font-black uppercase tracking-tight text-lg">
+            <AlertTriangle size={24} /> Backtest Failed
           </h3>
-          <p className="text-sm text-text">
+          <p className="text-sm font-bold text-text">
             {activeRun.error_message ||
               'An unknown error occurred during execution.'}
           </p>
@@ -105,212 +105,211 @@ const BacktestResults = memo(
           {/* Metrics Grid */}
           {metrics.total_trades < 100 && (
             <div
-              className="bg-warning/10 border border-warning/30 rounded-lg p-3 px-4 flex gap-3 text-amber-600 text-sm leading-relaxed mb-4"
+              className="bg-amber-500/10 border-2 border-amber-500/20 rounded-xl p-4 flex gap-4 text-amber-700 dark:text-amber-400 text-sm leading-relaxed mb-6 shadow-sm"
             >
               <AlertTriangle
-                size={20}
-                className="shrink-0 text-warning"
+                size={24}
+                className="shrink-0 text-amber-500"
               />
-              <div>
-                <strong>Low sample size — metrics unreliable.</strong> Only{' '}
-                {metrics.total_trades} trades recorded. Statistical confidence
-                requires at least 100 trades. To increase trade count: lower{' '}
-                <em>Score Threshold</em> (try 40–45 for technical-only), disable{' '}
-                <em>Weekly Confirmation</em> and <em>Volume Breakout</em>, or
-                extend the date range.
+              <div className="font-bold">
+                <strong className="uppercase tracking-wide text-xs block mb-1">Low sample size warning</strong> 
+                Only {metrics.total_trades} trades recorded. Statistical confidence requires at least 100 trades.
               </div>
             </div>
           )}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(160px,1fr))] gap-4">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 sm:gap-4">
             {[
               { label: 'Total Trades', value: metrics.total_trades },
               {
                 label: 'Win Rate',
                 value: `${metrics.win_rate?.toFixed(1)}%`,
-                className: metrics.win_rate >= 50 ? 'text-bullish' : 'text-bearish',
+                className: metrics.win_rate >= 50 ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-red-500 text-white shadow-red-500/20',
+                isBadge: true
               },
               {
                 label: 'Expectancy',
                 value: `${metrics.expectancy?.toFixed(2)}%`,
-                className: metrics.expectancy >= 0 ? 'text-bullish' : 'text-bearish',
+                className: metrics.expectancy >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Profit Factor',
                 value: metrics.profit_factor?.toFixed(2),
-                className: metrics.profit_factor >= 1 ? 'text-bullish' : 'text-bearish',
+                className: metrics.profit_factor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Avg Win',
                 value: `+${metrics.avg_win_pct?.toFixed(2)}%`,
-                className: 'text-bullish',
+                className: 'text-green-600 dark:text-green-400',
               },
               {
                 label: 'Avg Loss',
                 value: `${metrics.avg_loss_pct?.toFixed(2)}%`,
-                className: 'text-bearish',
+                className: 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Avg Return',
                 value: `${metrics.avg_return_pct?.toFixed(2)}%`,
                 className:
-                  metrics.avg_return_pct >= 0 ? 'text-bullish' : 'text-bearish',
+                  metrics.avg_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Sharpe Ratio',
                 value: metrics.sharpe_ratio?.toFixed(2),
+                className: 'text-blue-600 dark:text-blue-400'
               },
               {
                 label: 'vs Nifty 50',
                 value: `${(metrics.total_return_pct - metrics.benchmark_return_pct).toFixed(1)}%`,
                 className:
                   metrics.total_return_pct >= metrics.benchmark_return_pct
-                    ? 'text-bullish'
-                    : 'text-bearish',
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                isBadge: true
               },
               {
                 label: 'Max Drawdown',
                 value: `${metrics.max_drawdown_pct?.toFixed(1)}%`,
-                className: 'text-bearish',
+                className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                isBadge: true
               },
             ].map((m, idx) => (
               <div
                 key={m.label}
-                className="bg-bg-elevated border border-border rounded-xl p-4 flex flex-col gap-1 animate-fade-in"
+                className="bg-bg-secondary border-2 border-border rounded-2xl p-5 flex flex-col gap-2 transition-all hover:border-blue-500/30 shadow-sm animate-fade-in"
                 style={{ '--delay': `${idx * 0.05}s` }}
               >
-                <span className="text-[0.75rem] text-text-muted font-medium uppercase tracking-wider">{m.label}</span>
-                <span className={`text-xl font-bold font-mono ${m.className || 'text-text'}`}>
-                  {m.value}
-                </span>
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.15em]">{m.label}</span>
+                {m.isBadge ? (
+                   <span className={`text-lg font-black font-mono w-fit px-2 py-0.5 rounded-lg shadow-sm ${m.className}`}>
+                      {m.value}
+                   </span>
+                ) : (
+                  <span className={`text-2xl font-black font-mono tracking-tighter ${m.className || 'text-text'}`}>
+                    {m.value}
+                  </span>
+                )}
               </div>
             ))}
           </div>
 
-          {metrics.exit_breakdown && (
-            <div
-              className="bg-bg-elevated border border-border rounded-xl p-5 animate-fade-in"
-              style={{ '--delay': '0.55s' }}
-            >
-              <h3 className="text-base font-bold flex items-center gap-2 mb-5 text-text">
-                <Target size={18} /> Exit Analysis
-              </h3>
-              <div className="grid grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-4">
-                {[
-                  { key: 'target', label: 'Hit Target', color: 'bg-bullish' },
-                  {
-                    key: 'target_partial',
-                    label: 'Partial Target',
-                    color: 'bg-bullish',
-                  },
-                  { key: 'stop_loss', label: 'Stop Loss', color: 'bg-bearish' },
-                  {
-                    key: 'trailing_stop',
-                    label: 'Trailing Stop',
-                    color: 'bg-bearish',
-                  },
-                  {
-                    key: 'atr_trailing_stop',
-                    label: 'ATR Trail Stop',
-                    color: 'bg-bullish',
-                  },
-                  {
-                    key: 'signal_invalidated',
-                    label: 'Signal Invalid',
-                    color: 'bg-bearish',
-                  },
-                  {
-                    key: 'holding_period',
-                    label: 'Held to End',
-                    color: 'bg-text-muted',
-                  },
-                ].map(({ key, label, color }) => {
-                  const count = metrics.exit_breakdown[key] || 0;
-                  const pct =
-                    metrics.total_trades > 0
-                      ? ((count / metrics.total_trades) * 100).toFixed(0)
-                      : 0;
-                  return (
-                    <div key={key} className="bg-bg-secondary p-3 rounded-lg border border-border flex flex-col gap-2.5 transition-transform hover:-translate-y-0.5 hover:border-primary">
-                      <div className="flex justify-between items-center">
-                        <span className="text-[0.85rem] text-text-muted">{label}</span>
-                        <span className="flex items-center gap-1">
-                          <span className="text-[0.9rem] font-semibold text-text">{count}</span>
-                          <span className="text-[0.75rem] text-text-muted">({pct}%)</span>
-                        </span>
-                      </div>
-                      <div className="h-1.5 bg-bg-secondary rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full ${color}`}
-                          style={{ width: `${pct}%` }}
-                        ></div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Equity Chart */}
           <div
-            className="bg-bg-elevated border border-border rounded-xl p-5 animate-fade-in"
+            className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in"
+            style={{ '--delay': '0.55s' }}
+          >
+            <h3 className="text-lg font-black flex items-center gap-3 mb-6 text-text uppercase tracking-tight">
+              <Target size={20} className="text-blue-500" /> Exit Distribution
+            </h3>
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+              {[
+                { key: 'target', label: 'Hit Target', color: 'bg-green-500' },
+                {
+                  key: 'target_partial',
+                  label: 'Partial Target',
+                  color: 'bg-green-400',
+                },
+                { key: 'stop_loss', label: 'Stop Loss', color: 'bg-red-500' },
+                {
+                  key: 'trailing_stop',
+                  label: 'Trailing Stop',
+                  color: 'bg-amber-500',
+                },
+                {
+                  key: 'atr_trailing_stop',
+                  label: 'ATR Trail Stop',
+                  color: 'bg-blue-500',
+                },
+                {
+                  key: 'signal_invalidated',
+                  label: 'Signal Invalid',
+                  color: 'bg-slate-400',
+                },
+                {
+                  key: 'holding_period',
+                  label: 'Held to End',
+                  color: 'bg-slate-500',
+                },
+              ].map(({ key, label, color }) => {
+                const count = metrics.exit_breakdown[key] || 0;
+                const pct = metrics.total_trades > 0 ? (count / metrics.total_trades) * 100 : 0;
+                if (count === 0) return null;
+                return (
+                  <div key={key} className="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-border">
+                    <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      <span>{label}</span>
+                      <span>{count}</span>
+                    </div>
+                    <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+                      <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }}></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Equity Curve Chart */}
+          <div
+            className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in"
             style={{ '--delay': '0.5s' }}
           >
-            <h3 className="text-base font-bold flex items-center gap-2 mb-5 text-text">
-              <TrendingUp size={18} /> Equity Curve
+            <h3 className="text-lg font-black flex items-center gap-3 mb-8 text-text uppercase tracking-tight">
+              <TrendingUp size={20} className="text-blue-500" /> Equity Curve Performance
             </h3>
             <div className="w-full h-[400px]">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart
-                  data={activeRun.equity_curve}
-                  margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-                >
-                  <CartesianGrid
-                    strokeDasharray="3 3"
-                    stroke={isDark ? '#2B2B43' : '#E5E7EB'}
-                  />
+              <ResponsiveContainer>
+                <LineChart data={activeRun.equity_curve}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1E293B" : "#E2E8F0"} vertical={false} />
                   <XAxis
                     dataKey="date"
-                    stroke="var(--color-text-muted)"
+                    stroke="#64748B"
                     fontSize={11}
-                    tickFormatter={(str) =>
-                      new Date(str).toLocaleDateString([], {
+                    tickLine={false}
+                    axisLine={false}
+                    dy={10}
+                    tickFormatter={(str) => {
+                      const date = new Date(str);
+                      return date.toLocaleDateString([], {
                         month: 'short',
                         year: '2-digit',
-                      })
-                    }
+                      });
+                    }}
                   />
                   <YAxis
-                    stroke="var(--color-text-muted)"
+                    stroke="#64748B"
                     fontSize={11}
+                    tickLine={false}
+                    axisLine={false}
+                    dx={-10}
                     tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
                   />
                   <Tooltip
                     contentStyle={{
-                      backgroundColor: 'var(--color-bg-elevated)',
-                      borderColor: 'var(--color-border)',
-                      borderRadius: '8px',
+                      backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                      borderColor: isDark ? '#1E293B' : '#E2E8F0',
+                      borderRadius: '12px',
+                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                      border: '2px solid',
+                      fontFamily: 'monospace'
                     }}
-                    itemStyle={{ fontSize: '12px' }}
-                    labelStyle={{ marginBottom: '4px', fontWeight: 'bold' }}
+                    itemStyle={{ fontWeight: '900', fontSize: '12px' }}
                   />
-                  <Legend verticalAlign="top" height={36} iconType="circle" />
+                  <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '20px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }} />
                   <Line
                     name="Strategy Equity"
                     type="monotone"
                     dataKey="equity"
-                    stroke="var(--color-primary)"
-                    strokeWidth={2}
+                    stroke="#3B82F6"
+                    strokeWidth={4}
                     dot={false}
-                    activeDot={{ r: 4 }}
+                    activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }}
                   />
                   <Line
                     name="Benchmark (Nifty 50)"
                     type="monotone"
                     dataKey="benchmark_equity"
-                    stroke="var(--color-text-muted)"
+                    stroke="#94A3B8"
                     strokeWidth={2}
-                    strokeDasharray="5 5"
+                    strokeDasharray="6 4"
                     dot={false}
                   />
                 </LineChart>
@@ -320,34 +319,34 @@ const BacktestResults = memo(
 
           {/* Trades Table */}
           <div
-            className="bg-bg-elevated border border-border rounded-xl p-5 animate-fade-in"
+            className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in overflow-hidden"
             style={{ '--delay': '0.6s' }}
           >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="text-base font-bold flex items-center gap-2 text-text">
-                <Layers size={18} /> Detailed Trades
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight">
+                <Layers size={20} className="text-blue-500" /> Performance Journal
               </h3>
-              <div className="flex items-center gap-3 text-[0.9rem]">
-                <span className="text-text-muted text-sm">
-                  Showing {(tradesPage - 1) * pageSize + 1} -{' '}
-                  {Math.min(tradesPage * pageSize, totalTradesCount)} of{' '}
-                  {totalTradesCount}
+              <div className="flex items-center gap-4">
+                <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+                  {totalTradesCount} TOTAL TRADES
                 </span>
-                <button
-                  className="bg-bg-secondary border border-border rounded p-1 cursor-pointer flex items-center disabled:opacity-50 disabled:cursor-not-allowed text-text"
-                  onClick={() => onPageChange((p) => Math.max(1, p - 1))}
-                  disabled={tradesPage === 1}
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span className="font-mono text-text">{tradesPage}</span>
-                <button
-                  className="bg-bg-secondary border border-border rounded p-1 cursor-pointer flex items-center disabled:opacity-50 disabled:cursor-not-allowed text-text"
-                  onClick={() => onPageChange((p) => p + 1)}
-                  disabled={tradesPage * pageSize >= totalTradesCount}
-                >
-                  <ChevronRight size={16} />
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                    className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30"
+                    onClick={() => onPageChange((p) => Math.max(1, p - 1))}
+                    disabled={tradesPage === 1}
+                    >
+                    <ChevronLeft size={16} className="text-text" />
+                    </button>
+                    <span className="font-black font-mono text-sm min-w-[20px] text-center">{tradesPage}</span>
+                    <button
+                    className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30"
+                    onClick={() => onPageChange((p) => p + 1)}
+                    disabled={tradesPage * pageSize >= totalTradesCount}
+                    >
+                    <ChevronRight size={16} className="text-text" />
+                    </button>
+                </div>
               </div>
             </div>
             <DataTable
@@ -518,7 +517,7 @@ const Backtest = () => {
         key: 'symbol',
         label: 'Symbol',
         render: (val) => (
-          <Link to={`/stocks/${val}`} className="text-primary hover:underline flex items-center gap-1 font-semibold">
+          <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-black tracking-tighter">
             {val.replace('.NS', '')} <ExternalLink size={12} />
           </Link>
         ),
@@ -526,17 +525,17 @@ const Backtest = () => {
       {
         key: 'signal_date',
         label: 'Signal Date',
-        render: (val) => (val ? new Date(val).toLocaleDateString() : '-'),
+        render: (val) => (val ? <span className="font-bold text-slate-500 dark:text-slate-400">{new Date(val).toLocaleDateString()}</span> : '-'),
       },
       {
         key: 'entry_price',
         label: 'Entry',
-        render: (val) => `₹${val?.toFixed(2)}`,
+        render: (val) => <span className="font-mono font-bold">₹{val?.toFixed(2)}</span>,
       },
       {
         key: 'exit_price',
         label: 'Exit',
-        render: (val) => `₹${val?.toFixed(2)}`,
+        render: (val) => <span className="font-mono font-bold">₹{val?.toFixed(2)}</span>,
       },
       {
         key: 'days_held',
@@ -546,19 +545,19 @@ const Backtest = () => {
           const start = new Date(row.entry_date);
           const end = new Date(row.exit_date);
           const diff = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
-          return diff;
+          return <span className="font-mono font-black text-slate-600 dark:text-slate-300">{diff}d</span>;
         },
       },
       {
         key: 'signal_score',
         label: 'Score',
-        render: (val) => val?.toFixed(1),
+        render: (val) => <span className={`font-black font-mono ${val >= 70 ? 'text-green-500' : val >= 50 ? 'text-blue-500' : 'text-text'}`}>{val?.toFixed(1)}</span>,
       },
       {
         key: 'return_pct',
         label: 'Return %',
         render: (val) => (
-          <span className={val >= 0 ? 'text-bullish' : 'text-bearish font-medium'}>
+          <span className={`font-black font-mono px-2 py-0.5 rounded shadow-sm ${val >= 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
             {val >= 0 ? '+' : ''}
             {val?.toFixed(2)}%
           </span>
@@ -569,14 +568,14 @@ const Backtest = () => {
         label: 'Reason',
         render: (val) => {
           const reasonClasses = {
-            stop_loss: 'bg-bearish/10 text-bearish',
-            trailing_stop: 'bg-warning/10 text-amber-600',
-            target: 'bg-bullish/10 text-bullish',
-            holding_period: 'bg-primary/10 text-primary',
+            stop_loss: 'bg-red-500 text-white',
+            trailing_stop: 'bg-amber-500 text-white',
+            target: 'bg-green-500 text-white',
+            holding_period: 'bg-blue-600 text-white',
           };
-          const reasonClass = reasonClasses[val] || 'bg-bg-secondary text-text-muted';
+          const reasonClass = reasonClasses[val] || 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
           return (
-            <span className={`text-[0.75rem] px-1.5 py-0.5 rounded-[4px] font-medium ${reasonClass}`}>
+            <span className={`text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-widest shadow-sm ${reasonClass}`}>
               {val?.replace('_', ' ')}
             </span>
           );
@@ -587,32 +586,32 @@ const Backtest = () => {
   );
 
   return (
-    <div className="p-6 max-w-[1400px] mx-auto">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold flex items-center gap-2 text-text">
-          <History className="text-primary" /> Backtest Engine
+    <div className="p-6 max-w-[1500px] mx-auto animate-fade-in">
+      <header className="mb-10">
+        <h1 className="text-3xl sm:text-4xl font-black flex items-center gap-4 text-text tracking-tighter">
+          <History className="text-blue-500" size={40} /> Backtest Engine
         </h1>
-        <p className="text-text-muted">
-          Simulate strategies against historical NSE data.
+        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium uppercase tracking-[0.1em] text-xs">
+          Simulate screening strategies against historical NSE daily data.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 lg:gap-8 items-start">
         {/* Sidebar Configuration */}
-        <aside className="flex flex-col gap-6">
-          <section className="bg-bg-elevated border border-border rounded-xl p-5">
-            <h2 className="text-lg font-bold flex items-center gap-2 mb-5 text-text">
-              <History size={18} /> Recent Runs
+        <aside className="flex flex-col gap-6 lg:gap-8 lg:sticky lg:top-6">
+          <section className="bg-bg-secondary border-2 border-border rounded-2xl p-5 sm:p-6 shadow-sm">
+            <h2 className="text-[11px] font-black flex items-center gap-2 mb-6 text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+              <History size={16} /> Recent Runs
             </h2>
-            <div className="flex flex-col gap-2 max-h-[400px] overflow-y-auto pr-1">
+            <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
               {recentRuns?.map((run) => (
                 <div
                   key={run.run_id}
-                  className={`p-2.5 px-3 rounded-lg border cursor-pointer transition-all duration-200 hover:bg-bg-secondary ${activeRunId === run.run_id ? 'bg-bg-secondary border-primary' : 'border-transparent'}`}
+                  className={`p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer group ${activeRunId === run.run_id ? 'bg-slate-50 dark:bg-slate-900 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-transparent border-transparent hover:border-slate-200 dark:hover:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}
                   onClick={() => handleSelectRun(run.run_id)}
                 >
-                  <div className="flex justify-between mb-1">
-                    <span className="text-[0.8rem] font-semibold text-text">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className={`text-[13px] font-black tracking-tight ${activeRunId === run.run_id ? 'text-blue-600 dark:text-blue-400' : 'text-text'}`}>
                       {new Date(run.created_at).toLocaleString([], {
                         month: 'short',
                         day: 'numeric',
@@ -620,52 +619,50 @@ const Backtest = () => {
                         minute: '2-digit',
                       })}
                     </span>
-                    <span className={`text-[0.7rem] px-1.5 py-0.5 rounded-[4px] uppercase font-bold 
-                      ${run.status === 'complete' ? 'bg-bullish/10 text-bullish' : 
-                        run.status === 'running' ? 'bg-primary/10 text-primary' :
-                        run.status === 'failed' ? 'bg-bearish/10 text-bearish' :
-                        'bg-text-muted/10 text-text-muted'}`}>
+                    <span className={`text-[9px] px-2 py-0.5 rounded-lg uppercase font-black tracking-widest shadow-sm
+                      ${run.status === 'complete' ? 'bg-green-500 text-white' : 
+                        run.status === 'running' ? 'bg-blue-600 text-white animate-pulse' :
+                        run.status === 'failed' ? 'bg-red-500 text-white' :
+                        'bg-slate-200 text-slate-500 dark:bg-slate-800'}`}>
                       {run.status}
                     </span>
                   </div>
-                  <div className="text-[0.75rem] text-text-muted">
-                    T:{run.config.score_threshold} | H:{run.config.holding_days}{' '}
-                    | SL:{run.config.stop_loss_pct}% | W:
-                    {run.config.require_weekly_confirmation !== false
-                      ? '✓'
-                      : '✗'}
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider flex flex-wrap gap-x-2 gap-y-1">
+                    <span>T:{run.config.score_threshold}</span> <span>H:{run.config.holding_days}d</span>
+                    <span>SL:{run.config.stop_loss_pct}%</span>
+                    <span>W:{run.config.require_weekly_confirmation !== false ? 'YES' : 'NO'}</span>
                   </div>
                 </div>
               ))}
               {recentRuns?.length === 0 && (
-                <p className="text-center text-text-muted py-4">No recent runs</p>
+                <p className="text-center text-slate-400 py-8 italic text-sm">No recent runs available</p>
               )}
             </div>
           </section>
 
-          <section className="bg-bg-elevated border border-border rounded-xl p-5">
-            <div className="flex justify-between items-center mb-5">
-              <h2 className="text-lg font-bold flex items-center gap-2 text-text">
-                <Settings size={18} /> Configuration
+          <section className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-[11px] font-black flex items-center gap-2 text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+                <Settings size={16} /> Strategy Config
               </h2>
               <button
-                className="text-text-muted p-1 rounded-sm transition-all duration-200 hover:text-primary hover:bg-bg-secondary"
+                className="text-slate-400 p-2 rounded-lg transition-all duration-300 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-800"
                 onClick={handleResetConfig}
                 title="Reset to defaults"
               >
-                <RotateCcw size={16} />
+                <RotateCcw size={18} />
               </button>
             </div>
 
-            <div className="flex gap-0.5 bg-bg-secondary p-1 rounded-lg mb-4 border border-border">
+            <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl mb-6 border border-border/50">
               {[
-                { id: 'strategy', label: 'Strategy', icon: Zap },
+                { id: 'strategy', label: 'Engine', icon: Zap },
                 { id: 'risk', label: 'Risk', icon: ShieldCheck },
-                { id: 'account', label: 'Account', icon: Briefcase },
+                { id: 'account', label: 'Trade', icon: Briefcase },
               ].map((tab) => (
                 <button
                   key={tab.id}
-                  className={`flex-1 flex items-center justify-center gap-1.5 p-1.5 py-1 text-[0.75rem] font-semibold rounded-md transition-all duration-200 cursor-pointer border-none outline-none ${activeTab === tab.id ? 'bg-bg-elevated text-primary shadow-sm' : 'text-text-muted hover:text-text hover:bg-white/5'}`}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 cursor-pointer border-none ${activeTab === tab.id ? 'bg-bg-secondary text-blue-600 dark:text-blue-400 shadow-md border border-border/50' : 'text-slate-500 hover:text-text'}`}
                   onClick={() => setActiveTab(tab.id)}
                 >
                   <tab.icon size={14} />
@@ -674,406 +671,187 @@ const Backtest = () => {
               ))}
             </div>
 
-            <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-6">
               {activeTab === 'strategy' && (
-                <div className="flex flex-col gap-3 animate-fade-in">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[0.85rem] text-text-muted font-medium flex items-center gap-2 mb-1">
-                      <Layers size={13} /> Starting Universe
+                <div className="flex flex-col gap-4 animate-fade-in">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                      <Layers size={12} /> Starting Universe
                     </label>
                     <select
-                      className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary"
+                      className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text text-sm font-bold outline-none transition-all focus:border-blue-500"
                       value={config.screen_slug}
                       onChange={(e) =>
                         handleConfigChange('screen_slug', e.target.value)
                       }
                     >
-                      <option value="all">All Symbols (Default)</option>
+                      <option value="all">ALL NSE SYMBOLS</option>
                       {screens?.map((screen) => (
                         <option key={screen.slug} value={screen.slug}>
-                          {screen.label}
+                          {screen.label.toUpperCase()}
                         </option>
                       ))}
                     </select>
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Slider
-                      label={
-                        <span className="flex items-center gap-2">
-                          <Target size={13} /> Score Threshold
-                        </span>
-                      }
-                      value={config.score_threshold}
-                      onChange={(val) =>
-                        handleConfigChange('score_threshold', val)
-                      }
-                      min={0}
-                      max={100}
-                    />
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Slider
-                      label={
-                        <span className="flex items-center gap-2">
-                          <Clock size={13} /> Max Holding Days
-                        </span>
-                      }
-                      value={config.holding_days}
-                      onChange={(val) =>
-                        handleConfigChange('holding_days', val)
-                      }
-                      min={1}
-                      max={252}
-                    />
-                  </div>
+                  <Slider
+                    label="Score Threshold"
+                    value={config.score_threshold}
+                    onChange={(val) => handleConfigChange('score_threshold', val)}
+                    min={0}
+                    max={100}
+                  />
+                  <Slider
+                    label="Max Holding (Days)"
+                    value={config.holding_days}
+                    onChange={(val) => handleConfigChange('holding_days', val)}
+                    min={1}
+                    max={252}
+                  />
+                  <Slider
+                    label="Symbol Depth"
+                    value={config.symbol_limit}
+                    onChange={(val) => handleConfigChange('symbol_limit', val)}
+                    min={10}
+                    max={500}
+                  />
 
-                  <div className="flex flex-col gap-1.5">
-                    <Slider
-                      label={
-                        <span className="flex items-center gap-2">
-                          <Briefcase size={13} /> Symbol Limit
-                        </span>
-                      }
-                      value={config.symbol_limit}
-                      onChange={(val) =>
-                        handleConfigChange('symbol_limit', val)
-                      }
-                      min={10}
-                      max={500}
-                    />
-                  </div>
-
-                  <div
-                    className="flex flex-col gap-3 pt-3 border-t border-border mt-2"
-                  >
-                    <h3 className="text-[0.7rem] text-text-muted uppercase tracking-[0.08em] font-bold mb-1">Strategy Filters</h3>
-                    <div className="flex flex-col gap-3">
-                      <Toggle
-                        label="Include Fundamentals"
-                        checked={config.include_fundamentals}
-                        onChange={(val) =>
-                          handleConfigChange('include_fundamentals', val)
-                        }
-                        icon={Briefcase}
-                      />
-                      <Toggle
-                        label="Market Regime"
-                        checked={config.use_regime_filter}
-                        onChange={(val) =>
-                          handleConfigChange('use_regime_filter', val)
-                        }
-                        icon={ShieldCheck}
-                      />
-                      <Toggle
-                        label="Volume Breakout"
-                        checked={config.require_volume_breakout}
-                        onChange={(val) =>
-                          handleConfigChange('require_volume_breakout', val)
-                        }
-                        icon={Zap}
-                      />
-                      <Toggle
-                        label="Weekly Conf"
-                        checked={config.require_weekly_confirmation}
-                        onChange={(val) =>
-                          handleConfigChange('require_weekly_confirmation', val)
-                        }
-                        icon={TrendingUp}
-                      />
-                      <Toggle
-                        label="Monthly Conf"
-                        checked={config.require_monthly_confirmation}
-                        onChange={(val) =>
-                          handleConfigChange(
-                            'require_monthly_confirmation',
-                            val,
-                          )
-                        }
-                        icon={BarChart3}
-                      />
+                  <div className="flex flex-col gap-4 pt-6 border-t-2 border-border/50">
+                    <h3 className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1">Strategy Filters</h3>
+                    <div className="space-y-4">
+                      <Toggle label="Fundamental Filter" checked={config.include_fundamentals} onChange={(v) => handleConfigChange('include_fundamentals', v)} />
+                      <Toggle label="Market Regime" checked={config.use_regime_filter} onChange={(v) => handleConfigChange('use_regime_filter', v)} />
+                      <Toggle label="Volume Breakout" checked={config.require_volume_breakout} onChange={(v) => handleConfigChange('require_volume_breakout', v)} />
+                      <Toggle label="Weekly Confirmation" checked={config.require_weekly_confirmation} onChange={(v) => handleConfigChange('require_weekly_confirmation', v)} />
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'risk' && (
-                <div className="flex flex-col gap-3 animate-fade-in">
-                  <div className="mb-2">
-                    <Toggle
-                      label="Use ATR-based Stops"
-                      checked={config.use_atr_stops}
-                      onChange={(val) =>
-                        handleConfigChange('use_atr_stops', val)
-                      }
-                    />
-                  </div>
+                <div className="flex flex-col gap-4 animate-fade-in">
+                   <Toggle label="ATR Dynamic Stops" checked={config.use_atr_stops} onChange={(v) => handleConfigChange('use_atr_stops', v)} />
 
                   {config.use_atr_stops ? (
                     <>
-                      <Slider
-                        label="ATR SL Multiplier"
-                        min={1.0}
-                        max={5.0}
-                        step={0.1}
-                        value={config.atr_multiplier}
-                        onChange={(val) =>
-                          handleConfigChange('atr_multiplier', val)
-                        }
-                      />
-                      <Slider
-                        label="Risk/Reward Ratio"
-                        min={1.0}
-                        max={10.0}
-                        step={0.5}
-                        value={config.risk_reward_ratio}
-                        onChange={(val) =>
-                          handleConfigChange('risk_reward_ratio', val)
-                        }
-                      />
+                      <Slider label="ATR Multiplier" min={1.0} max={5.0} step={0.1} value={config.atr_multiplier} onChange={(v) => handleConfigChange('atr_multiplier', v)} />
+                      <Slider label="Target RR Ratio" min={1.0} max={10.0} step={0.5} value={config.risk_reward_ratio} onChange={(v) => handleConfigChange('risk_reward_ratio', v)} />
                     </>
                   ) : (
                     <>
-                      <Slider
-                        label="Stop Loss %"
-                        min={1}
-                        max={25}
-                        value={config.stop_loss_pct}
-                        onChange={(val) =>
-                          handleConfigChange('stop_loss_pct', val)
-                        }
-                      />
-                      <Slider
-                        label="Profit Target %"
-                        min={0}
-                        max={100}
-                        value={config.target_pct}
-                        onChange={(val) =>
-                          handleConfigChange('target_pct', val)
-                        }
-                      />
+                      <Slider label="Fixed SL %" min={1} max={25} value={config.stop_loss_pct} onChange={(v) => handleConfigChange('stop_loss_pct', v)} />
+                      <Slider label="Fixed TP %" min={0} max={100} value={config.target_pct} onChange={(v) => handleConfigChange('target_pct', v)} />
                     </>
                   )}
 
-                  <div className="flex flex-col gap-1.5 mt-2">
-                    <Slider
-                      label="Manual Trailing Stop %"
-                      min={0}
-                      max={20}
-                      step={0.5}
-                      value={config.trailing_stop_pct}
-                      onChange={(val) =>
-                        handleConfigChange('trailing_stop_pct', val)
-                      }
-                    />
-                  </div>
+                  <Slider label="Manual Trail %" min={0} max={20} step={0.5} value={config.trailing_stop_pct} onChange={(v) => handleConfigChange('trailing_stop_pct', v)} />
 
-                  <div
-                    className="flex flex-col gap-3 pt-3 border-t border-border mt-4"
-                  >
-                    <h3 className="text-[0.7rem] text-text-muted uppercase tracking-[0.08em] font-bold mb-1">Advanced Exit Rules</h3>
-                    <div className="flex flex-col gap-3">
-                      <Toggle
-                        label="ATR Trailing Stop"
-                        checked={config.use_atr_trailing_stop}
-                        onChange={(val) =>
-                          handleConfigChange('use_atr_trailing_stop', val)
-                        }
-                        icon={TrendingDown}
-                      />
-                      <Toggle
-                        label="Partial Exits (T1/T2)"
-                        checked={config.use_partial_exits}
-                        onChange={(val) =>
-                          handleConfigChange('use_partial_exits', val)
-                        }
-                        icon={Target}
-                      />
-                      <Toggle
-                        label="Signal Invalidation"
-                        checked={config.use_signal_invalidation_exit}
-                        onChange={(val) =>
-                          handleConfigChange(
-                            'use_signal_invalidation_exit',
-                            val,
-                          )
-                        }
-                        icon={ShieldCheck}
-                      />
+                  <div className="flex flex-col gap-4 pt-6 border-t-2 border-border/50 mt-2">
+                    <h3 className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1">Advanced Exits</h3>
+                    <div className="space-y-4">
+                      <Toggle label="ATR Trailing Stop" checked={config.use_atr_trailing_stop} onChange={(v) => handleConfigChange('use_atr_trailing_stop', v)} />
+                      <Toggle label="Partial Take-Profit" checked={config.use_partial_exits} onChange={(v) => handleConfigChange('use_partial_exits', v)} />
+                      <Toggle label="Signal Invalidation" checked={config.use_signal_invalidation_exit} onChange={(v) => handleConfigChange('use_signal_invalidation_exit', v)} />
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'account' && (
-                <div className="flex flex-col gap-3 animate-fade-in">
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[0.85rem] text-text-muted font-medium flex items-center gap-2 mb-1 text-text">Starting Capital (₹)</label>
+                <div className="flex flex-col gap-5 animate-fade-in">
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">Starting Capital (₹)</label>
                     <input
                       type="number"
-                      className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary"
+                      className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
                       value={config.starting_capital}
-                      onChange={(e) =>
-                        handleConfigChange(
-                          'starting_capital',
-                          parseFloat(e.target.value) || 1000000,
-                        )
-                      }
-                      min={100000}
+                      onChange={(e) => handleConfigChange('starting_capital', parseFloat(e.target.value) || 1000000)}
                       step={100000}
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[0.85rem] text-text-muted font-medium flex items-center gap-2 mb-1 text-text">Pos Size per Trade (₹)</label>
+                  <div className="flex flex-col gap-2">
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">Trade Size (₹)</label>
                     <input
                       type="number"
-                      className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary"
+                      className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
                       value={config.position_size}
-                      onChange={(e) =>
-                        handleConfigChange(
-                          'position_size',
-                          parseFloat(e.target.value) || 10000,
-                        )
-                      }
-                      min={1000}
+                      onChange={(e) => handleConfigChange('position_size', parseFloat(e.target.value) || 10000)}
                       step={1000}
                     />
                   </div>
-                  <div className="flex flex-col gap-1.5">
-                    <Toggle
-                      label="Volatility Sizing"
-                      checked={config.use_volatility_sizing}
-                      onChange={(val) =>
-                        handleConfigChange('use_volatility_sizing', val)
-                      }
-                    />
-                  </div>
-                  <div className="flex gap-3 mb-3">
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      <label className="text-[0.85rem] text-text-muted font-medium mb-1 text-xs">
-                        Max Concurrent
-                      </label>
+                  
+                  <Toggle label="Volatility-based Sizing" checked={config.use_volatility_sizing} onChange={(v) => handleConfigChange('use_volatility_sizing', v)} />
+                  
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest">Max Conc.</label>
                       <input
                         type="number"
-                        className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary"
+                        className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-3 py-2 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
                         value={config.max_concurrent_positions}
-                        onChange={(e) =>
-                          handleConfigChange(
-                            'max_concurrent_positions',
-                            parseInt(e.target.value) || 0,
-                          )
-                        }
-                        min={1}
-                        max={50}
+                        onChange={(e) => handleConfigChange('max_concurrent_positions', parseInt(e.target.value) || 0)}
                       />
                     </div>
-                    <div className="flex flex-col gap-1.5 flex-1">
-                      <label className="text-[0.85rem] text-text-muted font-medium mb-1 text-xs">Sector Cap</label>
+                    <div className="flex flex-col gap-2">
+                      <label className="text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest">Sector Cap</label>
                       <input
                         type="number"
-                        className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary"
+                        className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-3 py-2 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
                         value={config.max_sector_positions}
-                        onChange={(e) =>
-                          handleConfigChange(
-                            'max_sector_positions',
-                            parseInt(e.target.value) || 0,
-                          )
-                        }
-                        min={1}
-                        max={10}
+                        onChange={(e) => handleConfigChange('max_sector_positions', parseInt(e.target.value) || 0)}
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[0.85rem] text-text-muted font-medium flex items-center gap-2 mb-1">
-                      <Calendar size={13} /> Date Range
-                    </label>
-                    <div className="flex gap-2 w-full">
-                      <input
-                        type="date"
-                        className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary px-2"
-                        value={config.date_from}
-                        onChange={(e) =>
-                          handleConfigChange('date_from', e.target.value)
-                        }
-                      />
-                      <input
-                        type="date"
-                        className="bg-bg-secondary border border-border rounded-md px-3 py-2 text-text text-[0.9rem] outline-none transition-colors duration-200 w-full focus:border-primary px-2"
-                        value={config.date_to}
-                        onChange={(e) =>
-                          handleConfigChange('date_to', e.target.value)
-                        }
-                      />
+                  <div className="flex flex-col gap-3 pt-4">
+                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">Simulation Range</label>
+                    <div className="flex flex-col gap-2">
+                      <input type="date" className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-2.5 text-text font-mono text-xs font-bold outline-none" value={config.date_from} onChange={(e) => handleConfigChange('date_from', e.target.value)} />
+                      <input type="date" className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-2.5 text-text font-mono text-xs font-bold outline-none" value={config.date_to} onChange={(e) => handleConfigChange('date_to', e.target.value)} />
                     </div>
                   </div>
                 </div>
               )}
 
               <button
-                className="bg-primary text-white border-none rounded-lg p-3 font-semibold cursor-pointer flex items-center justify-center gap-2 transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+                className="bg-blue-600 text-white border-none rounded-xl py-4 font-black uppercase tracking-[0.2em] text-xs cursor-pointer flex items-center justify-center gap-3 transition-all hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98] disabled:opacity-50 mt-4 shadow-lg shadow-blue-500/20"
                 onClick={handleRunBacktest}
                 disabled={isSubmitting || activeRun?.status === 'running'}
               >
                 {isSubmitting ? (
                   <Loader2 className="animate-spin" size={18} />
                 ) : (
-                  <Play size={18} />
+                  <Play size={18} fill="currentColor" />
                 )}
-                Run Backtest
+                Run Simulation
               </button>
             </div>
           </section>
         </aside>
 
         {/* Results Panel */}
-        <main className="flex flex-col gap-6">
-          <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 px-4 flex gap-3 text-amber-600 text-[0.85rem] leading-relaxed">
-            <AlertTriangle size={20} className="shrink-0 text-warning" />
-            <div>
-              <strong>Educational Disclaimer:</strong> Backtest results are
-              simulated and based on historical data. Past performance is not
-              indicative of future results. No strategy can guarantee profits or
-              prevent losses in real market conditions.
-            </div>
-          </div>
-
-          <div
-            className={`rounded-lg p-3 px-4 flex gap-3 text-[0.85rem] leading-relaxed border ${config.include_fundamentals ? 'bg-violet-500/10 border-violet-500/30 text-violet-600' : 'bg-cyan-500/10 border-cyan-500/30 text-cyan-600'}`}
-          >
-            <Info size={20} className="shrink-0" />
-            <div>
-              {config.include_fundamentals ? (
-                <>
-                  <strong>Fundamental Bias Warning:</strong> Current fundamental
-                  data applied to all historical dates. This overstates quality
-                  of older signals (look-ahead bias) because historical
-                  fundamentals are not available.
-                </>
-              ) : (
-                <>
-                  <strong>Technical Signals Only:</strong> Fundamental score
-                  excluded. Strategy uses technical criteria (EMA, RSI, MACD,
-                  Volume) for entry. Scores are on a 0–70 scale.
-                </>
-              )}
+        <main className="flex flex-col gap-8">
+          <div className="bg-slate-100 dark:bg-slate-900 border-2 border-border/50 rounded-2xl p-5 flex gap-4 text-slate-600 dark:text-slate-400 text-sm leading-relaxed shadow-sm">
+            <Info size={24} className="shrink-0 text-blue-500" />
+            <div className="font-medium">
+              <strong className="text-text font-black uppercase tracking-widest text-[10px] block mb-1">Market Simulation Intelligence</strong>
+              Past performance does not guarantee future results. This tool provides statistical simulations based on daily closing prices and pre-defined technical criteria. Use results to validate strategy logic, not as direct financial advice.
             </div>
           </div>
 
           {!activeRunId && !loadingActiveRun && (
-            <div className="p-[60px_20px] text-center bg-bg-elevated border border-border rounded-xl text-text-muted">
-              <BarChart3 size={48} className="mb-4 opacity-50 mx-auto" />
-              <h3 className="text-lg font-bold text-text">No Run Selected</h3>
-              <p>
-                Configure and run a new backtest or select a recent one from the
-                sidebar.
+            <div className="py-24 text-center bg-bg-secondary border-2 border-border border-dashed rounded-3xl text-slate-400 shadow-sm">
+              <div className="bg-slate-100 dark:bg-slate-900 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
+                 <BarChart3 size={40} className="opacity-40" />
+              </div>
+              <h3 className="text-xl font-black text-text uppercase tracking-tight">No Simulation Active</h3>
+              <p className="max-w-[300px] mx-auto mt-2 font-bold uppercase tracking-widest text-[10px]">
+                Configure parameters in the sidebar to start a new historical backtest.
               </p>
             </div>
           )}
 
           {activeRunError && <ErrorBanner message={activeRunError} />}
 
-          {/* rerender-use-deferred-value: The results section will only re-render when the UI is idle, keeping inputs smooth */}
           <BacktestResults
             activeRun={activeRun}
             tradesData={tradesData}

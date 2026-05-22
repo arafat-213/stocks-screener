@@ -1,419 +1,100 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Search, 
   RefreshCw, 
-  Target
+  Target,
+  Zap,
+  LayoutGrid
 } from 'lucide-react';
 import { 
-  fetchResults, 
-  getScreensList, 
-  getScreenBySlug 
+  getScreenBySlug, 
+  getScreensList
 } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
+import ScreenResultTable from '../components/ScreenResultTable';
 import ScreenCard from '../components/ScreenCard';
-import { DataTable } from '../components/ui/DataTable';
-import Select from '../components/ui/Select';
-import Slider from '../components/ui/Slider';
 import { ExportButton } from '../components/ui/ExportButton';
 
-const SCREEN_COLUMNS = {
-  'momentum-monsters':      ['symbol', 'name', 'rs_score', 'momentum_3m', 'adx', 'score'],
-  'value-with-momentum':    ['symbol', 'name', 'peg_ratio', 'momentum_1m', 'ema_slope', 'score'],
-  'near-breakout':          ['symbol', 'name', 'pct_from_resistance', 'volume_breakout', 'score'],
-  '52w-high':               ['symbol', 'name', 'pct_from_52w_high', 'week52_high', 'score'],
-  '52w-low':                ['symbol', 'name', 'pct_from_52w_low', 'week52_low', 'score'],
-  'low-debt-midcap':        ['symbol', 'name', 'market_cap_category', 'de_ratio', 'fcf_positive', 'score'],
-  'undervalued-fundamentals':['symbol', 'name', 'peg_ratio', 'ev_to_ebitda', 'dividend_yield', 'score'],
-  'steady-compounders':     ['symbol', 'name', 'roce', 'dividend_consistency', 'above_200ema', 'score'],
-  'ema-crossover':          ['symbol', 'name', 'ema_signal', 'adx', 'rsi', 'score'],
-  'volume-surge':           ['symbol', 'name', 'volume_breakout', 'is_bullish', 'rsi', 'score'],
-  'rsi-recovery':           ['symbol', 'name', 'rsi_signal', 'rsi', 'ema_slope', 'score'],
-  'mtf-confluence':         ['symbol', 'name', 'confluence_count', 'rsi', 'score'],
-  'fresh-breakout':         ['symbol', 'name', 'pct_from_52w_high', 'volume_breakout', 'adx', 'score'],
-  'sector-leaders':         ['symbol', 'name', 'rs_score', 'sector', 'score'],
-  'hot-sectors':            ['symbol', 'name', 'rs_score', 'sector', 'score'],
-  'qarp':                   ['symbol', 'name', 'roce', 'roe', 'peg_ratio', 'de_ratio', 'score'],
-  'dividend-growth':        ['symbol', 'name', 'dividend_yield', 'dividend_consistency', 'fcf_positive', 'score'],
-  '_default':               ['symbol', 'name', 'score', 'rsi', 'confluence_count'],
-};
-
-const COLUMN_META = {
-  symbol: { 
-    label: 'Symbol', 
-    key: 'symbol', 
-    sortable: true,
-    render: (v) => (
-      <Link to={`/stocks/${v}`} className="font-bold text-inherit no-underline hover:text-primary">
-        {v}
-      </Link>
-    )
-  },
-  name: { label: 'Name', key: 'name', sortable: true },
-  sector: { label: 'Sector', key: 'sector', sortable: true },
-  score: { 
-    label: 'Score', 
-    key: 'score', 
-    sortable: true,
-    accessor: (row) => row.timeframes?.D?.score ?? row.score,
-    render: (v) => v != null ? v.toFixed(1) : '—' 
-  },
-  rs_score: { 
-    label: 'RS Score', 
-    key: 'rs_score', 
-    sortable: true,
-    accessor: (row) => row.timeframes?.D?.rs_score ?? row.rs_score,
-    render: (v) => v != null ? v.toFixed(0) : '—' 
-  },
-  momentum_1m: { 
-    label: '1M Mom %', 
-    key: 'momentum_1m', 
-    sortable: true,
-    render: (v) => v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—' 
-  },
-  momentum_3m: { 
-    label: '3M Mom %', 
-    key: 'momentum_3m', 
-    sortable: true,
-    render: (v) => v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—' 
-  },
-  adx: { 
-    label: 'ADX', 
-    key: 'adx', 
-    sortable: true,
-    render: (v) => v != null ? v.toFixed(1) : '—' 
-  },
-  peg_ratio: { 
-    label: 'PEG', 
-    key: 'peg_ratio', 
-    sortable: true,
-    render: (v) => v != null ? v.toFixed(2) : '—' 
-  },
-  ev_to_ebitda: { 
-    label: 'EV/EBITDA', 
-    key: 'ev_to_ebitda', 
-    sortable: true,
-    render: (v) => v != null ? v.toFixed(1) : '—' 
-  },
-  dividend_yield: { 
-    label: 'Div Yield', 
-    key: 'dividend_yield', 
-    sortable: true,
-    render: (v) => v != null ? `${(v * 100).toFixed(2)}%` : '—' 
-  },
-  roce: { 
-    label: 'ROCE %', 
-    key: 'roce', 
-    sortable: true,
-    render: (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—' 
-  },
-  roe: { 
-    label: 'ROE %', 
-    key: 'roe', 
-    sortable: true,
-    accessor: (row) => row.indicators?.fundamental?.roe ?? row.roe,
-    render: (v) => v != null ? `${(v * 100).toFixed(1)}%` : '—' 
-  },
-  de_ratio: { 
-    label: 'D/E', 
-    key: 'de_ratio', 
-    sortable: true,
-    render: (v) => v != null ? v.toFixed(2) : '—' 
-  },
-  pct_from_52w_high: { 
-    label: '% from High', 
-    key: 'pct_from_52w_high', 
-    sortable: true,
-    render: (v) => v != null ? `${v.toFixed(1)}%` : '—' 
-  },
-  pct_from_52w_low: { 
-    label: '% from Low', 
-    key: 'pct_from_52w_low', 
-    sortable: true,
-    render: (v) => v != null ? `${v.toFixed(1)}%` : '—' 
-  },
-  week52_high: { 
-    label: '52W High', 
-    key: 'week52_high', 
-    sortable: true,
-    render: (v) => v != null ? `₹${v.toLocaleString('en-IN')}` : '—' 
-  },
-  week52_low: { 
-    label: '52W Low', 
-    key: 'week52_low', 
-    sortable: true,
-    render: (v) => v != null ? `₹${v.toLocaleString('en-IN')}` : '—' 
-  },
-  pct_from_resistance: { 
-    label: '% to Break', 
-    key: 'pct_from_resistance', 
-    sortable: true,
-    render: (v) => v != null ? `${v.toFixed(1)}%` : '—' 
-  },
-  volume_breakout: { 
-    label: 'Vol Break', 
-    key: 'volume_breakout', 
-    sortable: true,
-    render: (v) => v ? '✓' : '—' 
-  },
-  fcf_positive: { 
-    label: 'FCF+', 
-    key: 'fcf_positive', 
-    sortable: true,
-    render: (v) => v ? '✓' : '—' 
-  },
-  dividend_consistency: { 
-    label: 'Div 3Y', 
-    key: 'dividend_consistency', 
-    sortable: true,
-    render: (v) => v ? '✓' : '—' 
-  },
-  above_200ema: { 
-    label: '>200 EMA', 
-    key: 'above_200ema', 
-    sortable: true,
-    render: (v) => v ? '✓' : '—' 
-  },
-  market_cap_category: { label: 'Cap', key: 'market_cap_category', sortable: true },
-  ema_slope: { 
-    label: 'EMA Trend', 
-    key: 'ema_slope', 
-    sortable: true,
-    render: (v) => v != null ? (v > 0 ? '↑' : '↓') : '—' 
-  },
-  confluence_count: { 
-    label: 'Conf.', 
-    key: 'confluence_count', 
-    sortable: true,
-    render: (v) => v != null ? `${v}/3` : '—' 
-  },
-  rsi: { 
-    label: 'RSI', 
-    key: 'rsi', 
-    sortable: true,
-    render: (v) => v != null ? v.toFixed(1) : '—' 
-  },
-  ema_signal: { 
-    label: 'EMA Signal', 
-    key: 'ema_signal', 
-    sortable: true,
-    render: (v) => v ? v.replace('_', ' ') : '—' 
-  },
-  rsi_signal: { 
-    label: 'RSI Signal', 
-    key: 'rsi_signal', 
-    sortable: true,
-    render: (v) => v ? v.replace('_', ' ') : '—' 
-  },
-  is_bullish: { 
-    label: 'Bullish', 
-    key: 'is_bullish', 
-    sortable: true,
-    render: (v) => v ? '✓' : '—' 
-  },
-};
-
 const Discover = () => {
-  const [activeTab, setActiveTab] = useState('strategies'); // 'strategies' | 'interactive'
-  const [selectedSlug, setSelectedSlug] = useState(null);
+  const [selectedSlug, setSelectedSlug] = useState('momentum-monsters');
   const [liveMode, setLiveMode] = useState(false);
-  
-  const [interactiveFilters, setInteractiveFilters] = useState({
-    sector: 'All',
-    minScore: 0,
-    minROE: '',
-    maxPE: '',
-    minRS: 0,
-    capCategory: 'All'
-  });
 
-  // Fetch Screens List
-  const { data: screens = [], loading: loadingScreens } = useFetch(getScreensList, {
-    onSuccess: (data) => {
-      if (data && data.length > 0 && !selectedSlug) {
-        setSelectedSlug(data[0].slug);
-      }
-    }
-  });
+  // Fetch Strategy List
+  const { 
+    data: screens = [], 
+    loading: loadingScreens 
+  } = useFetch(getScreensList);
 
   // Fetch Strategy Results
-  const { data: strategyResults = [], loading: loadingStrategyResults } = useFetch(
-    useCallback(() => getScreenBySlug(selectedSlug, liveMode), [selectedSlug, liveMode]),
-    { 
-      autoFetch: !!selectedSlug && activeTab === 'strategies',
-      deps: [selectedSlug, liveMode, activeTab]
-    }
-  );
+  const fetchStrategyResults = useCallback(() => {
+    return getScreenBySlug(selectedSlug, liveMode).then(res => res.data);
+  }, [selectedSlug, liveMode]);
 
-  // Fetch All Stocks for Interactive (renamed local function to loadInteractiveData)
-  const { data: stocks = [], loading: loadingStocks } = useFetch(fetchResults, {
-    autoFetch: activeTab === 'interactive',
-    deps: [activeTab]
+  const {
+    data: strategyResults = [],
+    loading: loadingStrategyResults,
+    refetch: refetchStrategy
+  } = useFetch(fetchStrategyResults, {
+    deps: [selectedSlug],
+    refreshInterval: liveMode ? 10000 : null
   });
 
-  // Interactive Filter Logic
-  const filteredStocks = useMemo(() => {
-    return stocks.filter(stock => {
-      const matchSector = interactiveFilters.sector === 'All' || stock.sector === interactiveFilters.sector;
-      const matchScore = (stock.timeframes?.D?.score || 0) >= interactiveFilters.minScore;
-      const matchROE = !interactiveFilters.minROE || (stock.fundamentals?.roe || 0) >= parseFloat(interactiveFilters.minROE);
-      const matchPE = !interactiveFilters.maxPE || (stock.fundamentals?.pe || 9999) <= parseFloat(interactiveFilters.maxPE);
-      const matchRS = (stock.timeframes?.D?.rs_score ?? 0) >= interactiveFilters.minRS;
-      const matchCap = interactiveFilters.capCategory === 'All' || (stock.fundamentals?.market_cap_category || '').toLowerCase() === interactiveFilters.capCategory.toLowerCase();
-      
-      return matchSector && matchScore && matchROE && matchPE && matchRS && matchCap;
-    });
-  }, [stocks, interactiveFilters]);
-
-  const sectors = useMemo(() => {
-    const s = new Set(stocks.map(stock => stock.sector).filter(Boolean));
-    return ['All', ...Array.from(s).sort()];
-  }, [stocks]);
-
-  const getColumnsForSlug = (slug) => {
-    const keys = SCREEN_COLUMNS[slug] || SCREEN_COLUMNS['_default'];
-    return keys.map(key => COLUMN_META[key]);
-  };
-
-  const currentColumns = useMemo(() => getColumnsForSlug(selectedSlug), [selectedSlug]);
-  const defaultColumns = useMemo(() => getColumnsForSlug('_default'), []);
-
   return (
-    <div className="w-full">
-      <header className="mb-8">
+    <div className="max-w-[1500px] mx-auto p-6 animate-fade-in">
+      <header className="mb-8 sm:mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
         <div>
-          <h1 className="text-2xl font-bold">Discovery</h1>
-          <p className="text-text-muted">Explore strategies or create your own market screens.</p>
-        </div>
-        
-        <div className="flex p-1 gap-1 mt-6 max-w-fit bg-bg-secondary border border-border rounded-lg shadow-sm">
-          <button 
-            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeTab === 'strategies' ? 'bg-bg-elevated text-primary' : ''}`}
-            onClick={() => setActiveTab('strategies')}
-          >
-            <Target size={18} />
-            <span>Strategies</span>
-          </button>
-          <button 
-            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeTab === 'interactive' ? 'bg-bg-elevated text-primary' : ''}`}
-            onClick={() => setActiveTab('interactive')}
-          >
-            <Search size={18} />
-            <span>Interactive</span>
-          </button>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-2">Market Discovery</h1>
+          <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-xs">Explore expert screening strategies optimized for NSE.</p>
         </div>
       </header>
 
-      {activeTab === 'strategies' ? (
-        <section>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 mb-8">
-            {loadingScreens ? (
-              [...Array(3)].map((_, i) => (
-                <div key={i} className="bg-bg-secondary border border-border rounded-lg shadow-sm animate-pulse h-[140px]" />
-              ))
-            ) : (
-              screens.map(screen => (
-                <ScreenCard
-                  key={screen.slug}
-                  screen={screen}
-                  isSelected={selectedSlug === screen.slug}
-                  onClick={() => setSelectedSlug(screen.slug)}
-                />
-              ))
-            )}
-          </div>
-
-          {selectedSlug && (
-            <div className="bg-bg-secondary border border-border rounded-lg shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-                <h3 className="text-[1.1rem] flex items-center">
-                  {screens.find(s => s.slug === selectedSlug)?.label}
-                  <span className="text-[0.75rem] font-medium py-0.5 px-2 bg-bg-elevated rounded-full text-text-muted ml-3">{strategyResults.length} hits</span>
-                </h3>
-                <div className="flex gap-2">
-                  <ExportButton 
-                    data={strategyResults}
-                    columns={currentColumns}
-                    filename={`${selectedSlug}-${new Date().toISOString().split('T')[0]}.csv`}
-                    disabled={loadingStrategyResults}
-                  />
-                  <button 
-                    onClick={() => setLiveMode(!liveMode)}
-                    className={`flex items-center gap-1.5 py-1.5 px-3 rounded-md text-[0.8rem] font-semibold border border-border text-text-muted transition-colors ${liveMode ? 'text-bullish border-bullish bg-bullish/10' : ''}`}
-                  >
-                    <RefreshCw size={14} className={loadingStrategyResults ? "animate-spin" : ""} />
-                    Live Mode
-                  </button>
-                  </div>
-                  </div>
-                  <DataTable 
-                  columns={currentColumns}
-                  data={strategyResults}
-                  loading={loadingStrategyResults}
-                  initialSort={{ key: 'score', direction: 'desc' }}
-                  />            </div>
-          )}
-        </section>
-      ) : (
-        <section>
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm mb-6 p-6">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-              <Select 
-                label="Sector"
-                value={interactiveFilters.sector}
-                onChange={(val) => setInteractiveFilters({...interactiveFilters, sector: val})}
-                options={sectors.map(s => ({ value: s, label: s }))}
-              />
-              <Select 
-                label="Market Cap"
-                value={interactiveFilters.capCategory}
-                onChange={(val) => setInteractiveFilters({...interactiveFilters, capCategory: val})}
-                options={[
-                  { value: 'All', label: 'All Categories' },
-                  { value: 'Largecap', label: 'Large Cap' },
-                  { value: 'Midcap', label: 'Mid Cap' },
-                  { value: 'Smallcap', label: 'Small Cap' }
-                ]}
-              />
-              <Slider 
-                label="Min Score"
-                value={interactiveFilters.minScore}
-                onChange={(val) => setInteractiveFilters({...interactiveFilters, minScore: val})}
-                min={0}
-                max={100}
-              />
-              <div className="flex flex-col">
-                <label className="block text-[0.75rem] font-bold uppercase text-text-muted mb-2 tracking-wider">Max P/E</label>
-                <input 
-                  type="number" placeholder="e.g. 30"
-                  value={interactiveFilters.maxPE}
-                  onChange={(e) => setInteractiveFilters({...interactiveFilters, maxPE: e.target.value})}
-                  className="w-full py-2.5 px-3.5 bg-bg-secondary border border-border rounded-md text-[0.9rem] text-text focus:outline-none focus:border-primary"
-                  
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-bg-secondary border border-border rounded-lg shadow-sm overflow-hidden">
-            <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-              <h3 className="text-lg font-bold">Results <span className="text-[0.75rem] font-medium py-0.5 px-2 bg-bg-elevated rounded-full text-text-muted ml-3">{filteredStocks.length} stocks</span></h3>
-              <ExportButton 
-                data={filteredStocks}
-                columns={defaultColumns}
-                filename={`interactive-screen-${new Date().toISOString().split('T')[0]}.csv`}
-                disabled={loadingStocks}
-              />
-            </div>
-            <DataTable 
-              columns={defaultColumns}
-              data={filteredStocks}
-              loading={loadingStocks}
-              initialSort={{ key: 'score', direction: 'desc' }}
+      <section className="flex flex-col gap-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {screens.map(screen => (
+            <ScreenCard 
+              key={screen.slug} 
+              screen={screen} 
+              isSelected={selectedSlug === screen.slug}
+              onClick={() => setSelectedSlug(screen.slug)}
             />
+          ))}
+        </div>
+
+        <div className="flex flex-col gap-6">
+          <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 p-6 rounded-3xl border-2 border-border border-dashed">
+              <div className="flex items-center gap-4">
+                  <div className="bg-blue-500/10 p-2 rounded-xl">
+                      <Zap size={24} className="text-blue-500" />
+                  </div>
+                  <div>
+                      <h2 className="text-xl font-black uppercase tracking-tight m-0">{screens.find(s => s.slug === selectedSlug)?.label || 'Strategy Results'}</h2>
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">Deep analysis updated every session.</p>
+                  </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <ExportButton 
+                  data={strategyResults} 
+                  columns={[]} 
+                  filename={`${selectedSlug}-${new Date().toISOString().split('T')[0]}.csv`}
+                  disabled={loadingStrategyResults}
+                />
+                <button 
+                  onClick={() => setLiveMode(!liveMode)}
+                  className={`flex items-center gap-2 py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border-2 transition-all ${liveMode ? 'text-green-600 dark:text-green-400 border-green-500 bg-green-50 dark:bg-green-900/10 shadow-lg shadow-green-500/10' : 'text-slate-500 border-border hover:border-blue-500'}`}
+                >
+                  <RefreshCw size={14} className={loadingStrategyResults ? "animate-spin" : ""} />
+                  Live Mode
+                </button>
+              </div>
           </div>
-        </section>
-      )}
+          
+          <ScreenResultTable 
+            results={strategyResults} 
+            slug={selectedSlug}
+            loading={loadingStrategyResults}
+          />
+        </div>
+      </section>
     </div>
   );
 };

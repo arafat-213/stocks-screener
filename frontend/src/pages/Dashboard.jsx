@@ -72,7 +72,19 @@ const Dashboard = () => {
         setStocks(data.items);
         setOffset(50);
       } else {
-        setStocks(prev => [...prev, ...data.items]);
+        setStocks(prev => {
+          const combined = [...prev, ...data.items];
+          // Deduplicate by symbol
+          const unique = [];
+          const seen = new Set();
+          for (const item of combined) {
+            if (!seen.has(item.symbol)) {
+              seen.add(item.symbol);
+              unique.push(item);
+            }
+          }
+          return unique;
+        });
         setOffset(currentOffset + 50);
       }
 
@@ -128,7 +140,7 @@ const Dashboard = () => {
   // Derived: Available Sectors (only from current stocks)
   const availableSectors = useMemo(() => {
     if (!stocks || stocks.length === 0) return [];
-    const sectors = new Set(stocks.map(s => s.sector).filter(Boolean));
+    const sectors = new Set(stocks?.map(s => s.sector).filter(Boolean));
     return Array.from(sectors).sort();
   }, [stocks]);
 
@@ -151,7 +163,7 @@ const Dashboard = () => {
       label: 'Symbol', 
       sortable: true,
       render: (val) => (
-        <Link to={`/stocks/${val}`} className="text-bullish font-bold no-underline hover:underline">
+        <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 font-black no-underline hover:underline transition-all tracking-tighter">
           {val.replace('.NS', '')}
         </Link>
       )
@@ -174,7 +186,7 @@ const Dashboard = () => {
       label: 'Change %', 
       sortable: true,
       render: (val) => (
-        <span className={val >= 0 ? 'text-bullish' : 'text-bearish'}>
+        <span className={`px-2 py-1 rounded-md font-mono font-bold text-xs ${val >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
           {val >= 0 ? '+' : ''}{val?.toFixed(2)}%
         </span>
       )
@@ -184,14 +196,22 @@ const Dashboard = () => {
       label: 'Score', 
       sortable: true,
       accessor: (row) => row.timeframes?.D?.score || 0,
-      render: (val) => <span className="font-bold">{val || '-'}</span>
+      render: (val) => (
+        <span className={`font-black text-sm px-2 py-1 rounded ${val >= 70 ? 'bg-green-500 text-white' : val >= 50 ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+          {val || '-'}
+        </span>
+      )
     },
     { 
       key: 'rs_score', 
       label: 'RS', 
       sortable: true,
       accessor: (row) => row.timeframes?.D?.rs_score || 0,
-      render: (val) => <span className="text-primary font-bold">{val?.toFixed(0) || '-'}</span>
+      render: (val) => (
+        <span className={`font-black text-sm ${val >= 80 ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
+          {val?.toFixed(0) || '-'}
+        </span>
+      )
     },
     { 
       key: 'adx', 
@@ -238,7 +258,7 @@ const Dashboard = () => {
     return (
       <div className="w-full">
         <main className="flex-1">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {[1, 2, 3, 4].map(i => (
               <div key={i} className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
                 <div className="h-10 w-full bg-bg-elevated rounded-md animate-pulse"></div>
@@ -283,11 +303,11 @@ const Dashboard = () => {
         <h1 className="text-text my-4 text-2xl font-bold">No Data Available</h1>
         <p>The pipeline hasn't been run yet. Start it to see market analysis.</p>
         <button 
-          className="mt-6 bg-bullish text-white border-none py-3 px-6 rounded-lg font-bold flex items-center gap-2 cursor-pointer transition-opacity hover:opacity-90" 
+          className="mt-8 bg-blue-600 text-white border-none py-4 px-8 rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 cursor-pointer transition-all hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-[0.98]" 
           onClick={() => handleRunPipeline()} 
           disabled={isBusy}
         >
-          <Play size={20} /> Run Initial Pipeline
+          <Play size={18} fill="currentColor" /> Initialize Analysis Engine
         </button>
       </div>
     );
@@ -325,64 +345,74 @@ const Dashboard = () => {
 
       {/* Main Content */}
       <main className="flex-1">
-        <header className="mb-8 flex flex-col gap-6">
-          <div className="flex justify-between items-center">
+        <header className="mb-8 sm:mb-10 flex flex-col gap-6">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
+            <div>
+              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1 uppercase">Market Dashboard</h1>
+              <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-[10px]">Real-time intelligence and automated technical screening.</p>
+            </div>
             <GlobalSearch />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {status === 'running' && (
-              <div className="bg-bullish/5 border-bullish p-4 rounded-xl border flex flex-row justify-between items-center gap-3">
-                <div className="flex items-center gap-3 w-full">
-                  <RefreshCcw size={16} className="animate-spin text-bullish shrink-0" />
-                  <div className="flex-1 overflow-hidden">
-                    <span className="text-[11px] uppercase text-text-muted tracking-wider font-semibold block">Pipeline Running</span>
-                    <span className="text-xl font-extrabold text-text text-[12px] block mb-1">
-                      {pipeline?.stocks_fetched || 0} fetched |{' '}
-                      {pipeline?.stocks_scored || 0} scored
-                    </span>
+              <div className="bg-blue-600 border-2 border-blue-700 p-5 rounded-2xl flex flex-col gap-4 shadow-lg shadow-blue-500/20 col-span-1 sm:col-span-2 lg:col-span-1 animate-fade-in">
+                <div className="flex justify-between items-start">
+                    <div className="flex flex-col gap-0.5">
+                        <span className="text-[9px] font-black text-white/70 uppercase tracking-[0.2em]">Live Analysis</span>
+                        <div className="flex items-center gap-2">
+                             <RefreshCcw size={14} className="animate-spin text-white" />
+                             <span className="text-sm font-black text-white uppercase tracking-tight">Engine Active</span>
+                        </div>
+                    </div>
+                    <button 
+                        className="bg-white/20 hover:bg-white/30 text-white border-none py-1 px-2.5 rounded-lg font-black text-[9px] uppercase tracking-tighter cursor-pointer transition-colors backdrop-blur-md" 
+                        onClick={handleStopPipeline}
+                        disabled={status === 'stopping'}
+                    >
+                        {status === 'stopping' ? 'Stopping' : 'Stop'}
+                    </button>
+                </div>
+                
+                <div className="flex flex-col">
+                    <div className="flex justify-between items-end mb-1">
+                        <span className="text-[10px] font-black text-white">PROGRESS</span>
+                        <span className="text-[10px] font-black text-white">{pipeline?.stocks_scored || 0} / {pipeline?.tier1_count || 0}</span>
+                    </div>
                     <PipelineProgress
                       fetched={pipeline?.stocks_fetched || 0}
                       scored={pipeline?.stocks_scored || 0}
                       total={pipeline?.total_symbols || 0}
                       tier1Count={pipeline?.tier1_count || 0}
                     />
-                  </div>
-                  <button
-                    className="bg-bearish text-white border-none py-1.5 px-2.5 rounded-md text-[11px] font-bold flex items-center gap-1.5 cursor-pointer transition-opacity hover:opacity-90 disabled:bg-text-muted disabled:cursor-not-allowed ml-auto shrink-0"
-                    onClick={handleStopPipeline}
-                    disabled={status === 'stopping'}
-                    title="Stop Pipeline"
-                  >
-                    <Square size={14} fill="currentColor" />
-                    {status === 'stopping' ? 'Stopping...' : 'Stop'}
-                  </button>
                 </div>
               </div>
             )}
-            <div className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
-              <span className="text-[11px] uppercase text-text-muted tracking-wider font-semibold">Total Scored</span>
-              <span className="text-xl font-extrabold text-text">{stocks?.length || 0}</span>
+            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
+              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Total Scored</span>
+              <span className="text-3xl font-black text-text tracking-tighter">{stocks?.length || 0}</span>
             </div>
-            <div className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
-              <span className="text-[11px] uppercase text-text-muted tracking-wider font-semibold">Nifty 50</span>
-              <span className={`text-xl font-extrabold ${isNiftyUp ? 'text-bullish' : 'text-bearish'}`}>
-                {nifty.close?.toLocaleString('en-IN')}
-                <small className="text-[12px] font-semibold ml-1">
-                  ({isNiftyUp ? '▲' : '▼'}{' '}
-                  {Math.abs(nifty.change_pct)?.toFixed(2)}%)
-                </small>
-              </span>
+            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
+              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Nifty 50</span>
+              <div className="flex flex-col">
+                <span className="text-2xl font-black text-text tracking-tighter">
+                  {nifty.close?.toLocaleString('en-IN')}
+                </span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isNiftyUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}>
+                  {isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%
+                </span>
+              </div>
             </div>
-            <div className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
-              <span className="text-[11px] uppercase text-text-muted tracking-wider font-semibold">SENSEX</span>
-              <span className={`text-xl font-extrabold ${isSensexUp ? 'text-bullish' : 'text-bearish'}`}>
-                {sensex.close?.toLocaleString('en-IN')}
-                <small className="text-[12px] font-semibold ml-1">
-                  ({isSensexUp ? '▲' : '▼'}{' '}
-                  {Math.abs(sensex.change_pct)?.toFixed(2)}%)
-                </small>
-              </span>
+            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
+              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">SENSEX</span>
+              <div className="flex flex-col">
+                <span className="text-2xl font-black text-text tracking-tighter">
+                  {sensex.close?.toLocaleString('en-IN')}
+                </span>
+                <span className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isSensexUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}>
+                  {isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%
+                </span>
+              </div>
             </div>
           </div>
 
@@ -394,18 +424,18 @@ const Dashboard = () => {
           />
 
           {!isMobile && (
-            <div className="p-5 bg-bg-secondary border border-border rounded-lg shadow-sm">
-              <div className="flex flex-wrap gap-8 items-start">
-                <div className="flex flex-col gap-3">
-                  <div className="mb-1 flex items-center">
-                    <Filter size={16} className="mr-2 inline" />
-                    <h3 className="inline text-sm font-bold">Confluence</h3>
+            <div className="p-6 bg-bg-secondary border-2 border-border rounded-2xl shadow-sm">
+              <div className="flex flex-wrap gap-10 items-start">
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <Filter size={18} className="text-blue-500" />
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confluence</h3>
                   </div>
-                  <div className="flex flex-row gap-2">
+                  <div className="flex flex-row gap-2.5">
                     {['all', 'watchlist', '3', '2+'].map((c) => (
                       <label
                         key={c}
-                        className={`flex items-center gap-2 py-2 px-3 rounded-lg text-sm cursor-pointer transition-all border border-border bg-bg-secondary text-text hover:bg-bg-elevated ${confluenceFilter === c ? 'bg-bullish/10 text-bullish font-semibold border-bullish' : ''}`}
+                        className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
                       >
                         <input
                           type="radio"
@@ -427,20 +457,20 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-3 flex-1 min-w-[300px]">
-                  <div className="mb-1">
-                    <h3 className="text-sm font-bold">
-                      Sectors{' '}
-                      <span className="text-[11px] bg-bg-elevated py-0.5 px-1.5 rounded text-text-muted ml-2">
-                        {availableSectors.length}
-                      </span>
+                <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                      Sectors Selection
                     </h3>
+                    <span className="text-[10px] bg-blue-500 text-white py-0.5 px-2 rounded-full font-black shadow-sm">
+                        {availableSectors.length} AVAILABLE
+                    </span>
                   </div>
-                  <div className="flex flex-row flex-wrap gap-2 max-h-[240px] overflow-y-auto pr-1">
+                  <div className="flex flex-row flex-wrap gap-2 max-h-[240px] overflow-y-auto pr-2">
                     {availableSectors.map((sector) => (
                       <label
                         key={sector}
-                        className={`flex items-center gap-2.5 py-1 px-3 rounded-full text-[12px] cursor-pointer text-text border border-border bg-bg-secondary transition-all hover:bg-bg-elevated ${selectedSectors.includes(sector) ? 'bg-bullish/10 text-bullish font-semibold border-bullish' : ''}`}
+                        className={`flex items-center gap-2.5 py-1.5 px-3.5 rounded-full text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all border-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
                       >
                         <input
                           type="checkbox"
@@ -458,41 +488,41 @@ const Dashboard = () => {
           )}
 
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-2xl font-extrabold m-0 tracking-tight text-text">Market Screener</h2>
+            <h2 className="text-3xl font-black m-0 tracking-tighter text-text uppercase">Live Market Control</h2>
             <div className="flex gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
               <button
-                className="bg-bg-elevated border border-border py-2 px-4 rounded-lg font-semibold flex items-center gap-2 cursor-pointer text-text transition-all hover:not-disabled:border-text-muted disabled:opacity-50 disabled:cursor-not-allowed"
+                className="bg-slate-100 dark:bg-slate-800 border-2 border-border py-2 px-5 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer text-text transition-all hover:border-blue-500 disabled:opacity-50 shadow-sm"
                 onClick={() => handleRunPipeline(50)}
                 disabled={isBusy}
               >
-                <Play size={16} /> Test (50)
+                {isBusy && status !== 'running' ? <RefreshCcw size={16} className="animate-spin" /> : <Play size={16} />}
+                RAPID TEST (50)
               </button>
 
               {isMobile && (
                 <button
-                  className={`flex items-center gap-2 bg-bg-secondary border border-border py-2 px-4 rounded-[10px] font-semibold text-text cursor-pointer relative transition-all ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'border-bullish text-bullish bg-bullish/5' : ''}`}
+                  className={`flex items-center gap-2 bg-bg-secondary border-2 border-border py-2 px-5 rounded-xl font-black text-[10px] uppercase tracking-widest text-text cursor-pointer relative transition-all shadow-sm ${confluenceFilter !== 'all' || selectedSectors.length > 0 ? 'border-blue-600 text-blue-600 bg-blue-50 dark:bg-blue-900/20' : 'hover:border-blue-500'}`}
                   onClick={() => setIsFilterSheetOpen(true)}
                 >
-                  <Filter size={20} />
+                  <Filter size={18} />
                   <span>Filters</span>
-                  {(confluenceFilter !== 'all' ||
-                    selectedSectors.length > 0) && (
-                    <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-bullish rounded-full border-2 border-bg-secondary" />
+                  {(confluenceFilter !== 'all' || selectedSectors.length > 0) && (
+                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full border-2 border-white dark:border-slate-900" />
                   )}
                 </button>
               )}
 
               {!isMobile && (
-                <div className="flex items-center gap-1 bg-bg-secondary p-1 rounded-md border border-border">
+                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border-2 border-border shadow-inner">
                   <button
-                    className={`p-1 rounded cursor-pointer flex transition-colors ${viewMode === 'table' ? 'text-bullish bg-bg-elevated' : 'text-text-muted hover:text-text'}`}
+                    className={`p-2 rounded-lg cursor-pointer flex transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-text'}`}
                     onClick={() => setViewMode('table')}
                     title="Table View"
                   >
-                    <List size={20} />
+                    <List size={18} />
                   </button>
                   <button
-                    className={`p-1 rounded cursor-pointer flex transition-colors ${viewMode === 'grid' ? 'text-bullish bg-bg-elevated' : 'text-text-muted hover:text-text'}`}
+                    className={`p-2 rounded-lg cursor-pointer flex transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-text'}`}
                     onClick={() => setViewMode('grid')}
                     title="Grid View"
                   >
@@ -521,8 +551,8 @@ const Dashboard = () => {
 
         {stocks.length > 0 ? (
           viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(320px,1fr))] gap-6">
-              {stocks.map((stock) => (
+            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 sm:gap-6">
+              {stocks?.map((stock) => (
                 <StockCard
                   key={stock.symbol}
                   stock={stock}
@@ -545,8 +575,8 @@ const Dashboard = () => {
               <Filter size={48} />
               <h3 className="text-text my-4 text-lg font-bold">No stocks match filters</h3>
               <p>Try adjusting your confluence or sector selections.</p>
-              <button onClick={resetFilters} className="bg-none border-none color-bullish font-semibold cursor-pointer mt-3 underline">
-                Reset All Filters
+              <button onClick={resetFilters} className="bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest text-[10px] py-2 px-4 rounded-xl border-2 border-transparent hover:border-blue-500 cursor-pointer mt-4 transition-all">
+                Reset Selection
               </button>
             </div>
           )
@@ -554,9 +584,9 @@ const Dashboard = () => {
 
         {/* Sentinel and Footer UI */}
         {loading && stocks.length > 0 && (
-          <div className="flex justify-center items-center gap-2 py-5 text-text-muted">
-            <RefreshCcw size={20} className="animate-spin text-bullish" />
-            <span>Loading more stocks...</span>
+          <div className="flex flex-col justify-center items-center gap-4 py-12 text-slate-500 animate-pulse bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-border border-dashed mt-8">
+            <RefreshCcw size={32} className="animate-spin text-blue-500" />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synchronizing Deep Market Data...</span>
           </div>
         )}
         {!hasMore && stocks.length > 0 && (

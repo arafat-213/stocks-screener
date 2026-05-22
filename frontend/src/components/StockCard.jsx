@@ -22,11 +22,13 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
     const data = timeframes?.[tf];
     const isBullish = data?.is_bullish;
     return (
-      <div className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[11px] font-bold ${
-        isBullish ? 'bg-emerald-500/10 text-bullish' : 'bg-rose-500/10 text-bearish'
+      <div className={`flex items-center gap-1 px-2 py-1 rounded-md text-[11px] font-bold shadow-sm ${
+        isBullish 
+          ? 'bg-green-500 text-white dark:bg-green-600/90' 
+          : 'bg-red-500 text-white dark:bg-red-600/90'
       }`}>
-        <span className="opacity-80">{label}</span>
-        <span className="text-[10px]">{isBullish ? '▲' : '▼'}</span>
+        <span className="opacity-90">{label}</span>
+        <span className="text-[10px] leading-none">{isBullish ? '▲' : '▼'}</span>
       </div>
     );
   };
@@ -43,101 +45,111 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
   const getConfluenceStyles = (count) => {
     switch (count) {
       case 3:
-        return 'bg-emerald-500/15 text-bullish border-emerald-500/20';
+        return 'bg-green-600 text-white border-green-700 shadow-md';
       case 2:
-        return 'bg-amber-500/15 text-amber-500 border-amber-500/20';
+        return 'bg-amber-500 text-white border-amber-600 shadow-sm';
       case 1:
-        return 'bg-bg-secondary text-text-muted border-border';
+        return 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700';
       default:
-        return 'bg-bg-secondary text-text-muted border-border opacity-50';
+        return 'bg-slate-50 text-slate-400 border-slate-100 opacity-50 dark:bg-slate-900/50 dark:text-slate-600 dark:border-slate-800';
     }
   };
 
   return (
-    <Link to={`/stocks/${symbol}`} className="no-underline text-inherit block">
-      <div className="bg-bg-secondary border border-border rounded-xl p-4 flex flex-col gap-4 transition-all duration-200 shadow-sm hover:-translate-y-0.5 hover:border-bullish hover:shadow-lg">
-        <div className="flex justify-between items-start">
-          <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2">
-              <span className="font-extrabold text-lg tracking-tight text-text">{symbol.replace('.NS', '')}</span>
-              <SetupBadge setup={setup} />
-              <span className="text-[10px] font-semibold uppercase bg-bg-elevated text-text-muted px-1.5 py-0.5 rounded tracking-wider">{sector}</span>
-              <WatchlistStar symbol={symbol} isWatched={isWatched} onToggle={onToggleWatch} />
+    <Link to={`/stocks/${symbol}`} className="no-underline text-inherit block group">
+      <div className="bg-bg-secondary border-2 border-border rounded-xl p-5 flex flex-col gap-5 transition-all duration-300 shadow-sm group-hover:-translate-y-1.5 group-hover:border-blue-500/50 group-hover:shadow-xl dark:group-hover:border-blue-400/30">
+        <div className="flex justify-between items-start gap-4">
+          <div className="flex flex-col gap-1.5 min-w-0 flex-1">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-black text-xl tracking-tight text-text group-hover:text-blue-500 transition-colors truncate">{symbol.replace('.NS', '')}</span>
+              <div className="flex items-center gap-2">
+                <SetupBadge setup={setup} />
+                <WatchlistStar symbol={symbol} isWatched={isWatched} onToggle={onToggleWatch} />
+              </div>
             </div>
-            <div className="text-[11px] text-text-muted truncate max-w-[160px]">{name}</div>
+            <div className="flex items-center gap-2 flex-wrap">
+               <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded tracking-wider border border-slate-200 dark:border-slate-700 whitespace-nowrap">{sector}</span>
+               <div className="text-[11px] text-text-muted truncate font-medium">{name}</div>
+            </div>
           </div>
-          <div className="text-right flex flex-col gap-0.5">
-            <div className="font-bold text-base font-mono text-text">₹{close_price?.toLocaleString('en-IN') || '-'}</div>
-            <div className={`text-xs font-semibold ${isPositive ? 'text-bullish' : 'text-bearish'}`}>
+          <div className="text-right flex flex-col gap-1 shrink-0">
+            <div className="font-black text-lg font-mono text-text">₹{close_price?.toLocaleString('en-IN') || '-'}</div>
+            <div className={`text-xs font-bold px-2 py-0.5 rounded-full inline-block ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
               {isPositive ? '+' : ''}{price_change_pct?.toFixed(2)}%
             </div>
           </div>
         </div>
 
-        <div className="flex justify-between items-center bg-bg-elevated p-2.5 rounded-lg border border-border">
-          <div className={`text-xs font-bold px-2.5 py-1 rounded-full border ${getConfluenceStyles(confluence_count)}`}>
-            {confluence_count}/3 Confluence
+        <div className="flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 p-3 rounded-xl border border-border/60">
+          <div className={`text-[11px] font-black px-3 py-1.5 rounded-lg border transition-all ${getConfluenceStyles(confluence_count)}`}>
+            {confluence_count}/3 CONFLUENCE
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-1.5">
             {renderTimeframe('D', 'D')}
             {renderTimeframe('W', 'W')}
             {renderTimeframe('M', 'M')}
           </div>
         </div>
 
-        <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-3 gap-2 border-b border-border pb-2.5">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">Score</span>
-              <span className="text-sm font-mono font-bold text-text">{daily.score || '-'}</span>
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-3 gap-3 border-b border-border/50 pb-4">
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">Score</span>
+              <span className={`text-base font-mono font-black ${daily.score >= 70 ? 'text-green-500' : daily.score >= 50 ? 'text-blue-500' : 'text-text'}`}>
+                {daily.score || '-'}
+              </span>
             </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">RSI</span>
-              <span className="text-sm font-mono font-medium text-text">{daily.rsi?.toFixed(1) || '-'}</span>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">RSI</span>
+              <span className={`text-base font-mono font-bold ${daily.rsi <= 30 ? 'text-green-500' : daily.rsi >= 70 ? 'text-red-500' : 'text-text'}`}>
+                {daily.rsi?.toFixed(1) || '-'}
+              </span>
             </div>
-            <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">EMA</span>
-              <span className={`text-sm font-mono font-medium ${daily.ema_signal?.toLowerCase() === 'bullish' ? 'text-bullish' : 'text-bearish'}`}>
+            <div className="flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">EMA</span>
+              <span className={`text-[11px] font-bold uppercase tracking-tight ${daily.ema_signal?.toLowerCase() === 'bullish' ? 'text-green-500' : 'text-red-500'}`}>
                 {daily.ema_signal || '-'}
               </span>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">P/E</span>
-              <span className="text-sm font-mono font-medium text-text">{fundamentals.pe?.toFixed(1) || '-'}</span>
+              <span className="text-sm font-mono font-bold text-text">{fundamentals.pe?.toFixed(1) || '-'}</span>
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">ROE</span>
-              <span className="text-sm font-mono font-medium text-text">{fundamentals.roe ? `${fundamentals.roe.toFixed(1)}%` : '-'}</span>
+              <span className={`text-sm font-mono font-bold ${fundamentals.roe > 0.15 ? 'text-green-500' : 'text-text'}`}>
+                {fundamentals.roe ? `${(fundamentals.roe * 100).toFixed(1)}%` : '-'}
+              </span>
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">MCap</span>
-              <span className="text-sm font-mono font-medium text-text">{formatMCap(fundamentals.market_cap)}</span>
+              <span className="text-sm font-mono font-bold text-text">{formatMCap(fundamentals.market_cap)}</span>
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 mt-1">
+          <div className="grid grid-cols-3 gap-3">
             <div className="flex flex-col gap-0.5">
-              <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">RS Score</span>
-              <span className="text-sm font-mono font-bold text-primary">{daily.rs_score?.toFixed(0) || '-'}</span>
+              <span className="text-[10px] font-bold text-text-muted uppercase tracking-widest">RS Score</span>
+              <span className="text-base font-mono font-black text-blue-600 dark:text-blue-400">{daily.rs_score?.toFixed(0) || '-'}</span>
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">ADX</span>
-              <span className="text-sm font-mono font-medium text-text">{daily.adx?.toFixed(1) || '-'}</span>
+              <span className={`text-sm font-mono font-bold ${daily.adx > 25 ? 'text-blue-500' : 'text-text'}`}>{daily.adx?.toFixed(1) || '-'}</span>
             </div>
             <div className="flex flex-col gap-0.5">
               <span className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">52W High</span>
-              <span className={`text-sm font-mono font-medium ${Math.abs(daily.pct_from_52wh) < 5 ? 'text-bullish' : 'text-text'}`}>
+              <span className={`text-sm font-mono font-bold ${Math.abs(daily.pct_from_52wh) < 5 ? 'text-green-500' : 'text-text'}`}>
                 {daily.pct_from_52wh != null ? `${daily.pct_from_52wh.toFixed(1)}%` : '-'}
               </span>
             </div>
           </div>
           
           {daily.volume_breakout && (
-            <div className="flex items-center gap-2 bg-blue-500/10 text-primary text-[10px] font-bold px-3 py-1.5 rounded-md uppercase tracking-widest mt-2">
-              <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse shadow-[0_0_0_rgba(59,130,246,0.4)]"></span>
+            <div className="flex items-center gap-2 bg-blue-600 text-white text-[10px] font-black px-3 py-2 rounded-lg uppercase tracking-[0.15em] mt-2 shadow-lg shadow-blue-500/20">
+              <span className="w-2 h-2 bg-white rounded-full animate-ping"></span>
               Volume Breakout
             </div>
           )}

@@ -11,67 +11,63 @@ const FilterBottomSheet = ({
   resetFilters,
   watchlistCount
 }) => {
+  if (!isOpen) return null;
+
   return (
-    <div 
-      className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-[2000] flex items-end transition-all duration-300 ${isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`} 
-      onClick={onClose}
-    >
-      <div 
-        className={`w-full bg-bg-secondary rounded-t-[24px] p-6 transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] max-h-[85vh] flex flex-col shadow-lg ${isOpen ? 'translate-y-0' : 'translate-y-full'}`} 
-        onClick={e => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-6">
+    <div className="fixed inset-0 z-[1000] flex items-end justify-center sm:items-center p-0 sm:p-4">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={onClose} />
+      
+      <div className="relative w-full max-w-[500px] bg-bg-secondary rounded-t-[32px] sm:rounded-3xl shadow-2xl p-8 animate-fade-in border-t sm:border-2 border-border flex flex-col gap-8">
+        <header className="flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <Filter size={18} />
-            <h3 className="text-[18px] font-bold text-text">Filters</h3>
+            <div className="bg-blue-500/10 p-2 rounded-xl">
+                <Filter size={20} className="text-blue-500" />
+            </div>
+            <h3 className="text-xl font-black uppercase tracking-tight">Market Filters</h3>
           </div>
-          <button className="bg-bg-elevated border-none text-text-muted cursor-pointer p-2 rounded-full flex items-center justify-center hover:bg-bg-secondary transition-colors" onClick={onClose}>
+          <button className="bg-slate-100 dark:bg-slate-800 p-2 rounded-full border-none cursor-pointer text-slate-500 hover:text-text transition-colors" onClick={onClose}>
             <X size={24} />
           </button>
-        </div>
+        </header>
 
-        <div className="overflow-y-auto flex-1 pb-6">
-          <div className="mb-8">
-            <h4 className="text-[12px] font-bold text-text-muted mb-4 uppercase tracking-widest">Confluence</h4>
-            <div className="flex gap-2 flex-wrap">
+        <div className="flex flex-col gap-6 max-h-[60vh] overflow-y-auto pr-2">
+          <section>
+            <h4 className="text-[10px] font-black text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-[0.2em]">Signal Confluence</h4>
+            <div className="flex gap-2.5 flex-wrap">
               {['all', 'watchlist', '3', '2+'].map(c => (
                 <button 
                   key={c} 
-                  className={`bg-bg-elevated border border-border px-[18px] py-[10px] rounded-[12px] text-[14px] font-semibold cursor-pointer transition-all duration-200 text-text flex items-center gap-2 ${confluenceFilter === c ? 'bg-bullish/10 text-bullish border-bullish shadow-none after:content-["✓"] after:text-[12px] after:font-extrabold' : ''}`}
+                  className={`border-2 px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest cursor-pointer transition-all flex items-center gap-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200'}`}
                   onClick={() => setConfluenceFilter(c)}
                 >
-                  {c === 'all' ? 'All Stocks' : c === 'watchlist' ? `Watchlist (${watchlistCount})` : c === '3' ? '3/3 Only' : '2/3+'}
+                  {c === 'all' ? 'All Symbols' : c === 'watchlist' ? `Watchlist (${watchlistCount})` : c === '3' ? '3/3 High' : '2/3+ Mid'}
                 </button>
               ))}
             </div>
-          </div>
+          </section>
 
-          <div className="mb-8">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest">Sectors</h4>
-              <span className="text-[11px] bg-bg-elevated px-2 py-0.5 rounded-lg text-text-muted font-semibold">{availableSectors.length}</span>
-            </div>
-            <div className="flex flex-wrap gap-2">
+          <section>
+            <h4 className="text-[10px] font-black text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-[0.2em]">Market Sectors</h4>
+            <div className="flex gap-2 flex-wrap">
               {availableSectors.map(sector => (
                 <button 
                   key={sector} 
-                  className={`bg-bg-elevated border border-border px-[18px] py-[10px] rounded-[12px] text-[14px] font-semibold cursor-pointer transition-all duration-200 text-text flex items-center gap-2 ${selectedSectors.includes(sector) ? 'bg-bullish/10 text-bullish border-bullish shadow-none after:content-["✓"] after:text-[12px] after:font-extrabold' : ''}`}
+                  className={`border-2 px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all flex items-center gap-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200'}`}
                   onClick={() => toggleSector(sector)}
                 >
                   {sector}
                 </button>
               ))}
             </div>
-          </div>
+          </section>
         </div>
 
-        <div className="flex gap-3 pt-5 border-t border-border bg-bg-secondary">
-          <button className="flex items-center justify-center gap-2 bg-none border border-border px-5 py-3.5 rounded-[14px] font-bold cursor-pointer text-text text-[15px] hover:bg-bg-elevated transition-colors" onClick={resetFilters}>
-            <RotateCcw size={16} />
-            Reset
+        <div className="flex gap-3 pt-4 border-t border-border mt-auto">
+          <button className="bg-slate-100 dark:bg-slate-800 text-text border-none p-4 rounded-2xl font-black uppercase tracking-widest text-[10px] cursor-pointer transition-all hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center gap-2" onClick={resetFilters}>
+            <RotateCcw size={16} /> Reset
           </button>
-          <button className="flex-1 bg-text text-bg-secondary border-none p-3.5 rounded-[14px] font-bold cursor-pointer text-[15px] dark:bg-white dark:text-black transition-opacity hover:opacity-90" onClick={onClose}>
-            Apply Filters
+          <button className="flex-1 bg-blue-600 text-white border-none p-4 rounded-2xl font-black uppercase tracking-widest text-[10px] cursor-pointer transition-all hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={onClose}>
+            Apply Analysis
           </button>
         </div>
       </div>

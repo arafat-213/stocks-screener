@@ -7,7 +7,8 @@ import {
   TrendingUp,
   AlertCircle,
   BarChart3,
-  History
+  History,
+  Activity
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { getReportList, getReportByDate, getSectorRotation } from '../api/client';
@@ -100,13 +101,16 @@ const Intelligence = () => {
     }));
   };
 
+  const displayedMonths = showAllMonths ? groupedMonths : groupedMonths.slice(0, 3);
+  const hasMoreMonths = groupedMonths.length > 3;
+
   const columns = useMemo(() => [
     { 
       key: 'symbol', 
       label: 'Symbol', 
       sortable: true,
       render: (val) => (
-        <Link to={`/stocks/${val}`} className="text-bullish font-bold no-underline hover:underline font-mono">
+        <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 font-black no-underline hover:underline transition-all tracking-tighter">
           {val.replace('.NS', '')}
         </Link>
       )
@@ -117,111 +121,123 @@ const Intelligence = () => {
       sortable: true,
       accessor: (row) => row.confluence_count,
       render: (val, row) => (
-        <span className={`py-1 px-2 rounded-md text-[12px] font-semibold inline-flex items-center ${row.confluence_count >= 2 ? 'bg-bullish/10 text-bullish' : 'bg-bg-elevated text-text-muted'}`}>
+        <span className={`py-1.5 px-3 rounded-lg text-[11px] font-black inline-flex items-center border ${row.confluence_count === 3 ? 'bg-green-500 text-white border-green-600 shadow-md' : row.confluence_count === 2 ? 'bg-amber-500 text-white border-amber-600 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'}`}>
           {row.confluence}
         </span>
       )
     },
     { 
       key: 'daily_score', 
-      label: 'Daily Score', 
+      label: 'Score', 
       sortable: true,
-      render: (val) => <span className="font-mono">{val?.toFixed(1) || 'N/A'}</span>
+      render: (val) => (
+        <span className={`font-black font-mono text-sm ${val >= 70 ? 'text-green-500' : val >= 50 ? 'text-blue-500' : 'text-text'}`}>
+          {val?.toFixed(1) || 'N/A'}
+        </span>
+      )
     },
     { 
       key: 'rsi', 
       label: 'RSI', 
       sortable: true,
-      render: (val) => <span className="font-mono">{val?.toFixed(1) || 'N/A'}</span>
+      render: (val) => (
+        <span className={`font-bold font-mono text-sm ${val <= 30 ? 'text-green-500' : val >= 70 ? 'text-red-500' : 'text-text'}`}>
+          {val?.toFixed(1) || 'N/A'}
+        </span>
+      )
     }
   ], []);
 
   if (loadingDates && !dates.length) {
     return (
-      <div className="flex flex-col items-center justify-center p-16 gap-4 text-text-muted h-[80vh]">
-        <Loader2 className="animate-spin" size={40} />
-        <p>Loading market intelligence...</p>
+      <div className="flex flex-col items-center justify-center py-24 text-slate-400 animate-fade-in">
+        <Loader2 className="animate-spin mb-4" size={48} />
+        <span className="font-black uppercase tracking-[0.2em] text-xs">Bootstrapping Intelligence Engine...</span>
       </div>
     );
   }
 
-  const displayedMonths = showAllMonths ? groupedMonths : groupedMonths.slice(0, 3);
-  const hasMoreMonths = groupedMonths.length > 3;
-
   return (
-    <div className="w-full">
-      <header className="mb-8">
+    <div className="max-w-[1500px] mx-auto p-6 animate-fade-in">
+      <header className="mb-8 sm:mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
         <div>
-          <h1 className="text-2xl font-bold">Market Intelligence</h1>
-          <p className="text-text-muted">
-            Macro sector rotation and historical session reports.
-          </p>
+          <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-2">Market Intelligence</h1>
+          <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-xs">Analyze sector rotation and historical session logs.</p>
         </div>
-
-        <div className="flex p-1 gap-1 mt-6 max-w-fit bg-bg-secondary border border-border rounded-lg shadow-sm">
+        <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-border/50">
           <button
-            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeView === 'rotation' ? 'bg-bg-elevated text-primary' : ''}`}
+            className={`flex items-center gap-2.5 py-2.5 px-5 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer border-none shadow-sm ${activeView === 'rotation' ? 'bg-bg-secondary text-blue-600 dark:text-blue-400 shadow-md border border-border/50' : 'text-slate-500 hover:text-text'}`}
             onClick={() => setActiveView('rotation')}
           >
-            <BarChart3 size={18} />
+            <BarChart3 size={16} />
             <span>Sector Rotation</span>
           </button>
           <button
-            className={`flex items-center gap-2 py-2 px-4 rounded-md font-semibold text-text-muted text-[0.9rem] transition-colors ${activeView === 'reports' ? 'bg-bg-elevated text-primary' : ''}`}
+            className={`flex items-center gap-2.5 py-2.5 px-5 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer border-none shadow-sm ${activeView === 'reports' ? 'bg-bg-secondary text-blue-600 dark:text-blue-400 shadow-md border border-border/50' : 'text-slate-500 hover:text-text'}`}
             onClick={() => setActiveView('reports')}
           >
-            <History size={18} />
-            <span>Historical Reports</span>
+            <History size={16} />
+            <span>Session Logs</span>
           </button>
         </div>
       </header>
 
-      {datesError && (
-        <ErrorBanner message={`Failed to load report list: ${datesError}`} />
-      )}
-      {reportError && (
-        <ErrorBanner message={`Failed to load report: ${reportError}`} />
-      )}
-      {rotationError && (
-        <ErrorBanner
-          message={`Failed to load rotation data: ${rotationError}`}
-        />
-      )}
+      <div className="flex flex-col gap-4">
+        {datesError && (
+            <ErrorBanner message={`Failed to load report list: ${datesError}`} />
+        )}
+        {reportError && (
+            <ErrorBanner message={`Failed to load report: ${reportError}`} />
+        )}
+        {rotationError && (
+            <ErrorBanner
+            message={`Failed to load rotation data: ${rotationError}`}
+            />
+        )}
+      </div>
 
       {activeView === 'rotation' ? (
-        <div className="animate-fade-in">
-          <SectorRotationTable data={rotationData} loading={loadingRotation} />
-        </div>
+        <section className="bg-bg-secondary border-2 border-border rounded-3xl p-5 sm:p-8 shadow-sm">
+           <div className="flex items-center gap-3 mb-6 sm:mb-8">
+              <div className="bg-indigo-500/10 p-2 rounded-xl">
+                  <BarChart3 className="text-indigo-500" />
+              </div>
+              <h2 className="text-xl font-black uppercase tracking-tight">Active Sector Performance</h2>
+           </div>
+           <SectorRotationTable data={rotationData} loading={loadingRotation} />
+        </section>
       ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_3fr] gap-8 animate-fade-in">
+        <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6 lg:gap-10 items-start">
           {/* Date Selection Sidebar/List */}
-          <aside className="bg-bg-secondary border border-border rounded-lg shadow-sm h-fit p-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Calendar size={18} className="text-primary" />
-              <h2 className="text-sm font-bold">Past Sessions</h2>
+          <aside className="bg-bg-secondary border-2 border-border rounded-2xl p-5 sm:p-6 shadow-sm flex flex-col gap-6 lg:sticky lg:top-6">
+            <div className="flex items-center gap-3">
+                <div className="bg-blue-500/10 p-2 rounded-lg">
+                    <Calendar size={18} className="text-blue-500" />
+                </div>
+                <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Available Sessions</h3>
             </div>
 
-            <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-4 max-h-[600px] overflow-y-auto pr-2">
               {displayedMonths.map((month) => (
                 <div key={month.key} className="flex flex-col">
                   <button
                     onClick={() => toggleMonth(month.key)}
-                    className="flex items-center justify-between w-full py-2 bg-transparent border-0 border-b border-border cursor-pointer mb-2"
+                    className="flex items-center justify-between w-full py-3 bg-transparent border-0 border-b-2 border-border cursor-pointer mb-3 hover:border-blue-500 transition-colors"
                   >
-                    <span className="text-[0.85rem] font-bold text-text-muted">{month.label}</span>
+                    <span className="text-[11px] font-black uppercase tracking-widest text-text">{month.label}</span>
                     {expandedMonths[month.key] ? (
-                      <ChevronDown size={14} />
+                      <ChevronDown size={14} className="text-blue-500" />
                     ) : (
-                      <ChevronRight size={14} />
+                      <ChevronRight size={14} className="text-slate-400" />
                     )}
                   </button>
 
                   {expandedMonths[month.key] && (
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-2 animate-fade-in pl-2">
                       {month.dates.map((date) => (
                         <button
                           key={date}
-                          className={`w-full flex justify-between p-2 px-3 rounded-sm text-[0.85rem] font-medium transition-all cursor-pointer border ${selectedDate === date ? 'font-bold bg-bg-elevated text-primary border-primary' : 'bg-transparent text-text border-transparent hover:bg-bg-elevated'}`}
+                          className={`w-full flex justify-between p-3.5 px-5 rounded-xl text-sm font-black transition-all border-2 ${selectedDate === date ? 'bg-blue-600 text-white border-blue-600 shadow-lg shadow-blue-500/30' : 'bg-transparent border-transparent text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:text-text'}`}
                           onClick={() => setSelectedDate(date)}
                         >
                           <span>{date}</span>
@@ -238,44 +254,45 @@ const Intelligence = () => {
 
               {hasMoreMonths && !showAllMonths && (
                 <button
-                  className="mt-2 text-[0.8rem] text-primary bg-transparent border-0 cursor-pointer text-left py-1 hover:underline"
+                  className="mt-2 text-[10px] font-black uppercase tracking-widest text-blue-600 dark:text-blue-400 bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border-2 border-transparent hover:border-blue-500 cursor-pointer transition-all"
                   onClick={() => setShowAllMonths(true)}
                 >
-                  Show older months
+                  Show More Months
                 </button>
               )}
             </div>
           </aside>
 
-          {/* Report Content Area */}
-          <section>
+          <section className="flex flex-col gap-8">
             {loadingReport ? (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm flex flex-col items-center justify-center p-16 gap-4 text-text-muted mt-8">
-                <Loader2 className="animate-spin" size={32} />
-                <p>Compiling report for {selectedDate}...</p>
+              <div className="flex flex-col items-center justify-center py-40 text-slate-400 bg-bg-secondary border-2 border-border rounded-3xl border-dashed">
+                <RefreshCcw className="animate-spin mb-4 text-blue-500" size={40} />
+                <span className="font-black uppercase tracking-[0.2em] text-[10px]">Retrieving Session Data...</span>
               </div>
             ) : reportData.length === 0 ? (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm flex flex-col items-center justify-center py-16 text-center text-text-muted p-16">
-                <AlertCircle size={48} />
-                <h3 className="text-text my-4 text-lg font-bold">No data found</h3>
-                <p>We couldn't find any session data for {selectedDate}.</p>
+              <div className="flex flex-col items-center justify-center py-40 text-center text-slate-400 bg-bg-secondary border-2 border-border rounded-3xl border-dashed">
+                <AlertCircle size={48} className="mb-4 opacity-30" />
+                <h3 className="text-text m-0 text-xl font-black uppercase tracking-tight">No Archive Found</h3>
+                <p className="mt-2 font-bold uppercase tracking-widest text-[10px]">We couldn't find any session data for {selectedDate}.</p>
               </div>
             ) : (
-              <div className="bg-bg-secondary border border-border rounded-lg shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-border flex justify-between items-center">
-                  <div className="flex items-center gap-3">
-                    <TrendingUp size={20} className="text-bullish" />
-                    <h3 className="m-0 text-[1.1rem]">Session Report: {selectedDate}</h3>
+              <div className="bg-bg-secondary border-2 border-border rounded-3xl shadow-sm overflow-hidden animate-fade-in">
+                <div className="px-8 py-6 border-b-2 border-border flex justify-between items-center bg-slate-50 dark:bg-slate-900/50">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-green-500/10 p-2 rounded-xl">
+                        <TrendingUp size={24} className="text-green-500" />
+                    </div>
+                    <h3 className="m-0 text-xl font-black uppercase tracking-tight tracking-tight">Intelligence Report: {selectedDate}</h3>
                   </div>
-                  <span className="text-[0.75rem] font-medium py-0.5 px-2 bg-bg-elevated rounded-full text-text-muted ml-3">
-                    {reportData.length} stocks tracked
+                  <span className="text-[10px] font-black py-1.5 px-4 bg-blue-600 text-white rounded-full shadow-lg shadow-blue-500/20 uppercase tracking-[0.15em]">
+                    {reportData.length} ASSETS LOGGED
                   </span>
                 </div>
 
                 <DataTable
                   columns={columns}
                   data={reportData}
-                  initialSort={{ key: 'confluence', direction: 'desc' }}
+                  initialSort={{ key: 'daily_score', direction: 'desc' }}
                 />
               </div>
             )}

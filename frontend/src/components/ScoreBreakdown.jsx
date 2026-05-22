@@ -3,20 +3,27 @@ const ScoreBreakdown = ({ breakdown, totalScore }) => {
   const fundamental = breakdown.filter(b => b.category === 'fundamental');
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-baseline gap-1.5 mb-1">
-        <span className="text-xs text-text-muted uppercase tracking-wider">Total Score</span>
-        <span className="text-[1.8rem] font-bold text-primary">{totalScore?.toFixed(1)}</span>
-        <span className="text-sm text-text-muted">/ 100</span>
+    <div className="flex flex-col gap-6">
+      <div className="flex items-baseline justify-between bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border-2 border-border shadow-inner">
+        <div className="flex flex-col">
+            <span className="text-[10px] text-slate-500 dark:text-slate-400 uppercase font-black tracking-[0.2em] mb-1">Total Intelligence Score</span>
+            <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-black tracking-tighter text-blue-600 dark:text-blue-400">{totalScore?.toFixed(1)}</span>
+                <span className="text-xl font-black text-slate-400 tracking-tighter">/ 100</span>
+            </div>
+        </div>
+        <div className={`p-2 rounded-xl shadow-lg ${totalScore >= 70 ? 'bg-green-500 shadow-green-500/20' : totalScore >= 50 ? 'bg-blue-500 shadow-blue-500/20' : 'bg-slate-500 shadow-slate-500/20'}`}>
+            <Activity className="text-white" size={32} />
+        </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className="text-[0.7rem] uppercase tracking-wider text-text-muted mb-1">Technical <span className="opacity-60">(max 70)</span></div>
+      <div className="flex flex-col gap-3">
+        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-2 border-b-2 border-border pb-1">Technical Analysis <span className="opacity-60">(max 70)</span></div>
         {technical.map(item => <BreakdownRow key={item.label} item={item} />)}
       </div>
 
-      <div className="flex flex-col gap-2">
-        <div className="text-[0.7rem] uppercase tracking-wider text-text-muted mb-1">Fundamental <span className="opacity-60">(max 30)</span></div>
+      <div className="flex flex-col gap-3">
+        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-2 border-b-2 border-border pb-1">Fundamental Health <span className="opacity-60">(max 30)</span></div>
         {fundamental.map(item => <BreakdownRow key={item.label} item={item} />)}
       </div>
 
@@ -27,24 +34,32 @@ const ScoreBreakdown = ({ breakdown, totalScore }) => {
   );
 };
 
+const getSignalColor = (signal) => {
+  if (!signal) return 'text-slate-400';
+  const s = signal.toLowerCase();
+  if (s.includes('bullish') || s.includes('high') || s.includes('strong') || s.includes('positive') || s.includes('above')) return 'text-green-600 dark:text-green-400 font-bold';
+  if (s.includes('bearish') || s.includes('low') || s.includes('weak') || s.includes('negative') || s.includes('below')) return 'text-red-600 dark:text-red-400 font-bold';
+  return 'text-slate-500 dark:text-slate-400';
+};
+
 const BreakdownRow = ({ item }) => {
   const pct = item.max > 0 ? (item.earned / item.max) * 100 : 0;
   const isZero = item.earned === 0;
 
   return (
-    <div className="grid grid-cols-[90px_1fr_44px_80px] items-center gap-2">
-      <div className="text-[0.8rem] text-text">{item.label}</div>
-      <div className="h-1.5 bg-bg-elevated rounded-sm overflow-hidden">
+    <div className="grid grid-cols-[100px_1fr_44px_80px] items-center gap-4">
+      <div className="text-[11px] font-bold text-text uppercase tracking-tight">{item.label}</div>
+      <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden border border-border shadow-inner">
         <div 
-          className={`h-full bg-primary rounded-sm transition-all duration-400 ${isZero ? 'bg-bg-elevated' : ''}`}
+          className={`h-full bg-blue-600 rounded-full transition-all duration-700 shadow-[0_0_8px_rgba(37,99,235,0.4)] ${isZero ? 'bg-transparent shadow-none' : ''}`}
           style={{ width: `${pct}%` }}
         />
       </div>
-      <div className="text-[0.8rem] text-right">
-        <span className={isZero ? 'text-text-muted' : 'text-primary font-semibold'}>{item.earned}</span>
-        <span className="text-text-muted">/{item.max}</span>
+      <div className="text-[10px] text-right font-mono">
+        <span className={isZero ? 'text-slate-400' : 'text-text font-black'}>{item.earned}</span>
+        <span className="text-slate-400">/{item.max}</span>
       </div>
-      <div className="text-[0.7rem] text-text-muted truncate">{item.signal}</div>
+      <div className={`text-[10px] truncate font-black uppercase tracking-tight text-right ${getSignalColor(item.signal)}`}>{item.signal}</div>
     </div>
   );
 };

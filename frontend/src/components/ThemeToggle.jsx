@@ -7,15 +7,9 @@ const ThemeToggle = () => {
   return (
     <button 
       onClick={toggleTheme}
-      className="theme-toggle"
+      className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900 text-text border-2 border-border flex items-center justify-center transition-all hover:border-blue-500 shadow-sm"
       aria-label="Toggle theme"
       title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-      style={{
-        padding: '8px',
-        borderRadius: 'var(--radius-md)',
-        background: 'var(--color-bg-elevated)',
-        color: 'var(--color-text)',
-      }}
     >
       {isDark ? <Sun size={20} /> : <Moon size={20} />}
     </button>
