@@ -259,7 +259,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             try:
                 # Add a timeout via proxy/session if needed, but smaller batches are better.
                 # yfinance download doesn't have a clean timeout param for the whole operation.
-                bulk_data = yf.download(batch_ns, period="3y", progress=False, timeout=30)
+                bulk_data = yf.download(batch_ns, period="3y", progress=False, timeout=30, auto_adjust=False)
                 
                 for symbol in batch:
                     try:

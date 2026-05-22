@@ -92,7 +92,7 @@ def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str
     try:
         # yf.download is much faster and less prone to rate limits for pure price data
         # No session injection for yfinance 0.2.66+
-        data = yf.download(symbols, period=period, progress=False, threads=False)
+        data = yf.download(symbols, period=period, progress=False, threads=False, auto_adjust=False)
 
         if data.empty:
             return []

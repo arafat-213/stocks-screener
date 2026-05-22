@@ -63,12 +63,12 @@ const PaperTrading = () => {
         <div className="flex items-center">
           {pipeline && (
             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
-              pipeline.is_stale 
+              pipeline?.is_stale 
                 ? 'bg-slate-100 dark:bg-slate-800 text-text-muted border-border' 
                 : 'bg-bullish/10 text-bullish border-green-500/20'
             }`}>
-              {!pipeline.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
-              <span>{pipeline.is_stale ? 'Stale — pipeline not run today' : `Updated ${pipeline.data_age_hours}h ago`}</span>
+              {!pipeline?.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
+              <span>{pipeline?.is_stale ? 'Stale — pipeline not run today' : `Updated ${pipeline?.data_age_hours}h ago`}</span>
             </div>
           )}
         </div>
