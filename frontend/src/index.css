@@ -8,6 +8,7 @@
   /* Light Theme - Clean Glassmorphic */
   --color-bg: #F8FAFC;
   --color-bg-secondary: #FFFFFF;
+  --color-bg-secondary-rgb: 255, 255, 255;
   --color-bg-elevated: #F1F5F9;
   --color-text: #0F172A;
   --color-text-muted: #64748B;
@@ -39,12 +40,16 @@
   /* Dark Theme - OLED Technical */
   --color-bg: #020617;
   --color-bg-secondary: #0F172A;
+  --color-bg-secondary-rgb: 15, 23, 42;
   --color-bg-elevated: #1E293B;
   --color-text: #F8FAFC;
   --color-text-muted: #94A3B8;
   --color-border: #1E293B;
   --color-primary: #3B82F6;
   --color-primary-rgb: 59, 130, 246;
+  --color-bullish: #22C55E;
+  --color-bearish: #EF4444;
+  --color-warning: #F59E0B;
   
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.3);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4);
