@@ -22,12 +22,12 @@ from app.core.logging_manager import logging_manager
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
 
-ROUND_TRIP_COST_PCT = 0.5  # 0.5% per trade: brokerage + STT + slippage
+ROUND_TRIP_COST_PCT = 0.25  # 0.25% per trade: reflects actual flat-fee brokerage reality
 
 @dataclass
 class BacktestConfig:
-    score_threshold: float = 60.0          # ← was 50.0; effective = 60*0.70 = 42 on 70pt scale
-    holding_days: int = 35          # was 30; 5 extra days for 1.5R targets
+    score_threshold: float = 60.0
+    holding_days: int = 50
     stop_loss_pct: float = 7.0
     target_pct: float = 0.0
     trailing_stop_pct: float = 0.0
@@ -36,7 +36,7 @@ class BacktestConfig:
     require_weekly_confirmation: bool = False
     require_monthly_confirmation: bool = False
     atr_multiplier: float = 2.0
-    risk_reward_ratio: float = 1.5  # was 2.0; 1.5R reachable within holding period
+    risk_reward_ratio: float = 1.5
     use_atr_stops: bool = True
     min_adx: float = 0.0
     include_fundamentals: bool = False
@@ -48,36 +48,26 @@ class BacktestConfig:
     starting_capital: float = 1000000.0
     position_size: float = 10000.0
     use_volatility_sizing: bool = True
-    risk_per_trade_pct: float = 1.0
-    max_position_pct: float = 10.0
+    risk_per_trade_pct: float = 3.0
+    max_position_pct: float = 20.0
     max_concurrent_positions: int = 0
     max_sector_positions: int = 0
-    use_atr_trailing_stop: bool = True      # was False — re-enable
-    atr_trailing_multiplier: float = 1.0   # trail 1 ATR below peak (was 1.5)
-    atr_trailing_activation: float = 1.0   # activate after 1R gain (was 2.5 — too late)
-    use_partial_exits: bool = False         # disable — confirmed harmful
+    use_atr_trailing_stop: bool = True
+    atr_trailing_multiplier: float = 1.0
+    atr_trailing_activation: float = 2.5
+    use_partial_exits: bool = False
     use_signal_invalidation_exit: bool = False
     invalidation_threshold_pct: float = 3.0
-
-    # ── New fields ────────────────────────────────────────────────────────────
-    min_signal_tier: int = 2              # was 1; Run 5 validated Tier 2 quality
-    require_consolidation: bool = True    # only enter after a consolidation period
-    consolidation_bars: int = 15          # look-back window for consolidation check
-    consolidation_max_range_pct: float = 12.0   # max High-Low range to qualify
-    use_pullback_entry: bool = True       # wait for pullback to EMA20 after cross
-    pullback_max_wait_bars: int = 8       # was 5; allow setup to develop
-    pullback_tolerance_pct: float = 3.0  # was 2.0; NSE mid/smallcap needs room
+    min_signal_tier: int = 2
+    require_consolidation: bool = True
+    consolidation_bars: int = 15
+    consolidation_max_range_pct: float = 12.0
+    use_pullback_entry: bool = True
+    pullback_max_wait_bars: int = 8
+    pullback_tolerance_pct: float = 3.0
 
     @property
     def effective_score_threshold(self) -> float:
-        """
-        Normalises score_threshold to the actual score scale.
-
-        When include_fundamentals=False, calculate_technical_score returns a
-        maximum of 70 (not 100). A raw threshold of 60 on a 70-pt scale is an
-        85.7% bar — far too tight. We treat score_threshold as a 0-100 intention
-        and scale it down to match the active score ceiling.
-        """
         if not self.include_fundamentals:
             return self.score_threshold * 0.70
         return self.score_threshold
@@ -89,7 +79,7 @@ class TradeResult:
     signal_date: datetime.date
     entry_date: datetime.date
     exit_date: datetime.date
-    exit_reason: str          # 'holding_period' | 'stop_loss' | 'target'
+    exit_reason: str
     signal_score: float
     entry_price: float
     exit_price: float
@@ -97,52 +87,33 @@ class TradeResult:
     rsi_at_signal: float
     adx_at_signal: float
     ema_signal: str
-    position_size_used: float = 0.0   # actual rupee position, may differ from config.position_size
+    position_size_used: float = 0.0
 
 def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
-    """
-    Resamples daily data to timeframe ('W' or 'M') and scores each bar.
-    Returns {date: is_bullish} mapping.
-    Ensures no look-ahead bias by scoring each bar using only previous data.
-    """
     if df is None or df.empty:
         return {}
-    
     freq = 'W' if timeframe == 'W' else 'ME'
     resampled = resample_ohlcv(df, freq=freq, drop_incomplete=True)
     if resampled.empty:
         return {}
-        
     state_map = {}
-    # Technical scoring needs some history (60 bars for W, 24 for M)
     min_bars = 24 if timeframe == 'M' else 60
-    
     for i in range(len(resampled)):
-        # Important: only use data up to bar i to avoid look-ahead bias
         bar_slice = resampled.iloc[: i + 1]
         if len(bar_slice) < min_bars:
             continue
-            
         try:
             ta_data = calculate_technical_score(bar_slice, timeframe=timeframe)
         except Exception as e:
             logger.error(f"Error scoring MTF bar {i} for {timeframe}: {e}")
             continue
-            
         bar_date = resampled.index[i]
         if hasattr(bar_date, 'date'):
             bar_date = bar_date.date()
-        
         state_map[bar_date] = bool(ta_data.get('is_bullish', False))
-        
     return state_map
 
 def _compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Computes all pandas-ta indicators on the full DataFrame in a single pass.
-    Called once per symbol instead of once per bar.
-    Returns a new DataFrame with all indicator columns appended.
-    """
     df = df.copy()
     df.ta.ema(length=5, append=True)
     df.ta.ema(length=13, append=True)
@@ -157,18 +128,12 @@ def _compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
     else:
         df['VOL_SMA_20'] = pd.Series(dtype='float64')
-    # EMA slope: (EMA_20[i] - EMA_20[i-5]) / 5
     ema20_col = 'EMA_20'
     if ema20_col in df.columns:
         df['EMA_SLOPE_20'] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
     return df
 
 def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
-    """
-    Scores bar at index i using pre-computed indicator columns in df_ind.
-    Mirrors the Daily timeframe scoring in calculate_technical_score without
-    re-running pandas-ta. df_ind must be the output of _compute_all_indicators.
-    """
     latest = df_ind.iloc[i]
     prev = df_ind.iloc[i - 1] if i > 0 else latest
 
@@ -204,19 +169,16 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         price > latest.get('Open')
     )
 
-    # Volume breakout flag (2× threshold, matches scorer.py)
     volume_breakout = (
         pd.notna(volume) and pd.notna(sma20_vol) and
         volume > 2.0 * sma20_vol and is_green
     )
 
-    # Momentum (lookback from full df_ind)
     momentum_1m  = float((price / df_ind['Close'].iloc[i - 21]  - 1) * 100) if i >= 21  else None
     momentum_3m  = float((price / df_ind['Close'].iloc[i - 63]  - 1) * 100) if i >= 63  else None
     momentum_6m  = float((price / df_ind['Close'].iloc[i - 126] - 1) * 100) if i >= 126 else None
     momentum_12m = float((price / df_ind['Close'].iloc[i - 252] - 1) * 100) if i >= 252 else None
 
-    # 1. EMA Alignment (20 pts)
     fresh_ema_cross = (
         pd.notna(ema5) and pd.notna(ema13) and
         pd.notna(prev_ema5) and pd.notna(prev_ema13) and
@@ -242,7 +204,6 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
           ema5 < ema13 < ema26):
         ema_signal = 'bearish'
 
-    # 2. MACD (15 pts — decoupled from EMA cross)
     if pd.notna(macd_line) and pd.notna(signal_line):
         fresh_macd_cross = (
             pd.notna(prev_macd) and pd.notna(prev_sig) and
@@ -257,7 +218,6 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         elif macd_line > signal_line and macd_line < 0:
             score += 5
 
-    # 3. RSI (15 pts)
     if pd.notna(rsi) and pd.notna(prev_rsi):
         recent_rsi = df_ind['RSI_14'].iloc[max(0, i - 4): i + 1]
         was_oversold = any(recent_rsi < 30)
@@ -276,18 +236,16 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
             score += 5
             rsi_signal = 'bullish_strong'
         elif 65 < rsi <= 68:
-            score += 0 # No bonus for extended RSI
+            score += 0
             rsi_signal = 'bullish_extended'
         elif rsi > 68:
             pass
 
-    # 4. Volume (15 pts)
     if pd.notna(volume) and pd.notna(sma20_vol):
         if volume > 2.0 * sma20_vol and is_green:
             score += 15
             volume_signal = 'bullish'
 
-    # 5. Trend Quality: ADX + 3-Month Momentum (max 5 pts)
     trend_pts = 0
     if pd.notna(adx):
         if adx >= 35:
@@ -303,7 +261,6 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
             trend_pts += 1
     score += min(trend_pts, 5)
 
-    # is_bullish definition (same as scorer.py Daily)
     is_bullish = bool(
         (fresh_ema_cross or pullback_to_ema20 or (
             pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
@@ -336,13 +293,6 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     }
 
 def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
-    """
-    Computes per-bar scores for all bars in df using a single indicator pass (O(n)).
-
-    Previously O(n²) because calculate_technical_score was called on a growing
-    slice at every bar, recomputing all indicators from scratch each time.
-    Now: compute indicators once, score each bar from the precomputed columns.
-    """
     if df is None or len(df) < 210:
         return []
 
@@ -351,7 +301,6 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         from app.pipeline.scorer import calculate_fundamental_score
         fund_score = calculate_fundamental_score(None, fund_cache=fund_cache)
 
-    # Single indicator computation pass — O(n)
     df_ind = _compute_all_indicators(df)
 
     results = []
@@ -372,7 +321,6 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         if bar_data.get('rsi', 0) > 80:
             total_score = 0.0
 
-        # Consolidation check uses OHLCV from df_ind (pre-computed)
         is_consolidating = _is_consolidating(
             df_ind, i,
             lookback=config.consolidation_bars if config else 15,
@@ -402,20 +350,12 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
     return results
 
 def _lookup_mtf_state(state_map: dict, signal_date: datetime.date) -> bool:
-    """
-    Looks up the most recent state in state_map for a date <= signal_date.
-    Uses binary search for efficiency.
-    Returns False if no bar predates the signal (fail-closed).
-    """
     if not state_map:
         return False
-    
     sorted_dates = sorted(state_map.keys())
     idx = bisect.bisect_right(sorted_dates, signal_date)
-    
     if idx == 0:
         return False
-        
     match_date = sorted_dates[idx - 1]
     return state_map[match_date]
 
@@ -424,18 +364,6 @@ def _compute_position_size(
     entry_price: float,
     atr: float | None,
 ) -> float:
-    """
-    Returns the rupee position size for a trade.
-
-    Flat mode (use_volatility_sizing=False):
-        Always returns config.position_size.
-
-    Volatility mode (use_volatility_sizing=True):
-        Sizes position so that a stop-loss hit (atr_multiplier × ATR away)
-        loses exactly risk_per_trade_pct% of starting_capital.
-        Capped at max_position_pct% of starting_capital.
-        Falls back to flat size when ATR is None or zero.
-    """
     if not config.use_volatility_sizing or atr is None or atr <= 0 or entry_price <= 0:
         return config.position_size
 
@@ -447,35 +375,29 @@ def _compute_position_size(
     return min(position_value, max_position)
 
 def _compute_signal_tier(signal: dict) -> int:
-    """
-    Computes the signal quality tier (1-4).
-    Tier 1/2 are considered high-quality and allowed to enter trades.
-    Tier 3/4 are filtered out.
-    """
     ema = signal.get("ema_signal")
     vol = signal.get("volume_breakout", False)
     adx = signal.get("adx") or 0.0
     rsi = signal.get("rsi") or 0.0
-    
+
     is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
-    
+
     if not is_core_ema:
         return 4
-        
+
     if rsi > 65.0:
         return 3
-        
-    # Tier 1 & 2 require 40 <= RSI <= 65
+
     if rsi < 40.0:
         return 3
-        
+
     if vol and adx >= 25.0:
         return 1
-        
+
     if vol or adx >= 25.0:
         return 2
-        
-    return 3 # missing both volume breakout and strong ADX
+
+    return 3
 
 def _is_consolidating(
     df: pd.DataFrame,
@@ -483,16 +405,6 @@ def _is_consolidating(
     lookback: int = 15,
     max_range_pct: float = 12.0,
 ) -> bool:
-    """
-    Returns True if the stock was in a tight trading range before the signal.
-
-    Prevents chasing EMA crosses on stocks that have already moved significantly.
-    A stock that consolidates (compresses) before a breakout has a much higher
-    probability of following through than one that crosses after a large move.
-
-    lookback: number of bars before signal_idx to examine
-    max_range_pct: (High - Low) / Low * 100 ceiling for the window
-    """
     if signal_idx < lookback + 1:
         return False
 
@@ -507,92 +419,77 @@ def _is_consolidating(
     return range_pct <= max_range_pct
 
 def simulate_trades(
-    symbol: str, 
-    sector: str, 
-    df: pd.DataFrame, 
-    scored_dates: list[dict], 
-    config: BacktestConfig, 
+    symbol: str,
+    sector: str,
+    df: pd.DataFrame,
+    scored_dates: list[dict],
+    config: BacktestConfig,
     regime_dict: dict = None,
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
 ):
-    """
-    Simulates trades based on scored signals.
-    Entry: Next day's Open.
-    Exit: SL, Target, or Holding Period.
-    """
     trades = []
     last_exit_idx = -1
-    
-    # Pre-map dates to indices for faster lookup
+
     date_to_idx = {date: i for i, date in enumerate(df.index)}
-    
+
     for signal in scored_dates:
         signal_date = signal['date']
-        # Convert signal_date to datetime.date if it's a Timestamp or string
         compare_date = signal_date.date() if hasattr(signal_date, 'date') else signal_date
         if isinstance(compare_date, str):
-             compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
+            compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
 
-        # Date Filtering
         if config.date_from and compare_date < config.date_from:
             continue
         if config.date_to and compare_date > config.date_to:
             continue
 
-        # Volume Breakout Filter
         if config.require_volume_breakout:
             if not signal.get('volume_breakout', False):
                 continue
 
         signal_idx = date_to_idx.get(signal_date)
-        
+
         if signal_idx is None or signal_idx <= last_exit_idx:
             continue
 
-        # 200 EMA null-safety gate (belt-and-suspenders; also enforced in score_series)
         if signal.get('above_200ema') is not True:
             continue
 
-        # Relative strength gate: require positive 12m momentum.
-        # EMA crosses on stocks that are down year-over-year are almost always
-        # failed bounces in a structural downtrend, not new uptrends.
         momentum_12m = signal.get('momentum_12m')
         if momentum_12m is not None and momentum_12m < 0:
             continue
 
-        # ADX trend-strength gate (min_adx=0 disables)
+        momentum_3m = signal.get('momentum_3m')
+        if momentum_3m is not None and momentum_3m < 0:
+            continue
+
         if config.min_adx > 0:
             adx_val = signal.get('adx')
             if adx_val is None or adx_val < config.min_adx:
                 continue
 
-        # Weekly confirmation gate
         if config.require_weekly_confirmation and weekly_state_map is not None:
             if not _lookup_mtf_state(weekly_state_map, compare_date):
                 continue
 
-        # Monthly confirmation gate
         if config.require_monthly_confirmation and monthly_state_map is not None:
             if not _lookup_mtf_state(monthly_state_map, compare_date):
                 continue
 
-        # Signal Quality Tier Gate
         signal_tier = _compute_signal_tier(signal)
-        if signal_tier > config.min_signal_tier:   # default=1: require BOTH vol+ADX
+        if signal_tier > config.min_signal_tier:
             continue
-            
+
         rsi_at_signal = signal.get("rsi", 0.0) or 0.0
         if rsi_at_signal > 65.0:
             continue
-            
+
         if signal['score'] >= config.effective_score_threshold:
 
-            # ── Consolidation gate ────────────────────────────────────────────
             if config.require_consolidation and not signal.get('is_consolidating', False):
                 continue
 
-            # ── Entry: pullback vs. immediate ─────────────────────────────────
             signal_ema20 = signal.get('ema20')
             ema_signal_type = signal.get('ema_signal', '')
 
@@ -607,23 +504,19 @@ def simulate_trades(
                 and signal_ema20 > 0
             )
 
-            entry_path = 'immediate'  # Track which path was used for stop logic
+            entry_path = 'immediate'
 
             if use_pullback:
-                # Wait up to pullback_max_wait_bars for price to touch EMA20
                 tol = config.pullback_tolerance_pct / 100.0
-                
-                # Track whether price held above EMA20 throughout the wait
                 all_bars_above_ema20 = True
-                closest_approach_pct = float('inf')  # How close price got to EMA20 (%)
-                
+                closest_approach_pct = float('inf')
+
                 for wait_k in range(signal_idx + 1,
                                     min(signal_idx + config.pullback_max_wait_bars + 1,
                                         len(df))):
                     wait_date = df.index[wait_k]
                     wait_compare = wait_date.date() if hasattr(wait_date, 'date') else wait_date
 
-                    # Abort if regime turns bearish during the wait
                     if config.use_regime_filter and regime_dict is not None:
                         if not regime_dict.get(wait_compare, False):
                             all_bars_above_ema20 = False
@@ -633,34 +526,23 @@ def simulate_trades(
                     day_close = df.iloc[wait_k]['Close']
                     day_open  = df.iloc[wait_k]['Open']
 
-                    # Invalidation: closed meaningfully below EMA20
                     if day_close < signal_ema20 * (1 - 0.025):
                         all_bars_above_ema20 = False
                         break
 
-                    # Track closest approach to EMA20 from above
                     approach_pct = (day_low - signal_ema20) / signal_ema20 * 100
                     closest_approach_pct = min(closest_approach_pct, approach_pct)
 
-                    # Path A: Price pulled back to within tol% above EMA20 AND held
                     touched_ema = day_low <= signal_ema20 * (1 + tol)
-                    # TIGHTENED: close must be AT or within 0.5% above EMA20 (was 1.5% below)
-                    # — confirms support held before we commit capital
                     held_above = day_close >= signal_ema20 * 0.995
 
                     if touched_ema and held_above:
-                        # Path A: price bounced from EMA20 and closed above it.
-                        # Enter at this bar's close — the close confirms support held.
-                        # Using next-bar open risks entering after a gap-up with the same
-                        # structural stop, making the effective risk distance tighter.
                         entry_path = 'pullback_a'
                         entry_idx = wait_k
                         entry_date = wait_date
                         entry_price = float(df.iloc[wait_k]['Close'])
                         break
 
-                # Path B: Momentum continuation — price never pulled back but
-                # consolidated above EMA20 throughout the wait window.
                 if entry_idx is None and all_bars_above_ema20 and closest_approach_pct != float('inf'):
                     if closest_approach_pct <= 8.0:
                         last_wait_k = min(signal_idx + config.pullback_max_wait_bars, len(df) - 1)
@@ -692,31 +574,24 @@ def simulate_trades(
                 atr=signal.get('atr'),
             )
 
-            # ── Stop and Target ────────────────────────────────────────────────────
-            # The ATR at signal time is measured DURING consolidation — it's compressed
-            # by design. Using it for stops creates levels that normal post-breakout
-            # noise blows through. The consolidation period LOW is the correct structural
-            # stop: if price returns below where it consolidated, the breakout thesis
-            # is invalid. This is path-agnostic (applies to both pullback and momentum).
+            raw_atr = signal.get('atr') or 0.0
+            MIN_ATR_PCT = 0.015
+            effective_atr = max(raw_atr, entry_price * MIN_ATR_PCT)
+
+            # ── Stop and Target ────────────────────────────────────────────────
             MIN_STOP_PCT = 0.05  # 5% minimum: hard floor against compressed ATR
             MAX_STOP_PCT = 0.08  # 8% maximum distance (ceiling — limits per-trade loss)
             atr_val = signal.get('atr')
 
-            # Consolidation low as natural structural stop
             consol_start = max(0, signal_idx - config.consolidation_bars)
             consol_window = df.iloc[consol_start:signal_idx]
             consol_low = float(consol_window['Low'].min()) if len(consol_window) > 0 else None
 
-            # 2% buffer below consolidation low — allows for wick through without
-            # invalidation, but a close below means the structure has broken
             structural_stop = (consol_low * 0.98) if (consol_low and consol_low > 0) else None
-
-            # ATR stop as secondary reference
             atr_stop = (entry_price - config.atr_multiplier * atr_val) if atr_val else None
 
-            # Use the WIDER stop (lower price) — gives the trade room to breathe
             if structural_stop and atr_stop:
-                base_stop = min(structural_stop, atr_stop)   # wider of the two
+                base_stop = min(structural_stop, atr_stop)
             elif structural_stop:
                 base_stop = structural_stop
             elif atr_stop:
@@ -724,30 +599,26 @@ def simulate_trades(
             else:
                 base_stop = entry_price * (1 - config.stop_loss_pct / 100) if config.stop_loss_pct > 0 else entry_price * 0.93
 
-            # Floor: stop must be at least MIN_STOP_PCT below entry (don't go tighter)
             min_stop_price = entry_price * (1 - MIN_STOP_PCT)
-            # Ceiling: stop must be at most MAX_STOP_PCT below entry (don't go wider)
             max_stop_price = entry_price * (1 - MAX_STOP_PCT)
 
-            # Apply both bounds: wider than floor, tighter than ceiling
-            stop_loss_price = min(base_stop, min_stop_price)   # respect floor (wider)
-            stop_loss_price = max(stop_loss_price, max_stop_price)  # enforce ceiling (tighter)
+            stop_loss_price = min(base_stop, min_stop_price)
+            stop_loss_price = max(stop_loss_price, max_stop_price)
 
             actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
+
             if config.target_pct > 0:
                 target_price = entry_price * (1 + config.target_pct / 100)
             else:
                 target_price = entry_price + config.risk_reward_ratio * actual_risk
 
-            # Partial exits: recalculate around actual_risk
             if config.use_partial_exits:
-                t1_price = entry_price + 1.0 * actual_risk    # 1R: bank 50%
-                t2_price = target_price                       # full target: exit rest
+                t1_price = entry_price + 1.0 * actual_risk
+                t2_price = target_price
             else:
                 t1_price = None
                 t2_price = None
 
-            # Exit conditions
             exit_price = None
             exit_date = None
             exit_reason = 'holding_period'
@@ -755,28 +626,40 @@ def simulate_trades(
             t1_hit = False
             t1_exit_trade = None
 
-            # Walk forward up to config.holding_days
             final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
-            
+
             highest_price_since_entry = entry_price
             breakeven_activated = False
-            
+            trail_floor_active = False
+
             consecutive_bearish_bars = 0
             invalidation_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
-            
+
             for k in range(entry_idx, final_idx + 1):
                 day_low = df.iloc[k]['Low']
                 day_high = df.iloc[k]['High']
                 day_open = df.iloc[k]['Open']
-                
+
                 highest_price_since_entry = max(highest_price_since_entry, day_high)
 
-                # Breakeven stop — must reference actual_risk from outer scope
+                # ── 1. Raise floor: breakeven ─────────────────────────────────
                 if not breakeven_activated and highest_price_since_entry >= entry_price + actual_risk:
-                    stop_loss_price     = max(stop_loss_price, entry_price)
+                    stop_loss_price = max(stop_loss_price, entry_price)
                     breakeven_activated = True
-                
-                # Signal Invalidation Exit
+
+                # ── 2. Raise floor: ATR trail — BEFORE the stop check ─────────
+                if config.use_atr_trailing_stop and effective_atr > 0:
+                    activation_threshold = entry_price + (config.atr_trailing_activation * effective_atr)
+                    if highest_price_since_entry >= activation_threshold:
+                        atr_trail_floor = max(
+                            entry_price,
+                            highest_price_since_entry - (config.atr_trailing_multiplier * effective_atr),
+                        )
+                        if atr_trail_floor > stop_loss_price:
+                            stop_loss_price = atr_trail_floor
+                            trail_floor_active = True
+
+                # ── 3. Signal Invalidation Exit ───────────────────────────────
                 if config.use_signal_invalidation_exit:
                     day_close = df.iloc[k]['Close']
                     if day_close < invalidation_floor:
@@ -796,15 +679,7 @@ def simulate_trades(
                         last_exit_idx = next_k if next_k < len(df) else k
                         break
 
-                # Check Stop Loss first (conservative)
-                if day_low <= stop_loss_price:
-                    exit_price = stop_loss_price
-                    exit_date = df.index[k]
-                    exit_reason = 'stop_loss'
-                    last_exit_idx = k
-                    break
-                    
-                # Partial exit T1
+                # ── 4. Partial exit T1 ────────────────────────────────────────
                 if not t1_hit and t1_price is not None and day_high >= t1_price:
                     t1_hit = True
                     t1_exit_trade = TradeResult(
@@ -823,17 +698,11 @@ def simulate_trades(
                         ema_signal=signal['ema_signal'],
                         position_size_used=pos_size * 0.5,
                     )
-                    # Move stop to breakeven for the remainder
                     stop_loss_price = entry_price
-                    # Update target to T2
                     target_price = t2_price
-                    breakeven_activated = True     # Sync with Fix 2 tracking
+                    breakeven_activated = True
 
-                # Check Profit Target — evaluated before trailing stops.
-                # A bar that touches the target high and the trailing-stop low on the
-                # same candle should record a target exit: price reached the objective
-                # first, then pulled back. Checking target before trailing stops prevents
-                # the trailing stop from stealing a target hit.
+                # ── 5. Profit Target ──────────────────────────────────────────
                 if day_high >= target_price:
                     exit_price = target_price
                     exit_date = df.index[k]
@@ -841,7 +710,15 @@ def simulate_trades(
                     last_exit_idx = k
                     break
 
-                # Check Trailing Stop (% based)
+                # ── 6. Unified stop check ─────────────────────────────────────
+                if day_low <= stop_loss_price:
+                    exit_price = stop_loss_price
+                    exit_date = df.index[k]
+                    exit_reason = 'atr_trailing_stop' if trail_floor_active else 'stop_loss'
+                    last_exit_idx = k
+                    break
+
+                # ── 7. Trailing Stop (% based) ────────────────────────────────
                 if config.trailing_stop_pct > 0:
                     trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
                     if day_low <= trailing_stop_price:
@@ -851,41 +728,19 @@ def simulate_trades(
                         last_exit_idx = k
                         break
 
-                # ATR Trailing Stop
-                if config.use_atr_trailing_stop and signal.get('atr'):
-                    atr_val = signal['atr']
-                    activation_threshold = entry_price + (config.atr_trailing_activation * atr_val)
-                    if highest_price_since_entry >= activation_threshold:
-                        # Floor at entry_price: trailing stop must never fire below breakeven.
-                        # Without this floor, if activation=1.0 and multiplier=1.5,
-                        # the stop = peak - 1.5 ATR = entry + 1.0 ATR - 1.5 ATR = entry - 0.5 ATR
-                        # which causes losses on trailing stop exits.
-                        atr_trail_stop = max(
-                            entry_price,
-                            highest_price_since_entry - (config.atr_trailing_multiplier * atr_val),
-                        )
-                        if day_low <= atr_trail_stop:
-                            exit_price = max(atr_trail_stop, day_open)
-                            exit_date = df.index[k]
-                            exit_reason = 'atr_trailing_stop'
-                            last_exit_idx = k
-                            break
-            
             if exit_price is None:
-                # Exit on last day's Close
                 exit_idx = final_idx
                 exit_price = df.iloc[exit_idx]['Close']
                 exit_date = df.index[exit_idx]
                 exit_reason = 'holding_period'
                 last_exit_idx = exit_idx
-                
+
             if t1_exit_trade is not None:
                 trades.append(t1_exit_trade)
-                # The main TradeResult for the remainder uses half position size
                 pos_size = pos_size * 0.5
 
             return_pct = ((exit_price - entry_price) / entry_price) * 100
-            
+
             trades.append(TradeResult(
                 symbol=symbol,
                 sector=sector,
@@ -902,7 +757,7 @@ def simulate_trades(
                 ema_signal=signal['ema_signal'],
                 position_size_used=pos_size,
             ))
-            
+
     return trades
 
 def simulate_portfolio(
@@ -914,17 +769,6 @@ def simulate_portfolio(
     weekly_state_maps: dict | None = None,
     monthly_state_maps: dict | None = None,
 ) -> list[TradeResult]:
-    """
-    Portfolio-level chronological simulation.
-
-    Aggregates signals from all symbols, sorts them by date, and processes
-    them in order — enforcing max_concurrent_positions and max_sector_positions
-    before allowing each entry.
-
-    Falls back to per-symbol simulate_trades for each accepted signal to
-    reuse the exact same exit logic (SL, target, holding period).
-    """
-    # Build flat chronological timeline of (date, symbol, signal)
     timeline: list[tuple] = []
     for symbol, signals in all_signals.items():
         for sig in signals:
@@ -935,17 +779,14 @@ def simulate_portfolio(
     timeline.sort(key=lambda x: x[0])
 
     all_trades: list[TradeResult] = []
-    # symbol -> exit_date (datetime.date)
     open_positions: dict[str, datetime.date] = {}
 
     for compare_date, symbol, signal in timeline:
-        # Skip if already holding this exact symbol
         if symbol in open_positions and open_positions[symbol] > compare_date:
             continue
 
         sector = stocks_info.get(symbol, 'Unknown')
 
-        # Enforce max_concurrent_positions
         if config.max_concurrent_positions > 0:
             active_count = sum(
                 1 for exit_d in open_positions.values() if exit_d > compare_date
@@ -953,7 +794,6 @@ def simulate_portfolio(
             if active_count >= config.max_concurrent_positions:
                 continue
 
-        # Enforce max_sector_positions
         if config.max_sector_positions > 0:
             sector_active = sum(
                 1 for sym, exit_d in open_positions.items()
@@ -997,8 +837,6 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             "max_drawdown_pct": 0.0,
             "sharpe_ratio": 0.0,
             "total_return_pct": 0.0,
-            "gross_return_pct": 0.0,
-            "total_cost_drag_pct": 0.0,
             "benchmark_return_pct": 0.0,
             "equity_curve": [],
             "expectancy": 0.0,
@@ -1017,10 +855,6 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     total_deployed        = sum(position_sizes)
     total_trades          = len(trades)
 
-    # ── Position-size weighted metrics ────────────────────────────────────────
-    # A ₹5k partial-exit trade must not count the same as a ₹100k full trade.
-    # Unweighted metrics inflated win_rate by ~8pp and profit_factor by ~0.6
-    # in runs that used partial exits, making a losing system look profitable.
     winning_mask   = [r > 0 for r in cost_adjusted_returns]
     losing_mask    = [not w for w in winning_mask]
 
@@ -1032,9 +866,8 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     win_weight     = sum(winning_ps)
     loss_weight    = sum(losing_ps)
 
-    # win_rate: fraction of CAPITAL deployed that won, not fraction of trade count
     win_rate       = win_weight / total_deployed if total_deployed > 0 else 0.0
-    winning_trades = sum(winning_mask)   # kept as integer count for display
+    winning_trades = sum(winning_mask)
 
     avg_win_pct = (
         sum(r * ps for r, ps in zip(winning_rets, winning_ps)) / win_weight
@@ -1067,7 +900,6 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     best_trade_pct    = max(cost_adjusted_returns)
     worst_trade_pct   = min(cost_adjusted_returns)
 
-    # ── P&L (position-size weighted, cost-adjusted) ───────────────────────────
     total_pnl = sum(
         (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
         for t in trades
@@ -1085,41 +917,34 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         total_trades * (ROUND_TRIP_COST_PCT / 100.0) * avg_pos / config.starting_capital * 100
     )
 
-    # Benchmark return
     benchmark_return_pct = 0.0
     if benchmark_data is not None and len(benchmark_data) > 1:
         start_price = benchmark_data.iloc[0]['Close']
         end_price = benchmark_data.iloc[-1]['Close']
         benchmark_return_pct = ((end_price - start_price) / start_price) * 100
-        
-    # Equity Curve Construction
+
     strat_returns_by_date = {}
     for t in trades:
         d = t.exit_date
-        # Cost-adjusted P&L
         pl = (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
         strat_returns_by_date[d] = strat_returns_by_date.get(d, 0) + pl
-        
+
     equity_curve = []
     cumulative_pl = 0.0
-    
+
     if benchmark_data is not None:
         first_bench_price = benchmark_data.iloc[0]['Close']
-        
+
         for date, row in benchmark_data.iterrows():
             d = date.date()
             cumulative_pl += strat_returns_by_date.get(d, 0.0)
-            
-            # Scaled benchmark: (Price / StartPrice) * config.starting_capital
             bench_equity = (row['Close'] / first_bench_price) * config.starting_capital
-            
             equity_curve.append({
                 "date": d.isoformat(),
                 "equity": float(config.starting_capital + cumulative_pl),
                 "benchmark_equity": float(bench_equity)
             })
-    
-    # Updated Sharpe Ratio using daily returns from equity curve
+
     sharpe_ratio = 0.0
     if len(equity_curve) > 1:
         equity_series = pd.Series([pt['equity'] for pt in equity_curve])
@@ -1127,7 +952,6 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         if not daily_returns.empty and daily_returns.std() > 0:
             sharpe_ratio = (daily_returns.mean() / daily_returns.std()) * np.sqrt(252)
 
-    # Max Drawdown from equity curve
     max_drawdown_pct = 0.0
     if equity_curve:
         equities = [pt['equity'] for pt in equity_curve]
@@ -1138,7 +962,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             dd = (peak - e) / peak * 100 if peak > 0 else 0
             if dd > max_drawdown_pct:
                 max_drawdown_pct = dd
-                
+
     return {
         "total_trades": total_trades,
         "winning_trades": winning_trades,
@@ -1150,16 +974,8 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         "max_drawdown_pct": float(max_drawdown_pct),
         "sharpe_ratio": float(sharpe_ratio),
         "total_return_pct": float(total_return_pct),
-        "gross_return_pct": float(  # New: pre-cost return
-            sum(t.return_pct / 100.0 * (t.position_size_used or config.position_size) for t in trades)
-            / config.starting_capital * 100
-        ),
-        "total_cost_drag_pct": float(  # New: explicit cost drag
-            len(trades) * (ROUND_TRIP_COST_PCT / 100.0) *   # pct → decimal
-            (sum(t.position_size_used or config.position_size for t in trades) / len(trades))
-            / config.starting_capital * 100
-            if trades else 0.0
-        ),
+        "gross_return_pct": float(gross_return_pct),
+        "total_cost_drag_pct": float(total_cost_drag_pct),
         "benchmark_return_pct": float(benchmark_return_pct),
         "equity_curve": equity_curve,
         "expectancy":     float(expectancy),
@@ -1170,9 +986,6 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
     }
 
 def run_backtest(db: Session, run_id: str, config: BacktestConfig):
-    """
-    Main orchestrator for the backtest.
-    """
     logging_manager.setup_run_logging(run_id)
     try:
         logger.info(f"Starting backtest {run_id}")
@@ -1182,11 +995,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             return
 
         try:
-            # Update status to running
             run.status = 'running'
             db.commit()
 
-            # 1. Fetch benchmark data (^NSEI)
             logger.info("Fetching benchmark data (^NSEI)")
             benchmark_df = _ohlcv_cache.get("^NSEI", append_ns=False, period='5y')
             if benchmark_df is not None and benchmark_df.index.tz is not None:
@@ -1196,9 +1007,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             if benchmark_df is not None and not benchmark_df.empty:
                 benchmark_df.ta.ema(length=50, append=True)
                 benchmark_df.ta.ema(length=200, append=True)
-                # Require price above BOTH 50 EMA (short-term trend) and 200 EMA (macro trend).
-                # Nifty above 50 EMA alone allows entries during corrections; the 200 EMA
-                # confirms the macro bull market is intact before taking any long position.
                 valid = benchmark_df[
                     benchmark_df['EMA_50'].notna() & benchmark_df['EMA_200'].notna()
                 ]
@@ -1206,24 +1014,18 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     valid.index.date,
                     (valid['Close'] > valid['EMA_50']) &
                     (valid['Close'] > valid['EMA_200']) &
-                    (valid['EMA_50'] > valid['EMA_200'])   # Golden cross: 50 EMA above 200 EMA confirms
-                                                        # structural bull market, not just a bounce.
-                                                        # Blocks entries when index recovered above EMAs
-                                                        # but the trend hasn't structurally reversed yet.
+                    (valid['EMA_50'] > valid['EMA_200'])
                 ))
 
-            # 2. Select symbols
             if config.screen_slug and config.screen_slug != "all":
                 if config.screen_slug not in SCREEN_REGISTRY:
                     raise ValueError(f"Invalid screen slug: {config.screen_slug}")
-
                 logger.info(f"Filtering symbols using screen: {config.screen_slug}")
                 screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
                 screen_results = screen_fn(db)
                 symbols = [r[0] for r in screen_results]
-
                 if not symbols:
-                     raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
+                    raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
             else:
                 symbol_query = (
                     db.query(TechnicalSignal.symbol)
@@ -1242,14 +1044,11 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             all_trades = []
             symbols_processed = 0
 
-            # Pre-fetch sector info if needed
             stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
-            # Pre-fetch fundamental cache if needed
             fund_caches = {}
             if config.include_fundamentals:
                 fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
 
-            # Collect scored signals and DataFrames for potential portfolio simulation
             all_signals_map: dict[str, list[dict]] = {}
             all_dfs_map: dict[str, pd.DataFrame] = {}
             weekly_maps: dict[str, dict] = {}
@@ -1260,28 +1059,23 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             for symbol in symbols:
                 try:
-                    # Fetch historical OHLCV
                     df = _ohlcv_cache.get(symbol, period='5y')
                     if df is None or df.empty:
                         continue
-                    
+
                     if df.index.tz is not None:
                         df.index = df.index.tz_localize(None)
 
                     fund_cache = fund_caches.get(symbol)
-                    
-                    # Run scoring
                     scored_dates = score_series(df, fund_cache=fund_cache, config=config)
 
-                    # Temporary diagnostic — remove after validation run:
                     above_ema_count = sum(1 for s in scored_dates if s.get('above_200ema') is True)
                     none_count = sum(1 for s in scored_dates if s.get('above_200ema') is None)
                     logger.debug(
                         "%s: %d scored bars, %d above_200ema=True, %d above_200ema=None",
                         symbol, len(scored_dates), above_ema_count, none_count
                     )
-                    
-                    # Multi-Timeframe Confirmation
+
                     weekly_state_map = None
                     monthly_state_map = None
                     if config.require_weekly_confirmation:
@@ -1289,11 +1083,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     if config.require_monthly_confirmation:
                         monthly_state_map = build_mtf_state_map(df, 'M')
 
-                    # Run simulation
                     sector = stocks_info.get(symbol, "Unknown")
 
                     if use_portfolio_sim:
-                        # Accumulate for cross-symbol chronological simulation
                         all_signals_map[symbol] = scored_dates
                         all_dfs_map[symbol] = df
                         if weekly_state_map is not None:
@@ -1301,15 +1093,13 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                         if monthly_state_map is not None:
                             monthly_maps[symbol] = monthly_state_map
                     else:
-                        # Original per-symbol path (no portfolio limits)
                         trades = simulate_trades(
-                            symbol, sector, df, scored_dates, config, 
+                            symbol, sector, df, scored_dates, config,
                             regime_dict=regime_dict,
                             weekly_state_map=weekly_state_map,
                             monthly_state_map=monthly_state_map
                         )
-                        
-                        # Save trades to DB
+
                         db_trades = []
                         for t in trades:
                             db_trade = BacktestTrade(
@@ -1335,11 +1125,10 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                             db.bulk_save_objects(db_trades)
 
                     symbols_processed += 1
-                    
-                    # Periodic commits
+
                     if symbols_processed % 10 == 0:
                         db.commit()
-                    
+
                     if symbols_processed % 5 == 0:
                         run.symbols_done = symbols_processed
                         db.commit()
@@ -1349,7 +1138,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     logger.error(traceback.format_exc())
                     continue
 
-            # Portfolio simulation path — runs after all signals are collected
             if use_portfolio_sim and all_signals_map:
                 logger.info(
                     "Running portfolio simulation with max_concurrent=%d, max_sector=%d",
@@ -1378,23 +1166,23 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     db.bulk_save_objects(db_trades)
                     db.commit()
 
-            # 3. Finalize
             logger.info(f"Computing final metrics for {len(all_trades)} trades")
 
-            # Slice benchmark data to match backtest range
+            # ── Benchmark slicing: always use first actual trade date ──────────
+            # This ensures benchmark return covers exactly the same calendar
+            # period as the strategy, not the (earlier) config.date_from.
             if all_trades and benchmark_df is not None:
                 first_entry = min(t.entry_date for t in all_trades)
-                effective_from = first_entry
+                effective_from = first_entry   # NOT config.date_from
                 effective_to = config.date_to or datetime.date.today()
 
                 benchmark_df = benchmark_df[
-                  (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
-                  (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
+                    (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
+                    (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
                 ]
 
             metrics = compute_metrics(all_trades, benchmark_df, config)
-            
-            # Update run with results
+
             run.total_trades = metrics['total_trades']
             run.winning_trades = metrics['winning_trades']
             run.win_rate = metrics['win_rate']
@@ -1414,7 +1202,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             run.avg_loss_pct = metrics['avg_loss_pct']
             run.exit_breakdown_json = json.dumps(metrics['exit_breakdown'])
             run.equity_curve_json = json.dumps(metrics['equity_curve'])
-            
+
             run.symbols_done = len(symbols)
             run.status = 'complete'
             db.commit()
