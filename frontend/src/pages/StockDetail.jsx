@@ -9,7 +9,6 @@ import CandlestickChart from '../components/CandlestickChart';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import TradingPlan from '../components/TradingPlan';
 import { inferScoreBreakdown } from '../utils/scoreBreakdown';
-import './StockDetail.css';
 import { useCallback } from 'react';
 
 const StockDetail = () => {
@@ -20,7 +19,7 @@ const StockDetail = () => {
 
   if (loading) {
     return (
-      <div className="loading-container">
+      <div className="flex flex-col items-center justify-center h-[80vh] gap-5 text-text-muted bg-background">
         <Loader2 className="animate-spin" size={48} />
         <p>Fetching stock data and technicals...</p>
       </div>
@@ -29,9 +28,9 @@ const StockDetail = () => {
 
   if (error || !data) {
     return (
-      <div className="loading-container">
+      <div className="flex flex-col items-center justify-center h-[80vh] gap-5 text-text-muted bg-background">
         <ErrorBanner message={error || "Stock not found"} />
-        <Link to="/" className="back-link" style={{ marginTop: '16px' }}>
+        <Link to="/" className="flex items-center gap-2 text-bullish no-underline font-medium transition-opacity hover:opacity-80 mt-4">
           <ArrowLeft size={18} /> Back to Dashboard
         </Link>
       </div>
@@ -58,12 +57,12 @@ const StockDetail = () => {
   const renderScoreCard = (tf, label) => {
     const scoreData = latest_scores?.[tf];
     if (!scoreData) return (
-      <div className="score-card" key={tf}>
-        <h3>{label} Timeframe</h3>
-        <div className="score-display">
-          <div className="score-value" style={{ color: 'var(--color-text-muted)' }}>--</div>
-          <div className="score-signals">
-            <div className="signal-tag neutral">No Signal</div>
+      <div className="bg-bg-secondary rounded-lg p-5 border border-border" key={tf}>
+        <h3 className="text-[12px] text-text-muted mb-4 uppercase tracking-widest font-bold">{label} Timeframe</h3>
+        <div className="flex justify-between items-center">
+          <div className="text-[42px] font-extrabold text-text-muted">--</div>
+          <div className="text-right">
+            <div className="inline-block px-3 py-1.5 rounded-lg text-sm font-bold bg-text-muted/10 text-text-muted">No Signal</div>
           </div>
         </div>
       </div>
@@ -72,15 +71,15 @@ const StockDetail = () => {
     const isBullish = scoreData.ema_signal?.toLowerCase() === 'bullish';
 
     return (
-      <div className="score-card" key={tf}>
-        <h3>{label} Timeframe</h3>
-        <div className="score-display">
-          <div className="score-value">{scoreData.score?.toFixed(1) || scoreData.score}</div>
-          <div className="score-signals">
-            <div className={`signal-tag ${isBullish ? 'bullish' : 'bearish'}`}>
+      <div className="bg-bg-secondary rounded-lg p-5 border border-border" key={tf}>
+        <h3 className="text-[12px] text-text-muted mb-4 uppercase tracking-widest font-bold">{label} Timeframe</h3>
+        <div className="flex justify-between items-center">
+          <div className="text-[42px] font-extrabold text-text">{scoreData.score?.toFixed(1) || scoreData.score}</div>
+          <div className="text-right">
+            <div className={`inline-block px-3 py-1.5 rounded-lg text-sm font-bold ${isBullish ? 'bg-bullish/10 text-bullish' : 'bg-bearish/10 text-bearish'}`}>
               EMA: {scoreData.ema_signal}
             </div>
-            <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--color-text-muted)' }}>
+            <div className="mt-2 text-[12px] text-text-muted">
               RSI: {scoreData.rsi?.toFixed(1)}
             </div>
           </div>
@@ -96,38 +95,42 @@ const StockDetail = () => {
   };
 
   return (
-    <div className="stock-detail-container">
-      <Link to="/" className="back-link">
+    <div className="p-6 max-w-[1600px] mx-auto text-text bg-background min-h-screen">
+      <Link to="/" className="flex items-center gap-2 text-bullish no-underline font-medium mb-6 transition-opacity hover:opacity-80">
         <ArrowLeft size={18} /> Back to Dashboard
       </Link>
 
-      <header className="detail-header">
-        <div className="header-left">
-          <div className="symbol-row">
-            <h1>{symbol.replace('.NS', '')}</h1>
-            <span className="sector-badge">{sector}</span>
+      <header className="flex flex-col sm:flex-row justify-between items-start mb-8 gap-4 sm:gap-0">
+        <div className="flex flex-col">
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-[28px] sm:text-[36px] m-0 text-text font-extrabold">{symbol.replace('.NS', '')}</h1>
+            <span className="bg-bg-elevated px-3 py-1 rounded-md text-sm text-text-muted border border-border">{sector}</span>
           </div>
-          <div className="stock-name">{name}</div>
+          <div className="text-lg text-text-muted mt-1">{name}</div>
         </div>
-        <div className="header-right">
-          <div className="current-price">₹{latestOhlc.close.toLocaleString('en-IN')}</div>
-          <div className={`price-change ${isPositive ? 'positive' : 'negative'}`}>
+        <div className="text-left sm:text-right">
+          <div className="text-[28px] sm:text-[36px] font-extrabold text-text">₹{latestOhlc.close.toLocaleString('en-IN')}</div>
+          <div className={`text-lg font-semibold mt-1 ${isPositive ? 'text-bullish' : 'text-bearish'}`}>
             {isPositive ? '+' : ''}{priceChange.toFixed(2)} ({isPositive ? '+' : ''}{priceChangePct.toFixed(2)}%)
           </div>
         </div>
       </header>
 
-      <div className="detail-grid">
-        <div className="main-col">
-          <section className="chart-section">
-            <h2><TrendingUp size={20} /> Price Action</h2>
-            <div className="chart-wrapper">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-6 items-start">
+        <div className="flex flex-col gap-6">
+          <section className="bg-bg-secondary rounded-lg p-6 border border-border min-h-[400px]">
+            <h2 className="text-lg font-bold flex items-center gap-2 mb-6 text-text">
+              <TrendingUp size={20} /> Price Action
+            </h2>
+            <div className="h-[400px] lg:h-[calc(100vh-350px)] lg:min-h-[400px] w-full">
               <CandlestickChart data={ohlcv} isDark={isDark} containerHeight={500} />
             </div>
           </section>
 
-          <section className="trend-section">
-            <h2><Activity size={20} /> Daily Score Trend (30D)</h2>
+          <section className="bg-bg-secondary rounded-lg p-6 border border-border">
+            <h2 className="text-lg font-bold flex items-center gap-2 mb-6 text-text">
+              <Activity size={20} /> Daily Score Trend (30D)
+            </h2>
             <div style={{ width: '100%', height: 300 }}>
               <ResponsiveContainer>
                 <LineChart data={score_history}>
@@ -146,7 +149,8 @@ const StockDetail = () => {
                     contentStyle={{ 
                       backgroundColor: 'var(--color-bg-secondary)', 
                       borderColor: 'var(--color-border)',
-                      color: 'var(--color-text)'
+                      color: 'var(--color-text)',
+                      borderRadius: '8px'
                     }}
                     itemStyle={{ color: 'var(--color-text)' }}
                   />
@@ -164,77 +168,83 @@ const StockDetail = () => {
           </section>
         </div>
 
-        <div className="side-col">
-          <div className="confluence-panel">
+        <div className="flex flex-col gap-5 lg:sticky lg:top-6">
+          <div className="flex flex-col gap-5">
             <TradingPlan setup={setup} />
-            <h2><Activity size={20} /> Technical Confluence</h2>
+            <h2 className="text-lg font-bold flex items-center gap-2 mb-1 text-text">
+              <Activity size={20} /> Technical Confluence
+            </h2>
             {renderScoreCard('D', 'Daily')}
             {renderScoreCard('W', 'Weekly')}
             {renderScoreCard('M', 'Monthly')}
 
-            <section className="score-card">
-              <h3><Activity size={16} /> Technical Insights</h3>
-              <div className="fundamentals-grid">
-                <div className="fundamental-item">
-                  <span className="f-label">RS Score</span>
-                  <span className="f-value">{dailyScore?.rs_score?.toFixed(1) || 'N/A'}</span>
+            <section className="bg-bg-secondary rounded-lg p-5 border border-border">
+              <h3 className="text-[12px] text-text-muted mb-4 uppercase tracking-widest font-bold">
+                <Activity size={16} className="inline mr-1" /> Technical Insights
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">RS Score</span>
+                  <span className="text-[15px] font-bold text-text">{dailyScore?.rs_score?.toFixed(1) || 'N/A'}</span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">ADX</span>
-                  <span className="f-value">{dailyScore?.adx?.toFixed(1) || 'N/A'}</span>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">ADX</span>
+                  <span className="text-[15px] font-bold text-text">{dailyScore?.adx?.toFixed(1) || 'N/A'}</span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">Mom. (1m)</span>
-                  <span className={`f-value ${(dailyScore?.momentum_1m || 0) >= 0 ? 'positive' : 'negative'}`}>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">Mom. (1m)</span>
+                  <span className={`text-[15px] font-bold ${(dailyScore?.momentum_1m || 0) >= 0 ? 'text-bullish' : 'text-bearish'}`}>
                     {dailyScore?.momentum_1m ? `${(dailyScore.momentum_1m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">Mom. (3m)</span>
-                  <span className={`f-value ${(dailyScore?.momentum_3m || 0) >= 0 ? 'positive' : 'negative'}`}>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">Mom. (3m)</span>
+                  <span className={`text-[15px] font-bold ${(dailyScore?.momentum_3m || 0) >= 0 ? 'text-bullish' : 'text-bearish'}`}>
                     {dailyScore?.momentum_3m ? `${(dailyScore.momentum_3m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">Mom. (6m)</span>
-                  <span className={`f-value ${(dailyScore?.momentum_6m || 0) >= 0 ? 'positive' : 'negative'}`}>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">Mom. (6m)</span>
+                  <span className={`text-[15px] font-bold ${(dailyScore?.momentum_6m || 0) >= 0 ? 'text-bullish' : 'text-bearish'}`}>
                     {dailyScore?.momentum_6m ? `${(dailyScore.momentum_6m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">Mom. (12m)</span>
-                  <span className={`f-value ${(dailyScore?.momentum_12m || 0) >= 0 ? 'positive' : 'negative'}`}>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">Mom. (12m)</span>
+                  <span className={`text-[15px] font-bold ${(dailyScore?.momentum_12m || 0) >= 0 ? 'text-bullish' : 'text-bearish'}`}>
                     {dailyScore?.momentum_12m ? `${(dailyScore.momentum_12m).toFixed(1)}%` : 'N/A'}
                   </span>
                 </div>
               </div>
             </section>
 
-            <div className="score-card">
-              <h3><Info size={16} /> Fundamental Data</h3>
-              <div className="fundamentals-grid">
-                <div className="fundamental-item">
-                  <span className="f-label">P/E Ratio</span>
-                  <span className="f-value">{fundamentals.pe?.toFixed(1) || 'N/A'}</span>
+            <div className="bg-bg-secondary rounded-lg p-5 border border-border">
+              <h3 className="text-[12px] text-text-muted mb-4 uppercase tracking-widest font-bold">
+                <Info size={16} className="inline mr-1" /> Fundamental Data
+              </h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">P/E Ratio</span>
+                  <span className="text-[15px] font-bold text-text">{fundamentals.pe?.toFixed(1) || 'N/A'}</span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">ROE</span>
-                  <span className="f-value">{fundamentals.roe ? `${(fundamentals.roe * 100).toFixed(1)}%` : 'N/A'}</span>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">ROE</span>
+                  <span className="text-[15px] font-bold text-text">{fundamentals.roe ? `${(fundamentals.roe * 100).toFixed(1)}%` : 'N/A'}</span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">D/E Ratio</span>
-                  <span className="f-value">{fundamentals.debt_equity?.toFixed(2) || 'N/A'}</span>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">D/E Ratio</span>
+                  <span className="text-[15px] font-bold text-text">{fundamentals.debt_equity?.toFixed(2) || 'N/A'}</span>
                 </div>
-                <div className="fundamental-item">
-                  <span className="f-label">Market Cap</span>
-                  <span className="f-value">{formatMarketCap(fundamentals.market_cap)}</span>
+                <div className="bg-bg-elevated p-3 rounded-md border border-border">
+                  <span className="block text-[11px] text-text-muted mb-1 uppercase font-semibold">Market Cap</span>
+                  <span className="text-[15px] font-bold text-text">{formatMarketCap(fundamentals.market_cap)}</span>
                 </div>
               </div>
             </div>
 
             {dailyScore && (
-              <div className="score-card">
-                <h3>Score Breakdown</h3>
+              <div className="bg-bg-secondary rounded-lg p-5 border border-border">
+                <h3 className="text-[12px] text-text-muted mb-4 uppercase tracking-widest font-bold">Score Breakdown</h3>
                 <ScoreBreakdown breakdown={breakdown} totalScore={dailyScore.score} />
               </div>
             )}

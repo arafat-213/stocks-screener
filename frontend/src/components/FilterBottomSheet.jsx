@@ -1,5 +1,4 @@
 import { X, Filter, RotateCcw } from 'lucide-react';
-import './FilterBottomSheet.css';
 
 const FilterBottomSheet = ({ 
   isOpen, 
@@ -12,28 +11,33 @@ const FilterBottomSheet = ({
   resetFilters,
   watchlistCount
 }) => {
-  // We keep it in DOM but hidden for animations to work smoothly
   return (
-    <div className={`bottom-sheet-overlay ${isOpen ? 'open' : ''}`} onClick={onClose}>
-      <div className={`bottom-sheet-content ${isOpen ? 'open' : ''}`} onClick={e => e.stopPropagation()}>
-        <div className="bottom-sheet-header">
-          <div className="title">
+    <div 
+      className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-[2000] flex items-end transition-all duration-300 ${isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`} 
+      onClick={onClose}
+    >
+      <div 
+        className={`w-full bg-bg-secondary rounded-t-[24px] p-6 transition-transform duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] max-h-[85vh] flex flex-col shadow-lg ${isOpen ? 'translate-y-0' : 'translate-y-full'}`} 
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <div className="flex items-center gap-3">
             <Filter size={18} />
-            <h3>Filters</h3>
+            <h3 className="text-[18px] font-bold text-text">Filters</h3>
           </div>
-          <button className="close-btn" onClick={onClose}>
+          <button className="bg-bg-elevated border-none text-text-muted cursor-pointer p-2 rounded-full flex items-center justify-center hover:bg-bg-secondary transition-colors" onClick={onClose}>
             <X size={24} />
           </button>
         </div>
 
-        <div className="bottom-sheet-body">
-          <div className="filter-section">
-            <h4>Confluence</h4>
-            <div className="chip-group">
+        <div className="overflow-y-auto flex-1 pb-6">
+          <div className="mb-8">
+            <h4 className="text-[12px] font-bold text-text-muted mb-4 uppercase tracking-widest">Confluence</h4>
+            <div className="flex gap-2 flex-wrap">
               {['all', 'watchlist', '3', '2+'].map(c => (
                 <button 
                   key={c} 
-                  className={`chip ${confluenceFilter === c ? 'active' : ''}`}
+                  className={`bg-bg-elevated border border-border px-[18px] py-[10px] rounded-[12px] text-[14px] font-semibold cursor-pointer transition-all duration-200 text-text flex items-center gap-2 ${confluenceFilter === c ? 'bg-bullish/10 text-bullish border-bullish shadow-none after:content-["✓"] after:text-[12px] after:font-extrabold' : ''}`}
                   onClick={() => setConfluenceFilter(c)}
                 >
                   {c === 'all' ? 'All Stocks' : c === 'watchlist' ? `Watchlist (${watchlistCount})` : c === '3' ? '3/3 Only' : '2/3+'}
@@ -42,16 +46,16 @@ const FilterBottomSheet = ({
             </div>
           </div>
 
-          <div className="filter-section">
-            <div className="section-header">
-              <h4>Sectors</h4>
-              <span className="count">{availableSectors.length}</span>
+          <div className="mb-8">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="text-[12px] font-bold text-text-muted uppercase tracking-widest">Sectors</h4>
+              <span className="text-[11px] bg-bg-elevated px-2 py-0.5 rounded-lg text-text-muted font-semibold">{availableSectors.length}</span>
             </div>
-            <div className="chip-group wrap">
+            <div className="flex flex-wrap gap-2">
               {availableSectors.map(sector => (
                 <button 
                   key={sector} 
-                  className={`chip ${selectedSectors.includes(sector) ? 'active' : ''}`}
+                  className={`bg-bg-elevated border border-border px-[18px] py-[10px] rounded-[12px] text-[14px] font-semibold cursor-pointer transition-all duration-200 text-text flex items-center gap-2 ${selectedSectors.includes(sector) ? 'bg-bullish/10 text-bullish border-bullish shadow-none after:content-["✓"] after:text-[12px] after:font-extrabold' : ''}`}
                   onClick={() => toggleSector(sector)}
                 >
                   {sector}
@@ -61,12 +65,12 @@ const FilterBottomSheet = ({
           </div>
         </div>
 
-        <div className="bottom-sheet-footer">
-          <button className="reset-btn" onClick={resetFilters}>
+        <div className="flex gap-3 pt-5 border-t border-border bg-bg-secondary">
+          <button className="flex items-center justify-center gap-2 bg-none border border-border px-5 py-3.5 rounded-[14px] font-bold cursor-pointer text-text text-[15px] hover:bg-bg-elevated transition-colors" onClick={resetFilters}>
             <RotateCcw size={16} />
             Reset
           </button>
-          <button className="apply-btn" onClick={onClose}>
+          <button className="flex-1 bg-text text-bg-secondary border-none p-3.5 rounded-[14px] font-bold cursor-pointer text-[15px] dark:bg-white dark:text-black transition-opacity hover:opacity-90" onClick={onClose}>
             Apply Filters
           </button>
         </div>

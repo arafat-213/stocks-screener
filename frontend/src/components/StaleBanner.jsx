@@ -1,5 +1,4 @@
 import React from 'react';
-import './StaleBanner.css';
 import { AlertTriangle, Play } from 'lucide-react';
 
 export default function StaleBanner({ lastUpdated, dataAgeHours, onRunPipeline, isBusy }) {
@@ -14,17 +13,17 @@ export default function StaleBanner({ lastUpdated, dataAgeHours, onRunPipeline, 
     });
     
     return (
-        <div className="stale-banner">
-            <div className="stale-icon">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-3 bg-warning/10 text-text border border-warning/40 p-3 md:px-4 md:py-3 rounded-md mb-6">
+            <div className="shrink-0 text-warning flex">
                 <AlertTriangle size={20} />
             </div>
-            <div className="stale-content">
+            <div className="flex-1 text-sm leading-relaxed">
                 <strong>Data is {dataAgeHours} hours old.</strong>
-                <span className="stale-subtext"> Last pipeline run: {dateStr}. Run pipeline to refresh scores.</span>
+                <span className="ml-0 md:ml-2 opacity-80 block md:inline mt-0.5 md:mt-0"> Last pipeline run: {dateStr}. Run pipeline to refresh scores.</span>
             </div>
             {onRunPipeline && (
                 <button 
-                    className="stale-run-btn" 
+                    className="shrink-0 bg-warning text-black px-3.5 py-1.5 rounded-sm cursor-pointer font-semibold text-[0.8rem] flex items-center gap-1.5 transition-opacity hover:opacity-85 disabled:opacity-50 disabled:cursor-not-allowed w-full md:w-auto justify-center" 
                     onClick={() => onRunPipeline()}
                     disabled={isBusy}
                 >

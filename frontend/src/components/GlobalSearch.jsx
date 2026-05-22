@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { searchStocks } from '../api/client';
-import './GlobalSearch.css';
 
 export const GlobalSearch = () => {
   const [query, setQuery] = useState('');
@@ -100,22 +99,22 @@ export const GlobalSearch = () => {
   };
 
   return (
-    <div className={`global-search ${isOpen ? 'open' : ''}`}>
+    <div className="relative z-[100] w-full">
       <div 
-        className="search-trigger" 
+        className="flex items-center gap-3 px-4 py-2.5 bg-bg-secondary border border-border rounded-md cursor-pointer transition-all duration-200 min-w-[240px] text-text-muted text-[0.9rem] hover:border-primary hover:text-text hover:shadow-sm" 
         onClick={() => setIsOpen(true)}
         role="button"
         tabIndex={0}
       >
         <Search size={18} />
         <span>Search stocks...</span>
-        <kbd>⌘K</kbd>
+        <kbd className="ml-auto bg-bg-elevated px-1.5 py-0.5 rounded-sm text-[0.7rem] font-mono border border-border">⌘K</kbd>
       </div>
       
       {isOpen && (
-        <div className="search-overlay" onClick={() => setIsOpen(false)}>
-          <div className="search-modal" onClick={e => e.stopPropagation()}>
-            <div className="search-input-wrapper">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex justify-center pt-[10vh] z-[1000]" onClick={() => setIsOpen(false)}>
+          <div className="w-full max-w-[500px] bg-bg-secondary border border-border rounded-lg shadow-lg overflow-hidden flex flex-col h-fit animate-fade-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 p-4 border-b border-border">
               <Search size={20} className="text-text-muted" />
               <input 
                 ref={inputRef}
@@ -123,31 +122,32 @@ export const GlobalSearch = () => {
                 onChange={handleQueryChange}
                 placeholder="Search symbol or name (e.g. RELIANCE)..."
                 autoComplete="off"
+                className="flex-1 border-none text-[1.1rem] p-0 bg-transparent text-text focus:outline-none focus:ring-0"
               />
             </div>
             
-            <div className="results">
+            <div className="max-h-[400px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-border">
               {loading && query.length >= 2 && results.length === 0 ? (
-                <div className="searching-state">Searching...</div>
+                <div className="p-6 text-center text-text-muted">Searching...</div>
               ) : results.length > 0 ? (
                 results.map((s, i) => (
                   <div 
                     key={s.symbol} 
-                    className={`result-item ${i === selectedIndex ? 'selected' : ''}`} 
+                    className={`px-3 py-2.5 cursor-pointer flex justify-between items-center rounded-sm transition-all duration-200 hover:bg-bg-elevated ${i === selectedIndex ? 'bg-bg-elevated' : ''}`} 
                     onClick={() => handleSelect(s.symbol)}
                     onMouseEnter={() => setSelectedIndex(i)}
                   >
-                    <div className="result-main">
-                      <span className="result-symbol">{s.symbol}</span>
-                      <span className="result-name text-text-muted">{s.name}</span>
+                    <div className="flex items-baseline">
+                      <span className="font-semibold text-[0.9rem] text-text">{s.symbol}</span>
+                      <span className="text-[0.8rem] ml-2 text-text-muted">{s.name}</span>
                     </div>
-                    <span className="result-sector text-xs text-text-muted">{s.sector}</span>
+                    <span className="text-[0.75rem] text-text-muted">{s.sector}</span>
                   </div>
                 ))
               ) : query.length >= 2 ? (
-                <div className="no-results">No stocks found</div>
+                <div className="p-6 text-center text-text-muted">No stocks found</div>
               ) : (
-                <div className="search-hint">Type at least 2 characters...</div>
+                <div className="p-6 text-center text-text-muted">Type at least 2 characters...</div>
               )}
             </div>
           </div>
