@@ -119,43 +119,12 @@ const BacktestResults = memo(
           )}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 sm:gap-4">
             {[
-              { label: 'Total Trades', value: metrics.total_trades },
+              // 1. Headline Returns & Risk
               {
-                label: 'Win Rate',
-                value: `${metrics.win_rate?.toFixed(1)}%`,
-                className: metrics.win_rate >= 50 ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-red-500 text-white shadow-red-500/20',
-                isBadge: true
-              },
-              {
-                label: 'Expectancy',
-                value: `${metrics.expectancy?.toFixed(2)}%`,
-                className: metrics.expectancy >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
-              },
-              {
-                label: 'Profit Factor',
-                value: metrics.profit_factor?.toFixed(2),
-                className: metrics.profit_factor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
-              },
-              {
-                label: 'Avg Win',
-                value: `+${metrics.avg_win_pct?.toFixed(2)}%`,
-                className: 'text-green-600 dark:text-green-400',
-              },
-              {
-                label: 'Avg Loss',
-                value: `${metrics.avg_loss_pct?.toFixed(2)}%`,
-                className: 'text-red-600 dark:text-red-400',
-              },
-              {
-                label: 'Avg Return',
-                value: `${metrics.avg_return_pct?.toFixed(2)}%`,
+                label: 'Total Return',
+                value: `${metrics.total_return_pct?.toFixed(2)}%`,
                 className:
-                  metrics.avg_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
-              },
-              {
-                label: 'Sharpe Ratio',
-                value: metrics.sharpe_ratio?.toFixed(2),
-                className: 'text-blue-600 dark:text-blue-400'
+                  metrics.total_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'vs Nifty 50',
@@ -171,6 +140,77 @@ const BacktestResults = memo(
                 value: `${metrics.max_drawdown_pct?.toFixed(1)}%`,
                 className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
                 isBadge: true
+              },
+              {
+                label: 'Sharpe Ratio',
+                value: metrics.sharpe_ratio?.toFixed(2),
+                className: 'text-blue-600 dark:text-blue-400'
+              },
+              
+              // 2. High-Level Strategy Stats
+              { label: 'Total Trades', value: metrics.total_trades },
+              {
+                label: 'Win Rate',
+                value: `${metrics.win_rate?.toFixed(1)}%`,
+                className: metrics.win_rate >= 50 ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-red-500 text-white shadow-red-500/20',
+                isBadge: true
+              },
+              {
+                label: 'Profit Factor',
+                value: metrics.profit_factor?.toFixed(2),
+                className: metrics.profit_factor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+              },
+              {
+                label: 'Expectancy',
+                value: `${metrics.expectancy?.toFixed(2)}%`,
+                className: metrics.expectancy >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+              },
+              
+              // 3. Trade Averages & Medians
+              {
+                label: 'Avg Return',
+                value: `${metrics.avg_return_pct?.toFixed(2)}%`,
+                className:
+                  metrics.avg_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+              },
+              {
+                label: 'Median Return',
+                value: `${metrics.median_return_pct?.toFixed(2)}%`,
+                className:
+                  metrics.median_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+              },
+              {
+                label: 'Avg Win',
+                value: `+${metrics.avg_win_pct?.toFixed(2)}%`,
+                className: 'text-green-600 dark:text-green-400',
+              },
+              {
+                label: 'Avg Loss',
+                value: `${metrics.avg_loss_pct?.toFixed(2)}%`,
+                className: 'text-red-600 dark:text-red-400',
+              },
+              
+              // 4. Extremes & Costs
+              {
+                label: 'Best Trade',
+                value: `+${metrics.best_trade_pct?.toFixed(2)}%`,
+                className: 'text-green-600 dark:text-green-400',
+              },
+              {
+                label: 'Worst Trade',
+                value: `${metrics.worst_trade_pct?.toFixed(2)}%`,
+                className: 'text-red-600 dark:text-red-400',
+              },
+              {
+                label: 'Gross Return',
+                value: `${metrics.gross_return_pct?.toFixed(2)}%`,
+                className:
+                  metrics.gross_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+              },
+              {
+                label: 'Cost Drag',
+                value: `-${metrics.total_cost_drag_pct?.toFixed(2)}%`,
+                className: 'text-red-600 dark:text-red-400',
               },
             ].map((m, idx) => (
               <div
