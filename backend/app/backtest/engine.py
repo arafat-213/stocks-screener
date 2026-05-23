@@ -1177,13 +1177,22 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 if config.screen_slug not in SCREEN_REGISTRY:
                     raise ValueError(f"Invalid screen slug: {config.screen_slug}")
 
-                logger.info(f"Filtering symbols using screen: {config.screen_slug}")
-                screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
-                screen_results = screen_fn(db)
-                symbols = [r[0] for r in screen_results]
-
+                logger.info(f"Filtering symbols using historical screen data: {config.screen_slug}")
+                # Fetch symbols that passed this screen at any point during the backtest window
+                historical_symbols = (
+                    db.query(ScreenResult.symbol)
+                    .filter(
+                        ScreenResult.screen_slug == config.screen_slug,
+                        ScreenResult.computed_at >= config.date_from,
+                        ScreenResult.computed_at <= config.date_to
+                    )
+                    .distinct()
+                    .all()
+                )
+                symbols = [r[0] for r in historical_symbols]
+                
                 if not symbols:
-                     raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
+                     raise ValueError(f"Selected screen '{config.screen_slug}' returned no historical data for the period {config.date_from} to {config.date_to}.")
             else:
                 symbol_query = (
                     db.query(TechnicalSignal.symbol)
