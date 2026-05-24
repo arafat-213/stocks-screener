@@ -39,7 +39,10 @@ def db_session():
         date=today,
         timeframe='D',
         entry_score=80,
-        above_200ema=True
+        above_200ema=True,
+        is_bullish=True,
+        rsi=50,
+        ema_slope_20=1.0
     ))
 
     # Stock 2: Fails profitability streak
@@ -62,7 +65,10 @@ def db_session():
         date=today,
         timeframe='D',
         entry_score=85,
-        above_200ema=True
+        above_200ema=True,
+        is_bullish=True,
+        rsi=50,
+        ema_slope_20=1.0
     ))
 
     # Stock 3: Fails DE check
@@ -85,7 +91,10 @@ def db_session():
         date=today,
         timeframe='D',
         entry_score=90,
-        above_200ema=True
+        above_200ema=True,
+        is_bullish=True,
+        rsi=50,
+        ema_slope_20=1.0
     ))
 
     db.commit()

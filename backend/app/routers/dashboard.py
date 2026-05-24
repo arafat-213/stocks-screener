@@ -160,10 +160,11 @@ def get_dashboard_results(
     sector: str = None,
     confluence: str = None,
     symbols: str = None,
-    sort_by: str = "confluence"
+    sort_by: str = "confluence",
+    fundamental_filter: bool = True
 ):
     # Create a cache key that includes parameters
-    params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}"
+    params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}:ff:{fundamental_filter}"
     cache_key = f"dashboard:screener_results:{params_str}"
     
     cached, hit = response_cache.get(cache_key)
@@ -196,9 +197,11 @@ def get_dashboard_results(
     # 3. Base Query for filtering and counting
     query = db.query(Stock, FundamentalCache, confluence_sub.c.confluence_count).\
         join(confluence_sub, Stock.symbol == confluence_sub.c.symbol).\
-        outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol).\
-        filter(FundamentalCache.profitability_streak_passed == True).\
-        filter(FundamentalCache.de_check_passed == True)
+        outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol)
+
+    if fundamental_filter:
+        query = query.filter(FundamentalCache.profitability_streak_passed == True).\
+            filter(FundamentalCache.de_check_passed == True)
 
     # Apply filters
     if sector:
@@ -296,6 +299,11 @@ def get_dashboard_results(
         "confluence_count": count,
         "close_price": None,
         "price_change_pct": None,
+        "fundamental_quality": {
+            "profitability_ok": cache.profitability_streak_passed if cache else False,
+            "debt_ok": cache.de_check_passed if cache else False,
+            "has_fundamentals": cache is not None
+        },
         "timeframes": {},
         "fundamentals": {
             "pe": None, "pb": None, "roe": cache.roe if cache else None,

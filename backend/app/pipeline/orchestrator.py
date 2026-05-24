@@ -269,6 +269,8 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                         
                         if hist is not None and not hist.empty:
                             # Technical-only scoring (passing None for info triggers tech-only)
+                            # Tier 1 is a wide net: any technically bullish stock OR score > 40/70 (57%) passes.
+                            # We intentionally cast wide here to avoid missing good setups due to a single weak indicator.
                             scores = calculate_combined_score(hist, None)
                             if scores['is_bullish'] or scores['combined_score'] > 40:
                                 tier1_survivors.append(symbol)
@@ -416,12 +418,13 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             try:
                 cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == symbol).first()
                 
-                # If still no cache or cache failed (version -1), skip
-                if not cache or cache.cache_version == -1:
-                    completed_scoring.add(symbol)
-                    continue
-                    
-                tier2_survivors_count += 1
+                # Even if cache fetch failed (version -1) or missing, we still score technically.
+                # Pass cache=None to process_symbol so fund_score defaults to 0.
+                scoring_cache = None
+                if cache and cache.cache_version != -1:
+                    scoring_cache = cache
+                    tier2_survivors_count += 1
+                
                 # Score using persistent OHLCV cache
                 hist = _ohlcv_cache.get(symbol, append_ns=True, period="3y")
                 if hist is None:
@@ -429,7 +432,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     continue
                 
                 info = None # Info is handled via FundamentalCache now
-                process_symbol(symbol, db, hist=hist, info=info, cache=cache, scored_at=scored_at)
+                process_symbol(symbol, db, hist=hist, info=info, cache=scoring_cache, scored_at=scored_at)
                 
                 scored_count += 1
                 completed_scoring.add(symbol)

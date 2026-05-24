@@ -100,17 +100,24 @@ def test_screen_qarp(db_session):
         profitability_streak_passed=True, de_check_passed=True, 
         fcf_positive=True, peg_ratio=1.2
     ))
-    db_session.add(TechnicalSignal(symbol="RELIANCE", date=date, timeframe='D', above_200ema=True, entry_score=85))
-    
+    db_session.add(TechnicalSignal(
+        symbol="RELIANCE", date=date, timeframe='D', 
+        above_200ema=True, is_bullish=True, rsi=50, ema_slope_20=1.0, 
+        entry_score=85
+    ))
+
     # Fails ROCE
     db_session.add(Stock(symbol="TCS", sector="Tech"))
     db_session.add(FundamentalCache(
-        symbol="TCS", roce=0.10, roe=0.18, 
-        profitability_streak_passed=True, de_check_passed=True, 
+        symbol="TCS", roce=0.10, roe=0.18,
+        profitability_streak_passed=True, de_check_passed=True,
         fcf_positive=True, peg_ratio=1.2
     ))
-    db_session.add(TechnicalSignal(symbol="TCS", date=date, timeframe='D', above_200ema=True, entry_score=80))
-    
+    db_session.add(TechnicalSignal(
+        symbol="TCS", date=date, timeframe='D', 
+        above_200ema=True, is_bullish=True, rsi=50, ema_slope_20=1.0, 
+        entry_score=80
+    ))    
     db_session.commit()
 
     results = screen_qarp(db_session)

@@ -57,7 +57,7 @@ def screen_ema_crossover_signals(db: Session, timeframe: str = 'D', target_date=
             TechnicalSignal.ema_signal == 'bullish_cross',
             TechnicalSignal.above_200ema == True,
             TechnicalSignal.adx >= 20.0,
-            TechnicalSignal.rsi >= 40,
+            TechnicalSignal.rsi >= 35,
             TechnicalSignal.rsi < 70,
         )
     ).order_by(TechnicalSignal.entry_score.desc()).all()
@@ -77,7 +77,7 @@ def screen_volume_surge(db: Session, timeframe: str = 'D', target_date=None):
             TechnicalSignal.volume_breakout == True,
             TechnicalSignal.above_200ema == True,
             TechnicalSignal.is_bullish == True,
-            TechnicalSignal.rsi >= 40,
+            TechnicalSignal.rsi >= 35,
             TechnicalSignal.rsi < 75,
         )
     ).order_by(TechnicalSignal.entry_score.desc()).all()
@@ -121,7 +121,7 @@ def screen_actionable_entries(db: Session, timeframe: str = 'D', target_date=Non
                 TechnicalSignal.timeframe == timeframe,
                 TechnicalSignal.ema_signal == 'bullish_cross',
                 TechnicalSignal.above_200ema == True,
-                TechnicalSignal.rsi >= 40,
+                TechnicalSignal.rsi >= 35,
                 TechnicalSignal.rsi <= 65,
                 TechnicalSignal.momentum_12m > 0,
                 TechnicalSignal.is_consolidating == True,
