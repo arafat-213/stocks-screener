@@ -1,4 +1,5 @@
 import { X, Filter, RotateCcw } from 'lucide-react';
+import { map } from 'lodash/fp';
 
 const FilterBottomSheet = ({ 
   isOpen, 
@@ -34,7 +35,7 @@ const FilterBottomSheet = ({
           <section>
             <h4 className="text-[10px] font-black text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-[0.2em]">Signal Confluence</h4>
             <div className="flex gap-2.5 flex-wrap">
-              {['all', 'watchlist', '3', '2+'].map(c => (
+              {map(c => (
                 <button 
                   key={c} 
                   className={`border-2 px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest cursor-pointer transition-all flex items-center gap-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200'}`}
@@ -42,14 +43,14 @@ const FilterBottomSheet = ({
                 >
                   {c === 'all' ? 'All Symbols' : c === 'watchlist' ? `Watchlist (${watchlistCount})` : c === '3' ? '3/3 High' : '2/3+ Mid'}
                 </button>
-              ))}
+              ), ['all', 'watchlist', '3', '2+'])}
             </div>
           </section>
 
           <section>
             <h4 className="text-[10px] font-black text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-[0.2em]">Market Sectors</h4>
             <div className="flex gap-2 flex-wrap">
-              {availableSectors.map(sector => (
+              {map(sector => (
                 <button 
                   key={sector} 
                   className={`border-2 px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all flex items-center gap-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200'}`}
@@ -57,7 +58,7 @@ const FilterBottomSheet = ({
                 >
                   {sector}
                 </button>
-              ))}
+              ), availableSectors)}
             </div>
           </section>
         </div>

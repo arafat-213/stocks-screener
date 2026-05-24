@@ -1,4 +1,7 @@
 import { Link } from 'react-router-dom';
+import { map } from 'lodash/fp';
+
+const mapWithIndex = map.convert({ cap: false });
 
 const MarketTable = ({ stocks }) => {
 
@@ -16,7 +19,7 @@ const MarketTable = ({ stocks }) => {
           <div className="bg-slate-50 dark:bg-slate-900 p-4 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 border-b-2 border-border sticky top-0 z-10">Sector</div>
         </div>
         <div className="contents">
-          {Array.isArray(stocks) && stocks.map((stock, idx) => {
+          {mapWithIndex((stock, idx) => {
             const daily = stock.timeframes?.D || {};
             const isPositive = stock.price_change_pct >= 0;
             
@@ -56,7 +59,7 @@ const MarketTable = ({ stocks }) => {
                 </div>
               </Link>
             );
-          })}
+          }, stocks)}
         </div>
       </div>
     </div>
@@ -78,15 +81,15 @@ export const MarketTableSkeleton = ({ rows = 10 }) => {
           <div className="bg-slate-50 dark:bg-slate-900 p-4 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 border-b-2 border-border sticky top-0 z-10">Sector</div>
         </div>
         <div className="contents">
-          {Array.from({ length: rows }).map((_, i) => (
+          {mapWithIndex((_, i) => (
             <div key={i} className="contents">
-              {Array.from({ length: 8 }).map((_, j) => (
+              {mapWithIndex((_, j) => (
                 <div key={j} className={`p-4 px-6 border-b border-border flex items-center ${j === 0 ? 'sticky left-0 z-[2] bg-inherit' : ''}`}>
                   <div className="h-6 bg-slate-100 dark:bg-slate-800 rounded-lg animate-pulse w-full"></div>
                 </div>
               ))}
             </div>
-          ))}
+          ), Array.from({ length: rows }))}
         </div>
       </div>
     </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { map, filter, size, times } from 'lodash/fp';
 import { fetchResults, getDashboardChanges } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
@@ -18,6 +19,8 @@ import ChangeBanner from '../components/ChangeBanner';
 import WatchlistStar from '../components/WatchlistStar';
 import PipelineProgress from '../components/PipelineProgress';
 import SetupBadge from '../components/SetupBadge';
+
+const mapWithIndex = map.convert({ cap: false });
 
 const Dashboard = () => {
   // Data Fetching Hooks
@@ -139,8 +142,8 @@ const Dashboard = () => {
 
   // Derived: Available Sectors (only from current stocks)
   const availableSectors = useMemo(() => {
-    if (!stocks || stocks.length === 0) return [];
-    const sectors = new Set(stocks?.map(s => s.sector).filter(Boolean));
+    if (size(stocks) === 0) return [];
+    const sectors = new Set(filter(Boolean, map(s => s.sector, stocks)));
     return Array.from(sectors).sort();
   }, [stocks]);
 
@@ -252,42 +255,42 @@ const Dashboard = () => {
     setSelectedSectors([]);
   };
 
-  const hasData = stocks.length > 0;
+  const hasData = size(stocks) > 0;
 
   if (loading && !hasData) {
     return (
       <div className="w-full">
         <main className="flex-1">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {[1, 2, 3, 4].map(i => (
+            {map(i => (
               <div key={i} className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
                 <div className="h-10 w-full bg-bg-elevated rounded-md animate-pulse"></div>
               </div>
-            ))}
+            ), [1, 2, 3, 4])}
           </div>
           <div className="mt-8">
             {viewMode === 'grid' ? (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {[1, 2, 3, 4, 5, 6].map(i => <StockCardSkeleton key={i} />)}
+                {map(i => <StockCardSkeleton key={i} />, [1, 2, 3, 4, 5, 6])}
               </div>
             ) : (
               <div className="bg-bg-secondary rounded-xl border border-border mt-4 overflow-hidden">
                 <div className="flex bg-bg-elevated border-bottom border-border min-w-fit">
-                  {columns.map(col => (
+                  {map(col => (
                     <div key={col.key} className="px-4 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 flex-1 min-w-[120px]">
                       {col.label}
                     </div>
-                  ))}
+                  ), columns)}
                 </div>
-                {Array.from({ length: 10 }).map((_, i) => (
+                {times(i => (
                   <div key={i} className="flex border-b border-border transition-colors hover:bg-bg-elevated">
-                    {columns.map(col => (
+                    {map(col => (
                       <div key={col.key} className="p-4 text-sm text-text flex-1 min-w-[120px] flex items-center">
                         <div className="h-4 w-full bg-bg-elevated rounded-sm animate-pulse" />
                       </div>
-                    ))}
+                    ), columns)}
                   </div>
-                ))}
+                ), 10)}
               </div>
             )}
           </div>
@@ -320,7 +323,7 @@ const Dashboard = () => {
   const isNiftyUp = nifty.change_pct >= 0;
   const isSensexUp = sensex.change_pct >= 0;
 
-  const hasMarketData = market.length > 0;
+  const hasMarketData = size(market) > 0;
 
   return (
     <div className="w-full animate-fade-in">
@@ -390,7 +393,7 @@ const Dashboard = () => {
             )}
             <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
               <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Total Scored</span>
-              <span className="text-3xl font-black text-text tracking-tighter">{stocks?.length || 0}</span>
+              <span className="text-3xl font-black text-text tracking-tighter">{size(stocks)}</span>
             </div>
             <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
               <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Nifty 50</span>
@@ -432,7 +435,7 @@ const Dashboard = () => {
                     <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confluence</h3>
                   </div>
                   <div className="flex flex-row gap-2.5">
-                    {['all', 'watchlist', '3', '2+'].map((c) => (
+                    {map((c) => (
                       <label
                         key={c}
                         className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
@@ -453,7 +456,7 @@ const Dashboard = () => {
                               ? '3/3 Only'
                               : '2/3+'}
                       </label>
-                    ))}
+                    ), ['all', 'watchlist', '3', '2+'])}
                   </div>
                 </div>
 
@@ -463,11 +466,11 @@ const Dashboard = () => {
                       Sectors Selection
                     </h3>
                     <span className="text-[10px] bg-blue-500 text-white py-0.5 px-2 rounded-full font-black shadow-sm">
-                        {availableSectors.length} AVAILABLE
+                        {size(availableSectors)} AVAILABLE
                     </span>
                   </div>
                   <div className="flex flex-row flex-wrap gap-2 max-h-[240px] overflow-y-auto pr-2">
-                    {availableSectors.map((sector) => (
+                    {map((sector) => (
                       <label
                         key={sector}
                         className={`flex items-center gap-2.5 py-1.5 px-3.5 rounded-full text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all border-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
@@ -480,7 +483,7 @@ const Dashboard = () => {
                         />
                         <span>{sector}</span>
                       </label>
-                    ))}
+                    ), availableSectors)}
                   </div>
                 </div>
               </div>
@@ -549,24 +552,24 @@ const Dashboard = () => {
           </div>
         </header>
 
-        {stocks.length > 0 ? (
+        {size(stocks) > 0 ? (
           viewMode === 'grid' ? (
             <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 sm:gap-6">
-              {stocks?.map((stock) => (
+              {map((stock) => (
                 <StockCard
                   key={stock.symbol}
                   stock={stock}
                   isWatched={isWatched(stock.symbol)}
                   onToggleWatch={toggle}
                 />
-              ))}
+              ), stocks)}
             </div>
           ) : (
             <DataTable
               columns={columns}
               data={stocks}
               initialSort={{ key: 'score', direction: 'desc' }}
-              loading={loading && stocks.length === 0}
+              loading={loading && size(stocks) === 0}
             />
           )
         ) : (
@@ -583,13 +586,13 @@ const Dashboard = () => {
         )}
 
         {/* Sentinel and Footer UI */}
-        {loading && stocks.length > 0 && (
+        {loading && size(stocks) > 0 && (
           <div className="flex flex-col justify-center items-center gap-4 py-12 text-slate-500 animate-pulse bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-border border-dashed mt-8">
             <RefreshCcw size={32} className="animate-spin text-blue-500" />
             <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synchronizing Deep Market Data...</span>
           </div>
         )}
-        {!hasMore && stocks.length > 0 && (
+        {!hasMore && size(stocks) > 0 && (
           <div className="text-center py-5 text-text-muted">
             <p>No more stocks to show</p>
           </div>

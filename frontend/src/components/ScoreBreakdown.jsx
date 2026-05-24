@@ -1,8 +1,9 @@
 import { Activity } from 'lucide-react';
+import { filter, map } from 'lodash/fp';
 
 const ScoreBreakdown = ({ breakdown, totalScore }) => {
-  const technical = breakdown.filter(b => b.category === 'technical');
-  const fundamental = breakdown.filter(b => b.category === 'fundamental');
+  const technical = filter(b => b.category === 'technical', breakdown);
+  const fundamental = filter(b => b.category === 'fundamental', breakdown);
 
   return (
     <div className="flex flex-col gap-6">
@@ -21,12 +22,12 @@ const ScoreBreakdown = ({ breakdown, totalScore }) => {
 
       <div className="flex flex-col gap-3">
         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-2 border-b-2 border-border pb-1">Technical Analysis <span className="opacity-60">(max 70)</span></div>
-        {technical.map(item => <BreakdownRow key={item.label} item={item} />)}
+        {map(item => <BreakdownRow key={item.label} item={item} />, technical)}
       </div>
 
       <div className="flex flex-col gap-3">
         <div className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400 mb-2 border-b-2 border-border pb-1">Fundamental Health <span className="opacity-60">(max 30)</span></div>
-        {fundamental.map(item => <BreakdownRow key={item.label} item={item} />)}
+        {map(item => <BreakdownRow key={item.label} item={item} />, fundamental)}
       </div>
 
       <p className="text-[0.7rem] text-text-muted m-0 italic">

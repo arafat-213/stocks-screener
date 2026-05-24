@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { map, size } from 'lodash/fp';
 import { searchStocks } from '../api/client';
+
+const mapWithIndex = map.convert({ cap: false });
 
 export const GlobalSearch = () => {
   const [query, setQuery] = useState('');
@@ -32,7 +35,7 @@ export const GlobalSearch = () => {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
           setSelectedIndex(prev => 
-            results.length > 0 ? Math.min(prev + 1, results.length - 1) : -1
+            size(results) > 0 ? Math.min(prev + 1, size(results) - 1) : -1
           );
         }
         if (e.key === 'ArrowUp') {
@@ -80,7 +83,7 @@ export const GlobalSearch = () => {
       clearTimeout(debounceRef.current);
     }
     
-    if (val.length < 2) {
+    if (size(val) < 2) {
       setResults([]);
       setLoading(false);
       return;
@@ -134,10 +137,10 @@ export const GlobalSearch = () => {
             </div>
             
             <div className="max-h-[400px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-border">
-              {loading && query.length >= 2 && results.length === 0 ? (
+              {loading && size(query) >= 2 && size(results) === 0 ? (
                 <div className="p-6 text-center text-text-muted">Searching...</div>
-              ) : results.length > 0 ? (
-                results.map((s, i) => (
+              ) : size(results) > 0 ? (
+                mapWithIndex((s, i) => (
                   <div 
                     key={s.symbol} 
                     className={`px-3 py-2.5 cursor-pointer flex justify-between items-center rounded-sm transition-all duration-200 hover:bg-bg-elevated ${i === selectedIndex ? 'bg-bg-elevated' : ''}`} 
@@ -150,8 +153,8 @@ export const GlobalSearch = () => {
                     </div>
                     <span className="text-[0.75rem] text-text-muted">{s.sector}</span>
                   </div>
-                ))
-              ) : query.length >= 2 ? (
+                ), results)
+              ) : size(query) >= 2 ? (
                 <div className="p-6 text-center text-text-muted">No stocks found</div>
               ) : (
                 <div className="p-6 text-center text-text-muted">Type at least 2 characters...</div>

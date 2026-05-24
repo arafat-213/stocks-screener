@@ -12,6 +12,7 @@ import {
   ArrowLeft,
   Play
 } from 'lucide-react';
+import { map } from 'lodash/fp';
 import ThemeToggle from './ThemeToggle';
 import GlobalSearch from './GlobalSearch';
 
@@ -91,7 +92,7 @@ const MainLayout = ({ children }) => {
         </div>
 
         <nav className="flex flex-col gap-2.5 flex-1">
-          {navItems.map((item) => (
+          {map((item) => (
             <NavLink 
               key={item.to} 
               to={item.to} 
@@ -100,7 +101,7 @@ const MainLayout = ({ children }) => {
               {item.icon}
               <span className="tracking-tight">{item.label}</span>
             </NavLink>
-          ))}
+          ), navItems)}
         </nav>
 
         <div className="pt-6 border-t border-border flex items-center justify-between">
@@ -124,7 +125,7 @@ const MainLayout = ({ children }) => {
 
       {/* Mobile Bottom Navigation */}
       <nav className="flex fixed bottom-0 left-0 right-0 h-[80px] justify-around items-center z-50 border-t border-border px-2 bg-bg-secondary/80 backdrop-blur-lg lg:hidden pb-safe">
-        {navItems.map((item) => (
+        {map((item) => (
           <NavLink 
             key={item.to} 
             to={item.to} 
@@ -139,7 +140,7 @@ const MainLayout = ({ children }) => {
               </>
             )}
           </NavLink>
-        ))}
+        ), navItems)}
       </nav>
     </div>
   );

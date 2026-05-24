@@ -3,12 +3,16 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
   BarChart, Bar, Cell, PieChart, Pie, Legend
 } from 'recharts';
+import { map, filter, size } from 'lodash/fp';
 import { 
   AlertCircle,
   Info,
   ShieldCheck,
   Clock,
 } from 'lucide-react';
+
+const mapWithIndex = map.convert({ cap: false });
+
 import { 
   getPaperPortfolio, 
   getPaperPending, 
@@ -75,7 +79,7 @@ const PaperTrading = () => {
       </header>
 
       <nav className="flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl w-fit overflow-x-auto no-scrollbar">
-        {tabs.map(tab => (
+        {map(tab => (
           <button
             key={tab.id}
             className={`px-5 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${
@@ -87,7 +91,7 @@ const PaperTrading = () => {
           >
             {tab.label}
           </button>
-        ))}
+        ), tabs)}
       </nav>
 
       <div className="min-h-[400px]">
@@ -131,17 +135,17 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
     );
   }
 
-  const pnlData = trades.length > 0 ? (() => {
+  const pnlData = size(trades) > 0 ? (() => {
     let cumulative = 0;
     const sortedTrades = [...trades].sort((a, b) => new Date(a.exit_date) - new Date(b.exit_date));
-    return sortedTrades.map(t => {
+    return map(t => {
       cumulative += t.pnl;
       return {
         date: t.exit_date,
         pnl: cumulative,
         trade: t
       };
-    });
+    }, sortedTrades);
   })() : [];
 
   const StatCard = ({ label, value, color, comparison, subLabel }) => (
@@ -331,12 +335,12 @@ const PendingView = () => {
               </tr>
             </thead>
             <tbody className="text-sm">
-              {pending.length === 0 ? (
+              {size(pending) === 0 ? (
                 <tr>
                   <td colSpan="7" className="text-center text-text-muted py-20 font-bold uppercase tracking-widest text-xs opacity-50">No pending orders being watched.</td>
                 </tr>
               ) : (
-                pending.map(pos => {
+                map(pos => {
                   const distance = pos.closeness_pct;
                   let distanceClass = 'bg-slate-100 dark:bg-slate-800 text-text-muted';
                   if (distance !== null) {
@@ -380,7 +384,7 @@ const PendingView = () => {
                       </td>
                     </tr>
                   );
-                })
+                }, pending)
               )}
             </tbody>
           </table>
@@ -433,12 +437,12 @@ const PositionsView = () => {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {sortedPositions.length === 0 ? (
+        {size(sortedPositions) === 0 ? (
           <div className="md:col-span-2 xl:col-span-3 flex flex-col items-center justify-center p-20 bg-bg-secondary border-2 border-dashed border-border rounded-3xl text-center">
             <p className="font-bold uppercase tracking-widest text-xs text-text-muted">No open positions. Check pending orders for upcoming entries.</p>
           </div>
         ) : (
-          sortedPositions.map(pos => {
+          map(pos => {
             const range = pos.target - pos.stop_loss;
             const currentPos = Math.min(Math.max(((pos.current_price - pos.stop_loss) / range) * 100, 0), 100);
             const entryPos = ((pos.entry_price - pos.stop_loss) / range) * 100;
@@ -521,7 +525,7 @@ const PositionsView = () => {
                 </div>
               </div>
             );
-          })
+          }, sortedPositions)
         )}
       </div>
     </div>

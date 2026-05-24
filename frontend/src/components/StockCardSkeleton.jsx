@@ -1,3 +1,5 @@
+import { map } from 'lodash/fp';
+
 const SkeletonLine = ({ className = "" }) => (
   <div className={`bg-bg-elevated animate-pulse rounded ${className}`}></div>
 );
@@ -22,36 +24,36 @@ const StockCardSkeleton = () => {
       <div className="flex justify-between items-center bg-bg-elevated p-2.5 rounded-lg border border-border">
         <div className="h-6 w-28 bg-bg-secondary animate-pulse rounded-full"></div>
         <div className="flex gap-2">
-          {[1, 2, 3].map(i => (
+          {map(i => (
             <div key={i} className="h-5 w-8 bg-bg-secondary animate-pulse rounded"></div>
-          ))}
+          ), [1, 2, 3])}
         </div>
       </div>
 
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-3 gap-2 border-b border-border pb-2.5">
-          {[1, 2, 3].map(i => (
+          {map(i => (
             <div key={i} className="flex flex-col gap-1">
               <SkeletonLine className="h-2 w-8" />
               <SkeletonLine className="h-4 w-10" />
             </div>
-          ))}
+          ), [1, 2, 3])}
         </div>
         <div className="grid grid-cols-3 gap-2">
-          {[1, 2, 3].map(i => (
+          {map(i => (
             <div key={i} className="flex flex-col gap-1">
               <SkeletonLine className="h-2 w-8" />
               <SkeletonLine className="h-4 w-10" />
             </div>
-          ))}
+          ), [1, 2, 3])}
         </div>
         <div className="grid grid-cols-3 gap-2 mt-1">
-          {[1, 2, 3].map(i => (
+          {map(i => (
             <div key={i} className="flex flex-col gap-1">
               <SkeletonLine className="h-2 w-8" />
               <SkeletonLine className="h-4 w-10" />
             </div>
-          ))}
+          ), [1, 2, 3])}
         </div>
       </div>
     </div>
