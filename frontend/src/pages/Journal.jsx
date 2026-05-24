@@ -10,13 +10,15 @@ import {
   BarChart2,
   PieChart as PieChartIcon,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
+  Plus
 } from 'lucide-react';
 import { 
   getJournalOpen, 
   getJournalClosed, 
   getJournalStats, 
-  closeJournalEntry 
+  closeJournalEntry,
+  createJournalEntry 
 } from '../api/client';
 
 const Journal = () => {
@@ -28,6 +30,19 @@ const Journal = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [closing, setClosing] = useState(false);
+
+  // Manual Entry state
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [newTrade, setNewTrade] = useState({
+    symbol: '',
+    entry_price: '',
+    shares: '1',
+    stop_loss: '',
+    target: '',
+    entry_date: new Date().toISOString().split('T')[0],
+    notes: ''
+  });
+  const [creating, setCreating] = useState(false);
 
   // Form state for closing trade
   const [exitPrice, setExitPrice] = useState('');
@@ -70,6 +85,7 @@ const Journal = () => {
     try {
       await closeJournalEntry(selectedTrade.id, {
         exit_price: parseFloat(exitPrice),
+        exit_date: new Date().toISOString().split('T')[0],
         exit_reason: exitReason
       });
       setModalOpen(false);
@@ -113,16 +129,16 @@ const Journal = () => {
         <StatCard 
           label="Total Realized P&L" 
           value={`₹${stats?.total_pnl?.toLocaleString() || 0}`}
-          subValue={`${stats?.total_return_pct?.toFixed(1)}% Return`}
+          subValue={`${stats?.avg_return?.toFixed(1)}% Avg Return`}
           icon={<BarChart2 className="text-primary" size={20} />}
           trend={stats?.total_pnl >= 0 ? 'up' : 'down'}
         />
         <StatCard 
           label="Open Unrealized P&L" 
-          value={`₹${stats?.unrealized_pnl?.toLocaleString() || 0}`}
+          value={`₹${stats?.total_unrealized_pnl?.toLocaleString() || 0}`}
           subValue={`${stats?.open_positions || 0} Positions`}
           icon={<PieChartIcon className="text-blue-500" size={20} />}
-          trend={stats?.unrealized_pnl >= 0 ? 'up' : 'down'}
+          trend={stats?.total_unrealized_pnl >= 0 ? 'up' : 'down'}
         />
         <StatCard 
           label="Strategy Win Rate" 
@@ -304,7 +320,7 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
           </thead>
           <tbody className="text-sm">
             {positions.map((pos) => {
-              const pnlPct = pos.unrealised_pct || 0;
+              const pnlPct = pos.live_return_pct || 0;
               const pnlColor = pnlPct >= 0 ? 'text-bullish' : 'text-bearish';
               
               // Calculate distance to target/SL for visual feedback
