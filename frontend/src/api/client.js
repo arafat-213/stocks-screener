@@ -24,6 +24,12 @@ export const getStatus = () => apiClient.get('/pipeline/status');
 export const searchStocks = (q) => apiClient.get(`/stocks/search?q=${encodeURIComponent(q)}`);
 export const getSectorRotation = () => apiClient.get('/screens/data/sector-rotation');
 
+// Watchlist
+export const getWatchlist = () => apiClient.get('/watchlist');
+export const addToWatchlist = (data) => apiClient.post('/watchlist', data);
+export const updateWatchlistStatus = (symbol, status) => apiClient.patch(`/watchlist/${symbol}`, { status });
+export const removeFromWatchlist = (symbol) => apiClient.delete(`/watchlist/${symbol}`);
+
 // Backtest
 export const runBacktest    = (config) => apiClient.post('/backtest/run', config);
 export const getBacktestRun = (runId)  => apiClient.get(`/backtest/${runId}`);

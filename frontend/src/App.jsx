@@ -4,6 +4,7 @@ import MainLayout from './components/MainLayout';
 
 // Pages
 import Dashboard from './pages/Dashboard';
+import Watchlist from './pages/Watchlist';
 import StockDetail from './pages/StockDetail';
 import Discover from './pages/Discover';
 import Intelligence from './pages/Intelligence';
@@ -17,6 +18,7 @@ function App() {
       <MainLayout>
         <Routes>
           <Route path="/" element={<Dashboard />} />
+          <Route path="/watchlist" element={<Watchlist />} />
           <Route path="/stocks/:symbol" element={<StockDetail />} />
           <Route path="/discover" element={<Discover />} />
           <Route path="/paper" element={<PaperTrading />} />

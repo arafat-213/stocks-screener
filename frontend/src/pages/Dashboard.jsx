@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, ShieldCheck, ShieldAlert, ShieldX, CircleAlert } from 'lucide-react';
+import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, ShieldCheck, ShieldAlert, ShieldX, CircleAlert, Star } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { map, filter, size, times } from 'lodash/fp';
-import { fetchResults, getDashboardChanges } from '../api/client';
+import { fetchResults, getDashboardChanges, addToWatchlist } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
 import { useMarketData } from '../hooks/useMarketData';
@@ -44,6 +44,29 @@ const Dashboard = () => {
   
   const { market_context, error: marketError } = useMarketData();
   const { watchlist, toggle, isWatched, count } = useWatchlist();
+  const [addingToWatchlist, setAddingToWatchlist] = useState(new Set());
+  
+  const handleAddToWatchlist = async (row) => {
+    if (isWatched(row.symbol)) return;
+    setAddingToWatchlist(prev => new Set(prev).add(row.symbol));
+    try {
+      await addToWatchlist({
+        symbol: row.symbol,
+        signal_date: row.date || new Date().toISOString().split('T')[0],
+        quality_tier: row.quality_tier || (row.fundamental_quality?.profitability_ok ? 'A' : 'B'),
+        signal_score: row.timeframes?.D?.score || row.score
+      });
+      toggle(row.symbol);
+    } catch (err) {
+      alert(`Failed to add to watchlist: ${err.message}`);
+    } finally {
+      setAddingToWatchlist(prev => {
+        const next = new Set(prev);
+        next.delete(row.symbol);
+        return next;
+      });
+    }
+  };
   
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', 'watchlist', '3', '2+'
@@ -159,7 +182,7 @@ const Dashboard = () => {
         <WatchlistStar 
           symbol={row.symbol} 
           isWatched={isWatched(row.symbol)} 
-          onToggle={toggle} 
+          onToggle={() => handleAddToWatchlist(row)} 
         />
       )
     },
@@ -600,7 +623,7 @@ const Dashboard = () => {
                   key={stock.symbol}
                   stock={stock}
                   isWatched={isWatched(stock.symbol)}
-                  onToggleWatch={toggle}
+                  onToggleWatch={() => handleAddToWatchlist(stock)}
                 />
               ), stocks)}
             </div>

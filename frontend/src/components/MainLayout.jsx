@@ -10,7 +10,8 @@ import {
   Menu,
   X,
   ArrowLeft,
-  Play
+  Play,
+  List
 } from 'lucide-react';
 import { map } from 'lodash/fp';
 import ThemeToggle from './ThemeToggle';
@@ -30,6 +31,7 @@ const MainLayout = ({ children }) => {
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
+    { to: '/watchlist', label: 'Watchlist', icon: <List size={20} /> },
     { to: '/discover', label: 'Discover', icon: <Search size={20} /> },
     { to: '/paper', label: 'Paper', icon: <Play size={20} /> },
     { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={20} /> },
