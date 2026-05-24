@@ -91,7 +91,9 @@ class OHLCVCache:
             symbol, start_str, end_str,
         )
 
-        ticker_sym = f"{symbol}.NS" if append_ns else symbol
+        ticker_sym = symbol
+        if append_ns and not symbol.endswith(".NS"):
+            ticker_sym = f"{symbol}.NS"
         try:
             ticker = yf.Ticker(ticker_sym)
             tail = ticker.history(start=start_str, end=end_str)

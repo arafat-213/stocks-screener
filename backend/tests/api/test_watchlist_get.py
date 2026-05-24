@@ -4,16 +4,23 @@ from app.db.models import Stock, TechnicalSignal, Watchlist
 import pandas as pd
 from unittest.mock import MagicMock
 
-def test_get_watchlist_active_only(client, db):
+def test_get_watchlist_active_only(client, db, monkeypatch):
     # Setup: 1 active, 1 expired/skipped
     db.add(Watchlist(symbol="RELIANCE.NS", signal_date=date(2025, 1, 1), status="watching"))
     db.add(Watchlist(symbol="TCS.NS", signal_date=date(2025, 1, 1), status="expired"))
     db.commit()
 
+    # Mock OHLCV for RELIANCE.NS
+    df = pd.DataFrame({"Close": [2500.0]}, index=[pd.Timestamp("2025-01-02")])
+    mock_cache = MagicMock()
+    mock_cache.get.return_value = df
+    monkeypatch.setattr("app.routers.watchlist._ohlcv_cache", mock_cache)
+
     response = client.get("/api/watchlist/")
     assert response.status_code == 200
     data = response.json()
     assert len(data) == 1
+    assert data[0]["symbol"] == "RELIANCE.NS"
     assert data[0]["symbol"] == "RELIANCE.NS"
 
 def test_get_watchlist_live_data(client, db, monkeypatch):

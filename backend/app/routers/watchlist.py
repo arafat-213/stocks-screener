@@ -122,11 +122,20 @@ def _calculate_live_metrics(entry: Watchlist, df: pd.DataFrame):
     
     # 3. EMA20 calculation
     # We need enough data for EMA20, pandas_ta handles it
-    ema20 = df.ta.ema(length=20)
-    current_ema20 = ema20.iloc[-1] if ema20 is not None and not ema20.empty else None
+    ema20_output = df.ta.ema(length=20)
+    current_ema20 = None
+    if ema20_output is not None and not ema20_output.empty:
+        # If multiple columns (DataFrame), take the first one
+        if isinstance(ema20_output, pd.DataFrame):
+            val = ema20_output.iloc[-1, 0]
+        else:
+            val = ema20_output.iloc[-1]
+            
+        if pd.notnull(val):
+            current_ema20 = float(val)
     
     vs_ema20_pct = 0.0
-    if current_ema20:
+    if current_ema20 is not None:
         vs_ema20_pct = ((current_price - current_ema20) / current_ema20) * 100
         
     # 4. In Zone detection

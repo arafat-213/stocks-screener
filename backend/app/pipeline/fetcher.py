@@ -68,7 +68,10 @@ def get_nse_symbols(limit: int = None) -> list[str]:
 
 def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = True):
     try:
-        ticker_symbol = f"{symbol}.NS" if append_ns else symbol
+        ticker_symbol = symbol
+        if append_ns and not symbol.endswith(".NS"):
+            ticker_symbol = f"{symbol}.NS"
+        
         # No session injection for yfinance 0.2.66+
         ticker = yf.Ticker(ticker_symbol)
         hist = ticker.history(period=period)
