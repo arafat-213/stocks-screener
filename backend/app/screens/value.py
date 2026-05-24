@@ -130,6 +130,9 @@ def screen_dividend_growth(db: Session, timeframe: str = 'D', target_date=None):
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
                 TechnicalSignal.above_200ema == True,
+                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.ema_slope_20 > 0,
+                TechnicalSignal.rsi >= 40,
                 FundamentalCache.dividend_yield >= 0.015,  # 1.5%
                 FundamentalCache.dividend_consistency == True,
                 FundamentalCache.fcf_positive == True,

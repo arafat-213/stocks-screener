@@ -420,10 +420,10 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 
                 # Even if cache fetch failed (version -1) or missing, we still score technically.
                 # Pass cache=None to process_symbol so fund_score defaults to 0.
+                tier2_survivors_count += 1
                 scoring_cache = None
                 if cache and cache.cache_version != -1:
                     scoring_cache = cache
-                    tier2_survivors_count += 1
                 
                 # Score using persistent OHLCV cache
                 hist = _ohlcv_cache.get(symbol, append_ns=True, period="3y")

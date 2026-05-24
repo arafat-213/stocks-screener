@@ -1,13 +1,14 @@
 from fastapi import APIRouter, Depends, Response
 import asyncio
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case
+from sqlalchemy import func, case, or_
 from sqlalchemy.engine import Row
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
 from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
 from app.core.cache import response_cache
 from app.pipeline.trade_setup import compute_trade_setup
+from app.screens.base import get_latest_signal_date
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 market_lock = asyncio.Lock()
@@ -174,24 +175,23 @@ def get_dashboard_results(
 
     response.headers["X-Cache"] = "MISS"
 
-    # 1. Latest TechnicalSignal Subquery (Max date per symbol/timeframe)
-    latest_signal_sub = db.query(
-        TechnicalSignal.symbol,
-        TechnicalSignal.timeframe,
-        func.max(TechnicalSignal.date).label("max_date")
-    ).group_by(TechnicalSignal.symbol, TechnicalSignal.timeframe).subquery()
-        
+    # 1. Get latest dates for each timeframe to avoid slow subqueries
+    latest_date_d = get_latest_signal_date(db, 'D')
+    latest_date_w = get_latest_signal_date(db, 'W')
+    latest_date_m = get_latest_signal_date(db, 'M')
+
     # 2. Confluence calculation query
     # We want to group by symbol and count bullish signals across timeframes
-    # This will be used as a join to filter and sort
+    # We filter by the latest dates discovered above to use indexes efficiently
     confluence_sub = db.query(
         TechnicalSignal.symbol,
         func.sum(case((TechnicalSignal.is_bullish == True, 1), else_=0)).label("confluence_count")
-    ).join(
-        latest_signal_sub,
-        (TechnicalSignal.symbol == latest_signal_sub.c.symbol) & 
-        (TechnicalSignal.timeframe == latest_signal_sub.c.timeframe) & 
-        (TechnicalSignal.date == latest_signal_sub.c.max_date)
+    ).filter(
+        or_(
+            (TechnicalSignal.timeframe == 'D') & (func.date(TechnicalSignal.date) == latest_date_d),
+            (TechnicalSignal.timeframe == 'W') & (func.date(TechnicalSignal.date) == latest_date_w),
+            (TechnicalSignal.timeframe == 'M') & (func.date(TechnicalSignal.date) == latest_date_m)
+        )
     ).group_by(TechnicalSignal.symbol).subquery()
 
     # 3. Base Query for filtering and counting
@@ -228,11 +228,9 @@ def get_dashboard_results(
         TechnicalSignal.is_bullish,
         TechnicalSignal.entry_score,
         TechnicalSignal.rsi
-    ).join(
-        latest_signal_sub,
-        (TechnicalSignal.symbol == latest_signal_sub.c.symbol) & 
-        (TechnicalSignal.timeframe == 'D') & 
-        (TechnicalSignal.date == latest_signal_sub.c.max_date)
+    ).filter(
+        TechnicalSignal.timeframe == 'D',
+        func.date(TechnicalSignal.date) == latest_date_d
     ).subquery()
 
     query = query.outerjoin(daily_signal, Stock.symbol == daily_signal.c.symbol)
@@ -280,11 +278,14 @@ def get_dashboard_results(
 
     # Fetch all signals for these symbols
     all_signals = db.query(TechnicalSignal).\
-        join(latest_signal_sub, 
-             (TechnicalSignal.symbol == latest_signal_sub.c.symbol) & 
-             (TechnicalSignal.timeframe == latest_signal_sub.c.timeframe) & 
-             (TechnicalSignal.date == latest_signal_sub.c.max_date)).\
-        filter(TechnicalSignal.symbol.in_(paged_symbols)).all()
+        filter(TechnicalSignal.symbol.in_(paged_symbols)).\
+        filter(
+            or_(
+                (TechnicalSignal.timeframe == 'D') & (func.date(TechnicalSignal.date) == latest_date_d),
+                (TechnicalSignal.timeframe == 'W') & (func.date(TechnicalSignal.date) == latest_date_w),
+                (TechnicalSignal.timeframe == 'M') & (func.date(TechnicalSignal.date) == latest_date_m)
+            )
+        ).all()
 
     # Fetch fundamental data
     all_funds = db.query(FundamentalData).\
@@ -300,9 +301,12 @@ def get_dashboard_results(
         "close_price": None,
         "price_change_pct": None,
         "fundamental_quality": {
-            "profitability_ok": cache.profitability_streak_passed if cache else False,
-            "debt_ok": cache.de_check_passed if cache else False,
-            "has_fundamentals": cache is not None
+            "profitability_ok": bool(cache.profitability_streak_passed) if cache else False,
+            "debt_ok": bool(cache.de_check_passed) if cache else False,
+            "has_fundamentals": cache is not None,
+            "data_quality": "partial" if (cache and cache.cache_version == -1) else (
+                "ok" if cache else "missing"
+            ),
         },
         "timeframes": {},
         "fundamentals": {
