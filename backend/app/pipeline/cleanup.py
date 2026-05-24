@@ -77,10 +77,10 @@ def run_cleanup(db: Session) -> dict:
     )
     summary['market_snapshots'] = result.rowcount
 
-    # 6. ScreenResult: keep last 365 days (used for historical backtesting)
+    # 6. ScreenResult: keep last 1825 days (5 years) for historical backtesting
     result = db.execute(
         delete(ScreenResult).where(
-            ScreenResult.computed_at < today - datetime.timedelta(days=365)
+            ScreenResult.computed_at < today - datetime.timedelta(days=1825)
         )
     )
     summary['screen_results'] = result.rowcount
