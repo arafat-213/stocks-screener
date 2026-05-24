@@ -317,4 +317,21 @@ class PaperTrade(Base):
         Index('ix_pt_portfolio_id', 'portfolio_id'),
     )
 
+class AlertLog(Base):
+    __tablename__ = "alert_logs"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    signal_date = Column(Date, nullable=False)
+    alert_type = Column(String, nullable=False) # 'tier1_entry', 'tier2_entry', 'regime_change'
+    quality_tier = Column(String(1), nullable=True) # 'A', 'B', 'C'
+    entry_score = Column(Float, nullable=True)
+    sent_at = Column(DateTime, default=datetime.datetime.utcnow)
+    email_id = Column(String, nullable=True) # Resend message ID for debugging
+
+    __table_args__ = (
+        # Prevent duplicate alerts for same symbol+date+type
+        UniqueConstraint('symbol', 'signal_date', 'alert_type'),
+        Index('ix_alert_logs_sent_at', 'sent_at'),
+    )
+
 

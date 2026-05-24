@@ -4,8 +4,8 @@ from sqlalchemy import desc, or_, func, and_
 from app.db.session import get_db
 from app.db.models import TechnicalSignal, PipelineRun, Stock, FundamentalData, FundamentalCache
 from app.pipeline.orchestrator import run_pipeline
-from app.pipeline.fetcher import fetch_stock_data
 from app.pipeline.trade_setup import compute_trade_setup
+from app.pipeline.ohlcv_cache import OHLCVCache
 import logging
 
 router = APIRouter()
@@ -65,8 +65,9 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     if not stock:
         raise HTTPException(status_code=404, detail="Stock not found")
 
-    # 3. Price Data: 1 year OHLCV
-    hist, info = fetch_stock_data(clean_symbol, append_ns=True, period="1y")
+    # 3. Price Data: 5 years OHLCV from cache
+    cache = OHLCVCache()
+    hist = cache.get(clean_symbol, append_ns=True, period="5y")
     ohlcv = []
     if hist is not None and not hist.empty:
         # Convert index (DatetimeIndex) to date string
@@ -282,3 +283,24 @@ def get_pipeline_status(db: Session = Depends(get_db)):
     run = db.query(PipelineRun).order_by(desc(PipelineRun.timestamp)).first()
     if not run: return {"status": "idle"}
     return {"status": run.status, "last_run": run.timestamp, "scored": run.stocks_scored}
+
+@router.post("/alerts/trigger")
+def trigger_alerts_manual(
+    date: str | None = None,
+    db: Session = Depends(get_db)
+):
+    """Manually trigger the alert cycle for a given date (or latest)."""
+    from app.alerts.engine import run_alert_cycle
+    target = datetime.date.fromisoformat(date) if date else None
+    result = run_alert_cycle(db, signal_date=target)
+    return result
+
+# routers/stocks.py — temporary cleanup endpoint, remove after use
+
+@router.delete("/alerts/clear-failed")
+def clear_failed_alerts(db: Session = Depends(get_db)):
+    """Removes alert log entries where the email never actually sent."""
+    from app.db.models import AlertLog
+    deleted = db.query(AlertLog).filter(AlertLog.email_id == None).delete()
+    db.commit()
+    return {"deleted": deleted}

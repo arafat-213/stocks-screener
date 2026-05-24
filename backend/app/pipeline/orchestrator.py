@@ -515,8 +515,19 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         #     logger.error("Paper trading cycle failed (non-fatal): %s", e)
         #     import traceback
         #     logger.error(traceback.format_exc())
-            
+
+        # 8. Alert cycle — fires email for new actionable signals
+        try:
+            from app.alerts.engine import run_alert_cycle
+            alert_result = run_alert_cycle(db, signal_date=final_signal_date)
+            logger.info("Alert cycle result: %s", alert_result)
+        except Exception as e:
+            logger.error("Alert cycle failed (non-fatal): %s", e)
+            import traceback
+            logger.error(traceback.format_exc())
+
         run.status = "complete"
+
         run.stocks_fetched = fetched_count
         run.stocks_scored = scored_count
         db.commit()
