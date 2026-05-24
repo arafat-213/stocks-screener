@@ -515,14 +515,23 @@ def simulate_trades(
     regime_dict: dict = None,
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
+    screen_dates: list[datetime.date] | None = None,
 ):
     """
     Simulates trades based on scored signals.
     Entry: Next day's Open.
     Exit: SL, Target, or Holding Period.
+    
+    screen_dates: if provided (screen-based backtest), a signal is only acted on 
+    if the symbol was in the screen within 7 calendar days before the signal date.
+    Prevents look-ahead bias where a stock that only qualifies for a screen 
+    in 2025 generates signals from 2021.
     """
     trades = []
     last_exit_idx = -1
+    
+    # Pre-sort screen_dates for efficient binary search
+    _sorted_screen_dates = sorted(screen_dates) if screen_dates else None
     
     # Pre-map dates to indices for faster lookup
     date_to_idx = {date: i for i, date in enumerate(df.index)}
@@ -533,6 +542,18 @@ def simulate_trades(
         compare_date = signal_date.date() if hasattr(signal_date, 'date') else signal_date
         if isinstance(compare_date, str):
              compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
+
+        # ── Screen membership gate (prevents look-ahead bias) ─────────────────
+        # Only enter if the symbol was in the named screen within the 7 calendar
+        # days preceding the signal. This ensures we only trade momentum-monsters
+        # when it IS a momentum monster, not just because it became one later.
+        if _sorted_screen_dates is not None:
+            window_start = compare_date - datetime.timedelta(days=7)
+            # bisect to find dates in [window_start, compare_date]
+            lo = bisect.bisect_left(_sorted_screen_dates, window_start)
+            hi = bisect.bisect_right(_sorted_screen_dates, compare_date)
+            if lo >= hi:
+                continue  # symbol not in screen near this signal date — skip
 
         # Date Filtering
         if config.date_from and compare_date < config.date_from:
@@ -901,6 +922,7 @@ def simulate_portfolio(
     regime_dict: dict = None,
     weekly_state_maps: dict | None = None,
     monthly_state_maps: dict | None = None,
+    screen_dates_map: dict[str, list[datetime.date]] | None = None,
 ) -> list[TradeResult]:
     """
     Portfolio-level chronological simulation.
@@ -963,6 +985,7 @@ def simulate_portfolio(
             regime_dict=regime_dict,
             weekly_state_map=(weekly_state_maps or {}).get(symbol),
             monthly_state_map=(monthly_state_maps or {}).get(symbol),
+            screen_dates=(screen_dates_map.get(symbol) if screen_dates_map else None),
         )
 
         if trades:
@@ -1175,26 +1198,36 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 ))
 
             # 2. Select symbols
+            screen_dates_map: dict[str, list[datetime.date]] = {}
             if config.screen_slug and config.screen_slug != "all":
                 if config.screen_slug not in SCREEN_REGISTRY:
                     raise ValueError(f"Invalid screen slug: {config.screen_slug}")
 
                 logger.info(f"Filtering symbols using historical screen data: {config.screen_slug}")
                 # Fetch symbols that passed this screen at any point during the backtest window
-                historical_symbols = (
-                    db.query(ScreenResult.symbol)
+                raw_screen_rows = (
+                    db.query(ScreenResult.symbol, ScreenResult.computed_at)
                     .filter(
                         ScreenResult.screen_slug == config.screen_slug,
                         ScreenResult.computed_at >= config.date_from,
                         ScreenResult.computed_at <= config.date_to
                     )
-                    .distinct()
                     .all()
                 )
-                symbols = [r[0] for r in historical_symbols]
                 
-                if not symbols:
+                if not raw_screen_rows:
                      raise ValueError(f"Selected screen '{config.screen_slug}' returned no historical data for the period {config.date_from} to {config.date_to}.")
+
+                for symbol, computed_at in raw_screen_rows:
+                    # computed_at may be datetime.date or datetime.datetime
+                    d = computed_at if isinstance(computed_at, datetime.date) else computed_at.date()
+                    screen_dates_map.setdefault(symbol, []).append(d)
+
+                # Sort each symbol's screen dates for bisect lookup in simulate_trades
+                for sym in screen_dates_map:
+                    screen_dates_map[sym].sort()
+
+                symbols = list(screen_dates_map.keys())
             else:
                 symbol_query = (
                     db.query(TechnicalSignal.symbol)
@@ -1277,7 +1310,8 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                             symbol, sector, df, scored_dates, config, 
                             regime_dict=regime_dict,
                             weekly_state_map=weekly_state_map,
-                            monthly_state_map=monthly_state_map
+                            monthly_state_map=monthly_state_map,
+                            screen_dates=screen_dates_map.get(symbol) if screen_dates_map else None,
                         )
                         
                         # Save trades to DB
@@ -1332,6 +1366,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     regime_dict=regime_dict,
                     weekly_state_maps=weekly_maps if config.require_weekly_confirmation else None,
                     monthly_state_maps=monthly_maps if config.require_monthly_confirmation else None,
+                    screen_dates_map=screen_dates_map if screen_dates_map else None,
                 )
                 db_trades = []
                 for t in all_trades:
