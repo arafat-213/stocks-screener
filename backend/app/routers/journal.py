@@ -56,9 +56,22 @@ def get_open_trades(db: Session = Depends(get_db)):
     
     results = []
     for t in trades:
-        current_price = price_map.get(t.symbol, t.entry_price)
+        # Robust fallback: use entry_price if current_price is None or missing
+        current_price = price_map.get(t.symbol) or t.entry_price
+        
         unrealized_pnl = (current_price - t.entry_price) * t.shares
         live_return_pct = ((current_price - t.entry_price) / t.entry_price) * 100
+        
+        # Distance calculations
+        # dist_to_stop: % from current_price down to stop_loss
+        dist_to_stop = 0.0
+        if current_price > 0:
+            dist_to_stop = ((current_price - t.stop_loss) / current_price) * 100
+            
+        # dist_to_target: % from current_price up to target
+        dist_to_target = 0.0
+        if current_price > 0:
+            dist_to_target = ((t.target - current_price) / current_price) * 100
         
         trade_data = {
             "id": t.id,
@@ -72,6 +85,8 @@ def get_open_trades(db: Session = Depends(get_db)):
             "current_price": current_price,
             "unrealized_pnl": unrealized_pnl,
             "live_return_pct": live_return_pct,
+            "dist_to_stop": dist_to_stop,
+            "dist_to_target": dist_to_target,
             "notes": t.notes
         }
         results.append(trade_data)

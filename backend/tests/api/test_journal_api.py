@@ -4,6 +4,7 @@ from app.main import app
 from app.db.session import get_db
 from app.db import models
 import datetime
+from unittest.mock import patch
 
 def test_get_open_trades_with_live_pnl(client, db):
     # Add a dummy open trade
@@ -20,14 +21,27 @@ def test_get_open_trades_with_live_pnl(client, db):
     db.add(trade)
     db.commit()
 
-    response = client.get("/api/journal/open")
-    assert response.status_code == 200
-    data = response.json()
-    assert len(data) > 0
-    # Current price might vary as it's fetched live, but keys should exist
-    assert "unrealized_pnl" in data[0]
-    assert "live_return_pct" in data[0]
-    assert "current_price" in data[0]
+    with patch("app.routers.journal.fetch_market_snapshots") as mock_fetch:
+        mock_fetch.return_value = [{"symbol": "RELIANCE.NS", "close": 2600.0, "change_pct": 1.0}]
+        
+        response = client.get("/api/journal/open")
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data) > 0
+        
+        trade_data = data[0]
+        assert trade_data["current_price"] == 2600.0
+        assert trade_data["unrealized_pnl"] == 1000.0 # (2600-2500)*10
+        assert trade_data["live_return_pct"] == 4.0 # (2600-2500)/2500 * 100
+        
+        # Verify new fields
+        # dist_to_stop = (2600 - 2400) / 2600 * 100 = 200 / 2600 * 100 = 7.6923...
+        assert "dist_to_stop" in trade_data
+        assert abs(trade_data["dist_to_stop"] - 7.69) < 0.01
+        
+        # dist_to_target = (2700 - 2600) / 2600 * 100 = 100 / 2600 * 100 = 3.846...
+        assert "dist_to_target" in trade_data
+        assert abs(trade_data["dist_to_target"] - 3.84) < 0.01
 
 def test_get_closed_trades(client, db):
     # Add a dummy closed trade
