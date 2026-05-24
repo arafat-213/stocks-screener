@@ -71,6 +71,13 @@ def calculate_historical_indicators(df: pd.DataFrame) -> pd.DataFrame:
         df['ema_slope_20'] = (df['EMA_20'] - df['EMA_20'].shift(5)) / 5
     else:
         df['ema_slope_20'] = np.nan
+
+    # Resistance: Highest close in the year prior to the last 20 bars (240 bar window)
+    if len(df) >= 260:
+        df['res_rolling'] = df['Close'].shift(20).rolling(window=240).max()
+        df['pct_from_resistance'] = (df['Close'] / df['res_rolling'] - 1) * 100
+    else:
+        df['pct_from_resistance'] = np.nan
     
     # Booleans/Signals
     if 'EMA_200' in df.columns:
@@ -267,6 +274,7 @@ def generate_signals(df: pd.DataFrame, symbol: str, timeframe: str) -> list:
             "rsi_signal": rsi_signal,
             "atr": float(row.get('ATRr_14')) if pd.notna(row.get('ATRr_14')) else None,
             "close_price": float(price) if pd.notna(price) else None,
+            "pct_from_resistance": float(row.get('pct_from_resistance')) if pd.notna(row.get('pct_from_resistance')) else None,
             
             "momentum_1m": float(row.get('momentum_1m')) if pd.notna(row.get('momentum_1m')) else None,
             "momentum_3m": float(row.get('momentum_3m')) if pd.notna(row.get('momentum_3m')) else None,

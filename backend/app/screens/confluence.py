@@ -8,10 +8,23 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
     All three timeframes (Daily, Weekly, Monthly) simultaneously bullish.
     This is the strongest signal in the system — rare but high conviction.
     Weekly and Monthly bullish mean RSI>50 + price>EMA26 on those timeframes.
+    
+    Fix: Instead of joining on exact date (which fails because W/M signals 
+    are on Sundays/Month-ends), we join on the most recent signal for each symbol.
     """
     date_d = target_date if target_date else get_latest_signal_date(db, 'D')
-    date_w = target_date if target_date else get_latest_signal_date(db, 'W')
-    date_m = target_date if target_date else get_latest_signal_date(db, 'M')
+
+    # Subqueries to find the latest signal <= date_d for each timeframe
+    latest_weekly_date = (
+        db.query(func.max(TechnicalSignal.date))
+        .filter(TechnicalSignal.timeframe == 'W', TechnicalSignal.date <= date_d)
+        .scalar_subquery()
+    )
+    latest_monthly_date = (
+        db.query(func.max(TechnicalSignal.date))
+        .filter(TechnicalSignal.timeframe == 'M', TechnicalSignal.date <= date_d)
+        .scalar_subquery()
+    )
 
     daily = aliased(TechnicalSignal)
     weekly = aliased(TechnicalSignal)
@@ -24,7 +37,7 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
             weekly,
             and_(
                 daily.symbol == weekly.symbol,
-                func.date(weekly.date) == date_w,
+                weekly.date == latest_weekly_date,
                 weekly.timeframe == 'W',
                 weekly.is_bullish == True,
             ),
@@ -33,7 +46,7 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
             monthly,
             and_(
                 daily.symbol == monthly.symbol,
-                func.date(monthly.date) == date_m,
+                monthly.date == latest_monthly_date,
                 monthly.timeframe == 'M',
                 monthly.is_bullish == True,
             ),

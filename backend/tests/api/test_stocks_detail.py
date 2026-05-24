@@ -9,12 +9,12 @@ def test_get_stock_detail_404(client):
     assert response.status_code == 404
     assert response.json()["detail"] == "Stock not found"
 
-@patch('app.routers.stocks.fetch_stock_data')
+@patch('app.routers.stocks.OHLCVCache.get')
 def test_get_stock_detail_success(mock_fetch, db, client):
     # Mock OHLCV data
     mock_df = pd.DataFrame({"Close": [100.0], "Open": [95.0], "High": [105.0], "Low": [90.0], "Volume": [1000]}, index=pd.to_datetime(["2024-05-11"]))
     mock_df.index.name = "Date"
-    mock_fetch.return_value = (mock_df, {})
+    mock_fetch.return_value = mock_df
     # Seed data
     stock = Stock(symbol="TEST_RELIANCE", name="Test Reliance", sector="Energy")
     db.add(stock)
@@ -98,12 +98,12 @@ def test_get_stock_detail_success(mock_fetch, db, client):
     assert data["fundamentals"]["pe"] == 20.0
     assert data["fundamentals"]["debt_equity"] == 0.5
     
-@patch('app.routers.stocks.fetch_stock_data')
+@patch('app.routers.stocks.OHLCVCache.get')
 def test_get_stock_detail_includes_setup(mock_fetch, db, client):
     # Mock OHLCV data
     mock_df = pd.DataFrame({"Close": [100.0], "Open": [95.0], "High": [105.0], "Low": [90.0], "Volume": [1000]}, index=pd.to_datetime(["2024-05-11"]))
     mock_df.index.name = "Date"
-    mock_fetch.return_value = (mock_df, {})
+    mock_fetch.return_value = mock_df
 
     # Seed data
     symbol = "SETUP_STOCK"

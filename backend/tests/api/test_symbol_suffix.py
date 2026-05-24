@@ -3,7 +3,7 @@ from unittest.mock import patch
 from app.db.models import Stock, FundamentalCache
 import datetime
 
-@patch('app.routers.stocks.fetch_stock_data')
+@patch('app.routers.stocks.OHLCVCache.get')
 def test_get_stock_detail_case_insensitive_suffix(mock_fetch, db, client):
     # Seed data
     stock = Stock(symbol="RELIANCE", name="Reliance Industries", sector="Energy")
@@ -13,7 +13,7 @@ def test_get_stock_detail_case_insensitive_suffix(mock_fetch, db, client):
     import pandas as pd
     mock_df = pd.DataFrame({"Close": [100.0], "Open": [95.0], "High": [105.0], "Low": [90.0], "Volume": [1000]}, index=pd.to_datetime(["2024-05-11"]))
     mock_df.index.name = "Date"
-    mock_fetch.return_value = (mock_df, {})
+    mock_fetch.return_value = mock_df
 
     # Test with .NS (works currently)
     response = client.get("/api/stocks/RELIANCE.NS")

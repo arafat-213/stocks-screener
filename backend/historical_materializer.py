@@ -39,18 +39,34 @@ def backfill_screens():
             if isinstance(target_date, str):
                 target_date = datetime.date.fromisoformat(target_date)
 
-            # Check if this date already has momentum-monsters results
-            # We specifically check for momentum-monsters because it's the one most often missing 
-            # if the materializer ran before the RS backfill.
+            # Check if this date already has results for the most sensitive screens.
+            # If any of these are missing, we re-run the date.
             momentum_count = db.query(func.count(ScreenResult.id)).filter(
                 ScreenResult.computed_at == target_date,
                 ScreenResult.screen_slug == 'momentum-monsters'
             ).scalar()
 
-            if momentum_count > 0:
-                logger.info(f"[{i}/{total_dates}] Skipping {target_date} - already has momentum results.")
-                continue
+            mtf_count = db.query(func.count(ScreenResult.id)).filter(
+                ScreenResult.computed_at == target_date,
+                ScreenResult.screen_slug == 'mtf-confluence'
+            ).scalar()
 
+            near_breakout_count = db.query(func.count(ScreenResult.id)).filter(
+                ScreenResult.computed_at == target_date,
+                ScreenResult.screen_slug == 'near-breakout'
+            ).scalar()
+
+            # Since MTF and Near-Breakout can naturally be 0 on many days, 
+            # we also check if there are ANY results at all for the date.
+            any_results_count = db.query(func.count(ScreenResult.id)).filter(
+                ScreenResult.computed_at == target_date
+            ).scalar()
+
+            # We skip only if momentum-monsters exists. 
+            # (MTF and Near-Breakout might genuinely have 0 results, so we can't rely on them alone)
+            if momentum_count > 0:
+                logger.info(f"[{i}/{total_dates}] Skipping {target_date} - already has results.")
+                continue
             logger.info(f"[{i}/{total_dates}] Materializing screens for {target_date}...")
 
             # The materializer internally deletes any existing rows for this date

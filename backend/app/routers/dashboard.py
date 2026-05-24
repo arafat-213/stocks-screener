@@ -5,7 +5,7 @@ from sqlalchemy import func, case, or_
 from sqlalchemy.engine import Row
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal, FundamentalData, PipelineRun, MarketSnapshot, FundamentalCache
-from app.pipeline.fetcher import fetch_stock_data, fetch_market_snapshots
+from app.pipeline.fetcher import fetch_market_snapshots
 from app.core.cache import response_cache
 from app.pipeline.trade_setup import compute_trade_setup
 from app.screens.base import get_latest_signal_date
