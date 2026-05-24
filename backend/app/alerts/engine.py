@@ -4,10 +4,11 @@ import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_, func
 from sqlalchemy.exc import IntegrityError
-from app.db.models import TechnicalSignal, Stock, FundamentalCache, AlertLog
-from app.alerts.email import send_alert_email, build_signal_email
+from app.db.models import TechnicalSignal, Stock, FundamentalCache, AlertLog, TradeJournal
+from app.alerts.email import send_alert_email, build_signal_email, build_exit_alert_email
 from app.pipeline.trade_setup import compute_trade_setup
 from app.backtest.engine import _compute_signal_tier
+from app.pipeline.ohlcv_cache import OHLCVCache
 
 logger = logging.getLogger(__name__)
 
@@ -237,3 +238,94 @@ def run_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> di
         "email_id": email_id,
         "regime_bullish": regime_bullish,
     }
+
+def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> dict:
+    """
+    Checks all open TradeJournal positions against today's price.
+    Fires alerts for: stop approached, stop hit, target approached, target hit.
+    """
+    if signal_date is None:
+        from app.screens.base import get_latest_signal_date
+        signal_date = get_latest_signal_date(db, 'D')
+
+    open_positions = db.query(TradeJournal).filter_by(status='open').all()
+    if not open_positions:
+        return {"positions_checked": 0, "alerts_fired": 0}
+
+    cache = OHLCVCache()
+    alerts = []
+    
+    for pos in open_positions:
+        df = cache.get(pos.symbol, period='1y')
+        if df is None or df.empty:
+            continue
+            
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+
+        # Get today's bar
+        today_rows = df[df.index.date == signal_date]
+        if today_rows.empty:
+            continue
+            
+        row = today_rows.iloc[0]
+        day_low = float(row['Low'])
+        day_high = float(row['High'])
+        current = float(row['Close'])
+
+        unrealised_pct = (current - pos.entry_price) / pos.entry_price * 100
+        distance_to_stop_pct = (current - pos.stop_loss) / pos.entry_price * 100 if pos.stop_loss else 999.0
+        distance_to_target_pct = (pos.target - current) / pos.entry_price * 100 if pos.target else 999.0
+
+        alert_type = None
+        urgency = None
+
+        if pos.stop_loss and day_low <= pos.stop_loss:
+            alert_type = "stop_hit"
+            urgency = "critical"
+        elif distance_to_stop_pct < 2.0:
+            alert_type = "stop_approached"
+            urgency = "high"
+        elif pos.target and day_high >= pos.target:
+            alert_type = "target_hit"
+            urgency = "critical"
+        elif distance_to_target_pct < 2.0:
+            alert_type = "target_approached"
+            urgency = "medium"
+
+        if not alert_type:
+            continue
+
+        # Deduplicate — one exit alert per symbol per day per type
+        if _already_alerted(db, pos.symbol, signal_date, alert_type):
+            continue
+
+        alerts.append({
+            "symbol": pos.symbol,
+            "alert_type": alert_type,
+            "urgency": urgency,
+            "entry_price": pos.entry_price,
+            "current_price": current,
+            "stop_loss": pos.stop_loss,
+            "target": pos.target,
+            "unrealised_pct": round(unrealised_pct, 2),
+            "distance_to_stop_pct": round(distance_to_stop_pct, 2) if distance_to_stop_pct != 999.0 else None,
+            "holding_days": (signal_date - pos.entry_date).days if pos.entry_date else 0,
+        })
+
+    if not alerts:
+        return {"positions_checked": len(open_positions), "alerts_fired": 0}
+
+    # Sort: critical first
+    urgency_order = {"critical": 0, "high": 1, "medium": 2}
+    alerts.sort(key=lambda x: urgency_order.get(x["urgency"], 3))
+
+    subject = f"⚠️ Position Alert — {signal_date.strftime('%d %b %Y')}"
+    html = build_exit_alert_email(alerts, str(signal_date))
+    email_id = send_alert_email(subject, html)
+
+    if email_id:
+        for a in alerts:
+            _log_alert(db, a["symbol"], signal_date, a["alert_type"], None, None, email_id)
+
+    return {"positions_checked": len(open_positions), "alerts_fired": len(alerts)}

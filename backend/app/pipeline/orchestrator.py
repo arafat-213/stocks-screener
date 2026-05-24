@@ -518,9 +518,14 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
         # 8. Alert cycle — fires email for new actionable signals
         try:
-            from app.alerts.engine import run_alert_cycle
+            from app.alerts.engine import run_alert_cycle, run_exit_alert_cycle
+            # Entry alerts — new signals
             alert_result = run_alert_cycle(db, signal_date=final_signal_date)
-            logger.info("Alert cycle result: %s", alert_result)
+            logger.info("Entry alert cycle: %s", alert_result)
+
+            # Exit alerts — open positions
+            exit_result = run_exit_alert_cycle(db, signal_date=final_signal_date)
+            logger.info("Exit alert cycle: %s", exit_result)
         except Exception as e:
             logger.error("Alert cycle failed (non-fatal): %s", e)
             import traceback
