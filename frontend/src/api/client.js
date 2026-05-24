@@ -42,3 +42,10 @@ export const getPaperPortfolio = () => apiClient.get('/paper-trading/portfolio')
 export const getPaperPending   = () => apiClient.get('/paper-trading/pending');
 export const getPaperPositions = () => apiClient.get('/paper-trading/positions');
 export const getPaperTrades    = (params) => apiClient.get('/paper-trading/trades', { params });
+
+// Journal
+export const getJournalOpen = () => apiClient.get('/journal/open');
+export const getJournalClosed = () => apiClient.get('/journal/closed');
+export const getJournalStats = () => apiClient.get('/journal/stats');
+export const createJournalEntry = (data) => apiClient.post('/journal/', data);
+export const closeJournalEntry = (id, data) => apiClient.patch(`/journal/${id}/close`, data);

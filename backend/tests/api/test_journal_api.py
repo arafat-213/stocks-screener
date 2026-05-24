@@ -35,13 +35,45 @@ def test_get_open_trades_with_live_pnl(client, db):
         assert trade_data["live_return_pct"] == 4.0 # (2600-2500)/2500 * 100
         
         # Verify new fields
-        # dist_to_stop = (2600 - 2400) / 2600 * 100 = 200 / 2600 * 100 = 7.6923...
+        # dist_to_stop = (2600 - 2400) / 2600 * 100 = 200 / 2600 * 100 = 7.6923... -> 7.69
         assert "dist_to_stop" in trade_data
-        assert abs(trade_data["dist_to_stop"] - 7.69) < 0.01
+        assert trade_data["dist_to_stop"] == 7.69
         
-        # dist_to_target = (2700 - 2600) / 2600 * 100 = 100 / 2600 * 100 = 3.846...
+        # dist_to_target = (2700 - 2600) / 2600 * 100 = 100 / 2600 * 100 = 3.846... -> 3.85
         assert "dist_to_target" in trade_data
-        assert abs(trade_data["dist_to_target"] - 3.84) < 0.01
+        assert trade_data["dist_to_target"] == 3.85
+
+def test_get_open_trades_price_fallback(client, db):
+    # Add a dummy open trade
+    trade = models.TradeJournal(
+        symbol="FALLBACK.NS",
+        entry_price=1000.0,
+        shares=10,
+        position_value=10000.0,
+        stop_loss=900.0,
+        target=1200.0,
+        status='open',
+        entry_date=datetime.date.today()
+    )
+    db.add(trade)
+    db.commit()
+
+    with patch("app.routers.journal.fetch_market_snapshots") as mock_fetch:
+        # Mock empty response to trigger fallback to entry_price
+        mock_fetch.return_value = []
+        
+        response = client.get("/api/journal/open")
+        assert response.status_code == 200
+        data = response.json()
+        
+        # Find our trade in the results
+        trade_data = next((t for t in data if t["symbol"] == "FALLBACK.NS"), None)
+        assert trade_data is not None
+        
+        # Should fallback to entry_price (1000.0)
+        assert trade_data["current_price"] == 1000.0
+        assert trade_data["unrealized_pnl"] == 0.0
+        assert trade_data["live_return_pct"] == 0.0
 
 def test_get_closed_trades(client, db):
     # Add a dummy closed trade

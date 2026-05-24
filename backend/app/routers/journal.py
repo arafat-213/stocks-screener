@@ -60,18 +60,21 @@ def get_open_trades(db: Session = Depends(get_db)):
         current_price = price_map.get(t.symbol) or t.entry_price
         
         unrealized_pnl = (current_price - t.entry_price) * t.shares
-        live_return_pct = ((current_price - t.entry_price) / t.entry_price) * 100
+        
+        live_return_pct = 0.0
+        if t.entry_price > 0:
+            live_return_pct = round(((current_price - t.entry_price) / t.entry_price) * 100, 2)
         
         # Distance calculations
         # dist_to_stop: % from current_price down to stop_loss
         dist_to_stop = 0.0
         if current_price > 0:
-            dist_to_stop = ((current_price - t.stop_loss) / current_price) * 100
+            dist_to_stop = round(((current_price - t.stop_loss) / current_price) * 100, 2)
             
         # dist_to_target: % from current_price up to target
         dist_to_target = 0.0
         if current_price > 0:
-            dist_to_target = ((t.target - current_price) / current_price) * 100
+            dist_to_target = round(((t.target - current_price) / current_price) * 100, 2)
         
         trade_data = {
             "id": t.id,
@@ -114,7 +117,10 @@ def close_trade(trade_id: int, data: TradeCloseRequest, db: Session = Depends(ge
     
     # Calculations
     trade.pnl = (data.exit_price - trade.entry_price) * trade.shares
-    trade.return_pct = ((data.exit_price - trade.entry_price) / trade.entry_price) * 100
+    
+    trade.return_pct = 0.0
+    if trade.entry_price > 0:
+        trade.return_pct = round(((data.exit_price - trade.entry_price) / trade.entry_price) * 100, 2)
     
     if trade.entry_date:
         delta = data.exit_date - trade.entry_date
@@ -139,11 +145,11 @@ def get_journal_stats(db: Session = Depends(get_db)):
     total_trades = len(closed_trades)
     winning_trades = len([t for t in closed_trades if (t.pnl or 0) > 0])
     total_pnl = sum([t.pnl or 0 for t in closed_trades])
-    avg_return = sum([t.return_pct or 0 for t in closed_trades]) / total_trades
+    avg_return = round(sum([t.return_pct or 0 for t in closed_trades]) / total_trades, 2)
     
     return {
         "total_trades": total_trades,
-        "win_rate": (winning_trades / total_trades) * 100,
+        "win_rate": round((winning_trades / total_trades) * 100, 2),
         "total_pnl": total_pnl,
         "avg_return": avg_return
     }
