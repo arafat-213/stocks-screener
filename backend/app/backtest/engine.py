@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
 from app.pipeline.utils import resample_ohlcv
-from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache
+from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache, ScreenResult
 from app.pipeline.fetcher import fetch_stock_data
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.screens.registry import SCREEN_REGISTRY
