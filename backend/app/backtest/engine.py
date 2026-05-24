@@ -985,7 +985,7 @@ def simulate_portfolio(
             regime_dict=regime_dict,
             weekly_state_map=(weekly_state_maps or {}).get(symbol),
             monthly_state_map=(monthly_state_maps or {}).get(symbol),
-            screen_dates=(screen_dates_map.get(symbol) if screen_dates_map else None),
+            screen_dates=(screen_dates_map.get(symbol, []) if screen_dates_map is not None else None),
         )
 
         if trades:
@@ -1199,7 +1199,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             # 2. Select symbols
             screen_dates_map: dict[str, list[datetime.date]] = {}
-            if config.screen_slug and config.screen_slug != "all":
+            is_screen_filtered = bool(config.screen_slug and config.screen_slug != "all")
+
+            if is_screen_filtered:
                 if config.screen_slug not in SCREEN_REGISTRY:
                     raise ValueError(f"Invalid screen slug: {config.screen_slug}")
 
@@ -1216,7 +1218,10 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 )
                 
                 if not raw_screen_rows:
-                     raise ValueError(f"Selected screen '{config.screen_slug}' returned no historical data for the period {config.date_from} to {config.date_to}.")
+                     logger.warning(
+                         "Selected screen '%s' returned no historical data for the period %s to %s.",
+                         config.screen_slug, config.date_from, config.date_to
+                     )
 
                 for symbol, computed_at in raw_screen_rows:
                     # computed_at may be datetime.date or datetime.datetime
@@ -1311,7 +1316,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                             regime_dict=regime_dict,
                             weekly_state_map=weekly_state_map,
                             monthly_state_map=monthly_state_map,
-                            screen_dates=screen_dates_map.get(symbol) if screen_dates_map else None,
+                            screen_dates=screen_dates_map.get(symbol, []) if is_screen_filtered else None,
                         )
                         
                         # Save trades to DB
@@ -1366,7 +1371,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     regime_dict=regime_dict,
                     weekly_state_maps=weekly_maps if config.require_weekly_confirmation else None,
                     monthly_state_maps=monthly_maps if config.require_monthly_confirmation else None,
-                    screen_dates_map=screen_dates_map if screen_dates_map else None,
+                    screen_dates_map=screen_dates_map if is_screen_filtered else None,
                 )
                 db_trades = []
                 for t in all_trades:
