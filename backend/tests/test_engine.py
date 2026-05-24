@@ -667,6 +667,7 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
         min_adx=0.0,
         target_pct=20.0,
         min_signal_tier=2,
+        invalidation_threshold_pct=3.0,
         require_consolidation=False,
         use_pullback_entry=False,
     )
