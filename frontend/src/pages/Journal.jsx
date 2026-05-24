@@ -98,6 +98,39 @@ const Journal = () => {
     }
   };
 
+  const handleCreateSubmit = async (e) => {
+    e.preventDefault();
+    if (!newTrade.symbol || !newTrade.entry_price || !newTrade.shares) return;
+
+    setCreating(true);
+    try {
+      await createJournalEntry({
+        ...newTrade,
+        symbol: newTrade.symbol.toUpperCase(),
+        entry_price: parseFloat(newTrade.entry_price),
+        shares: parseInt(newTrade.shares),
+        stop_loss: newTrade.stop_loss ? parseFloat(newTrade.stop_loss) : null,
+        target: newTrade.target ? parseFloat(newTrade.target) : null,
+      });
+      setCreateModalOpen(false);
+      setNewTrade({
+        symbol: '',
+        entry_price: '',
+        shares: '1',
+        stop_loss: '',
+        target: '',
+        entry_date: new Date().toISOString().split('T')[0],
+        notes: ''
+      });
+      loadData();
+    } catch (error) {
+      console.error('Error creating journal entry:', error);
+      alert('Failed to create trade. Please check console for details.');
+    } finally {
+      setCreating(false);
+    }
+  };
+
   if (loading && !stats) {
     return (
       <div className="flex items-center justify-center min-h-[400px]">
@@ -117,6 +150,13 @@ const Journal = () => {
           <p className="text-text-muted">Track and analyze your live market performance</p>
         </div>
         <div className="flex gap-2">
+          <button 
+            onClick={() => setCreateModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl shadow-lg shadow-primary/20 transition-all font-black text-sm"
+          >
+            <Plus size={18} />
+            MANUAL ENTRY
+          </button>
           <div className="px-4 py-2 bg-bg-secondary border border-border rounded-xl shadow-sm">
             <div className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">Last Updated</div>
             <div className="text-xs font-bold text-text">{new Date().toLocaleDateString()}</div>
