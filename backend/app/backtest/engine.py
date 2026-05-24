@@ -57,7 +57,7 @@ class BacktestConfig:
     atr_trailing_activation: float = 2.5
     use_partial_exits: bool = False
     use_signal_invalidation_exit: bool = False
-    invalidation_threshold_pct: float = 3.0
+    invalidation_threshold_pct: float = 5.0
 
     # ── New fields ────────────────────────────────────────────────────────────
     min_signal_tier: int = 2              # was 1; Run 5 validated Tier 2 quality
