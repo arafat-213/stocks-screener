@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw } from 'lucide-react';
+import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, ShieldCheck, ShieldAlert, ShieldX, CircleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { map, filter, size, times } from 'lodash/fp';
 import { fetchResults, getDashboardChanges } from '../api/client';
@@ -49,6 +49,7 @@ const Dashboard = () => {
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', 'watchlist', '3', '2+'
   const [selectedSectors, setSelectedSectors] = useState([]);
   const [sortBy, setSortBy] = useState('confluence'); // 'confluence', 'score', 'rsi', 'pe'
+  const [fundamentalFilter, setFundamentalFilter] = useState(true);
   const [viewMode, setViewMode] = useState('table'); // 'grid', 'table'
 
   // Responsiveness State
@@ -68,7 +69,8 @@ const Dashboard = () => {
         sector: selectedSectors.join(','),
         confluence: confluenceFilter === 'watchlist' ? undefined : confluenceFilter,
         symbols: confluenceFilter === 'watchlist' ? [...watchlist].join(',') : undefined,
-        sort_by: sortBy
+        sort_by: sortBy,
+        fundamental_filter: fundamentalFilter
       });
 
       if (isReset) {
@@ -98,7 +100,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [offset, hasMore, loading, selectedSectors, confluenceFilter, sortBy, watchlist]);
+  }, [offset, hasMore, loading, selectedSectors, confluenceFilter, sortBy, fundamentalFilter, watchlist]);
 
   // Infinite Scroll Trigger
   const sentinelRef = useRef(null);
@@ -116,7 +118,7 @@ const Dashboard = () => {
   // Filter/Sort Integration
   useEffect(() => {
     loadMore(true);
-  }, [selectedSectors, confluenceFilter, sortBy]);
+  }, [selectedSectors, confluenceFilter, sortBy, fundamentalFilter]);
 
   // Implement refresh side-effect: when status transitions from running to complete, call loadMore(true)
   const prevStatusRef = useRef(status);
@@ -170,6 +172,22 @@ const Dashboard = () => {
           {val.replace('.NS', '')}
         </Link>
       )
+    },
+    {
+      key: 'quality',
+      label: 'Quality',
+      sortable: false,
+      render: (_, row) => {
+        if (!row.fundamental_quality) return '-';
+        const { profitability_ok, debt_ok, has_fundamentals } = row.fundamental_quality;
+        if (!has_fundamentals) return <CircleAlert size={14} className="text-slate-400" />;
+        return (
+          <div className="flex gap-1">
+            {profitability_ok ? <ShieldCheck size={14} className="text-green-500" /> : <ShieldX size={14} className="text-red-500" />}
+            {debt_ok ? <ShieldCheck size={14} className="text-green-500" /> : <ShieldX size={14} className="text-red-500" />}
+          </div>
+        );
+      }
     },
     { 
       key: 'setup', 
@@ -253,6 +271,7 @@ const Dashboard = () => {
   const resetFilters = () => {
     setConfluenceFilter('all');
     setSelectedSectors([]);
+    setFundamentalFilter(true);
   };
 
   const hasData = size(stocks) > 0;
@@ -460,6 +479,27 @@ const Dashboard = () => {
                   </div>
                 </div>
 
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={18} className="text-blue-500" />
+                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Quality Filter</h3>
+                  </div>
+                  <div className="flex flex-row gap-2.5">
+                    <button
+                      onClick={() => setFundamentalFilter(true)}
+                      className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${fundamentalFilter ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
+                    >
+                      Strict
+                    </button>
+                    <button
+                      onClick={() => setFundamentalFilter(false)}
+                      className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${!fundamentalFilter ? 'bg-amber-600 text-white border-amber-600 shadow-amber-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
+                    >
+                      Show All
+                    </button>
+                  </div>
+                </div>
+
                 <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
                   <div className="flex items-center justify-between">
                     <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
@@ -610,6 +650,8 @@ const Dashboard = () => {
         toggleSector={toggleSector}
         resetFilters={resetFilters}
         watchlistCount={count}
+        fundamentalFilter={fundamentalFilter}
+        setFundamentalFilter={setFundamentalFilter}
       />
     </div>
   );

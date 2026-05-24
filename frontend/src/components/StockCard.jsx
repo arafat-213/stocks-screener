@@ -1,3 +1,4 @@
+import { ShieldCheck, ShieldX, CircleAlert } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import WatchlistStar from './WatchlistStar';
 import SetupBadge from './SetupBadge';
@@ -12,11 +13,46 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
     timeframes,
     fundamentals,
     confluence_count,
-    setup
+    setup,
+    fundamental_quality
   } = stock;
 
   const daily = timeframes?.D || {};
   const isPositive = price_change_pct >= 0;
+
+  const renderQualityBadges = () => {
+    if (!fundamental_quality) return null;
+    const { profitability_ok, debt_ok, has_fundamentals } = fundamental_quality;
+    
+    if (!has_fundamentals) {
+      return (
+        <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 text-slate-500 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border border-slate-200 dark:border-slate-700">
+          <CircleAlert size={12} /> No Data
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex gap-1.5">
+        <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
+          profitability_ok 
+            ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800/50' 
+            : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/50'
+        }`}>
+          {profitability_ok ? <ShieldCheck size={12} /> : <ShieldX size={12} />}
+          Profits
+        </div>
+        <div className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider border ${
+          debt_ok 
+            ? 'bg-green-50 dark:bg-green-900/20 text-green-600 dark:text-green-400 border-green-200 dark:border-green-800/50' 
+            : 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800/50'
+        }`}>
+          {debt_ok ? <ShieldCheck size={12} /> : <ShieldX size={12} />}
+          Debt
+        </div>
+      </div>
+    );
+  };
 
   const renderTimeframe = (tf, label) => {
     const data = timeframes?.[tf];
@@ -70,6 +106,7 @@ const StockCard = ({ stock, isWatched, onToggleWatch }) => {
             <div className="flex items-center gap-2 flex-wrap">
                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 px-2 py-0.5 rounded tracking-wider border border-slate-200 dark:border-slate-700 whitespace-nowrap">{sector}</span>
                <div className="text-[11px] text-text-muted truncate font-medium">{name}</div>
+               {renderQualityBadges()}
             </div>
           </div>
           <div className="text-right flex flex-col gap-1 shrink-0">
