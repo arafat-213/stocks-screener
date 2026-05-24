@@ -3,11 +3,11 @@ from sqlalchemy import and_, or_, func
 from app.db.models import TechnicalSignal, FundamentalCache
 from app.screens.base import get_latest_signal_date
 
-def screen_momentum_monsters(db: Session, timeframe: str = 'D'):
+def screen_momentum_monsters(db: Session, timeframe: str = 'D', target_date=None):
     """
     rs_score >= 80, momentum_3m >= 15, adx >= 25, above_200ema, RSI not overbought.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.rs_score).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
@@ -22,11 +22,11 @@ def screen_momentum_monsters(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_value_with_momentum(db: Session, timeframe: str = 'D'):
+def screen_value_with_momentum(db: Session, timeframe: str = 'D', target_date=None):
     """
     PEG < 2.0, recent 1-month momentum >= 5%, rising EMA20, above 200 EMA.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
@@ -44,12 +44,12 @@ def screen_value_with_momentum(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_ema_crossover_signals(db: Session, timeframe: str = 'D'):
+def screen_ema_crossover_signals(db: Session, timeframe: str = 'D', target_date=None):
     """
     Fresh EMA5/13 bullish cross today with ADX >= 20 and above 200 EMA.
     These are the exact signals the backtest engine trades — useful as a daily watchlist.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
@@ -64,12 +64,12 @@ def screen_ema_crossover_signals(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_volume_surge(db: Session, timeframe: str = 'D'):
+def screen_volume_surge(db: Session, timeframe: str = 'D', target_date=None):
     """
     Volume breakout (>2x 20-day average on a green day) with bullish EMA alignment.
     High-conviction entry signals — volume confirms institutional participation.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
@@ -84,12 +84,12 @@ def screen_volume_surge(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_rsi_recovery(db: Session, timeframe: str = 'D'):
+def screen_rsi_recovery(db: Session, timeframe: str = 'D', target_date=None):
     """
     RSI crossed above 40 (from below 35 recently implied by rsi_signal), price above EMA20, above 200 EMA.
     Early-stage recovery plays.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
@@ -104,7 +104,7 @@ def screen_rsi_recovery(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_actionable_entries(db: Session, timeframe: str = 'D'):
+def screen_actionable_entries(db: Session, timeframe: str = 'D', target_date=None):
     """
     Ready-to-trade EMA crossover signals that pass the same gates as the
     backtested strategy: cross above 200 EMA, RSI 40-65, positive 12m momentum,
@@ -112,7 +112,7 @@ def screen_actionable_entries(db: Session, timeframe: str = 'D'):
 
     These are the signals to act on the next trading day.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = (
         db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
         .filter(

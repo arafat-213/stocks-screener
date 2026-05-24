@@ -3,15 +3,15 @@ from sqlalchemy import and_, cast, Date, func
 from app.db.models import TechnicalSignal, Stock
 from app.screens.base import get_latest_signal_date
 
-def screen_mtf_confluence(db: Session, timeframe: str = 'D'):
+def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
     """
     All three timeframes (Daily, Weekly, Monthly) simultaneously bullish.
     This is the strongest signal in the system — rare but high conviction.
     Weekly and Monthly bullish mean RSI>50 + price>EMA26 on those timeframes.
     """
-    date_d = get_latest_signal_date(db, 'D')
-    date_w = get_latest_signal_date(db, 'W')
-    date_m = get_latest_signal_date(db, 'M')
+    date_d = target_date if target_date else get_latest_signal_date(db, 'D')
+    date_w = target_date if target_date else get_latest_signal_date(db, 'W')
+    date_m = target_date if target_date else get_latest_signal_date(db, 'M')
 
     daily = aliased(TechnicalSignal)
     weekly = aliased(TechnicalSignal)
@@ -52,13 +52,13 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D'):
     )
     return results
 
-def screen_sector_leaders(db: Session, timeframe: str = 'D'):
+def screen_sector_leaders(db: Session, timeframe: str = 'D', target_date=None):
     """
     Top 3 stocks by RS score within each sector.
     Useful for sector rotation — buy the leaders when rotating into a sector.
     Requires at least one sector assigned to the stock.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
 
     ranked = (
         db.query(
@@ -95,13 +95,13 @@ def screen_sector_leaders(db: Session, timeframe: str = 'D'):
     )
     return results
 
-def screen_fresh_52w_breakout(db: Session, timeframe: str = 'D'):
+def screen_fresh_52w_breakout(db: Session, timeframe: str = 'D', target_date=None):
     """
     Price just broke above 52-week high (within +3%) with volume confirmation.
     This is a pure price-action momentum entry — stock is in price discovery.
     Not a value play; only for momentum traders comfortable with no overhead resistance.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
 
     results = (
         db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)

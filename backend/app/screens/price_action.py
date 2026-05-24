@@ -3,12 +3,12 @@ from sqlalchemy import and_, or_, func
 from app.db.models import TechnicalSignal, Stock
 from app.screens.base import get_latest_signal_date
 
-def screen_52w_high(db: Session, timeframe: str = 'D'):
+def screen_52w_high(db: Session, timeframe: str = 'D', target_date=None):
     """
     Within 5% of 52-week high, above 200 EMA, and still bullish.
     Avoids stocks in distribution that happen to be near old highs.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_52w_high).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
@@ -23,13 +23,13 @@ def screen_52w_high(db: Session, timeframe: str = 'D'):
     
     return [(r.symbol, r.pct_from_52w_high) for r in results]
 
-def screen_52w_low(db: Session, timeframe: str = 'D'):
+def screen_52w_low(db: Session, timeframe: str = 'D', target_date=None):
     """
     Stocks within 15% of 52-week low but showing early recovery:
     RSI has bounced from oversold (<35) and price is above EMA20.
     Useful as a watchlist for potential reversals, not direct entry signals.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_52w_low).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
@@ -44,12 +44,12 @@ def screen_52w_low(db: Session, timeframe: str = 'D'):
     
     return [(r.symbol, r.pct_from_52w_low) for r in results]
 
-def screen_near_breakout(db: Session, timeframe: str = 'D'):
+def screen_near_breakout(db: Session, timeframe: str = 'D', target_date=None):
     """
     Within 3% below key resistance with volume breakout OR rising EMA slope.
     Requires bullish daily signal to avoid false breakout setups.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_resistance).filter(
         and_(
             func.date(TechnicalSignal.date) == date,

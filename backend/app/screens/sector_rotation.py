@@ -59,12 +59,12 @@ def compute_sector_rotation(db: Session) -> list[dict]:
     db.commit()
     return results
 
-def screen_hot_sectors(db: Session, timeframe: str = 'D'):
+def screen_hot_sectors(db: Session, timeframe: str = 'D', target_date=None):
     """
     Returns top stocks from the top 3 sectors by average RS score.
     Combines sector rotation signal with individual stock quality.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     snapshot_date = db.query(func.max(SectorSnapshot.date)).scalar()
     
     if not snapshot_date:

@@ -7,14 +7,16 @@ from app.screens.cache import screen_cache
 
 logger = logging.getLogger(__name__)
 
-def materialize_all_screens(db: Session):
+import app.screens.base as screens_base
+
+def materialize_all_screens(db: Session, target_date: datetime.date = None):
     """
     Truncates the screen_results table and runs all registered screen functions,
     persisting the results for fast API retrieval.
     """
     logger.info("Starting screen materialization")
     start_time = datetime.datetime.now()
-    today = datetime.date.today()
+    today = target_date if target_date else datetime.date.today()
     
     try:
         # 1. Delete existing results for today to allow re-runs without duplication
@@ -26,7 +28,7 @@ def materialize_all_screens(db: Session):
         for slug, meta in SCREEN_REGISTRY.items():
             try:
                 logger.info(f"Running screen: {slug}")
-                results = meta['fn'](db)
+                results = meta['fn'](db, target_date=target_date)
                 
                 for rank, item in enumerate(results, start=1):
                     # Handle tuples (symbol, score), dicts, or SQLAlchemy objects

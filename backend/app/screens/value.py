@@ -3,12 +3,12 @@ from sqlalchemy import and_, func, cast, Date
 from app.db.models import TechnicalSignal, FundamentalCache, Stock
 from app.screens.base import get_latest_signal_date
 
-def screen_low_debt_midcap(db: Session, timeframe: str = 'D'):
+def screen_low_debt_midcap(db: Session, timeframe: str = 'D', target_date=None):
     """
     True midcaps (5,000–20,000 Cr) with low debt, positive FCF, and sustained profitability.
     Above 200 EMA required for trend context.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
@@ -24,11 +24,11 @@ def screen_low_debt_midcap(db: Session, timeframe: str = 'D'):
     ).order_by(TechnicalSignal.entry_score.desc()).all()
     return results
 
-def screen_undervalued_fundamentals(db: Session, timeframe: str = 'D'):
+def screen_undervalued_fundamentals(db: Session, timeframe: str = 'D', target_date=None):
     """
     Low PEG (<1.5), high ROE (>15%), dividend yield, EV/EBITDA < 20.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
@@ -47,11 +47,11 @@ def screen_undervalued_fundamentals(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_steady_compounders(db: Session, timeframe: str = 'D'):
+def screen_steady_compounders(db: Session, timeframe: str = 'D', target_date=None):
     """
     High ROCE (>15%) with consistent dividend history above 200 EMA.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
@@ -67,13 +67,13 @@ def screen_steady_compounders(db: Session, timeframe: str = 'D'):
     
     return results
 
-def screen_qarp(db: Session, timeframe: str = 'D'):
+def screen_qarp(db: Session, timeframe: str = 'D', target_date=None):
     """
     Quality at Reasonable Price: high ROCE + ROE, PE < 35, low debt, profitability streak.
     The 'ideal compounder' filter.
     This is the closest equivalent to Screener.com's custom formula screens used by most serious retail investors.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = (
         db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
         .join(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
@@ -99,13 +99,13 @@ def screen_qarp(db: Session, timeframe: str = 'D'):
     )
     return results
 
-def screen_dividend_growth(db: Session, timeframe: str = 'D'):
+def screen_dividend_growth(db: Session, timeframe: str = 'D', target_date=None):
     """
     Dividend yield > 1.5%, consistent dividend history, positive FCF, and above 200 EMA.
     Income + capital appreciation combination.
     Closest to Tickertape's 'Dividend Aristocrats' filter.
     """
-    date = get_latest_signal_date(db, timeframe)
+    date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = (
         db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
         .join(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
