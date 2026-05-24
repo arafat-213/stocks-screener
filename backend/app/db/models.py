@@ -357,4 +357,40 @@ class Watchlist(Base):
         Index('ix_watchlist_status', 'status'),
     )
 
+class TradeJournal(Base):
+    __tablename__ = "trade_journal"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    symbol = Column(String, nullable=False)
+    watchlist_id = Column(Integer, ForeignKey('watchlist.id'), nullable=True)
+    
+    # Entry
+    signal_date = Column(Date, nullable=True)
+    entry_date = Column(Date, nullable=False, default=datetime.date.today)
+    entry_price = Column(Float, nullable=False)
+    shares = Column(Integer, nullable=False)
+    position_value = Column(Float, nullable=False)
+    
+    # Risk Management
+    stop_loss = Column(Float, nullable=False)
+    target = Column(Float, nullable=False)
+    quality_tier = Column(String(1), nullable=True)
+    signal_score = Column(Float, nullable=True)
+    
+    # Exit
+    exit_date = Column(Date, nullable=True)
+    exit_price = Column(Float, nullable=True)
+    exit_reason = Column(String, nullable=True) # 'stop', 'target', 'manual', 'trail'
+    pnl = Column(Float, nullable=True)
+    return_pct = Column(Float, nullable=True)
+    holding_days = Column(Integer, nullable=True)
+    
+    status = Column(String, nullable=False, default='open') # 'open' | 'closed'
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        Index('ix_tj_status', 'status'),
+        Index('ix_tj_symbol', 'symbol'),
+    )
+
 
