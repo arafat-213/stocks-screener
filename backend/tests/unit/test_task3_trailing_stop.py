@@ -26,9 +26,10 @@ def test_trailing_stop_triggered():
         "score": 100.0,
         "rsi": 50.0,
         "adx": 25.0,
-        "ema_signal": "bullish",
+        "ema_signal": "bullish_cross",
         "volume_breakout": True,
-        "above_200ema": True
+        "above_200ema": True,
+        "is_consolidating": True
     }]
     
     # Entry at day 11 Open. Price around 104.
@@ -41,7 +42,11 @@ def test_trailing_stop_triggered():
         holding_days=80,
         trailing_stop_pct=10.0,
         stop_loss_pct=0,
-        target_pct=0
+        target_pct=0,
+        risk_reward_ratio=100.0,
+        min_signal_tier=4,
+        require_consolidation=False,
+        use_pullback_entry=False
     )
     
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
@@ -63,16 +68,22 @@ def test_regime_filter_blocks_trade():
         "score": 100.0,
         "rsi": 50.0,
         "adx": 25.0,
-        "ema_signal": "bullish",
+        "ema_signal": "bullish_cross",
         "volume_breakout": True,
-        "above_200ema": True
+        "above_200ema": True,
+        "is_consolidating": True
     }]
     
     # Regime says FALSE for entry date (T+1)
     entry_date = df.index[11].date()
     regime_dict = {entry_date: False}
     
-    config = BacktestConfig(use_regime_filter=True)
+    config = BacktestConfig(
+        use_regime_filter=True,
+        min_signal_tier=4,
+        require_consolidation=False,
+        use_pullback_entry=False
+    )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, regime_dict=regime_dict)
     
     assert len(trades) == 0
@@ -85,16 +96,22 @@ def test_regime_filter_allows_trade():
         "score": 100.0,
         "rsi": 50.0,
         "adx": 25.0,
-        "ema_signal": "bullish",
+        "ema_signal": "bullish_cross",
         "volume_breakout": True,
-        "above_200ema": True
+        "above_200ema": True,
+        "is_consolidating": True
     }]
     
     # Regime says TRUE for entry date (T+1)
     entry_date = df.index[11].date()
     regime_dict = {entry_date: True}
     
-    config = BacktestConfig(use_regime_filter=True)
+    config = BacktestConfig(
+        use_regime_filter=True,
+        min_signal_tier=4,
+        require_consolidation=False,
+        use_pullback_entry=False
+    )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, regime_dict=regime_dict)
     
     assert len(trades) == 1
@@ -109,12 +126,18 @@ def test_volume_breakout_filter():
         "score": 100.0,
         "rsi": 50.0,
         "adx": 25.0,
-        "ema_signal": "bullish",
+        "ema_signal": "bullish_cross",
         "volume_breakout": False,
-        "above_200ema": True
+        "above_200ema": True,
+        "is_consolidating": True
     }]
     
-    config = BacktestConfig(require_volume_breakout=True)
+    config = BacktestConfig(
+        require_volume_breakout=True,
+        min_signal_tier=4,
+        require_consolidation=False,
+        use_pullback_entry=False
+    )
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
     assert len(trades) == 0
     

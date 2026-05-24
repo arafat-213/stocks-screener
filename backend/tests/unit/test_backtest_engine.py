@@ -222,13 +222,15 @@ def test_simulate_trades_date_filters():
 def test_compute_metrics_all_winners():
     trades = [
         TradeResult(
-            symbol="T1.NS", sector="S1", signal_date=None, entry_date=None, 
+            symbol="T1.NS", sector="S1", signal_date=pd.Timestamp('2020-01-01').date(), 
+            entry_date=pd.Timestamp('2020-01-02').date(), 
             exit_date=pd.Timestamp('2020-01-10').date(), exit_reason='target',
             signal_score=90.0, entry_price=100.0, exit_price=110.0, return_pct=10.0,
             rsi_at_signal=0, adx_at_signal=0, ema_signal=""
         ),
         TradeResult(
-            symbol="T2.NS", sector="S2", signal_date=None, entry_date=None, 
+            symbol="T2.NS", sector="S2", signal_date=pd.Timestamp('2020-01-05').date(), 
+            entry_date=pd.Timestamp('2020-01-06').date(), 
             exit_date=pd.Timestamp('2020-01-15').date(), exit_reason='holding_period',
             signal_score=85.0, entry_price=100.0, exit_price=105.0, return_pct=5.0,
             rsi_at_signal=0, adx_at_signal=0, ema_signal=""
@@ -244,12 +246,12 @@ def test_compute_metrics_all_winners():
     assert metrics['total_trades'] == 2
     assert metrics['winning_trades'] == 2
     assert metrics['win_rate'] == 100.0  # Scale 0-100
-    assert metrics['avg_return_pct'] == pytest.approx(7.0)  # (9.5 + 4.5) / 2
-    assert metrics['total_return_pct'] == pytest.approx(7.0) # (1400 / 20000) * 100 = 7.0
+    assert metrics['avg_return_pct'] == pytest.approx(7.25)  # (9.75 + 4.75) / 2
+    assert metrics['total_return_pct'] == pytest.approx(7.25) # (1450 / 20000) * 100 = 7.25
     assert len(metrics['equity_curve']) == 3
     # Initial capital = 2 * 10000 = 20000
-    # First point: date 2020-01-10, cumulative PL = +950 (9.5% of 10000)
-    assert metrics['equity_curve'][0]['equity'] == pytest.approx(20950.0)
+    # First point: date 2020-01-10, cumulative PL = +975 (9.75% of 10000)
+    assert metrics['equity_curve'][0]['equity'] == pytest.approx(20975.0)
 
 def test_backtest_config_new_defaults():
     config = BacktestConfig()

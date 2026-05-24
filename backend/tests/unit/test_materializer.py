@@ -15,7 +15,7 @@ def test_materialize_all_screens_handles_various_types():
     
     # Mock registry
     mock_registry = {
-        slug: {"fn": lambda db, s=slug: mock_results[s]}
+        slug: {"fn": lambda db, target_date=None, s=slug: mock_results[s]}
         for slug in mock_results
     }
     
@@ -58,7 +58,7 @@ def test_materialize_all_screens_default_score():
     
     # Mock registry
     mock_registry = {
-        slug: {"fn": lambda db, s=slug: mock_results[s]}
+        slug: {"fn": lambda db, target_date=None, s=slug: mock_results[s]}
         for slug in mock_results
     }
     

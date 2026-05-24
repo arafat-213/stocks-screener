@@ -109,9 +109,10 @@ class TestMTFGates:
                 'is_bullish': True,
                 'rsi': 50.0,
                 'adx': 30.0,
-                'ema_signal': 'bullish',
+                'ema_signal': 'bullish_cross',
                 'volume_breakout': True,
                 'above_200ema': True,
+                'is_consolidating': True,
             }
         ]
         
@@ -121,7 +122,10 @@ class TestMTFGates:
             min_adx=25.0,
             require_weekly_confirmation=False,
             require_monthly_confirmation=False,
-            use_regime_filter=False
+            use_regime_filter=False,
+            min_signal_tier=4,
+            require_consolidation=False,
+            use_pullback_entry=False
         )
         
         return df, scored_dates, config
@@ -174,12 +178,14 @@ class TestMTFGates:
         # 1. Weekly True, Monthly False -> Reject
         weekly_map = {datetime.date(2023, 1, 1): True}
         monthly_map = {datetime.date(2023, 1, 1): False}
-        trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, weekly_map, monthly_map)
+        trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, 
+                                 weekly_state_map=weekly_map, monthly_state_map=monthly_map)
         assert len(trades) == 0
         
         # 2. Both True -> Accept
         monthly_map = {datetime.date(2023, 1, 1): True}
-        trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, weekly_map, monthly_map)
+        trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config, 
+                                 weekly_state_map=weekly_map, monthly_state_map=monthly_map)
         assert len(trades) == 1
 
     def test_gate_fail_closed_no_preceding_bar(self, setup_data):
@@ -196,7 +202,7 @@ class TestMTFGates:
 class TestBacktestRequestDefaults:
     def test_defaults(self):
         r = BacktestRequest()
-        assert r.require_weekly_confirmation is True
+        assert r.require_weekly_confirmation is False
         assert r.require_monthly_confirmation is False
 
 class TestSerializeRunConfigBlock:

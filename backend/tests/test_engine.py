@@ -229,11 +229,11 @@ class TestPositionSizing:
         config = BacktestConfig(starting_capital=1_000_000.0, position_size=10_000.0)
         metrics = compute_metrics(trades, benchmark_data=None, config=config)
         # Cost-adjusted returns:
-        # Trade 1: 10.0 - 0.5 = 9.5%. PnL = 9.5 / 100 * 20_000 = 1900
-        # Trade 2: -10.0 - 0.5 = -10.5%. PnL = -10.5 / 100 * 10_000 = -1050
-        # Total PnL = 1900 - 1050 = 850
-        # total_return_pct = 850 / 1_000_000 * 100 = 0.085%
-        assert metrics["total_return_pct"] == pytest.approx(0.085, abs=0.001)
+        # Trade 1: 10.0 - 0.25 = 9.75%. PnL = 9.75 / 100 * 20_000 = 1950
+        # Trade 2: -10.0 - 0.25 = -10.25%. PnL = -10.25 / 100 * 10_000 = -1025
+        # Total PnL = 1950 - 1025 = 925
+        # total_return_pct = 925 / 1_000_000 * 100 = 0.0925%
+        assert metrics["total_return_pct"] == pytest.approx(0.0925, abs=0.0001)
 
 class TestScoreSeriesPerformance:
     def test_score_series_completes_300_bars_under_2_seconds(self):

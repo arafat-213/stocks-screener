@@ -20,4 +20,4 @@ def test_fetch_market_snapshots_uses_session(mock_download):
     mock_download.return_value = pd.DataFrame()
     fetch_market_snapshots(["^NSEI"])
     
-    mock_download.assert_called_once_with(["^NSEI"], period="5d", progress=False, threads=False)
+    mock_download.assert_called_once_with(["^NSEI"], period="5d", progress=False, threads=False, auto_adjust=False)
