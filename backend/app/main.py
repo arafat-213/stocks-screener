@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from app.db import session as db_session
 from app.pipeline.orchestrator import run_pipeline, cleanup_zombie_runs
 from app.pipeline.cleanup import run_cleanup
-from app.routers import stocks, dashboard, reports, screens, backtest, paper_trading, watchlist
+from app.routers import stocks, dashboard, reports, screens, backtest, paper_trading, watchlist, journal
 from sqlalchemy import text
 from app.core.cache import response_cache
 from app.pipeline.ohlcv_cache import OHLCVCache
@@ -86,6 +86,7 @@ app.include_router(screens.router, prefix="/api")
 app.include_router(backtest.router, prefix="/api")
 app.include_router(paper_trading.router, prefix="/api")
 app.include_router(watchlist.router, prefix="/api")
+app.include_router(journal.router, prefix="/api")
 app.include_router(reports.router)
 
 def db_query_pipeline_run(db):
