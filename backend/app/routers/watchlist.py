@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import func
 from pydantic import BaseModel
 from datetime import date
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 from app.db.session import get_db
 from app.db.models import Watchlist, TechnicalSignal, FundamentalCache
@@ -18,6 +18,9 @@ _ohlcv_cache = OHLCVCache()
 class WatchlistAddRequest(BaseModel):
     symbol: str
     signal_date: date
+
+class WatchlistStatusUpdate(BaseModel):
+    status: Literal["watching", "entered", "skipped"]
 
 class WatchlistResponse(BaseModel):
     id: int
@@ -181,3 +184,23 @@ def get_watchlist(db: Session = Depends(get_db)):
         results.append(WatchlistLiveResponse(**live_data_dict))
         
     return results
+
+@router.patch("/{id}/status", response_model=WatchlistResponse)
+def update_watchlist_status(id: int, req: WatchlistStatusUpdate, db: Session = Depends(get_db)):
+    entry = db.query(Watchlist).filter(Watchlist.id == id).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Watchlist entry not found")
+    
+    entry.status = req.status
+    db.commit()
+    db.refresh(entry)
+    return entry
+
+@router.get("/expired", response_model=List[WatchlistResponse])
+def get_expired_watchlist(db: Session = Depends(get_db)):
+    """
+    Return all Watchlist entries where status is NOT 'watching'.
+    This covers 'expired', 'entered', and 'skipped'.
+    """
+    entries = db.query(Watchlist).filter(Watchlist.status != 'watching').order_by(Watchlist.added_date.desc()).all()
+    return entries
