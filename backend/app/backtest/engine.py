@@ -995,6 +995,8 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             "profit_factor":  0.0,
             "avg_win_pct":    0.0,
             "avg_loss_pct":   0.0,
+            "gross_return_pct": 0.0,
+            "total_cost_drag_pct": 0.0,
             "exit_breakdown": {"stop_loss": 0, "target": 0, "target_partial": 0, "trailing_stop": 0, "signal_invalidated": 0, "holding_period": 0, "atr_trailing_stop": 0},
         }
         

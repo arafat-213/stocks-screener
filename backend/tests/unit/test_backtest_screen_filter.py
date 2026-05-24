@@ -30,18 +30,7 @@ def test_run_backtest_with_screen_filter(db):
     }):
         with patch("app.backtest.engine._ohlcv_cache.get", return_value=None): # skip benchmark
              with patch("app.backtest.engine.fetch_stock_data", return_value=(None, None)):
-                  with patch("app.backtest.engine.compute_metrics") as mock_metrics:
-                       mock_metrics.return_value = {
-                           "total_trades": 0, "winning_trades": 0, "win_rate": 0.0,
-                           "avg_return_pct": 0.0, "median_return_pct": 0.0,
-                           "best_trade_pct": 0.0, "worst_trade_pct": 0.0,
-                           "max_drawdown_pct": 0.0, "sharpe_ratio": 0.0,
-                           "total_return_pct": 0.0, "benchmark_return_pct": 0.0,
-                           "equity_curve": [], "expectancy": 0.0, "profit_factor": 0.0,
-                           "avg_win_pct": 0.0, "avg_loss_pct": 0.0,
-                           "exit_breakdown": {}, "gross_return_pct": 0.0, "total_cost_drag_pct": 0.0
-                       }
-                       run_backtest(db, run_id, config)
+                  run_backtest(db, run_id, config)
 
     # Verify
     updated_run = db.query(BacktestRun).filter_by(run_id=run_id).first()
