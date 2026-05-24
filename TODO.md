@@ -5,4 +5,4 @@
 - [x] Task 3: Live P&L and Stats Logic
 - [x] Task 4: Frontend API & Route Setup
 - [x] Task 5: Frontend Journal Page
-- [ ] Task 6: Frontend Watchlist Bridge
+- [x] Task 6: Frontend Watchlist Bridge
