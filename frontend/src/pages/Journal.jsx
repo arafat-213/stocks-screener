@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -30,6 +31,7 @@ const Journal = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [closing, setClosing] = useState(false);
+  const location = useLocation();
 
   // Manual Entry state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -40,9 +42,32 @@ const Journal = () => {
     stop_loss: '',
     target: '',
     entry_date: new Date().toISOString().split('T')[0],
-    notes: ''
+    notes: '',
+    watchlist_id: null
   });
   const [creating, setCreating] = useState(false);
+
+  // Handle pre-fill from URL params
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('action') === 'new') {
+      const symbol = params.get('symbol') || '';
+      const price = params.get('price') || '';
+      const sl = params.get('sl') || '';
+      const target = params.get('target') || '';
+      const wlId = params.get('wl_id') || null;
+
+      setNewTrade(prev => ({
+        ...prev,
+        symbol: symbol,
+        entry_price: price,
+        stop_loss: sl,
+        target: target,
+        watchlist_id: wlId
+      }));
+      setCreateModalOpen(true);
+    }
+  }, [location.search]);
 
   // Form state for closing trade
   const [exitPrice, setExitPrice] = useState('');
@@ -120,7 +145,8 @@ const Journal = () => {
         stop_loss: '',
         target: '',
         entry_date: new Date().toISOString().split('T')[0],
-        notes: ''
+        notes: '',
+        watchlist_id: null
       });
       loadData();
     } catch (error) {
@@ -496,13 +522,13 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                   <td className="p-4">
                     <div className="flex flex-col gap-1 max-w-[120px] mx-auto">
                       <div className="flex justify-between text-[9px] font-black uppercase tracking-tighter">
-                        <span className="text-bearish">SL: {toStop?.toFixed(1)}%</span>
-                        <span className="text-bullish">TGT: {toTarget?.toFixed(1)}%</span>
+                        <span className="text-bearish">SL: {toStop !== null ? `${toStop.toFixed(1)}%` : '-'}</span>
+                        <span className="text-bullish">TGT: {toTarget !== null ? `${toTarget.toFixed(1)}%` : '-'}</span>
                       </div>
                       <div className="h-1 bg-border rounded-full overflow-hidden flex">
                         <div 
                           className="h-full bg-bearish opacity-30" 
-                          style={{ width: `${Math.max(0, Math.min(100, (100 - (toStop || 0) * 10)))}%` }}
+                          style={{ width: toStop !== null ? `${Math.max(0, Math.min(100, (100 - (toStop || 0) * 10)))}%` : '0%' }}
                         ></div>
                       </div>
                     </div>

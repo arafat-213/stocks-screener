@@ -371,8 +371,8 @@ class TradeJournal(Base):
     position_value = Column(Float, nullable=False)
     
     # Risk Management
-    stop_loss = Column(Float, nullable=False)
-    target = Column(Float, nullable=False)
+    stop_loss = Column(Float, nullable=True)
+    target = Column(Float, nullable=True)
     quality_tier = Column(String(1), nullable=True)
     signal_score = Column(Float, nullable=True)
     

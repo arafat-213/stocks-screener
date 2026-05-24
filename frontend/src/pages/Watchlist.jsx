@@ -15,7 +15,8 @@ import {
   ShieldCheck, 
   ShieldX, 
   CircleAlert,
-  Trash2
+  Trash2,
+  Briefcase
 } from 'lucide-react';
 import SetupBadge from '../components/SetupBadge';
 
@@ -167,6 +168,13 @@ const Watchlist = () => {
         <div className="flex gap-2">
           {row.status === 'watching' && (
             <>
+              <Link 
+                to={`/journal?action=new&symbol=${row.symbol}&price=${row.live_price || row.close_price}&sl=${row.stop_loss || ''}&target=${row.target || ''}&wl_id=${row.id}`}
+                className="p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors"
+                title="Log Trade"
+              >
+                <Briefcase size={16} />
+              </Link>
               <button 
                 onClick={() => handleStatusUpdate(row.symbol, 'entered')}
                 className="p-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors"

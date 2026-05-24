@@ -130,7 +130,7 @@ def test_close_trade(client, db):
     assert data["holding_days"] == 5
 
 def test_get_journal_stats(client, db):
-    # Add one winner and one loser
+    # Add one winner and one loser (closed)
     trade1 = models.TradeJournal(
         symbol="W1.NS", entry_price=100, shares=10, exit_price=110, 
         position_value=1000.0, stop_loss=90.0, target=120.0,
@@ -141,12 +141,23 @@ def test_get_journal_stats(client, db):
         position_value=1000.0, stop_loss=90.0, target=120.0,
         status='closed', pnl=-100, return_pct=-10, exit_date=datetime.date.today()
     )
-    db.add_all([trade1, trade2])
+    # Add one open trade
+    trade3 = models.TradeJournal(
+        symbol="O1.NS", entry_price=100, shares=10,
+        position_value=1000.0, stop_loss=90.0, target=120.0,
+        status='open', entry_date=datetime.date.today()
+    )
+    db.add_all([trade1, trade2, trade3])
     db.commit()
 
-    response = client.get("/api/journal/stats")
-    assert response.status_code == 200
-    data = response.json()
-    assert data["total_trades"] == 2
-    assert data["win_rate"] == 50.0
-    assert data["total_pnl"] == 0.0
+    with patch("app.routers.journal.fetch_market_snapshots") as mock_fetch:
+        mock_fetch.return_value = [{"symbol": "O1.NS", "close": 105.0}]
+        
+        response = client.get("/api/journal/stats")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total_trades"] == 2
+        assert data["win_rate"] == 50.0
+        assert data["total_pnl"] == 0.0
+        assert data["total_unrealized_pnl"] == 50.0 # (105-100)*10
+        assert data["open_positions"] == 1

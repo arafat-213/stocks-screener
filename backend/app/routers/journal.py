@@ -13,8 +13,8 @@ class TradeEntryCreate(BaseModel):
     symbol: str
     entry_price: float
     shares: int
-    stop_loss: float
-    target: float
+    stop_loss: Optional[float] = None
+    target: Optional[float] = None
     signal_date: Optional[datetime.date] = None
     entry_date: Optional[datetime.date] = datetime.date.today()
     watchlist_id: Optional[int] = None
@@ -68,12 +68,12 @@ def get_open_trades(db: Session = Depends(get_db)):
         # Distance calculations
         # dist_to_stop: % from current_price down to stop_loss
         dist_to_stop = 0.0
-        if current_price > 0:
+        if current_price > 0 and t.stop_loss is not None:
             dist_to_stop = round(((current_price - t.stop_loss) / current_price) * 100, 2)
             
         # dist_to_target: % from current_price up to target
         dist_to_target = 0.0
-        if current_price > 0:
+        if current_price > 0 and t.target is not None:
             dist_to_target = round(((t.target - current_price) / current_price) * 100, 2)
         
         trade_data = {
@@ -133,23 +133,29 @@ def close_trade(trade_id: int, data: TradeCloseRequest, db: Session = Depends(ge
 @router.get("/stats")
 def get_journal_stats(db: Session = Depends(get_db)):
     closed_trades = db.query(models.TradeJournal).filter(models.TradeJournal.status == 'closed').all()
+    open_trades = db.query(models.TradeJournal).filter(models.TradeJournal.status == 'open').all()
     
-    if not closed_trades:
-        return {
-            "total_trades": 0,
-            "win_rate": 0,
-            "total_pnl": 0,
-            "avg_return": 0
-        }
-        
     total_trades = len(closed_trades)
     winning_trades = len([t for t in closed_trades if (t.pnl or 0) > 0])
     total_pnl = sum([t.pnl or 0 for t in closed_trades])
-    avg_return = round(sum([t.return_pct or 0 for t in closed_trades]) / total_trades, 2)
+    avg_return = round(sum([t.return_pct or 0 for t in closed_trades]) / total_trades, 2) if total_trades > 0 else 0
     
+    # Calculate Unrealized PnL
+    total_unrealized_pnl = 0.0
+    if open_trades:
+        symbols = list(set([t.symbol for t in open_trades]))
+        snapshots = fetch_market_snapshots(symbols)
+        price_map = {s['symbol']: s['close'] for s in snapshots}
+        
+        for t in open_trades:
+            current_price = price_map.get(t.symbol) or t.entry_price
+            total_unrealized_pnl += (current_price - t.entry_price) * t.shares
+            
     return {
         "total_trades": total_trades,
-        "win_rate": round((winning_trades / total_trades) * 100, 2),
+        "win_rate": round((winning_trades / total_trades) * 100, 2) if total_trades > 0 else 0,
         "total_pnl": total_pnl,
-        "avg_return": avg_return
+        "avg_return": avg_return,
+        "total_unrealized_pnl": total_unrealized_pnl,
+        "open_positions": len(open_trades)
     }
