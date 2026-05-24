@@ -1,5 +1,5 @@
+from sqlalchemy import and_, or_, func, case as sa_case
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_, func
 from app.db.models import TechnicalSignal, FundamentalCache
 from app.screens.base import get_latest_signal_date
 
@@ -107,14 +107,32 @@ def screen_rsi_recovery(db: Session, timeframe: str = 'D', target_date=None):
 def screen_actionable_entries(db: Session, timeframe: str = 'D', target_date=None):
     """
     Ready-to-trade EMA crossover signals that pass the same gates as the
-    backtested strategy: cross above 200 EMA, RSI 40-65, positive 12m momentum,
+    backtested strategy: cross above 200 EMA, RSI 35-65 (35 allows RSI recovery setups that the backtest also trades), positive 12m momentum,
     prior consolidation, AND (volume breakout OR ADX >= 25).
 
     These are the signals to act on the next trading day.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = (
-        db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
+        db.query(
+            TechnicalSignal.symbol, 
+            TechnicalSignal.entry_score,
+            sa_case(
+                (
+                    (FundamentalCache.profitability_streak_passed == True) & 
+                    (FundamentalCache.de_check_passed == True) & 
+                    (FundamentalCache.fcf_positive == True), 
+                    'A'
+                ),
+                (
+                    (FundamentalCache.profitability_streak_passed == True) | 
+                    (FundamentalCache.de_check_passed == True), 
+                    'B'
+                ),
+                else_='C'
+            ).label('quality_tier')
+        )
+        .outerjoin(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
         .filter(
             and_(
                 func.date(TechnicalSignal.date) == date,
@@ -134,4 +152,4 @@ def screen_actionable_entries(db: Session, timeframe: str = 'D', target_date=Non
         .order_by(TechnicalSignal.entry_score.desc())
         .all()
     )
-    return results
+    return [(r.symbol, r.entry_score, r.quality_tier) for r in results]

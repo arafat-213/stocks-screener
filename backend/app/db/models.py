@@ -168,6 +168,7 @@ class ScreenResult(Base):
     timeframe = Column(String(1), nullable=False) # 'D', 'W', 'M'
     rank = Column(Integer)
     score_used = Column(Float)
+    quality_tier = Column(String(1), nullable=True)
     computed_at = Column(Date, default=datetime.date.today)
 
 class BacktestRun(Base):

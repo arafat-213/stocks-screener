@@ -4,7 +4,7 @@ import { map, size } from 'lodash/fp';
 const mapWithIdx = map.convert({ cap: false });
 
 const SCREEN_COLUMNS = {
-  'actionable-entries':     ['symbol', 'name', 'price', 'change_pct', 'rsi', 'volume_breakout', 'shares', 'position_value', 'score'],
+  'actionable-entries':     ['symbol', 'name', 'quality_tier', 'price', 'change_pct', 'rsi', 'volume_breakout', 'shares', 'position_value', 'score'],
   'momentum-monsters':      ['symbol', 'name', 'rs_score', 'momentum_3m', 'adx', 'score'],
   'value-with-momentum':    ['symbol', 'name', 'peg_ratio', 'momentum_1m', 'ema_slope', 'score'],
   'near-breakout':          ['symbol', 'name', 'pct_from_resistance', 'volume_breakout', 'score'],
@@ -19,6 +19,21 @@ const SCREEN_COLUMNS = {
 const COLUMN_META = {
   symbol:               { label: 'Symbol',      fmt: v => <span className="text-blue-600 dark:text-blue-400 font-black tracking-tighter">{v.replace('.NS', '')}</span> },
   name:                 { label: 'Name',         fmt: v => <span className="text-slate-500 dark:text-slate-400 font-bold text-xs truncate max-w-[120px] inline-block">{v}</span> },
+  quality_tier:         { 
+    label: 'Quality',   
+    fmt: v => {
+      const colors = {
+        'A': 'bg-green-600 text-white border-green-700',
+        'B': 'bg-blue-600 text-white border-blue-700',
+        'C': 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
+      };
+      return v ? (
+        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${colors[v] || colors['C']}`}>
+          {v}
+        </span>
+      ) : '—';
+    }
+  },
   score:                { label: 'Score',        fmt: v => <span className={`font-black text-sm px-2 py-1 rounded ${v >= 70 ? 'bg-green-500 text-white' : v >= 50 ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800'}`}>{v?.toFixed(1) ?? '—'}</span> },
   rs_score:             { label: 'RS Score',     fmt: v => <span className="text-blue-600 dark:text-blue-400 font-black">{v?.toFixed(0) ?? '—'}</span> },
   momentum_1m:          { label: '1M Mom %',     fmt: v => <span className={`font-black text-[11px] px-2 py-0.5 rounded shadow-sm ${v > 0 ? 'bg-green-500 text-white' : v < 0 ? 'bg-red-500 text-white' : 'bg-slate-100'}`}>{v != null ? `${v > 0 ? '+' : ''}${v.toFixed(1)}%` : '—'}</span> },

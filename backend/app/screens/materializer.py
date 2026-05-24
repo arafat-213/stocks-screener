@@ -31,18 +31,22 @@ def materialize_all_screens(db: Session, target_date: datetime.date = None):
                 results = meta['fn'](db, target_date=target_date)
                 
                 for rank, item in enumerate(results, start=1):
-                    # Handle tuples (symbol, score), dicts, or SQLAlchemy objects
+                    # Handle tuples (symbol, score, quality_tier), dicts, or SQLAlchemy objects
+                    quality_tier = None
                     if isinstance(item, tuple):
                         symbol = item[0]
                         score = item[1] if len(item) > 1 else 0.0
+                        quality_tier = item[2] if len(item) > 2 else None
                         timeframe = 'D'
                     elif isinstance(item, dict):
                         symbol = item.get('symbol')
                         score = item.get('score', 0.0)
+                        quality_tier = item.get('quality_tier')
                         timeframe = item.get('timeframe', 'D')
                     else:
                         symbol = getattr(item, 'symbol', None)
                         score = getattr(item, 'entry_score', 0.0)
+                        quality_tier = getattr(item, 'quality_tier', None)
                         timeframe = getattr(item, 'timeframe', 'D')
 
                     if not symbol:
@@ -54,6 +58,7 @@ def materialize_all_screens(db: Session, target_date: datetime.date = None):
                         timeframe=timeframe,
                         rank=rank,
                         score_used=float(score) if score is not None else 0.0,
+                        quality_tier=quality_tier,
                         computed_at=today
                     )
                     db.add(res)
