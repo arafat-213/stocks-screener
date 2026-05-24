@@ -59,12 +59,29 @@ class OHLCVCache:
     def _is_fresh(self, df: pd.DataFrame) -> bool:
         if df.empty:
             return False
+        
         max_age_hours = int(os.environ.get("OHLCV_CACHE_MAX_AGE_HOURS", "24"))
         last_ts = df.index[-1]
         if hasattr(last_ts, "tzinfo") and last_ts.tzinfo is not None:
             last_ts = last_ts.tz_localize(None)
-        age_hours = (pd.Timestamp.now('UTC').tz_localize(None) - last_ts).total_seconds() / 3600
-        return age_hours < max_age_hours
+            
+        now = pd.Timestamp.now('UTC').tz_localize(None)
+        age_hours = (now - last_ts).total_seconds() / 3600
+        
+        # 1. Standard age check
+        if age_hours < max_age_hours:
+            return True
+            
+        # 2. Weekend bypass: If it's Saturday (5) or Sunday (6) in UTC, 
+        # and we already have data from the most recent Friday (4), we are fresh.
+        now_weekday = now.weekday()
+        if now_weekday in [5, 6]:
+            days_since_friday = (now_weekday - 4)
+            expected_friday = (now - pd.Timedelta(days=days_since_friday)).date()
+            if last_ts.date() >= expected_friday:
+                return True
+                
+        return False
 
     def _full_fetch(
         self, symbol: str, append_ns: bool, period: str, path: Path
