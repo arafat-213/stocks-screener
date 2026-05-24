@@ -494,19 +494,27 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         logger.info("Generating daily report")
         generate_daily_report(db)
 
+        # 5b. Generate Signal Digest (Forward Validation)
+        try:
+            from app.pipeline.signal_digest import generate_signal_digest
+            digest_path = generate_signal_digest(db)
+            logger.info("Signal digest generated at %s", digest_path)
+        except Exception as e:
+            logger.error("Failed to generate signal digest: %s", e)
+
         # 6. Materialize Named Screens
         from app.screens.materializer import materialize_all_screens
         materialize_all_screens(db)
 
-        # 7. Paper Trading daily cycle
-        try:
-            from app.paper_trading.engine import run_paper_trading_cycle
-            pt_result = run_paper_trading_cycle(db)
-            logger.info("Paper trading cycle result: %s", pt_result)
-        except Exception as e:
-            logger.error("Paper trading cycle failed (non-fatal): %s", e)
-            import traceback
-            logger.error(traceback.format_exc())
+        # 7. Paper Trading (REMOVED - replaced by Signal Digest)
+        # try:
+        #     from app.paper_trading.engine import run_paper_trading_cycle
+        #     pt_result = run_paper_trading_cycle(db)
+        #     logger.info("Paper trading cycle result: %s", pt_result)
+        # except Exception as e:
+        #     logger.error("Paper trading cycle failed (non-fatal): %s", e)
+        #     import traceback
+        #     logger.error(traceback.format_exc())
             
         run.status = "complete"
         run.stocks_fetched = fetched_count

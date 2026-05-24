@@ -4,8 +4,32 @@ from sqlalchemy import func, cast, Date
 from app.db.session import get_db
 from app.db.models import Stock, TechnicalSignal
 from datetime import datetime
+from pathlib import Path
+import json
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
+@router.get("/digest/latest")
+def get_latest_digest():
+    reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
+    digests = sorted(reports_dir.glob("digest_*.json"), reverse=True)
+    if not digests:
+        raise HTTPException(status_code=404, detail="No digest found")
+    try:
+        return json.loads(digests[0].read_text())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
+
+@router.get("/digest/{date}")
+def get_digest_by_date(date: str):
+    reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
+    path = reports_dir / f"digest_{date}.json"
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Digest not found for this date")
+    try:
+        return json.loads(path.read_text())
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
 
 @router.get("")
 def list_reports(db: Session = Depends(get_db)):
