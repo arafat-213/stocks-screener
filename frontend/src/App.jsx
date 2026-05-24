@@ -11,6 +11,7 @@ import Intelligence from './pages/Intelligence';
 import System from './pages/System';
 import Backtest from './pages/Backtest';
 import PaperTrading from './pages/PaperTrading';
+import Journal from './pages/Journal';
 
 function App() {
   return (
@@ -25,6 +26,7 @@ function App() {
           <Route path="/intel" element={<Intelligence />} />
           <Route path="/system" element={<System />} />
           <Route path="/backtest" element={<Backtest />} />
+          <Route path="/journal" element={<Journal />} />
         </Routes>
       </MainLayout>
     </ThemeProvider>
