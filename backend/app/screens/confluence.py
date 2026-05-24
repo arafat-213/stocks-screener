@@ -19,6 +19,7 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
 
     results = (
         db.query(daily.symbol, daily.entry_score)
+        .join(Stock, daily.symbol == Stock.symbol)
         .join(
             weekly,
             and_(
@@ -105,6 +106,7 @@ def screen_fresh_52w_breakout(db: Session, timeframe: str = 'D', target_date=Non
 
     results = (
         db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
+        .join(Stock, TechnicalSignal.symbol == Stock.symbol)
         .filter(
             and_(
                 func.date(TechnicalSignal.date) == date,

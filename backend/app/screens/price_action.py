@@ -9,7 +9,9 @@ def screen_52w_high(db: Session, timeframe: str = 'D', target_date=None):
     Avoids stocks in distribution that happen to be near old highs.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_52w_high).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_52w_high).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
@@ -30,7 +32,9 @@ def screen_52w_low(db: Session, timeframe: str = 'D', target_date=None):
     Useful as a watchlist for potential reversals, not direct entry signals.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_52w_low).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_52w_low).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
@@ -50,7 +54,9 @@ def screen_near_breakout(db: Session, timeframe: str = 'D', target_date=None):
     Requires bullish daily signal to avoid false breakout setups.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_resistance).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.pct_from_resistance).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,

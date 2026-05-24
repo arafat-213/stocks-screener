@@ -10,6 +10,8 @@ def screen_low_debt_midcap(db: Session, timeframe: str = 'D', target_date=None):
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
         and_(
@@ -34,6 +36,8 @@ def screen_undervalued_fundamentals(db: Session, timeframe: str = 'D', target_da
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
         and_(
@@ -61,6 +65,8 @@ def screen_steady_compounders(db: Session, timeframe: str = 'D', target_date=Non
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
         and_(
@@ -124,6 +130,7 @@ def screen_dividend_growth(db: Session, timeframe: str = 'D', target_date=None):
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = (
         db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score)
+        .join(Stock, TechnicalSignal.symbol == Stock.symbol)
         .join(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
         .filter(
             and_(

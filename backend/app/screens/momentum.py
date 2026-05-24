@@ -1,6 +1,6 @@
 from sqlalchemy import and_, or_, func, case as sa_case
 from sqlalchemy.orm import Session
-from app.db.models import TechnicalSignal, FundamentalCache
+from app.db.models import TechnicalSignal, FundamentalCache, Stock
 from app.screens.base import get_latest_signal_date
 
 def screen_momentum_monsters(db: Session, timeframe: str = 'D', target_date=None):
@@ -8,7 +8,9 @@ def screen_momentum_monsters(db: Session, timeframe: str = 'D', target_date=None
     rs_score >= 80, momentum_3m >= 15, adx >= 25, above_200ema, RSI not overbought.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.rs_score).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.rs_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
@@ -28,6 +30,8 @@ def screen_value_with_momentum(db: Session, timeframe: str = 'D', target_date=No
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).join(
         FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol
     ).filter(
         and_(
@@ -50,7 +54,9 @@ def screen_ema_crossover_signals(db: Session, timeframe: str = 'D', target_date=
     These are the exact signals the backtest engine trades — useful as a daily watchlist.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
@@ -70,7 +76,9 @@ def screen_volume_surge(db: Session, timeframe: str = 'D', target_date=None):
     High-conviction entry signals — volume confirms institutional participation.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
@@ -90,7 +98,9 @@ def screen_rsi_recovery(db: Session, timeframe: str = 'D', target_date=None):
     Early-stage recovery plays.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
-    results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).filter(
+    results = db.query(TechnicalSignal.symbol, TechnicalSignal.entry_score).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
+    ).filter(
         and_(
             func.date(TechnicalSignal.date) == date,
             TechnicalSignal.timeframe == timeframe,
@@ -132,6 +142,7 @@ def screen_actionable_entries(db: Session, timeframe: str = 'D', target_date=Non
                 else_='C'
             ).label('quality_tier')
         )
+        .join(Stock, TechnicalSignal.symbol == Stock.symbol)
         .outerjoin(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
         .filter(
             and_(
