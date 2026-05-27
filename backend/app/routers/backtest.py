@@ -83,6 +83,7 @@ class BacktestRequest(BaseModel):
             "Prevents chasing EMA crosses that occur after large moves."
         ),
     )
+    consolidation_bars: int = Field(default=15, ge=5, le=30)
     use_pullback_entry: bool = Field(
         default=True,
         description=(
@@ -98,7 +99,44 @@ class BacktestRequest(BaseModel):
         le=5.0,
         description="How close to EMA20 price must come to trigger pullback entry (%).",
     )
-    consolidation_bars: int = Field(default=15, ge=5, le=30)
+    screen_signal_mode: bool = Field(
+        default=False,
+        description=(
+            "Model B: Use screen qualification dates directly as entry signals. "
+            "Bypasses technical filters (EMA cross, volume, RSI, consolidation) "
+            "since the screen already validated quality. Use for Momentum/Value/Quality screens. "
+            "Leave False for event-driven screens (actionable-entries) where EMA-cross timing is preferred."
+        ),
+    )
+    screen_membership_window_days: int = Field(
+        default=7,
+        ge=1,
+        le=90,
+        description=(
+            "Model A only: How many calendar days back to look for screen membership "
+            "relative to a technical signal date. Ensures symbols are only traded while "
+            "actively meeting screen criteria."
+        ),
+    )
+    screen_reentry_gap_days: int = Field(
+        default=60,
+        ge=7,
+        le=365,
+        description=(
+            "Model B only: Minimum calendar days gap required before the same stock "
+            "can generate a new signal from screen re-qualification. Prevents "
+            "excessive trades when a stock stays in a screen for months."
+        ),
+    )
+    screen_driven_rsi_max: float = Field(
+        default=75.0,
+        ge=50.0,
+        le=90.0,
+        description=(
+            "Model B only: Maximum RSI at screen qualification date. "
+            "Prevents entering momentum stocks at peak overbought extension."
+        ),
+    )
     consolidation_max_range_pct: float = Field(default=12.0, ge=5.0, le=25.0)
     min_adx: float = Field(
         default=0.0,    # was 25.0 — tier gate (min_signal_tier) handles ADX filtering
@@ -187,8 +225,9 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
         if run.exit_breakdown_json:
             result["metrics"]["exit_breakdown"] = json.loads(run.exit_breakdown_json)
 
-        if include_curve and run.equity_curve_json:
-            result["equity_curve"] = json.loads(run.equity_curve_json)
+        # Temporarily commented out as requested
+        # if include_curve and run.equity_curve_json:
+        #     result["equity_curve"] = json.loads(run.equity_curve_json)
     return result
 
 def _serialize_trade(trade: models.BacktestTrade):
@@ -278,6 +317,10 @@ def start_backtest(
         pullback_tolerance_pct=request.pullback_tolerance_pct,
         consolidation_bars=request.consolidation_bars,
         consolidation_max_range_pct=request.consolidation_max_range_pct,
+        screen_signal_mode=request.screen_signal_mode,
+        screen_membership_window_days=request.screen_membership_window_days,
+        screen_reentry_gap_days=request.screen_reentry_gap_days,
+        screen_driven_rsi_max=request.screen_driven_rsi_max,
     )
     
     # Add to background tasks

@@ -8,6 +8,7 @@ import json
 import logging
 import traceback
 import bisect
+import threading
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
@@ -21,6 +22,15 @@ from app.core.logging_manager import logging_manager
 
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
+
+# In-memory cache for cross-run optimization.
+# Stores {symbol: DataFrame} where DataFrame contains all precomputed indicators.
+# Metadata tracks the latest date in the cached DataFrame to ensure freshness.
+_TA_CACHE = {}
+_TA_METADATA = {} # {symbol: latest_date}
+
+# Cache for raw OHLCV data to avoid redundant Parquet reads during sequential runs.
+_OHLCV_CACHE = {} # {symbol: DataFrame}
 
 ROUND_TRIP_COST_PCT = 0.25  # 0.25% per trade: brokerage + STT + slippage
 
@@ -58,6 +68,10 @@ class BacktestConfig:
     use_partial_exits: bool = False
     use_signal_invalidation_exit: bool = False
     invalidation_threshold_pct: float = 5.0
+    screen_signal_mode: bool = False      # When True, screen dates drive signals (Model B)
+    screen_membership_window_days: int = 7 # Model A only: how far back to look for screen membership
+    screen_reentry_gap_days: int = 60     # Model B only: min days between signals for same symbol
+    screen_driven_rsi_max: float = 75.0   # Model B only: max RSI allowed at qualification date
 
     # ── New fields ────────────────────────────────────────────────────────────
     min_signal_tier: int = 2              # was 1; Run 5 validated Tier 2 quality
@@ -99,6 +113,25 @@ class TradeResult:
     ema_signal: str
     position_size_used: float = 0.0   # actual rupee position, may differ from config.position_size
 
+def _get_cached_ohlcv(symbol: str, period: str = '5y') -> Optional[pd.DataFrame]:
+    """
+    Wraps _ohlcv_cache.get with a process-level in-memory cache to avoid
+    redundant Parquet deserialization during sequential runs.
+    """
+    if symbol in _OHLCV_CACHE:
+        return _OHLCV_CACHE[symbol]
+
+    df = _ohlcv_cache.get(symbol, period=period)
+    
+    if df is not None and not df.empty:
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+        
+        _OHLCV_CACHE[symbol] = df
+        return df
+            
+    return None
+
 def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
     """
     Resamples daily data to timeframe ('W' or 'M') and scores each bar.
@@ -137,13 +170,21 @@ def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
         
     return state_map
 
-def _compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
+def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
     """
     Computes all pandas-ta indicators on the full DataFrame in a single pass.
     Called once per symbol instead of once per bar.
     Returns a new DataFrame with all indicator columns appended.
+    Utilizes _TA_CACHE if symbol is provided and latest date matches.
     """
+    if symbol and symbol in _TA_CACHE:
+        latest_date = df.index[-1]
+        if _TA_METADATA.get(symbol) == latest_date:
+            return _TA_CACHE[symbol]
+
     df = df.copy()
+    # Import pandas_ta locally if not global to ensure extensions are ready
+    import pandas_ta as ta
     df.ta.ema(length=5, append=True)
     df.ta.ema(length=13, append=True)
     df.ta.ema(length=20, append=True)
@@ -161,6 +202,11 @@ def _compute_all_indicators(df: pd.DataFrame) -> pd.DataFrame:
     ema20_col = 'EMA_20'
     if ema20_col in df.columns:
         df['EMA_SLOPE_20'] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
+
+    if symbol:
+        _TA_CACHE[symbol] = df
+        _TA_METADATA[symbol] = df.index[-1]
+
     return df
 
 def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
@@ -335,7 +381,99 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         'ema20': float(ema20) if pd.notna(ema20) else None,
     }
 
-def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = None):
+def _build_screen_driven_signals(
+    symbol: str,
+    screen_dates: list[datetime.date],
+    df: pd.DataFrame,
+    config: BacktestConfig,
+) -> list[dict]:
+    """
+    Model B signal builder.
+    Each date the stock appeared in the named screen becomes a candidate signal.
+    Score/tier/consolidation/RSI gates are bypassed — the screen already made the
+    quality decision on that date.
+    Regime filter, pullback entry, sizing, and exit logic still apply downstream.
+    """
+    if df is None or df.empty or not screen_dates:
+        return []
+
+    # Ensure df index is naive
+    if df.index.tz is not None:
+        df = df.copy()
+        df.index = df.index.tz_localize(None)
+
+    df_ind = _compute_all_indicators(df, symbol=symbol)
+    # Map dates to indices for O(1) lookup
+    date_to_idx = {d.date() if hasattr(d, 'date') else d: i for i, d in enumerate(df.index)}
+    
+    signals = []
+    last_signal_date = None
+    reentry_gap = getattr(config, 'screen_reentry_gap_days', 60)
+
+    # Ensure screen_dates are sorted
+    sorted_screen_dates = sorted(screen_dates)
+
+    for screen_date in sorted_screen_dates:
+        # Check re-entry gap
+        if last_signal_date is not None:
+            if (screen_date - last_signal_date).days < reentry_gap:
+                continue
+
+        idx = date_to_idx.get(screen_date)
+        if idx is None or idx < 260: # need enough history for indicators (200 EMA + 12m momentum)
+            continue
+
+        if config.date_from and screen_date < config.date_from:
+            continue
+        if config.date_to and screen_date > config.date_to:
+            continue
+
+        try:
+            bar = _score_bar_from_precomputed(df_ind, idx)
+        except Exception as e:
+            logger.error(f"Error scoring screen date {screen_date} for {symbol}: {e}")
+            continue
+
+        # Hard structural gates — everything else is the screen's responsibility
+        # We still respect the 200 EMA as a absolute minimum for long positions
+        if bar.get('above_200ema') is not True:
+            continue
+        
+        # We also skip stocks in structural 12m downtrends (negative momentum)
+        if bar.get('momentum_12m') is not None and bar['momentum_12m'] < 0:
+            continue
+
+        # RSI ceiling — even in Model B, don't enter extremely overbought stocks.
+        # Momentum stocks with RSI > 75 are statistically at elevated reversal risk.
+        rsi_max = getattr(config, 'screen_driven_rsi_max', 75.0)
+        rsi = bar.get('rsi') or 0.0
+        if rsi > rsi_max:
+            continue
+
+        signals.append({
+            'date': df.index[idx],
+            'score': 100.0, # screen qualification = full score
+            'is_bullish': True,
+            'rsi': bar['rsi'],
+            'adx': bar['adx'],
+            'ema_signal': bar['ema_signal'] or 'bullish',
+            'volume_signal': bar.get('volume_signal', 'neutral'),
+            'rsi_signal': bar.get('rsi_signal', 'neutral'),
+            'close': float(df_ind['Close'].iloc[idx]),
+            'open': float(df_ind['Open'].iloc[idx]),
+            'volume_breakout': bar['volume_breakout'],
+            'atr': bar['atr'],
+            'above_200ema': True,
+            'momentum_12m': bar.get('momentum_12m'),
+            'momentum_3m': bar.get('momentum_3m'),
+            'ema20': bar.get('ema20'),
+            'is_consolidating': True, # bypass — screen validated quality
+        })
+        last_signal_date = screen_date
+
+    return signals
+
+def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: BacktestConfig = None):
     """
     Computes per-bar scores for all bars in df using a single indicator pass (O(n)).
 
@@ -352,7 +490,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
         fund_score = calculate_fundamental_score(None, fund_cache=fund_cache)
 
     # Single indicator computation pass — O(n)
-    df_ind = _compute_all_indicators(df)
+    df_ind = _compute_all_indicators(df, symbol=symbol)
 
     results = []
     MIN_BARS = 260
@@ -516,16 +654,18 @@ def simulate_trades(
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
     screen_dates: list[datetime.date] | None = None,
+    is_screen_driven: bool = False,
 ):
     """
     Simulates trades based on scored signals.
     Entry: Next day's Open.
     Exit: SL, Target, or Holding Period.
     
-    screen_dates: if provided (screen-based backtest), a signal is only acted on 
-    if the symbol was in the screen within 7 calendar days before the signal date.
-    Prevents look-ahead bias where a stock that only qualifies for a screen 
-    in 2025 generates signals from 2021.
+    screen_dates: if provided, a signal is only acted on if the symbol was in the 
+    screen within config.screen_membership_window_days before the signal date.
+    
+    is_screen_driven: if True (Model B), bypasses quality/tier gates since the 
+    screen already validated the entry quality on that exact date.
     """
     trades = []
     last_exit_idx = -1
@@ -543,12 +683,12 @@ def simulate_trades(
         if isinstance(compare_date, str):
              compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
 
-        # ── Screen membership gate (prevents look-ahead bias) ─────────────────
-        # Only enter if the symbol was in the named screen within the 7 calendar
-        # days preceding the signal. This ensures we only trade momentum-monsters
-        # when it IS a momentum monster, not just because it became one later.
-        if _sorted_screen_dates is not None:
-            window_start = compare_date - datetime.timedelta(days=7)
+        # ── Screen membership gate (Model A only) ─────────────────────────────
+        # If in Model A (is_screen_driven=False) but a screen is provided,
+        # we only enter if the symbol was in the named screen recently.
+        if _sorted_screen_dates is not None and not is_screen_driven:
+            window_days = getattr(config, 'screen_membership_window_days', 7)
+            window_start = compare_date - datetime.timedelta(days=window_days)
             # bisect to find dates in [window_start, compare_date]
             lo = bisect.bisect_left(_sorted_screen_dates, window_start)
             hi = bisect.bisect_right(_sorted_screen_dates, compare_date)
@@ -560,11 +700,6 @@ def simulate_trades(
             continue
         if config.date_to and compare_date > config.date_to:
             continue
-
-        # Volume Breakout Filter
-        if config.require_volume_breakout:
-            if not signal.get('volume_breakout', False):
-                continue
 
         signal_idx = date_to_idx.get(signal_date)
         
@@ -598,131 +733,162 @@ def simulate_trades(
             if not _lookup_mtf_state(monthly_state_map, compare_date):
                 continue
 
-        # Signal Quality Tier Gate
-        signal_tier = _compute_signal_tier(signal)
-        if signal_tier > config.min_signal_tier:   # default=1: require BOTH vol+ADX
-            continue
-            
-        rsi_at_signal = signal.get("rsi", 0.0) or 0.0
-        if rsi_at_signal > 65.0:
-            continue
-            
-        if signal['score'] >= config.effective_score_threshold:
+        # Signal Quality Tier & Score Gate
+        # Bypassed in Model B — screen already validated entry quality.
+        if not is_screen_driven:
+            signal_tier = _compute_signal_tier(signal)
+            if signal_tier > config.min_signal_tier:
+                continue
+                
+            rsi_at_signal = signal.get("rsi", 0.0) or 0.0
+            if rsi_at_signal > 65.0:
+                continue
+                
+            if signal['score'] < config.effective_score_threshold:
+                continue
+
+            # Volume Breakout Filter
+            if config.require_volume_breakout:
+                if not signal.get('volume_breakout', False):
+                    continue
 
             # ── Consolidation gate ────────────────────────────────────────────
             if config.require_consolidation and not signal.get('is_consolidating', False):
                 continue
+        
+        # ── Entry Logic (Pullback vs Immediate) ───────────────────────────────
+        signal_ema20 = signal.get('ema20')
+        ema_signal_type = signal.get('ema_signal', '')
 
-            # ── Entry: pullback vs. immediate ─────────────────────────────────
-            signal_ema20 = signal.get('ema20')
-            ema_signal_type = signal.get('ema_signal', '')
+        entry_idx = None
+        entry_price = None
+        entry_date = None
 
-            entry_idx = None
-            entry_price = None
-            entry_date = None
+        use_pullback = (
+            config.use_pullback_entry
+            and ema_signal_type == 'bullish_cross'
+            and signal_ema20 is not None
+            and signal_ema20 > 0
+        )
 
-            use_pullback = (
-                config.use_pullback_entry
-                and ema_signal_type == 'bullish_cross'
-                and signal_ema20 is not None
-                and signal_ema20 > 0
-            )
+        entry_path = 'immediate'  # Track which path was used for stop logic
 
-            entry_path = 'immediate'  # Track which path was used for stop logic
+        if use_pullback:
+            # Wait up to pullback_max_wait_bars for price to touch EMA20
+            tol = config.pullback_tolerance_pct / 100.0
+            
+            # Track whether price held above EMA20 throughout the wait
+            all_bars_above_ema20 = True
+            closest_approach_pct = float('inf')  # How close price got to EMA20 (%)
+            
+            for wait_k in range(signal_idx + 1,
+                                min(signal_idx + config.pullback_max_wait_bars + 1,
+                                    len(df))):
+                wait_date = df.index[wait_k]
+                wait_compare = wait_date.date() if hasattr(wait_date, 'date') else wait_date
 
-            if use_pullback:
-                # Wait up to pullback_max_wait_bars for price to touch EMA20
-                tol = config.pullback_tolerance_pct / 100.0
-                
-                # Track whether price held above EMA20 throughout the wait
-                all_bars_above_ema20 = True
-                closest_approach_pct = float('inf')  # How close price got to EMA20 (%)
-                
-                for wait_k in range(signal_idx + 1,
-                                    min(signal_idx + config.pullback_max_wait_bars + 1,
-                                        len(df))):
-                    wait_date = df.index[wait_k]
-                    wait_compare = wait_date.date() if hasattr(wait_date, 'date') else wait_date
-
-                    # Abort if regime turns bearish during the wait
-                    if config.use_regime_filter and regime_dict is not None:
-                        if not regime_dict.get(wait_compare, False):
-                            all_bars_above_ema20 = False
-                            break
-
-                    day_low   = df.iloc[wait_k]['Low']
-                    day_close = df.iloc[wait_k]['Close']
-                    day_open  = df.iloc[wait_k]['Open']
-
-                    # Invalidation: closed meaningfully below EMA20
-                    if day_close < signal_ema20 * (1 - 0.025):
+                # Abort if regime turns bearish during the wait
+                if config.use_regime_filter and regime_dict is not None:
+                    if not regime_dict.get(wait_compare, False):
                         all_bars_above_ema20 = False
                         break
 
-                    # Track closest approach to EMA20 from above
-                    approach_pct = (day_low - signal_ema20) / signal_ema20 * 100
-                    closest_approach_pct = min(closest_approach_pct, approach_pct)
+                day_low   = df.iloc[wait_k]['Low']
+                day_close = df.iloc[wait_k]['Close']
+                day_open  = df.iloc[wait_k]['Open']
 
-                    # Path A: Price pulled back to within tol% above EMA20 AND held
-                    touched_ema = day_low <= signal_ema20 * (1 + tol)
-                    # TIGHTENED: close must be AT or within 0.5% above EMA20 (was 1.5% below)
-                    # — confirms support held before we commit capital
-                    held_above = day_close >= signal_ema20 * 0.995
-
-                    if touched_ema and held_above:
-                        # Path A: price bounced from EMA20 and closed above it.
-                        # Enter at this bar's close — the close confirms support held.
-                        # Using next-bar open risks entering after a gap-up with the same
-                        # structural stop, making the effective risk distance tighter.
-                        entry_path = 'pullback_a'
-                        entry_idx = wait_k
-                        entry_date = wait_date
-                        entry_price = float(df.iloc[wait_k]['Close'])
-                        break
-
-                # Path B: Momentum continuation — price never pulled back but
-                # consolidated above EMA20 throughout the wait window.
-                if entry_idx is None and all_bars_above_ema20 and closest_approach_pct != float('inf'):
-                    if closest_approach_pct <= 8.0:
-                        last_wait_k = min(signal_idx + config.pullback_max_wait_bars, len(df) - 1)
-                        entry_path  = 'momentum_b'
-                        entry_idx   = last_wait_k
-                        entry_date  = df.index[last_wait_k]
-                        entry_price = float(df.iloc[last_wait_k]['Open'])
-
-                if entry_idx is None:
-                    continue
-
-            else:
-                entry_idx = signal_idx + 1
-                if entry_idx >= len(df):
+                # Invalidation: closed meaningfully below EMA20
+                if day_close < signal_ema20 * (1 - 0.025):
+                    all_bars_above_ema20 = False
                     break
 
-                entry_date = df.index[entry_idx]
-                entry_compare_date = entry_date.date() if hasattr(entry_date, 'date') else entry_date
+                # Track closest approach to EMA20 from above
+                approach_pct = (day_low - signal_ema20) / signal_ema20 * 100
+                closest_approach_pct = min(closest_approach_pct, approach_pct)
 
-                if config.use_regime_filter and regime_dict is not None:
-                    if not regime_dict.get(entry_compare_date, False):
-                        continue
+                # Path A: Price pulled back to within tol% above EMA20 AND held
+                touched_ema = day_low <= signal_ema20 * (1 + tol)
+                # TIGHTENED: close must be AT or within 0.5% above EMA20 (was 1.5% below)
+                # — confirms support held before we commit capital
+                held_above = day_close >= signal_ema20 * 0.995
 
-                entry_price = float(df.iloc[entry_idx]['Open'])
+                if touched_ema and held_above:
+                    # Path A: price bounced from EMA20 and closed above it.
+                    # Enter at this bar's close — the close confirms support held.
+                    # Using next-bar open risks entering after a gap-up with the same
+                    # structural stop, making the effective risk distance tighter.
+                    entry_path = 'pullback_a'
+                    entry_idx = wait_k
+                    entry_date = wait_date
+                    entry_price = float(df.iloc[wait_k]['Close'])
+                    break
 
-            pos_size = _compute_position_size(
-                config,
-                entry_price=entry_price,
-                atr=signal.get('atr'),
+            # Path B: Momentum continuation — price never pulled back but
+            # consolidated above EMA20 throughout the wait window.
+            if entry_idx is None and all_bars_above_ema20 and closest_approach_pct != float('inf'):
+                if closest_approach_pct <= 8.0:
+                    last_wait_k = min(signal_idx + config.pullback_max_wait_bars, len(df) - 1)
+                    entry_path  = 'momentum_b'
+                    entry_idx   = last_wait_k
+                    entry_date  = df.index[last_wait_k]
+                    entry_price = float(df.iloc[last_wait_k]['Open'])
+
+            if entry_idx is None:
+                continue
+
+        else:
+            entry_idx = signal_idx + 1
+            if entry_idx >= len(df):
+                break
+
+            entry_date = df.index[entry_idx]
+            entry_compare_date = entry_date.date() if hasattr(entry_date, 'date') else entry_date
+
+            if config.use_regime_filter and regime_dict is not None:
+                if not regime_dict.get(entry_compare_date, False):
+                    continue
+
+            entry_price = float(df.iloc[entry_idx]['Open'])
+
+        # Model B momentum guard: verify stock is still trending at entry.
+        # A momentum stock that has lost 1-month momentum since screen qualification
+        # is a failed setup — the thesis has already broken down before entry.
+        if is_screen_driven and entry_idx >= 21:
+            entry_momentum_1m = (
+                (df.iloc[entry_idx]['Close'] / df.iloc[entry_idx - 21]['Close'] - 1) * 100
             )
+            if entry_momentum_1m < 0:
+                continue
 
-            # ── Stop and Target ────────────────────────────────────────────────────
-            # The ATR at signal time is measured DURING consolidation — it's compressed
-            # by design. Using it for stops creates levels that normal post-breakout
-            # noise blows through. The consolidation period LOW is the correct structural
-            # stop: if price returns below where it consolidated, the breakout thesis
-            # is invalid. This is path-agnostic (applies to both pullback and momentum).
-            MIN_STOP_PCT = 0.05  # 5% minimum: hard floor against compressed ATR
-            atr_val = signal.get('atr')
+        pos_size = _compute_position_size(
+            config,
+            entry_price=entry_price,
+            atr=signal.get('atr'),
+        )
 
-            # Consolidation low as natural structural stop
+        # ── Stop and Target ────────────────────────────────────────────────────
+        # The ATR at signal time is measured DURING consolidation — it's compressed
+        # by design. Using it for stops creates levels that normal post-breakout
+        # noise blows through. The consolidation period LOW is the correct structural
+        # stop: if price returns below where it consolidated, the breakout thesis
+        # is invalid. This is path-agnostic (applies to both pullback and momentum).
+        MIN_STOP_PCT = 0.05  # 5% minimum: hard floor against compressed ATR
+        atr_val = signal.get('atr')
+
+        if is_screen_driven:
+            # Model B: momentum/trending stocks are NOT consolidating.
+            # The structural stop (15-bar low) is meaningless — it just captures
+            # a slice of the uptrend and creates absurdly wide stops (20-35%).
+            # Use pure ATR-based stop. If ATR is unavailable, fall back to
+            # config.stop_loss_pct which the user explicitly set.
+            if atr_val and atr_val > 0:
+                base_stop = entry_price - config.atr_multiplier * atr_val
+            elif config.stop_loss_pct > 0:
+                base_stop = entry_price * (1 - config.stop_loss_pct / 100)
+            else:
+                base_stop = entry_price * 0.93
+        else:
+            # Model A: stock entered after consolidation — structural stop is valid.
             consol_start = max(0, signal_idx - config.consolidation_bars)
             consol_window = df.iloc[consol_start:signal_idx]
             consol_low = float(consol_window['Low'].min()) if len(consol_window) > 0 else None
@@ -744,173 +910,173 @@ def simulate_trades(
             else:
                 base_stop = entry_price * (1 - config.stop_loss_pct / 100) if config.stop_loss_pct > 0 else entry_price * 0.93
 
-            # Enforce 5% minimum — if consolidation was very tight, base_stop
-            # can be only 2-3% away, which is noise on NSE stocks
-            min_stop_price = entry_price * (1 - MIN_STOP_PCT)
-            stop_loss_price = min(base_stop, min_stop_price)  # min = lower price = wider stop
+        # Enforce 5% minimum — if consolidation was very tight, base_stop
+        # can be only 2-3% away, which is noise on NSE stocks
+        min_stop_price = entry_price * (1 - MIN_STOP_PCT)
+        stop_loss_price = min(base_stop, min_stop_price)  # min = lower price = wider stop
 
-            actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
-            if config.target_pct > 0:
-                target_price = entry_price * (1 + config.target_pct / 100)
-            else:
-                target_price = entry_price + config.risk_reward_ratio * actual_risk
+        actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
+        if config.target_pct > 0:
+            target_price = entry_price * (1 + config.target_pct / 100)
+        else:
+            target_price = entry_price + config.risk_reward_ratio * actual_risk
 
-            # Partial exits: recalculate around actual_risk
-            if config.use_partial_exits:
-                t1_price = entry_price + 1.0 * actual_risk
-                t2_price = target_price
-            else:
-                t1_price = None
-                t2_price = None
+        # Partial exits: recalculate around actual_risk
+        if config.use_partial_exits:
+            t1_price = entry_price + 1.0 * actual_risk
+            t2_price = target_price
+        else:
+            t1_price = None
+            t2_price = None
 
-            # Exit conditions
-            exit_price = None
-            exit_date = None
-            exit_reason = 'holding_period'
+        # Exit conditions
+        exit_price = None
+        exit_date = None
+        exit_reason = 'holding_period'
 
-            t1_hit = False
-            t1_exit_trade = None
+        t1_hit = False
+        t1_exit_trade = None
 
-            # Walk forward up to config.holding_days
-            final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
+        # Walk forward up to config.holding_days
+        final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
+        
+        highest_price_since_entry = entry_price
+        
+        consecutive_bearish_bars = 0
+        invalidation_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
+        
+        for k in range(entry_idx, final_idx + 1):
+            day_low = df.iloc[k]['Low']
+            day_high = df.iloc[k]['High']
+            day_open = df.iloc[k]['Open']
             
-            highest_price_since_entry = entry_price
+            highest_price_since_entry = max(highest_price_since_entry, day_high)
             
-            consecutive_bearish_bars = 0
-            invalidation_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
-            
-            for k in range(entry_idx, final_idx + 1):
-                day_low = df.iloc[k]['Low']
-                day_high = df.iloc[k]['High']
-                day_open = df.iloc[k]['Open']
-                
-                highest_price_since_entry = max(highest_price_since_entry, day_high)
-                
-                # Signal Invalidation Exit
-                if config.use_signal_invalidation_exit:
-                    day_close = df.iloc[k]['Close']
-                    if day_close < invalidation_floor:
-                        consecutive_bearish_bars += 1
+            # Signal Invalidation Exit
+            if config.use_signal_invalidation_exit:
+                day_close = df.iloc[k]['Close']
+                if day_close < invalidation_floor:
+                    consecutive_bearish_bars += 1
+                else:
+                    consecutive_bearish_bars = 0
+
+                if consecutive_bearish_bars >= 2:
+                    next_k = k + 1
+                    if next_k < len(df):
+                        exit_price = df.iloc[next_k]['Open']
+                        exit_date = df.index[next_k]
                     else:
-                        consecutive_bearish_bars = 0
-
-                    if consecutive_bearish_bars >= 2:
-                        next_k = k + 1
-                        if next_k < len(df):
-                            exit_price = df.iloc[next_k]['Open']
-                            exit_date = df.index[next_k]
-                        else:
-                            exit_price = df.iloc[k]['Close']
-                            exit_date = df.index[k]
-                        exit_reason = 'signal_invalidated'
-                        last_exit_idx = next_k if next_k < len(df) else k
-                        break
-
-                # Check Stop Loss first (conservative)
-                if day_low <= stop_loss_price:
-                    exit_price = stop_loss_price
-                    exit_date = df.index[k]
-                    exit_reason = 'stop_loss'
-                    last_exit_idx = k
-                    break
-                    
-                # Partial exit T1
-                if not t1_hit and t1_price is not None and day_high >= t1_price:
-                    t1_hit = True
-                    t1_exit_trade = TradeResult(
-                        symbol=symbol,
-                        sector=sector,
-                        signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
-                        entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
-                        exit_date=df.index[k].date() if hasattr(df.index[k], 'date') else df.index[k],
-                        exit_reason='target_partial',
-                        signal_score=signal['score'],
-                        entry_price=float(entry_price),
-                        exit_price=float(t1_price),
-                        return_pct=float(((t1_price - entry_price) / entry_price) * 100),
-                        rsi_at_signal=signal['rsi'],
-                        adx_at_signal=signal['adx'],
-                        ema_signal=signal['ema_signal'],
-                        position_size_used=pos_size * 0.5,
-                    )
-                    # Move stop to breakeven for the remainder
-                    stop_loss_price = entry_price
-                    # Update target to T2
-                    target_price = t2_price
-
-                # Check Profit Target — evaluated before trailing stops.
-                # A bar that touches the target high and the trailing-stop low on the
-                # same candle should record a target exit: price reached the objective
-                # first, then pulled back. Checking target before trailing stops prevents
-                # the trailing stop from stealing a target hit.
-                if day_high >= target_price:
-                    exit_price = target_price
-                    exit_date = df.index[k]
-                    exit_reason = 'target'
-                    last_exit_idx = k
-                    break
-
-                # Check Trailing Stop (% based)
-                if config.trailing_stop_pct > 0:
-                    trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
-                    if day_low <= trailing_stop_price:
-                        exit_price = min(trailing_stop_price, day_open)
+                        exit_price = df.iloc[k]['Close']
                         exit_date = df.index[k]
-                        exit_reason = 'trailing_stop'
+                    exit_reason = 'signal_invalidated'
+                    last_exit_idx = next_k if next_k < len(df) else k
+                    break
+
+            # Check Stop Loss first (conservative)
+            if day_low <= stop_loss_price:
+                exit_price = stop_loss_price
+                exit_date = df.index[k]
+                exit_reason = 'stop_loss'
+                last_exit_idx = k
+                break
+                
+            # Partial exit T1
+            if not t1_hit and t1_price is not None and day_high >= t1_price:
+                t1_hit = True
+                t1_exit_trade = TradeResult(
+                    symbol=symbol,
+                    sector=sector,
+                    signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
+                    entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
+                    exit_date=df.index[k].date() if hasattr(df.index[k], 'date') else df.index[k],
+                    exit_reason='target_partial',
+                    signal_score=signal['score'],
+                    entry_price=float(entry_price),
+                    exit_price=float(t1_price),
+                    return_pct=float(((t1_price - entry_price) / entry_price) * 100),
+                    rsi_at_signal=signal['rsi'],
+                    adx_at_signal=signal['adx'],
+                    ema_signal=signal['ema_signal'],
+                    position_size_used=pos_size * 0.5,
+                )
+                # Move stop to breakeven for the remainder
+                stop_loss_price = entry_price
+                # Update target to T2
+                target_price = t2_price
+
+            # Check Profit Target — evaluated before trailing stops.
+            # A bar that touches the target high and the trailing-stop low on the
+            # same candle should record a target exit: price reached the objective
+            # first, then pulled back. Checking target before trailing stops prevents
+            # the trailing stop from stealing a target hit.
+            if day_high >= target_price:
+                exit_price = target_price
+                exit_date = df.index[k]
+                exit_reason = 'target'
+                last_exit_idx = k
+                break
+
+            # Check Trailing Stop (% based)
+            if config.trailing_stop_pct > 0:
+                trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
+                if day_low <= trailing_stop_price:
+                    exit_price = min(trailing_stop_price, day_open)
+                    exit_date = df.index[k]
+                    exit_reason = 'trailing_stop'
+                    last_exit_idx = k
+                    break
+
+            # ATR Trailing Stop
+            if config.use_atr_trailing_stop and signal.get('atr'):
+                atr_val = signal['atr']
+                activation_threshold = entry_price + (config.atr_trailing_activation * atr_val)
+                if highest_price_since_entry >= activation_threshold:
+                    # Floor at entry_price: trailing stop must never fire below breakeven.
+                    # Without this floor, if activation=1.0 and multiplier=1.5,
+                    # the stop = peak - 1.5 ATR = entry + 1.0 ATR - 1.5 ATR = entry - 0.5 ATR
+                    # which causes losses on trailing stop exits.
+                    atr_trail_stop = max(
+                        entry_price,
+                        highest_price_since_entry - (config.atr_trailing_multiplier * atr_val),
+                    )
+                    if day_low <= atr_trail_stop:
+                        exit_price = max(atr_trail_stop, day_open)
+                        exit_date = df.index[k]
+                        exit_reason = 'atr_trailing_stop'
                         last_exit_idx = k
                         break
-
-                # ATR Trailing Stop
-                if config.use_atr_trailing_stop and signal.get('atr'):
-                    atr_val = signal['atr']
-                    activation_threshold = entry_price + (config.atr_trailing_activation * atr_val)
-                    if highest_price_since_entry >= activation_threshold:
-                        # Floor at entry_price: trailing stop must never fire below breakeven.
-                        # Without this floor, if activation=1.0 and multiplier=1.5,
-                        # the stop = peak - 1.5 ATR = entry + 1.0 ATR - 1.5 ATR = entry - 0.5 ATR
-                        # which causes losses on trailing stop exits.
-                        atr_trail_stop = max(
-                            entry_price,
-                            highest_price_since_entry - (config.atr_trailing_multiplier * atr_val),
-                        )
-                        if day_low <= atr_trail_stop:
-                            exit_price = max(atr_trail_stop, day_open)
-                            exit_date = df.index[k]
-                            exit_reason = 'atr_trailing_stop'
-                            last_exit_idx = k
-                            break
+        
+        if exit_price is None:
+            # Exit on last day's Close
+            exit_idx = final_idx
+            exit_price = df.iloc[exit_idx]['Close']
+            exit_date = df.index[exit_idx]
+            exit_reason = 'holding_period'
+            last_exit_idx = exit_idx
             
-            if exit_price is None:
-                # Exit on last day's Close
-                exit_idx = final_idx
-                exit_price = df.iloc[exit_idx]['Close']
-                exit_date = df.index[exit_idx]
-                exit_reason = 'holding_period'
-                last_exit_idx = exit_idx
-                
-            if t1_exit_trade is not None:
-                trades.append(t1_exit_trade)
-                # The main TradeResult for the remainder uses half position size
-                pos_size = pos_size * 0.5
+        if t1_exit_trade is not None:
+            trades.append(t1_exit_trade)
+            # The main TradeResult for the remainder uses half position size
+            pos_size = pos_size * 0.5
 
-            return_pct = ((exit_price - entry_price) / entry_price) * 100
-            
-            trades.append(TradeResult(
-                symbol=symbol,
-                sector=sector,
-                signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
-                entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
-                exit_date=exit_date.date() if hasattr(exit_date, 'date') else exit_date,
-                exit_reason=exit_reason,
-                signal_score=signal['score'],
-                entry_price=float(entry_price),
-                exit_price=float(exit_price),
-                return_pct=float(return_pct),
-                rsi_at_signal=signal['rsi'],
-                adx_at_signal=signal['adx'],
-                ema_signal=signal['ema_signal'],
-                position_size_used=pos_size,
-            ))
+        return_pct = ((exit_price - entry_price) / entry_price) * 100
+        
+        trades.append(TradeResult(
+            symbol=symbol,
+            sector=sector,
+            signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
+            entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
+            exit_date=exit_date.date() if hasattr(exit_date, 'date') else exit_date,
+            exit_reason=exit_reason,
+            signal_score=signal['score'],
+            entry_price=float(entry_price),
+            exit_price=float(exit_price),
+            return_pct=float(return_pct),
+            rsi_at_signal=signal['rsi'],
+            adx_at_signal=signal['adx'],
+            ema_signal=signal['ema_signal'],
+            position_size_used=pos_size,
+        ))
             
     return trades
 
@@ -923,6 +1089,7 @@ def simulate_portfolio(
     weekly_state_maps: dict | None = None,
     monthly_state_maps: dict | None = None,
     screen_dates_map: dict[str, list[datetime.date]] | None = None,
+    is_screen_driven: bool = False,
 ) -> list[TradeResult]:
     """
     Portfolio-level chronological simulation.
@@ -986,6 +1153,7 @@ def simulate_portfolio(
             weekly_state_map=(weekly_state_maps or {}).get(symbol),
             monthly_state_map=(monthly_state_maps or {}).get(symbol),
             screen_dates=(screen_dates_map.get(symbol, []) if screen_dates_map is not None else None),
+            is_screen_driven=is_screen_driven,
         )
 
         if trades:
@@ -1158,7 +1326,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
     """
     Main orchestrator for the backtest.
     """
-    logging_manager.setup_run_logging(run_id)
+    log_handler = logging_manager.setup_run_logging(run_id)
     try:
         logger.info(f"Starting backtest {run_id}")
         run = db.query(BacktestRun).filter(BacktestRun.run_id == run_id).first()
@@ -1173,12 +1341,12 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             # 1. Fetch benchmark data (^NSEI)
             logger.info("Fetching benchmark data (^NSEI)")
-            benchmark_df = _ohlcv_cache.get("^NSEI", append_ns=False, period='5y')
-            if benchmark_df is not None and benchmark_df.index.tz is not None:
-                benchmark_df.index = benchmark_df.index.tz_localize(None)
+            benchmark_df = _get_cached_ohlcv("^NSEI", period='5y')
 
             regime_dict = {}
             if benchmark_df is not None and not benchmark_df.empty:
+                # pandas-ta extensions need to be available
+                import pandas_ta as ta
                 benchmark_df.ta.ema(length=50, append=True)
                 benchmark_df.ta.ema(length=200, append=True)
                 # Require price above BOTH 50 EMA (short-term trend) and 200 EMA (macro trend).
@@ -1269,27 +1437,22 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
             for symbol in symbols:
                 try:
-                    # Fetch historical OHLCV
-                    df = _ohlcv_cache.get(symbol, period='5y')
+                    # Fetch historical OHLCV via optimized cache
+                    df = _get_cached_ohlcv(symbol, period='5y')
                     if df is None or df.empty:
                         continue
-                    
-                    if df.index.tz is not None:
-                        df.index = df.index.tz_localize(None)
 
                     fund_cache = fund_caches.get(symbol)
                     
-                    # Run scoring
-                    scored_dates = score_series(df, fund_cache=fund_cache, config=config)
+                    # ── Signal generation: screen-driven (Model B) vs. score_series (Model A) ──
+                    # If screen_signal_mode is True and we have a screen, use screen dates.
+                    if config.screen_signal_mode and is_screen_filtered:
+                        scored_dates = _build_screen_driven_signals(
+                            symbol, screen_dates_map.get(symbol, []), df, config
+                        )
+                    else:
+                        scored_dates = score_series(df, symbol=symbol, fund_cache=fund_cache, config=config)
 
-                    # Temporary diagnostic — remove after validation run:
-                    above_ema_count = sum(1 for s in scored_dates if s.get('above_200ema') is True)
-                    none_count = sum(1 for s in scored_dates if s.get('above_200ema') is None)
-                    logger.debug(
-                        "%s: %d scored bars, %d above_200ema=True, %d above_200ema=None",
-                        symbol, len(scored_dates), above_ema_count, none_count
-                    )
-                    
                     # Multi-Timeframe Confirmation
                     weekly_state_map = None
                     monthly_state_map = None
@@ -1317,32 +1480,33 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                             weekly_state_map=weekly_state_map,
                             monthly_state_map=monthly_state_map,
                             screen_dates=screen_dates_map.get(symbol, []) if is_screen_filtered else None,
+                            is_screen_driven=config.screen_signal_mode and is_screen_filtered,
                         )
                         
                         # Save trades to DB
                         db_trades = []
                         for t in trades:
-                            db_trade = BacktestTrade(
-                                run_id=run_id,
-                                symbol=t.symbol,
-                                sector=t.sector,
-                                signal_date=t.signal_date,
-                                entry_date=t.entry_date,
-                                exit_date=t.exit_date,
-                                exit_reason=t.exit_reason,
-                                signal_score=t.signal_score,
-                                entry_price=t.entry_price,
-                                exit_price=t.exit_price,
-                                return_pct=t.return_pct,
-                                rsi_at_signal=t.rsi_at_signal,
-                                adx_at_signal=t.adx_at_signal,
-                                ema_signal=t.ema_signal
-                            )
+                            db_trade = {
+                                "run_id": run_id,
+                                "symbol": t.symbol,
+                                "sector": t.sector,
+                                "signal_date": t.signal_date,
+                                "entry_date": t.entry_date,
+                                "exit_date": t.exit_date,
+                                "exit_reason": t.exit_reason,
+                                "signal_score": t.signal_score,
+                                "entry_price": t.entry_price,
+                                "exit_price": t.exit_price,
+                                "return_pct": t.return_pct,
+                                "rsi_at_signal": t.rsi_at_signal,
+                                "adx_at_signal": t.adx_at_signal,
+                                "ema_signal": t.ema_signal
+                            }
                             db_trades.append(db_trade)
                             all_trades.append(t)
 
                         if db_trades:
-                            db.bulk_save_objects(db_trades)
+                            db.bulk_insert_mappings(BacktestTrade, db_trades)
 
                     symbols_processed += 1
                     
@@ -1355,7 +1519,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                         db.commit()
 
                 except Exception as e:
-                    logger.error(f"Error processing symbol {symbol}: {e}")
+                    logger.error(f"Error processing {symbol}: {e}")
                     logger.error(traceback.format_exc())
                     continue
 
@@ -1372,21 +1536,29 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     weekly_state_maps=weekly_maps if config.require_weekly_confirmation else None,
                     monthly_state_maps=monthly_maps if config.require_monthly_confirmation else None,
                     screen_dates_map=screen_dates_map if is_screen_filtered else None,
+                    is_screen_driven=config.screen_signal_mode and is_screen_filtered,
                 )
                 db_trades = []
                 for t in all_trades:
-                    db_trade = BacktestTrade(
-                        run_id=run_id, symbol=t.symbol, sector=t.sector,
-                        signal_date=t.signal_date, entry_date=t.entry_date,
-                        exit_date=t.exit_date, exit_reason=t.exit_reason,
-                        signal_score=t.signal_score, entry_price=t.entry_price,
-                        exit_price=t.exit_price, return_pct=t.return_pct,
-                        rsi_at_signal=t.rsi_at_signal,
-                        adx_at_signal=t.adx_at_signal, ema_signal=t.ema_signal,
-                    )
+                    db_trade = {
+                        "run_id": run_id,
+                        "symbol": t.symbol,
+                        "sector": t.sector,
+                        "signal_date": t.signal_date,
+                        "entry_date": t.entry_date,
+                        "exit_date": t.exit_date,
+                        "exit_reason": t.exit_reason,
+                        "signal_score": t.signal_score,
+                        "entry_price": t.entry_price,
+                        "exit_price": t.exit_price,
+                        "return_pct": t.return_pct,
+                        "rsi_at_signal": t.rsi_at_signal,
+                        "adx_at_signal": t.adx_at_signal,
+                        "ema_signal": t.ema_signal,
+                    }
                     db_trades.append(db_trade)
                 if db_trades:
-                    db.bulk_save_objects(db_trades)
+                    db.bulk_insert_mappings(BacktestTrade, db_trades)
                     db.commit()
 
             # 3. Finalize
@@ -1439,4 +1611,4 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             run.error_message = str(e)
             db.commit()
     finally:
-        logging_manager.cleanup_run_logging()
+        logging_manager.cleanup_run_logging(log_handler)
