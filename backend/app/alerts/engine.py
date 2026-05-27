@@ -14,33 +14,24 @@ logger = logging.getLogger(__name__)
 
 def _get_regime_status(db: Session, signal_date: datetime.date) -> bool:
     """
-    Re-derives regime from Nifty EMA state.
+    Queries regime from Nifty TechnicalSignal state.
     Falls back to True (don't suppress alerts) if not available.
     """
-    from app.pipeline.ohlcv_cache import OHLCVCache
-    cache = OHLCVCache()
-    df = cache.get("^NSEI", append_ns=False, period='5y')
-    if df is None or df.empty:
-        return True
-    
-    if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
-        
-    import pandas_ta # noqa
-    df.ta.ema(length=50, append=True)
-    df.ta.ema(length=200, append=True)
-    
-    row = df[df.index.date <= signal_date].tail(1)
-    if row.empty:
-        return True
-        
-    r = row.iloc[-1]
-    return bool(
-        r['Close'] > r.get('EMA_50', 0) and 
-        r['Close'] > r.get('EMA_200', 0) and 
-        r.get('EMA_50', 0) > r.get('EMA_200', 0)
+    signal = (
+        db.query(TechnicalSignal)
+        .filter(
+            TechnicalSignal.symbol == "^NSEI",
+            TechnicalSignal.timeframe == 'D',
+            func.date(TechnicalSignal.date) <= signal_date
+        )
+        .order_by(TechnicalSignal.date.desc())
+        .first()
     )
 
+    if not signal:
+        return True
+
+    return bool(signal.is_bullish)
 def _compute_entry_status(close_price: float, ema20: float) -> tuple[str, float]:
     """Returns (entry_status, pct_above_ema20)."""
     if not close_price or not ema20 or ema20 == 0:
