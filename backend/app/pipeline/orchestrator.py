@@ -175,6 +175,8 @@ def process_symbol(symbol: str, db: Session, hist: pd.DataFrame = None, info: di
                 lookback=15, 
                 max_range_pct=12.0
             )
+        else:
+            signal.is_consolidating = False
         
         signal.scored_at = scored_at
         

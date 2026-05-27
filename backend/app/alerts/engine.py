@@ -247,6 +247,7 @@ def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) 
     alerts = []
     
     for pos in open_positions:
+        # TODO: Batch these cache reads if positions grow
         df = cache.get(pos.symbol, period='1y')
         if df is None or df.empty:
             continue
