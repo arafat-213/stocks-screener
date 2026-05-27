@@ -492,6 +492,13 @@ def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: 
     # Single indicator computation pass — O(n)
     df_ind = _compute_all_indicators(df, symbol=symbol)
 
+    lookback = config.consolidation_bars if config else 15
+    max_range = config.consolidation_max_range_pct if config else 12.0
+    rolling_high = df_ind['High'].rolling(lookback).max().shift(1)
+    rolling_low = df_ind['Low'].rolling(lookback).min().shift(1)
+    range_pct = (rolling_high - rolling_low) / rolling_low * 100
+    is_consolidating_series = range_pct <= max_range
+
     results = []
     MIN_BARS = 260
 
@@ -510,12 +517,8 @@ def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: 
         if bar_data.get('rsi', 0) > 80:
             total_score = 0.0
 
-        # Consolidation check uses OHLCV from df_ind (pre-computed)
-        is_consolidating = _is_consolidating(
-            df_ind, i,
-            lookback=config.consolidation_bars if config else 15,
-            max_range_pct=config.consolidation_max_range_pct if config else 12.0,
-        )
+        # Consolidation check uses pre-computed series
+        is_consolidating = bool(is_consolidating_series.iloc[i])
 
         results.append({
             'date':           df_ind.index[i],
