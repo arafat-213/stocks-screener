@@ -221,7 +221,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         db.commit()
         db.refresh(run)
     
-    logging_manager.setup_run_logging(str(run.run_id))
+    log_handler = logging_manager.setup_run_logging(str(run.run_id))
     
     current_symbol = "STARTUP"
     try:

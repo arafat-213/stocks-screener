@@ -180,9 +180,31 @@ def get_screen_results(
                     live_symbols = live_data
                     meta_map = {}
                 
-                # ... (Latest TechnicalSignal subquery remains same)
-                
-                # ... (enriched query remains same)
+                enriched = []
+                if live_symbols:
+                    latest_signal_sub = (
+                        db.query(
+                            models.TechnicalSignal.symbol,
+                            func.max(models.TechnicalSignal.date).label("max_date")
+                        )
+                        .filter(models.TechnicalSignal.timeframe == 'D')
+                        .group_by(models.TechnicalSignal.symbol)
+                        .subquery()
+                    )
+
+                    enriched = (
+                        db.query(models.Stock, models.FundamentalCache, models.TechnicalSignal)
+                        .filter(models.Stock.symbol.in_(live_symbols))
+                        .outerjoin(models.FundamentalCache, models.Stock.symbol == models.FundamentalCache.symbol)
+                        .outerjoin(latest_signal_sub, models.Stock.symbol == latest_signal_sub.c.symbol)
+                        .outerjoin(
+                            models.TechnicalSignal,
+                            (models.Stock.symbol == models.TechnicalSignal.symbol) &
+                            (models.TechnicalSignal.timeframe == 'D') &
+                            (models.TechnicalSignal.date == latest_signal_sub.c.max_date)
+                        )
+                        .all()
+                    )
                 
                 # Map for quick lookup
                 data_map = {s.symbol: (s, f, t) for s, f, t in enriched}
