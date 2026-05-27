@@ -5,7 +5,8 @@ psycopg2-binary==2.9.9
 alembic==1.12.1
 pydantic-settings==2.0.3
 python-dotenv==1.0.0
-apscheduler==3.10.4
+celery==5.3.6
+redis==5.0.1
 pandas
 pandas-ta
 yfinance==0.2.66
