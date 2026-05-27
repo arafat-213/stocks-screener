@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, or_, func, and_
 from app.db.session import get_db
 from app.db.models import TechnicalSignal, PipelineRun, Stock, FundamentalData, FundamentalCache
-from app.pipeline.orchestrator import run_pipeline
 from app.pipeline.trade_setup import compute_trade_setup
 from app.pipeline.ohlcv_cache import OHLCVCache
 import logging
@@ -206,31 +205,24 @@ def get_stock_cache_status(symbol: str, db: Session = Depends(get_db)):
     }
 
 from pydantic import BaseModel
-from app.db.session import SessionLocal
 from app.db.models import PipelineError
+from app.tasks import execute_pipeline_task
 
 class ScreenerRequest(BaseModel):
     limit: int | None = None
     resume_run_id: str | None = None
 
-def run_pipeline_wrapper(limit: int | None, resume_run_id: str | None = None):
-    db = SessionLocal()
-    try:
-        run_pipeline(db, limit=limit, resume_run_id=resume_run_id)
-    finally:
-        db.close()
-
 @router.post("/screener/run")
-def trigger_screener(request: ScreenerRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
+def trigger_screener(request: ScreenerRequest, db: Session = Depends(get_db)):
     # Concurrency Guard
     existing_run = db.query(PipelineRun).filter(PipelineRun.status == "running").first()
     if existing_run and not request.resume_run_id:
         logger.error(f"Pipeline already running: {existing_run.run_id}")
         raise HTTPException(status_code=409, detail="Pipeline is already running")
         
-    background_tasks.add_task(run_pipeline_wrapper, limit=request.limit, resume_run_id=request.resume_run_id)
+    execute_pipeline_task.delay(limit=request.limit, resume_run_id=request.resume_run_id)
     return {
-        "message": f"Pipeline started",
+        "message": f"Pipeline task queued",
         "limit": request.limit,
         "resume_run_id": request.resume_run_id
     }

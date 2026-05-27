@@ -1,12 +1,10 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from apscheduler.schedulers.background import BackgroundScheduler
 import logging
 import os
 from contextlib import asynccontextmanager
 from app.db import session as db_session
-from app.pipeline.orchestrator import run_pipeline, cleanup_zombie_runs
-from app.pipeline.cleanup import run_cleanup
+from app.pipeline.orchestrator import cleanup_zombie_runs
 from app.routers import stocks, dashboard, reports, screens, backtest, paper_trading, watchlist, journal
 from sqlalchemy import text
 from app.core.cache import response_cache
@@ -32,22 +30,6 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-scheduler = BackgroundScheduler()
-
-def scheduled_pipeline():
-    db = db_session.SessionLocal()
-    try:
-        run_pipeline(db)
-    finally:
-        db.close()
-
-def scheduled_cleanup():
-    db = db_session.SessionLocal()
-    try:
-        run_cleanup(db)
-    finally:
-        db.close()
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
@@ -57,14 +39,10 @@ async def lifespan(app: FastAPI):
     finally:
         db.close()
         
-    scheduler.add_job(scheduled_pipeline, 'cron', day_of_week='mon-fri', hour=16, minute=5)
-    scheduler.add_job(scheduled_cleanup, 'cron', hour=2, minute=30)
-    scheduler.start()
-    logger.info("Scheduler started")
+    logger.info("Application started")
     yield
     # Shutdown
-    scheduler.shutdown()
-    logger.info("Scheduler shutdown")
+    logger.info("Application shutdown")
 
 app = FastAPI(title="Stock AI API", lifespan=lifespan)
 
