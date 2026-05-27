@@ -554,4 +554,5 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             run.errors = error_msg
         db.commit()
     finally:
-        logging_manager.cleanup_run_logging()
+        logging_manager.cleanup_run_logging(log_handler)
+()
