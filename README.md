@@ -13,10 +13,10 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 
 ## 🛠 Tech Stack
 
-- **Backend:** Python, FastAPI, PostgreSQL, SQLAlchemy, Alembic, APScheduler.
+- **Backend:** Python, FastAPI, PostgreSQL, SQLAlchemy, Alembic, Celery.
 - **Frontend:** React (Vite), Recharts, lightweight-charts.
 - **Data Sources:** `yfinance`, `nsepython`.
-- **Infrastructure:** Docker Compose (PostgreSQL).
+- **Infrastructure:** Docker Compose (PostgreSQL, Redis).
 
 ---
 
@@ -27,12 +27,12 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 - Node.js & npm
 - Docker & Docker Compose
 
-### 2. Database Setup
-Spin up the PostgreSQL instance using Docker:
+### 2. Infrastructure Setup
+Spin up the PostgreSQL and Redis instances using Docker:
 ```bash
 docker-compose up -d
 ```
-*The database will be available at `localhost:5434`.*
+*PostgreSQL will be available at `localhost:5434`, Redis at `localhost:6379`.*
 
 ### 3. Backend Setup
 1. Navigate to the backend directory:
@@ -67,17 +67,36 @@ docker-compose up -d
 
 ## 🏃 How to Run
 
-### **Daily Routine**
-To start the project for development, open two terminal windows:
+### **Full Stack Development**
+To start the project for development, open four terminal windows:
 
-#### **Terminal 1: Backend**
+#### **Terminal 1: Redis & DB**
+```bash
+docker-compose up -d
+```
+
+#### **Terminal 2: Backend API**
 ```bash
 cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload
 ```
 
-#### **Terminal 2: Frontend**
+#### **Terminal 3: Celery Worker**
+```bash
+cd backend
+source venv/bin/activate
+celery -A app.core.celery_app worker --loglevel=info
+```
+
+#### **Terminal 4: Celery Beat (Scheduler)**
+```bash
+cd backend
+source venv/bin/activate
+celery -A app.core.celery_app beat --loglevel=info
+```
+
+#### **Terminal 5: Frontend**
 ```bash
 cd frontend
 npm run dev

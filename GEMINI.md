@@ -8,13 +8,13 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 - **Data Sources:** `yfinance` (EOD OHLCV + Fundamentals), `nsepython` (NSE universe).
 - **Processing:** Two-stage engine (Fundamental Screener -> Technical Scorer).
 - **Architecture:** 
-    - **Backend:** Monolithic `FastAPI` (Python) with embedded `APScheduler`.
+    - **Backend:** `FastAPI` (Python) with distributed task queue via `Celery` and `Redis`.
     - **Database:** `PostgreSQL` (Managed via Neon/Supabase or local Docker).
     - **Frontend:** `React` (Vite) dashboard with `Recharts` and `lightweight-charts`.
 
 ## Tech Stack
 
-- **Backend:** Python, FastAPI, PostgreSQL (SQLAlchemy), APScheduler, pandas-ta.
+- **Backend:** Python, FastAPI, PostgreSQL (SQLAlchemy), Celery, Redis, pandas-ta.
 - **Migrations:** Alembic.
 - **Frontend:** React (Vite), Recharts, lightweight-charts.
 - **Testing:** pytest, pytest-cov, httpx.
@@ -22,16 +22,16 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 
 ## Building and Running
 
-*Note: The project is currently in the design phase (see [PRD.md](./PRD.md)). The following commands are inferred based on the tech stack.*
-
 ### Local Development (Docker)
-1. Run `docker-compose up -d` to spin up a local PostgreSQL instance.
+1. Run `docker-compose up -d` to spin up PostgreSQL and Redis instances.
 
 ### Backend
 1. Navigate to `backend/` directory.
 2. Install dependencies: `pip install -r requirements.txt`
 3. Run migrations: `alembic upgrade head`
-4. Run the application: `uvicorn app.main:app --reload`
+4. Start API: `uvicorn app.main:app --reload`
+5. Start Worker: `celery -A app.core.celery_app worker --loglevel=info`
+6. Start Beat: `celery -A app.core.celery_app beat --loglevel=info`
 
 ### Frontend
 1. Navigate to `frontend/` directory.
@@ -45,7 +45,7 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 
 - **Stock Symbols:** Always use the `.NS` suffix for NSE-listed stocks (e.g., `RELIANCE.NS`) when fetching data via `yfinance`.
 - **Database:** PostgreSQL for persistence. Schema changes must be handled via **Alembic migrations**.
-- **Architecture:** Monolithic FastAPI service. Background tasks (scrapers) are handled by APScheduler within the same process.
+- **Architecture:** FastAPI service for the web layer. Background tasks (scrapers) are handled by Celery workers, with scheduling managed by Celery Beat.
 
 ## Key Files
 
