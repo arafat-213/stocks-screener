@@ -211,7 +211,7 @@ const Intelligence = () => {
   }
 
   return (
-    <div className="max-w-[1500px] mx-auto p-6 animate-fade-in">
+    <div className="w-full animate-fade-in">
       <header className="mb-8 sm:mb-12 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
         <div>
           <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-2">Market Intelligence</h1>

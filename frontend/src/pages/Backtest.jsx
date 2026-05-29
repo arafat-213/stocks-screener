@@ -626,7 +626,7 @@ const Backtest = () => {
   );
 
   return (
-    <div className="p-6 max-w-[1500px] mx-auto animate-fade-in">
+    <div className="w-full animate-fade-in">
       <header className="mb-10">
         <h1 className="text-3xl sm:text-4xl font-black flex items-center gap-4 text-text tracking-tighter">
           <History className="text-blue-500" size={40} /> Backtest Engine

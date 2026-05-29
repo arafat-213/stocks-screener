@@ -57,53 +57,54 @@ const PaperTrading = () => {
   ];
 
   return (
-    <div className="flex flex-col gap-6 pb-24 animate-fade-in">
-      <header className="flex justify-between items-start">
-        <div className="flex flex-col">
-          <h1 className="text-3xl font-black tracking-tight text-text">Paper Trading</h1>
-          <p className="text-text-muted">Live strategy verification without real capital</p>
-        </div>
-        
-        <div className="flex items-center">
-          {pipeline && (
-            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
-              pipeline?.is_stale 
-                ? 'bg-slate-100 dark:bg-slate-800 text-text-muted border-border' 
-                : 'bg-bullish/10 text-bullish border-green-500/20'
-            }`}>
-              {!pipeline?.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
-              <span>{pipeline?.is_stale ? 'Stale — pipeline not run today' : `Updated ${pipeline?.data_age_hours}h ago`}</span>
-            </div>
-          )}
-        </div>
-      </header>
+    <>
+      <div className="w-full flex flex-col gap-6 pb-40">
+        <header className="flex justify-between items-start">
+          <div className="flex flex-col">
+            <h1 className="text-3xl font-black tracking-tight text-text">Paper Trading</h1>
+            <p className="text-text-muted">Live strategy verification without real capital</p>
+          </div>
+          
+          <div className="flex items-center">
+            {pipeline && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                pipeline?.is_stale 
+                  ? 'bg-slate-100 dark:bg-slate-800 text-text-muted border-border' 
+                  : 'bg-bullish/10 text-bullish border-green-500/20'
+              }`}>
+                {!pipeline?.is_stale && <div className="w-2 h-2 rounded-full bg-bullish animate-pulse"></div>}
+                <span>{pipeline?.is_stale ? 'Stale — pipeline not run today' : `Updated ${pipeline?.data_age_hours}h ago`}</span>
+              </div>
+            )}
+          </div>
+        </header>
 
-      <nav className="flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl w-fit overflow-x-auto no-scrollbar">
-        {map(tab => (
-          <button
-            key={tab.id}
-            className={`px-5 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${
-              activeTab === tab.id 
-                ? 'bg-bg-elevated text-text shadow-sm' 
-                : 'text-text-muted hover:text-text hover:bg-bg-elevated/50'
-            }`}
-            onClick={() => setActiveTab(tab.id)}
-          >
-            {tab.label}
-          </button>
-        ), tabs)}
-      </nav>
+        <nav className="flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl w-fit overflow-x-auto no-scrollbar">
+          {map(tab => (
+            <button
+              key={tab.id}
+              className={`px-5 py-2 text-sm font-bold rounded-lg transition-all whitespace-nowrap ${
+                activeTab === tab.id 
+                  ? 'bg-bg-elevated text-text shadow-sm' 
+                  : 'text-text-muted hover:text-text hover:bg-bg-elevated/50'
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ), tabs)}
+        </nav>
 
-      <div className="min-h-[400px]">
-        {activeTab === 'overview' && <OverviewView portfolio={portfolio} setPortfolio={setPortfolio} />}
-        {activeTab === 'pending' && <PendingView />}
-        {activeTab === 'positions' && <PositionsView />}
-        {activeTab === 'history' && <HistoryView />}
-        {activeTab === 'analytics' && <AnalyticsView />}
+        <div className="min-h-[400px]">
+          {activeTab === 'overview' && <OverviewView portfolio={portfolio} setPortfolio={setPortfolio} />}
+          {activeTab === 'pending' && <PendingView />}
+          {activeTab === 'positions' && <PositionsView />}
+          {activeTab === 'history' && <HistoryView />}
+          {activeTab === 'analytics' && <AnalyticsView />}
+        </div>
       </div>
-
       <ReadinessBanner portfolio={portfolio} />
-    </div>
+    </>
   );
 };
 
@@ -167,7 +168,7 @@ const OverviewView = ({ portfolio, setPortfolio }) => {
   };
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in">
+    <div className="flex flex-col gap-6">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard 
           label="Total Return %" 
@@ -314,7 +315,7 @@ const PendingView = () => {
   if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Pending Orders...</div>;
 
   return (
-    <div className="flex flex-col gap-4 animate-fade-in">
+    <div className="flex flex-col gap-4">
       <div className="flex items-center gap-3 p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl text-text leading-snug">
         <Info size={18} className="text-blue-500 flex-shrink-0" />
         <p className="text-sm font-medium">These orders will be evaluated at tomorrow's market open. Entry is at the close of the bar where price confirms EMA20 support.</p>
@@ -416,7 +417,7 @@ const PositionsView = () => {
   if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Positions...</div>;
 
   return (
-    <div className="flex flex-col gap-6 animate-fade-in">
+    <div className="flex flex-col gap-6">
       <div className="flex p-1 bg-bg-secondary border border-border rounded-xl w-fit">
         <button 
           className={`px-4 py-1.5 text-xs font-bold rounded-lg transition-all ${
@@ -556,7 +557,7 @@ const HistoryView = () => {
   };
 
   return (
-    <div className="flex flex-col gap-4 animate-fade-in">
+    <div className="flex flex-col gap-4">
       <div className="bg-bg-secondary border border-border rounded-2xl overflow-hidden shadow-sm">
         <div className="overflow-x-auto">
           <table className="w-full border-collapse">
@@ -658,7 +659,7 @@ const AnalyticsView = () => {
   if (loading) return <div className="flex items-center justify-center p-20 text-text-muted">Loading Analytics...</div>;
 
   return (
-    <div className="flex flex-col gap-8 animate-fade-in">
+    <div className="flex flex-col gap-8">
       <section className="p-8 bg-bg-secondary border border-border rounded-3xl shadow-sm">
         <h3 className="text-xl font-black uppercase tracking-tight text-text mb-8">Equity Curve Comparison</h3>
         <div style={{ width: '100%', height: 350 }}>
@@ -809,33 +810,33 @@ const ReadinessBanner = ({ portfolio }) => {
     : "Tracking within acceptable range — continue paper trading";
 
   return (
-    <div className="fixed bottom-0 left-0 lg:left-[280px] right-0 h-auto sm:h-20 p-4 sm:p-0 flex flex-col sm:flex-row justify-between items-center z-50 bg-bg-secondary/95 backdrop-blur-xl border-t border-border shadow-[0_-8px_30px_rgb(0,0,0,0.12)]">
-      <div className="flex flex-col items-center sm:items-start sm:pl-10 mb-3 sm:mb-0">
-        <div className="text-[10px] font-black uppercase tracking-[0.2em] text-text-muted leading-none mb-2">Paper Trading Readiness</div>
+    <div className="fixed bottom-[64px] lg:bottom-0 left-0 lg:left-[280px] right-0 h-auto lg:h-20 p-3 lg:p-0 flex flex-col lg:flex-row justify-between items-center z-[60] bg-bg-secondary/95 backdrop-blur-xl border-t border-border shadow-[0_-8px_30px_rgb(0,0,0,0.12)] max-w-full overflow-hidden">
+      <div className="flex flex-col items-center lg:items-start lg:pl-10 mb-2 lg:mb-0">
+        <div className="text-[9px] lg:text-[10px] font-black uppercase tracking-[0.2em] text-text-muted leading-none mb-1.5 lg:mb-2">Paper Trading Readiness</div>
         <div className="flex gap-1.5">
           {dots.map((active, i) => (
-            <div key={i} className={`w-2.5 h-2.5 rounded-full transition-all duration-700 ${
+            <div key={i} className={`w-2 h-2 lg:w-2.5 lg:h-2.5 rounded-full transition-all duration-700 ${
               active ? 'bg-bullish shadow-[0_0_10px_rgba(34,197,94,0.4)] scale-110' : 'bg-border'
             }`}></div>
           ))}
         </div>
       </div>
       
-      <div className="flex flex-col items-center flex-1">
-        <div className="flex items-center gap-3 text-sm font-black tracking-tight text-text">
+      <div className="flex flex-col items-center flex-1 w-full px-2 lg:px-0">
+        <div className="flex items-center gap-2 lg:gap-3 text-[11px] lg:text-sm font-black tracking-tight text-text whitespace-nowrap overflow-x-auto no-scrollbar max-w-full">
           <span>{portfolio.total_trades} TRADES</span>
-          <div className="w-1 h-1 rounded-full bg-border"></div>
-          <span className="text-bullish">{portfolio.win_rate}% WIN RATE</span>
-          <div className="w-1 h-1 rounded-full bg-border"></div>
+          <div className="w-1 h-1 rounded-full bg-border flex-shrink-0"></div>
+          <span className="text-bullish">{portfolio.win_rate}% WIN</span>
+          <div className="w-1 h-1 rounded-full bg-border flex-shrink-0"></div>
           <span className="text-blue-500">PF {portfolio.profit_factor}</span>
         </div>
-        <div className="text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-60">
-          Targets: {BACKTEST_BENCHMARKS.win_rate}% Win · {BACKTEST_BENCHMARKS.profit_factor} Profit Factor
+        <div className="text-[8px] lg:text-[9px] font-bold text-text-muted uppercase tracking-widest mt-1 opacity-60 text-center">
+          Targets: {BACKTEST_BENCHMARKS.win_rate}% Win · {BACKTEST_BENCHMARKS.profit_factor} PF
         </div>
       </div>
       
-      <div className="sm:pr-10 mt-3 sm:mt-0">
-        <div className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest border transition-all ${
+      <div className="lg:pr-10 mt-2 lg:mt-0 w-full lg:w-auto px-4 lg:px-0">
+        <div className={`px-4 py-1.5 lg:px-5 lg:py-2 rounded-xl text-[9px] lg:text-xs font-black uppercase tracking-widest border transition-all text-center ${
           filledCount === 5 
             ? 'bg-bullish text-white border-green-400 shadow-lg shadow-green-500/30 animate-pulse' 
             : 'bg-bg-elevated text-text-muted border-border'

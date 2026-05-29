@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { map, filter, size } from 'lodash/fp';
 import { 
   getWatchlist, 
   updateWatchlistStatus, 
@@ -29,7 +30,7 @@ const Watchlist = () => {
     setLoading(true);
     try {
       const data = await getWatchlist();
-      setItems(data || []);
+      setItems(Array.isArray(data) ? data : []);
       setError(null);
     } catch (err) {
       setError(err.message || 'Failed to fetch watchlist');
@@ -45,8 +46,7 @@ const Watchlist = () => {
   const handleStatusUpdate = async (symbol, status) => {
     try {
       await updateWatchlistStatus(symbol, status);
-      // Update local state or refetch
-      setItems(prev => prev.map(item => 
+      setItems(map(item => 
         item.symbol === symbol ? { ...item, status } : item
       ));
     } catch (err) {
@@ -58,7 +58,7 @@ const Watchlist = () => {
     if (!window.confirm(`Remove ${symbol} from watchlist?`)) return;
     try {
       await removeFromWatchlist(symbol);
-      setItems(prev => prev.filter(item => item.symbol !== symbol));
+      setItems(filter(item => item.symbol !== symbol));
     } catch (err) {
       alert(`Failed to remove: ${err.message}`);
     }
@@ -220,7 +220,7 @@ const Watchlist = () => {
           initialSort={{ key: 'signal_date', direction: 'desc' }}
         />
         
-        {items.length === 0 && !loading && (
+        {size(items) === 0 && !loading && (
           <div className="bg-bg-secondary p-20 rounded-3xl border-2 border-dashed border-border flex flex-col items-center justify-center text-center">
             <div className="bg-slate-100 dark:bg-slate-800 p-4 rounded-full mb-4">
               <Clock size={32} className="text-slate-400" />

@@ -28,9 +28,9 @@ const StockDetail = () => {
 
   if (error || !data) {
     return (
-      <div className="flex flex-col items-center justify-center h-[80vh] gap-5 text-text-muted bg-background">
+      <div className="flex flex-col items-center justify-center h-[80vh] gap-5 text-text-muted bg-background px-6 text-center">
         <ErrorBanner message={error || "Stock not found"} />
-        <Link to="/" className="inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 no-underline font-black transition-colors group">
+        <Link to="/" className="hidden lg:inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 no-underline font-black transition-colors group">
           <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" /> 
           <span className="text-xs uppercase tracking-[0.2em]">Return to Market Control</span>
         </Link>
@@ -98,7 +98,7 @@ const StockDetail = () => {
   };
 
   return (
-    <div className="p-6 max-w-[1600px] mx-auto text-text bg-background min-h-screen">
+    <div className="w-full text-text animate-fade-in pb-20">
       <Link to="/" className="hidden lg:inline-flex items-center gap-2 text-slate-500 hover:text-blue-500 no-underline font-bold mb-8 transition-colors group">
         <ArrowLeft size={20} className="group-hover:-translate-x-1 transition-transform" /> 
         <span className="text-sm uppercase tracking-widest">Back to Dashboard</span>

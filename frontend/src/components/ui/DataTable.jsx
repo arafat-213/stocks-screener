@@ -5,11 +5,13 @@ export const DataTable = ({ columns, data = [], initialSort, loading, skeletonRo
   const [sortConfig, setSortConfig] = useState(initialSort || { key: null, direction: 'asc' });
 
   const sortedData = useMemo(() => {
-    if (!sortConfig.key) return data;
+    const items = Array.isArray(data) ? data : [];
+    if (!sortConfig.key || items.length === 0) return items;
+    
     const col = columns.find(c => c.key === sortConfig.key);
     const accessor = col?.accessor || (row => row[sortConfig.key]);
 
-    return [...data].sort((a, b) => {
+    return [...items].sort((a, b) => {
       const aVal = accessor(a);
       const bVal = accessor(b);
       if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;

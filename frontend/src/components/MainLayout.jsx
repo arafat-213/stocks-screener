@@ -24,11 +24,8 @@ const MainLayout = ({ children }) => {
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
-    if (isSidebarOpen) {
-      const timer = setTimeout(() => setIsSidebarOpen(false), 0);
-      return () => clearTimeout(timer);
-    }
-  }, [location, isSidebarOpen]);
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
@@ -42,25 +39,10 @@ const MainLayout = ({ children }) => {
   ];
 
   return (
-    <div className="flex min-h-screen w-full bg-bg">
+    <div className="flex min-h-screen w-full bg-bg overflow-x-hidden">
       {/* Mobile Header */}
-      <header className="flex fixed top-0 left-0 right-0 h-16 px-4 items-center justify-between z-50 border-b border-border bg-bg-secondary/80 backdrop-blur-lg lg:hidden">
+      <header className="flex fixed top-0 left-0 right-0 h-16 px-4 items-center justify-between z-[60] border-b border-border bg-bg-secondary/80 backdrop-blur-lg lg:hidden">
         <div className="flex items-center gap-2">
-          {location.pathname === '/' ? (
-            <button 
-              onClick={() => setIsSidebarOpen(true)}
-              className="p-2 text-text-muted hover:text-text active:scale-95 transition-transform"
-            >
-              <Menu size={24} />
-            </button>
-          ) : (
-            <NavLink 
-              to="/"
-              className="p-2 text-text-muted hover:text-text active:scale-95 transition-transform"
-            >
-              <ArrowLeft size={24} />
-            </NavLink>
-          )}
           <div className="flex items-center gap-2.5 font-black text-lg group">
             <div className="bg-green-500 p-1.5 rounded-lg shadow-lg shadow-green-500/20 group-hover:rotate-12 transition-transform">
                 <Activity size={18} className="text-white" />
@@ -68,9 +50,15 @@ const MainLayout = ({ children }) => {
             <span className="bg-gradient-to-r from-blue-600 to-indigo-600 dark:from-blue-400 dark:to-indigo-400 bg-clip-text text-transparent tracking-tighter">Screener AI</span>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <GlobalSearch />
           <ThemeToggle />
+          <NavLink 
+            to="/system"
+            className="p-2 text-text-muted hover:text-text active:scale-95 transition-transform"
+          >
+            <Settings size={22} />
+          </NavLink>
         </div>
       </header>
 
@@ -128,23 +116,36 @@ const MainLayout = ({ children }) => {
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <nav className="flex fixed bottom-0 left-0 right-0 h-[80px] justify-around items-center z-50 border-t border-border px-2 bg-bg-secondary/80 backdrop-blur-lg lg:hidden pb-safe">
-        {map((item) => (
-          <NavLink 
-            key={item.to} 
-            to={item.to} 
-            className={({ isActive }) => `group flex flex-col items-center justify-center gap-1.5 transition-all flex-1 h-full ${isActive ? 'text-blue-600' : 'text-slate-500'}`}
-          >
-            {({ isActive }) => (
-              <>
-                <div className={`transition-all duration-300 ${isActive ? '-translate-y-1 scale-110' : 'group-active:scale-90'}`}>
+      <nav className="flex fixed bottom-0 left-0 right-0 h-[64px] justify-around items-center z-[60] border-t border-border px-2 bg-bg-secondary/80 backdrop-blur-lg lg:hidden pb-safe">
+        {map((item) => {
+          // Only show top 4 items in bottom nav
+          const coreItems = ['/', '/watchlist', '/discover', '/paper'];
+          if (!coreItems.includes(item.to)) return null;
+
+          return (
+            <NavLink 
+              key={item.to} 
+              to={item.to} 
+              className={({ isActive }) => `group flex flex-col items-center justify-center transition-all flex-1 h-full ${isActive ? 'text-blue-600' : 'text-slate-500'}`}
+            >
+              {({ isActive }) => (
+                <div className={`transition-all duration-300 ${isActive ? '' : 'group-active:scale-90'}`}>
                   {item.icon}
                 </div>
-                <span className={`text-[9px] font-black uppercase tracking-[0.15em] transition-opacity ${isActive ? 'opacity-100' : 'opacity-50'}`}>{item.label}</span>
-              </>
-            )}
-          </NavLink>
-        ), navItems)}
+              )}
+            </NavLink>
+          );
+        }, navItems)}
+
+        {/* "More" Button for remaining items */}
+        <button 
+          onClick={() => setIsSidebarOpen(true)}
+          className="group flex flex-col items-center justify-center transition-all flex-1 h-full text-slate-500 active:scale-95"
+        >
+          <div className="transition-all duration-300 group-active:scale-90">
+            <Menu size={20} />
+          </div>
+        </button>
       </nav>
     </div>
   );

@@ -42,7 +42,7 @@ const System = () => {
   const currentStatus = statusMap[status] || statusMap['idle'];
 
   return (
-    <div className="max-w-[1200px] mx-auto p-6 flex flex-col gap-10 animate-fade-in">
+    <div className="w-full flex flex-col gap-10 animate-fade-in">
       <header className="mb-2">
         <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-2 uppercase">System Control</h1>
         <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-xs">Manage the screening engine, data integrity, and global preferences.</p>
