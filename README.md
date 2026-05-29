@@ -32,7 +32,7 @@ Spin up the PostgreSQL and Redis instances using Docker:
 ```bash
 docker-compose up -d
 ```
-*PostgreSQL will be available at `localhost:5434`, Redis at `localhost:6379`.*
+*PostgreSQL will be available at `localhost:5434`, Redis at `localhost:6380`.*
 
 ### 3. Backend Setup
 1. Navigate to the backend directory:
