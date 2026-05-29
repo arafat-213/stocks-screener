@@ -109,9 +109,10 @@ export const GlobalSearch = () => {
   };
 
   return (
-    <div className="relative z-[100] w-full">
+    <div className="relative z-[100] w-full flex justify-end">
+      {/* Desktop Search Bar */}
       <div 
-        className="flex items-center gap-3 px-4 py-2.5 bg-bg-secondary border border-border rounded-md cursor-pointer transition-all duration-200 min-w-[240px] text-text-muted text-[0.9rem] hover:border-primary hover:text-text hover:shadow-sm" 
+        className="hidden md:flex items-center gap-3 px-4 py-2.5 bg-bg-secondary border border-border rounded-md cursor-pointer transition-all duration-200 min-w-[240px] text-text-muted text-[0.9rem] hover:border-primary hover:text-text hover:shadow-sm" 
         onClick={() => setIsOpen(true)}
         role="button"
         tabIndex={0}
@@ -120,6 +121,14 @@ export const GlobalSearch = () => {
         <span>Search stocks...</span>
         <kbd className="ml-auto bg-bg-elevated px-1.5 py-0.5 rounded-sm text-[0.7rem] font-mono border border-border">⌘K</kbd>
       </div>
+
+      {/* Mobile Search Icon */}
+      <button 
+        className="flex md:hidden p-2 text-text-muted hover:text-text active:scale-95 transition-transform"
+        onClick={() => setIsOpen(true)}
+      >
+        <Search size={22} />
+      </button>
       
       {isOpen && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex justify-center pt-[10vh] z-[1000]" onClick={() => setIsOpen(false)}>
