@@ -194,9 +194,19 @@ def get_watchlist(db: Session = Depends(get_db)):
         
     return results
 
-@router.patch("/{id}/status", response_model=WatchlistResponse)
-def update_watchlist_status(id: int, req: WatchlistStatusUpdate, db: Session = Depends(get_db)):
-    entry = db.query(Watchlist).filter(Watchlist.id == id).first()
+@router.patch("/{symbol}", response_model=WatchlistResponse)
+def update_watchlist_status_by_symbol(symbol: str, req: WatchlistStatusUpdate, db: Session = Depends(get_db)):
+    entry = db.query(Watchlist).filter(
+        Watchlist.symbol == symbol,
+        Watchlist.status == 'watching'
+    ).first()
+    
+    if not entry:
+        # If not found in 'watching', try to find the latest one regardless of status
+        entry = db.query(Watchlist).filter(
+            Watchlist.symbol == symbol
+        ).order_by(Watchlist.added_date.desc()).first()
+
     if not entry:
         raise HTTPException(status_code=404, detail="Watchlist entry not found")
     
@@ -204,6 +214,27 @@ def update_watchlist_status(id: int, req: WatchlistStatusUpdate, db: Session = D
     db.commit()
     db.refresh(entry)
     return entry
+
+@router.delete("/{symbol}")
+def remove_from_watchlist(symbol: str, db: Session = Depends(get_db)):
+    # Remove the active 'watching' entry
+    entry = db.query(Watchlist).filter(
+        Watchlist.symbol == symbol,
+        Watchlist.status == 'watching'
+    ).first()
+    
+    if not entry:
+        # Fallback to latest entry if no active one
+        entry = db.query(Watchlist).filter(
+            Watchlist.symbol == symbol
+        ).order_by(Watchlist.added_date.desc()).first()
+
+    if not entry:
+        raise HTTPException(status_code=404, detail="Watchlist entry not found")
+    
+    db.delete(entry)
+    db.commit()
+    return {"status": "success", "message": f"Removed {symbol} from watchlist"}
 
 @router.get("/expired", response_model=List[WatchlistResponse])
 def get_expired_watchlist(db: Session = Depends(get_db)):

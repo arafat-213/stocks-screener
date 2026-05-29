@@ -16,7 +16,7 @@ def test_update_watchlist_status_success(client, db):
 
     # Call endpoint
     payload = {"status": "entered"}
-    response = client.patch(f"/api/watchlist/{entry.id}/status", json=payload)
+    response = client.patch(f"/api/watchlist/{symbol}", json=payload)
 
     # Assertions
     assert response.status_code == 200
@@ -40,18 +40,39 @@ def test_update_watchlist_status_invalid_status(client, db):
 
     # Call endpoint with invalid status
     payload = {"status": "invalid"}
-    response = client.patch(f"/api/watchlist/{entry.id}/status", json=payload)
+    response = client.patch(f"/api/watchlist/{symbol}", json=payload)
 
     # Assertions
     assert response.status_code == 422 # Pydantic validation error or 400
 
 def test_update_watchlist_status_not_found(client, db):
-    # Call endpoint for non-existent id
+    # Call endpoint for non-existent symbol
     payload = {"status": "skipped"}
-    response = client.patch("/api/watchlist/9999/status", json=payload)
+    response = client.patch("/api/watchlist/NONEXISTENT.NS", json=payload)
 
     # Assertions
     assert response.status_code == 404
+
+def test_remove_from_watchlist_success(client, db):
+    # Setup
+    symbol = "INFY.NS"
+    entry = Watchlist(
+        symbol=symbol,
+        signal_date=date(2026, 5, 20),
+        status="watching"
+    )
+    db.add(entry)
+    db.commit()
+
+    # Call endpoint
+    response = client.delete(f"/api/watchlist/{symbol}")
+
+    # Assertions
+    assert response.status_code == 200
+    assert response.json()["status"] == "success"
+    
+    # Verify in DB
+    assert db.query(Watchlist).filter_by(symbol=symbol).first() is None
 
 def test_get_expired_watchlist_entries(client, db):
     # Setup
