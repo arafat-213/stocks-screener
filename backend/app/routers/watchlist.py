@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.db.models import Watchlist, TechnicalSignal, FundamentalCache
 from app.pipeline.trade_setup import compute_trade_setup
 from app.pipeline.ohlcv_cache import OHLCVCache
-import pandas_ta as ta
+import pandas_ta_classic as ta
 import pandas as pd
 
 router = APIRouter(prefix="/watchlist", tags=["watchlist"])
@@ -121,7 +121,7 @@ def _calculate_live_metrics(entry: Watchlist, df: pd.DataFrame):
     current_price = df['Close'].iloc[-1]
     
     # 3. EMA20 calculation
-    # We need enough data for EMA20, pandas_ta handles it
+    # We need enough data for EMA20, pandas_ta_classic handles it
     ema20_output = df.ta.ema(length=20)
     current_ema20 = None
     if ema20_output is not None and not ema20_output.empty:

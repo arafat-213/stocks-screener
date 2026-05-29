@@ -177,7 +177,7 @@ def _get_regime_state() -> bool:
             return True
         if df.index.tz is not None:
             df.index = df.index.tz_localize(None)
-        import pandas_ta # noqa
+        import pandas_ta_classic # noqa
         df.ta.ema(length=50, append=True)
         df.ta.ema(length=200, append=True)
         r = df.iloc[-1]

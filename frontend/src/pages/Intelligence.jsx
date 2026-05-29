@@ -1,17 +1,26 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Calendar, Loader2, ChevronRight, ChevronDown, TrendingUp, AlertCircle, BarChart3, History, Activity, RefreshCcw } from 'lucide-react';
+import { Calendar, Loader2, ChevronRight, ChevronDown, TrendingUp, AlertCircle, BarChart3, History, Activity, RefreshCcw, Star, Zap, ShieldCheck } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { getReportList, getReportByDate, getSectorRotation } from '../api/client';
+import { getReportList, getReportByDate, getSectorRotation, getLatestDigest } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
 import { DataTable } from '../components/ui/DataTable';
 import { SectorRotationTable } from '../components/SectorRotationTable';
 
 const Intelligence = () => {
-  const [activeView, setActiveView] = useState('rotation'); // 'rotation' | 'reports'
+  const [activeView, setActiveView] = useState('digest'); // 'digest' | 'rotation' | 'reports'
   const [selectedDate, setSelectedDate] = useState('');
   const [expandedMonths, setExpandedMonths] = useState({});
   const [showAllMonths, setShowAllMonths] = useState(false);
+
+  // Fetch High Conviction Digest
+  const {
+    data: digestData,
+    loading: loadingDigest,
+    error: digestError
+  } = useFetch(getLatestDigest, {
+    autoFetch: activeView === 'digest'
+  });
 
   // Fetch Sector Rotation Data
   const { 
@@ -138,6 +147,60 @@ const Intelligence = () => {
     }
   ], []);
 
+  const digestColumns = useMemo(() => [
+    { 
+      key: 'symbol', 
+      label: 'Symbol', 
+      sortable: true,
+      render: (val) => (
+        <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 font-black no-underline hover:underline transition-all tracking-tighter">
+          {val.replace('.NS', '')}
+        </Link>
+      )
+    },
+    {
+      key: 'tier',
+      label: 'Tier',
+      sortable: true,
+      render: (val) => (
+        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase ${val === 1 ? 'bg-bullish text-white' : 'bg-blue-500 text-white'}`}>
+          Tier {val}
+        </span>
+      )
+    },
+    { 
+      key: 'score', 
+      label: 'Score', 
+      sortable: true,
+      render: (val) => (
+        <span className="font-black font-mono text-sm text-text">{val?.toFixed(1)}</span>
+      )
+    },
+    {
+      key: 'pullback_entry_zone',
+      label: 'Entry Zone',
+      render: (val) => val ? (
+        <div className="flex flex-col gap-0.5">
+          <span className="text-[10px] font-bold text-text">₹{val.target}</span>
+          <span className="text-[9px] text-text-muted">Limit: ₹{val.tolerance_high}</span>
+        </div>
+      ) : <span className="text-[10px] font-bold text-text-muted">Momentum</span>
+    },
+    {
+      key: 'stop_reference',
+      label: 'Stop Loss',
+      render: (val) => (
+        <span className="text-[10px] font-black text-bearish">₹{val?.toFixed(2)}</span>
+      )
+    },
+    { 
+      key: 'sector', 
+      label: 'Sector', 
+      sortable: true,
+      render: (val) => <span className="text-[10px] font-bold text-text-muted uppercase tracking-tight">{val}</span>
+    }
+  ], []);
+
   if (loadingDates && !dates.length) {
     return (
       <div className="flex flex-col items-center justify-center py-24 text-slate-400 animate-fade-in">
@@ -155,6 +218,13 @@ const Intelligence = () => {
           <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-xs">Analyze sector rotation and historical session logs.</p>
         </div>
         <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-border/50">
+          <button
+            className={`flex items-center gap-2.5 py-2.5 px-5 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer border-none shadow-sm ${activeView === 'digest' ? 'bg-bg-secondary text-blue-600 dark:text-blue-400 shadow-md border border-border/50' : 'text-slate-500 hover:text-text'}`}
+            onClick={() => setActiveView('digest')}
+          >
+            <Zap size={16} />
+            <span>High Conviction</span>
+          </button>
           <button
             className={`flex items-center gap-2.5 py-2.5 px-5 rounded-lg font-black text-[10px] uppercase tracking-widest transition-all cursor-pointer border-none shadow-sm ${activeView === 'rotation' ? 'bg-bg-secondary text-blue-600 dark:text-blue-400 shadow-md border border-border/50' : 'text-slate-500 hover:text-text'}`}
             onClick={() => setActiveView('rotation')}
@@ -184,9 +254,58 @@ const Intelligence = () => {
             message={`Failed to load rotation data: ${rotationError}`}
             />
         )}
+        {digestError && (
+            <ErrorBanner message={`Failed to load digest: ${digestError}`} />
+        )}
       </div>
 
-      {activeView === 'rotation' ? (
+      {activeView === 'digest' ? (
+        <section className="flex flex-col gap-8 animate-fade-in">
+          <div className="bg-bg-secondary border-2 border-border rounded-3xl overflow-hidden shadow-sm">
+            <div className="px-8 py-6 border-b-2 border-border flex justify-between items-center bg-blue-600 text-white">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/20 p-2 rounded-xl backdrop-blur-md">
+                    <Star size={24} className="fill-white text-white" />
+                </div>
+                <div>
+                  <h2 className="m-0 text-xl font-black uppercase tracking-tight">Today's High Conviction Digest</h2>
+                  <p className="m-0 text-[10px] font-bold text-white/70 uppercase tracking-widest mt-1">Surgical entry zones for session: {digestData?.date}</p>
+                </div>
+              </div>
+              <div className="flex gap-3">
+                <span className="text-[10px] font-black py-1.5 px-4 bg-white/20 rounded-full uppercase tracking-[0.15em] backdrop-blur-md border border-white/20">
+                  {digestData?.summary?.actionable || 0} ACTIONABLE
+                </span>
+                <span className={`text-[10px] font-black py-1.5 px-4 rounded-full uppercase tracking-[0.15em] border ${digestData?.regime_bullish ? 'bg-green-500 border-green-400' : 'bg-red-500 border-red-400'}`}>
+                  {digestData?.regime_bullish ? 'BULL REGIME' : 'BEAR REGIME'}
+                </span>
+              </div>
+            </div>
+
+            <DataTable
+              columns={digestColumns}
+              data={digestData?.actionable || []}
+              initialSort={{ key: 'score', direction: 'desc' }}
+              loading={loadingDigest}
+            />
+          </div>
+
+          <div className="bg-bg-secondary border-2 border-border rounded-3xl p-8 shadow-sm">
+            <div className="flex items-center gap-3 mb-6">
+               <div className="bg-amber-500/10 p-2 rounded-xl">
+                   <ShieldCheck className="text-amber-500" />
+               </div>
+               <h2 className="text-xl font-black uppercase tracking-tight">Secondary Watchlist</h2>
+            </div>
+            <DataTable
+              columns={digestColumns}
+              data={digestData?.watchlist || []}
+              initialSort={{ key: 'score', direction: 'desc' }}
+              loading={loadingDigest}
+            />
+          </div>
+        </section>
+      ) : activeView === 'rotation' ? (
         <section className="bg-bg-secondary border-2 border-border rounded-3xl p-5 sm:p-8 shadow-sm">
            <div className="flex items-center gap-3 mb-6 sm:mb-8">
               <div className="bg-indigo-500/10 p-2 rounded-xl">

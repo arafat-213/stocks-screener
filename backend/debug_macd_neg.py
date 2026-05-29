@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import pandas_ta as ta
+import pandas_ta_classic as ta
 
 def _make_macd_negative_territory_df() -> pd.DataFrame:
     n = 300

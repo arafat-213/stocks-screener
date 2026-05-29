@@ -508,15 +508,15 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         from app.screens.materializer import materialize_all_screens
         materialize_all_screens(db)
 
-        # 7. Paper Trading (REMOVED - replaced by Signal Digest)
-        # try:
-        #     from app.paper_trading.engine import run_paper_trading_cycle
-        #     pt_result = run_paper_trading_cycle(db)
-        #     logger.info("Paper trading cycle result: %s", pt_result)
-        # except Exception as e:
-        #     logger.error("Paper trading cycle failed (non-fatal): %s", e)
-        #     import traceback
-        #     logger.error(traceback.format_exc())
+        # 7. Paper Trading
+        try:
+            from app.paper_trading.engine import run_paper_trading_cycle
+            pt_result = run_paper_trading_cycle(db)
+            logger.info("Paper trading cycle result: %s", pt_result)
+        except Exception as e:
+            logger.error("Paper trading cycle failed (non-fatal): %s", e)
+            import traceback
+            logger.error(traceback.format_exc())
 
         # 8. Alert cycle — fires email for new actionable signals
         try:
@@ -530,7 +530,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             logger.info("Exit alert cycle: %s", exit_result)
         except Exception as e:
             logger.error("Alert cycle failed (non-fatal): %s", e)
-            import traceback
             logger.error(traceback.format_exc())
 
         run.status = "complete"

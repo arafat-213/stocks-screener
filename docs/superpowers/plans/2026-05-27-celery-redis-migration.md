@@ -28,7 +28,7 @@ services:
   redis:
     image: redis:alpine
     ports:
-      - "6379:6379"
+      - "6380:6379"
     restart: always
 ```
 
@@ -65,7 +65,7 @@ import os
 from celery import Celery
 from celery.schedules import crontab
 
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6380/0")
 
 celery_app = Celery(
     "stock_ai",

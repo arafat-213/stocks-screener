@@ -11,7 +11,8 @@ import {
   X,
   ArrowLeft,
   Play,
-  List
+  List,
+  BookOpen
 } from 'lucide-react';
 import { map } from 'lodash/fp';
 import ThemeToggle from './ThemeToggle';
@@ -34,6 +35,7 @@ const MainLayout = ({ children }) => {
     { to: '/watchlist', label: 'Watchlist', icon: <List size={20} /> },
     { to: '/discover', label: 'Discover', icon: <Search size={20} /> },
     { to: '/paper', label: 'Paper', icon: <Play size={20} /> },
+    { to: '/journal', label: 'Journal', icon: <BookOpen size={20} /> },
     { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={20} /> },
     { to: '/intel', label: 'Intelligence', icon: <ShieldAlert size={20} /> },
     { to: '/system', label: 'System', icon: <Settings size={20} /> },

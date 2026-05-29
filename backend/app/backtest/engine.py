@@ -183,8 +183,8 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
             return _TA_CACHE[symbol]
 
     df = df.copy()
-    # Import pandas_ta locally if not global to ensure extensions are ready
-    import pandas_ta as ta
+    # Import pandas_ta_classic locally if not global to ensure extensions are ready
+    import pandas_ta_classic as ta
     df.ta.ema(length=5, append=True)
     df.ta.ema(length=13, append=True)
     df.ta.ema(length=20, append=True)
@@ -1349,7 +1349,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             regime_dict = {}
             if benchmark_df is not None and not benchmark_df.empty:
                 # pandas-ta extensions need to be available
-                import pandas_ta as ta
+                import pandas_ta_classic as ta
                 benchmark_df.ta.ema(length=50, append=True)
                 benchmark_df.ta.ema(length=200, append=True)
                 # Require price above BOTH 50 EMA (short-term trend) and 200 EMA (macro trend).

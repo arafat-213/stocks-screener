@@ -72,7 +72,7 @@ class TestMACDScoring:
         df = _make_macd_positive_territory_df()
         result = calculate_technical_score(df, timeframe='D')
 
-        import pandas_ta as ta
+        import pandas_ta_classic as ta
         check = df.copy()
         check.ta.macd(fast=12, slow=26, signal=9, append=True)
         latest = check.iloc[-1]

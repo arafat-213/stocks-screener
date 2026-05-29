@@ -54,7 +54,7 @@ def _get_or_create_portfolio(db: Session) -> PaperPortfolio:
     return portfolio
 
 def _get_regime(db: Session, date: datetime.date) -> bool:
-    import pandas_ta # noqa
+    import pandas_ta_classic # noqa
     df = _ohlcv_cache.get("^NSEI", append_ns=False, period='5y')
     if df is None or df.empty:
         return True
@@ -197,7 +197,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
         day_open = float(row['Open'])
         
         # We need EMA20 to check pullback
-        import pandas_ta # noqa
+        import pandas_ta_classic # noqa
         df_ta = df.copy()
         df_ta.ta.ema(length=20, append=True)
         ema20 = df_ta.loc[rows.index[0], 'EMA_20']

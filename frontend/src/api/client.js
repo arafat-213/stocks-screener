@@ -12,8 +12,10 @@ export const fetchPipelineStatus = () => apiClient.get('/dashboard/pipeline/late
 export const runScreener = (limit = null) => apiClient.post('/screener/run', { limit });
 export const stopPipeline = () => apiClient.post('/pipeline/stop');
 export const getLatestReport = () => apiClient.get('/reports/latest');
+export const getLatestDigest = () => apiClient.get('/reports/digest/latest');
 export const getReportList = () => apiClient.get('/reports');
 export const getReportByDate = (date) => apiClient.get(`/reports/${date}`);
+export const getDigestByDate = (date) => apiClient.get(`/reports/digest/${date}`);
 export const getStockDetail = (symbol) => apiClient.get(`/stocks/${symbol}`);
 export const getScreensList = () => apiClient.get('/screens');
 export const getScreenBySlug = (slug, params = {}) =>

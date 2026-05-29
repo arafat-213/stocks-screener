@@ -1,4 +1,4 @@
-import pandas_ta as ta
+import pandas_ta_classic as ta
 import pandas as pd
 from app.pipeline.utils import to_float
 
