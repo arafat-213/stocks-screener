@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
+import { get, getOr, size, isEmpty, map } from 'lodash/fp';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -81,9 +82,9 @@ const Journal = () => {
         getJournalOpen(),
         getJournalClosed()
       ]);
-      setStats(statsRes.data);
-      setOpenPositions(openRes.data);
-      setTradeHistory(closedRes.data);
+      setStats(get('data')(statsRes) || null);
+      setOpenPositions(get('data')(openRes) || []);
+      setTradeHistory(get('data')(closedRes) || []);
     } catch (error) {
       console.error('Error loading journal data:', error);
     } finally {
@@ -97,18 +98,19 @@ const Journal = () => {
 
   const handleCloseClick = (trade) => {
     setSelectedTrade(trade);
-    setExitPrice(trade.current_price || trade.entry_price);
+    setExitPrice(get('current_price')(trade) || get('entry_price')(trade) || '');
     setExitReason('target');
     setModalOpen(true);
   };
 
   const handleCloseSubmit = async (e) => {
     e.preventDefault();
-    if (!selectedTrade || !exitPrice) return;
+    const tradeId = get('id')(selectedTrade);
+    if (!tradeId || !exitPrice) return;
 
     setClosing(true);
     try {
-      await closeJournalEntry(selectedTrade.id, {
+      await closeJournalEntry(tradeId, {
         exit_price: parseFloat(exitPrice),
         exit_date: new Date().toISOString().split('T')[0],
         exit_reason: exitReason
@@ -169,14 +171,18 @@ const Journal = () => {
   }
 
   return (
-    <div className="flex flex-col gap-8 pb-24 animate-fade-in">
+    <div className="w-full flex flex-col gap-8 pb-24 animate-fade-in">
       <header className="flex justify-between items-start">
         <div className="flex flex-col">
-          <h1 className="text-3xl font-black tracking-tight text-text">Trade Journal</h1>
-          <p className="text-text-muted">Track and analyze your live market performance</p>
+          <h1 className="text-3xl font-black tracking-tight text-text">
+            Trade Journal
+          </h1>
+          <p className="text-text-muted">
+            Track and analyze your live market performance
+          </p>
         </div>
         <div className="flex gap-2">
-          <button 
+          <button
             onClick={() => setCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl shadow-lg shadow-primary/20 transition-all font-black text-sm"
           >
@@ -184,34 +190,38 @@ const Journal = () => {
             MANUAL ENTRY
           </button>
           <div className="px-4 py-2 bg-bg-secondary border border-border rounded-xl shadow-sm">
-            <div className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">Last Updated</div>
-            <div className="text-xs font-bold text-text">{new Date().toLocaleDateString()}</div>
+            <div className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">
+              Last Updated
+            </div>
+            <div className="text-xs font-bold text-text">
+              {new Date().toLocaleDateString()}
+            </div>
           </div>
         </div>
       </header>
 
       {/* Stats Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard 
-          label="Total Realized P&L" 
-          value={`₹${stats?.total_pnl?.toLocaleString() || 0}`}
-          subValue={`${stats?.avg_return?.toFixed(1)}% Avg Return`}
+        <StatCard
+          label="Total Realized P&L"
+          value={`₹${getOr(0, 'total_pnl')(stats).toLocaleString()}`}
+          subValue={`${getOr(0, 'avg_return')(stats).toFixed(1)}% Avg Return`}
           icon={<BarChart2 className="text-primary" size={20} />}
-          trend={stats?.total_pnl >= 0 ? 'up' : 'down'}
+          trend={getOr(0, 'total_pnl')(stats) >= 0 ? 'up' : 'down'}
         />
-        <StatCard 
-          label="Open Unrealized P&L" 
-          value={`₹${stats?.total_unrealized_pnl?.toLocaleString() || 0}`}
-          subValue={`${stats?.open_positions || 0} Positions`}
+        <StatCard
+          label="Open Unrealized P&L"
+          value={`₹${getOr(0, 'total_unrealized_pnl')(stats).toLocaleString()}`}
+          subValue={`${getOr(0, 'open_positions')(stats)} Positions`}
           icon={<PieChartIcon className="text-blue-500" size={20} />}
-          trend={stats?.total_unrealized_pnl >= 0 ? 'up' : 'down'}
+          trend={getOr(0, 'total_unrealized_pnl')(stats) >= 0 ? 'up' : 'down'}
         />
-        <StatCard 
-          label="Strategy Win Rate" 
-          value={`${stats?.win_rate || 0}%`}
-          subValue={`${stats?.total_trades || 0} Total Trades`}
+        <StatCard
+          label="Strategy Win Rate"
+          value={`${getOr(0, 'win_rate')(stats)}%`}
+          subValue={`${getOr(0, 'total_trades')(stats)} Total Trades`}
           icon={<TrendingUp className="text-bullish" size={20} />}
-          progress={stats?.win_rate}
+          progress={get('win_rate')(stats)}
         />
       </div>
 
@@ -219,19 +229,19 @@ const Journal = () => {
       <div className="flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl w-fit">
         <button
           className={`px-6 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 ${
-            activeTab === 'open' 
-              ? 'bg-bg-elevated text-text shadow-sm' 
+            activeTab === 'open'
+              ? 'bg-bg-elevated text-text shadow-sm'
               : 'text-text-muted hover:text-text hover:bg-bg-elevated/50'
           }`}
           onClick={() => setActiveTab('open')}
         >
           <Briefcase size={16} />
-          Open Positions ({openPositions.length})
+          Open Positions ({size(openPositions)})
         </button>
         <button
           className={`px-6 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 ${
-            activeTab === 'history' 
-              ? 'bg-bg-elevated text-text shadow-sm' 
+            activeTab === 'history'
+              ? 'bg-bg-elevated text-text shadow-sm'
               : 'text-text-muted hover:text-text hover:bg-bg-elevated/50'
           }`}
           onClick={() => setActiveTab('history')}
@@ -244,14 +254,12 @@ const Journal = () => {
       {/* Content Area */}
       <div className="min-h-[400px]">
         {activeTab === 'open' ? (
-          <OpenPositionsTable 
-            positions={openPositions} 
-            onCloseTrade={handleCloseClick} 
+          <OpenPositionsTable
+            positions={openPositions}
+            onCloseTrade={handleCloseClick}
           />
         ) : (
-          <TradeHistoryTable 
-            trades={tradeHistory} 
-          />
+          <TradeHistoryTable trades={tradeHistory} />
         )}
       </div>
 
@@ -260,30 +268,41 @@ const Journal = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-bg-secondary border border-border w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="flex justify-between items-center p-6 border-b border-border">
-              <h3 className="text-xl font-black text-text uppercase tracking-tight">Close Position</h3>
-              <button 
+              <h3 className="text-xl font-black text-text uppercase tracking-tight">
+                Close Position
+              </h3>
+              <button
                 onClick={() => setModalOpen(false)}
                 className="p-2 hover:bg-bg-elevated rounded-full transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            
-            <form onSubmit={handleCloseSubmit} className="p-6 flex flex-col gap-6">
+
+            <form
+              onSubmit={handleCloseSubmit}
+              className="p-6 flex flex-col gap-6"
+            >
               <div className="flex items-center gap-4 p-4 bg-bg-elevated rounded-2xl border border-border">
                 <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center text-primary font-black text-xl">
                   {selectedTrade?.symbol?.substring(0, 1)}
                 </div>
                 <div>
-                  <div className="text-lg font-black text-text">{selectedTrade?.symbol}</div>
-                  <div className="text-xs font-bold text-text-muted uppercase tracking-widest">Entry: ₹{selectedTrade?.entry_price?.toLocaleString()}</div>
+                  <div className="text-lg font-black text-text">
+                    {selectedTrade?.symbol}
+                  </div>
+                  <div className="text-xs font-bold text-text-muted uppercase tracking-widest">
+                    Entry: ₹{selectedTrade?.entry_price?.toLocaleString()}
+                  </div>
                 </div>
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Exit Price (₹)</label>
-                <input 
-                  type="number" 
+                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                  Exit Price (₹)
+                </label>
+                <input
+                  type="number"
                   step="0.01"
                   required
                   value={exitPrice}
@@ -294,8 +313,10 @@ const Journal = () => {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Exit Reason</label>
-                <select 
+                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                  Exit Reason
+                </label>
+                <select
                   value={exitReason}
                   onChange={(e) => setExitReason(e.target.value)}
                   className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50 appearance-none"
@@ -308,7 +329,7 @@ const Journal = () => {
                 </select>
               </div>
 
-              <button 
+              <button
                 type="submit"
                 disabled={closing}
                 className="w-full bg-primary hover:bg-primary-dark disabled:opacity-50 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2"
@@ -326,35 +347,48 @@ const Journal = () => {
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="bg-bg-secondary border border-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-6 border-b border-border sticky top-0 bg-bg-secondary z-10">
-              <h3 className="text-xl font-black text-text uppercase tracking-tight">New Trade Entry</h3>
-              <button 
+              <h3 className="text-xl font-black text-text uppercase tracking-tight">
+                New Trade Entry
+              </h3>
+              <button
                 onClick={() => setCreateModalOpen(false)}
                 className="p-2 hover:bg-bg-elevated rounded-full transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            
-            <form onSubmit={handleCreateSubmit} className="p-6 flex flex-col gap-5">
+
+            <form
+              onSubmit={handleCreateSubmit}
+              className="p-6 flex flex-col gap-5"
+            >
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Symbol</label>
-                  <input 
-                    type="text" 
+                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                    Symbol
+                  </label>
+                  <input
+                    type="text"
                     required
                     value={newTrade.symbol}
-                    onChange={(e) => setNewTrade({...newTrade, symbol: e.target.value})}
+                    onChange={(e) =>
+                      setNewTrade({ ...newTrade, symbol: e.target.value })
+                    }
                     className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="RELIANCE.NS"
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Entry Date</label>
-                  <input 
-                    type="date" 
+                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                    Entry Date
+                  </label>
+                  <input
+                    type="date"
                     required
                     value={newTrade.entry_date}
-                    onChange={(e) => setNewTrade({...newTrade, entry_date: e.target.value})}
+                    onChange={(e) =>
+                      setNewTrade({ ...newTrade, entry_date: e.target.value })
+                    }
                     className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                   />
                 </div>
@@ -362,25 +396,33 @@ const Journal = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Entry Price (₹)</label>
-                  <input 
-                    type="number" 
+                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                    Entry Price (₹)
+                  </label>
+                  <input
+                    type="number"
                     step="0.01"
                     required
                     value={newTrade.entry_price}
-                    onChange={(e) => setNewTrade({...newTrade, entry_price: e.target.value})}
+                    onChange={(e) =>
+                      setNewTrade({ ...newTrade, entry_price: e.target.value })
+                    }
                     className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="0.00"
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Shares</label>
-                  <input 
-                    type="number" 
+                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                    Shares
+                  </label>
+                  <input
+                    type="number"
                     required
                     min="1"
                     value={newTrade.shares}
-                    onChange={(e) => setNewTrade({...newTrade, shares: e.target.value})}
+                    onChange={(e) =>
+                      setNewTrade({ ...newTrade, shares: e.target.value })
+                    }
                     className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="1"
                   />
@@ -389,23 +431,31 @@ const Journal = () => {
 
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Stop Loss (₹)</label>
-                  <input 
-                    type="number" 
+                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                    Stop Loss (₹)
+                  </label>
+                  <input
+                    type="number"
                     step="0.01"
                     value={newTrade.stop_loss}
-                    onChange={(e) => setNewTrade({...newTrade, stop_loss: e.target.value})}
+                    onChange={(e) =>
+                      setNewTrade({ ...newTrade, stop_loss: e.target.value })
+                    }
                     className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="Optional"
                   />
                 </div>
                 <div className="flex flex-col gap-2">
-                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Target (₹)</label>
-                  <input 
-                    type="number" 
+                  <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                    Target (₹)
+                  </label>
+                  <input
+                    type="number"
                     step="0.01"
                     value={newTrade.target}
-                    onChange={(e) => setNewTrade({...newTrade, target: e.target.value})}
+                    onChange={(e) =>
+                      setNewTrade({ ...newTrade, target: e.target.value })
+                    }
                     className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50"
                     placeholder="Optional"
                   />
@@ -413,16 +463,20 @@ const Journal = () => {
               </div>
 
               <div className="flex flex-col gap-2">
-                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Notes</label>
-                <textarea 
+                <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">
+                  Notes
+                </label>
+                <textarea
                   value={newTrade.notes}
-                  onChange={(e) => setNewTrade({...newTrade, notes: e.target.value})}
+                  onChange={(e) =>
+                    setNewTrade({ ...newTrade, notes: e.target.value })
+                  }
                   className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50 min-h-[80px]"
                   placeholder="Why did you take this trade?"
                 />
               </div>
 
-              <button 
+              <button
                 type="submit"
                 disabled={creating}
                 className="w-full bg-primary hover:bg-primary-dark disabled:opacity-50 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 mt-2"
@@ -473,7 +527,7 @@ const StatCard = ({ label, value, subValue, icon, trend, progress }) => (
 );
 
 const OpenPositionsTable = ({ positions, onCloseTrade }) => {
-  if (positions.length === 0) {
+  if (isEmpty(positions)) {
     return (
       <div className="flex flex-col items-center justify-center p-20 bg-bg-secondary border-2 border-dashed border-border rounded-3xl text-center">
         <AlertCircle size={48} className="text-text-muted mb-4 opacity-20" />
@@ -499,23 +553,27 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
             </tr>
           </thead>
           <tbody className="text-sm">
-            {positions.map((pos) => {
-              const pnlPct = pos.live_return_pct || 0;
+            {map((pos) => {
+              const pnlPct = getOr(0, 'live_return_pct')(pos);
               const pnlColor = pnlPct >= 0 ? 'text-bullish' : 'text-bearish';
               
               // Calculate distance to target/SL for visual feedback
-              const toTarget = pos.target ? ((pos.target - pos.current_price) / pos.current_price * 100) : null;
-              const toStop = pos.stop_loss ? ((pos.current_price - pos.stop_loss) / pos.current_price * 100) : null;
+              const currentPrice = getOr(1, 'current_price')(pos);
+              const target = get('target')(pos);
+              const stopLoss = get('stop_loss')(pos);
+              
+              const toTarget = target ? ((target - currentPrice) / currentPrice * 100) : null;
+              const toStop = stopLoss ? ((currentPrice - stopLoss) / currentPrice * 100) : null;
 
               return (
                 <tr key={pos.id} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors group">
                   <td className="p-4">
-                    <div className="font-black text-text tracking-tight group-hover:text-primary transition-colors">{pos.symbol}</div>
-                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">Day {pos.holding_days} Holding</div>
+                    <div className="font-black text-text tracking-tight group-hover:text-primary transition-colors">{get('symbol')(pos)}</div>
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">Day {get('holding_days')(pos)} Holding</div>
                   </td>
-                  <td className="p-4 text-text-muted font-medium">{new Date(pos.entry_date).toLocaleDateString()}</td>
-                  <td className="p-4 text-right font-mono font-bold text-text-muted">₹{pos.entry_price?.toLocaleString()}</td>
-                  <td className="p-4 text-right font-mono font-black text-text">₹{pos.current_price?.toLocaleString()}</td>
+                  <td className="p-4 text-text-muted font-medium">{new Date(get('entry_date')(pos)).toLocaleDateString()}</td>
+                  <td className="p-4 text-right font-mono font-bold text-text-muted">₹{getOr(0, 'entry_price')(pos).toLocaleString()}</td>
+                  <td className="p-4 text-right font-mono font-black text-text">₹{currentPrice.toLocaleString()}</td>
                   <td className={`p-4 text-right font-black ${pnlColor}`}>
                     {pnlPct >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%
                   </td>
@@ -543,7 +601,7 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                   </td>
                 </tr>
               );
-            })}
+            })(positions)}
           </tbody>
         </table>
       </div>
@@ -552,7 +610,7 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
 };
 
 const TradeHistoryTable = ({ trades }) => {
-  if (trades.length === 0) {
+  if (isEmpty(trades)) {
     return (
       <div className="flex flex-col items-center justify-center p-20 bg-bg-secondary border-2 border-dashed border-border rounded-3xl text-center">
         <History size={48} className="text-text-muted mb-4 opacity-20" />
@@ -587,33 +645,33 @@ const TradeHistoryTable = ({ trades }) => {
             </tr>
           </thead>
           <tbody className="text-sm">
-            {trades.map((t, idx) => {
-              const pnlColor = t.return_pct >= 0 ? 'text-bullish' : 'text-bearish';
+            {map((t) => {
+              const pnlColor = getOr(0, 'return_pct')(t) >= 0 ? 'text-bullish' : 'text-bearish';
               
               return (
-                <tr key={idx} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors">
+                <tr key={t.id || get('symbol')(t) + get('exit_date')(t)} className="border-b border-border/50 hover:bg-bg-elevated/30 transition-colors">
                   <td className="p-4">
-                    <div className="font-black text-text tracking-tight">{t.symbol}</div>
-                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">{t.holding_days}d Holding</div>
+                    <div className="font-black text-text tracking-tight">{get('symbol')(t)}</div>
+                    <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">{get('holding_days')(t)}d Holding</div>
                   </td>
                   <td className="p-4">
                     <div className="text-[10px] font-bold text-text-muted uppercase tracking-tighter">
-                      {new Date(t.entry_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} → {new Date(t.exit_date).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                      {new Date(get('entry_date')(t)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} → {new Date(get('exit_date')(t)).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </div>
                   </td>
-                  <td className="p-4 text-right font-mono text-xs text-text-muted">₹{t.entry_price?.toLocaleString()}</td>
-                  <td className="p-4 text-right font-mono font-black text-text">₹{t.exit_price?.toLocaleString()}</td>
+                  <td className="p-4 text-right font-mono text-xs text-text-muted">₹{getOr(0, 'entry_price')(t).toLocaleString()}</td>
+                  <td className="p-4 text-right font-mono font-black text-text">₹{getOr(0, 'exit_price')(t).toLocaleString()}</td>
                   <td className={`p-4 text-right font-black ${pnlColor}`}>
-                    {t.return_pct >= 0 ? '+' : ''}{t.return_pct?.toFixed(2)}%
+                    {getOr(0, 'return_pct')(t) >= 0 ? '+' : ''}{getOr(0, 'return_pct')(t).toFixed(2)}%
                   </td>
                   <td className="p-4 text-center">
-                    <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${getReasonStyles(t.exit_reason)}`}>
-                      {t.exit_reason?.replace(/_/g, ' ')}
+                    <span className={`px-2 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border ${getReasonStyles(get('exit_reason')(t))}`}>
+                      {getOr('', 'exit_reason')(t).replace(/_/g, ' ')}
                     </span>
                   </td>
                 </tr>
               );
-            })}
+            })(trades)}
           </tbody>
         </table>
       </div>
