@@ -2,6 +2,7 @@ from datetime import date
 from typing import List, Literal, Optional
 
 import pandas as pd
+import pandas_ta_classic  # noqa
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func

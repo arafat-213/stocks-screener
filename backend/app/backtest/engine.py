@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 import pandas as pd
+import pandas_ta_classic  # noqa
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 

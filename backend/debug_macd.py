@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import pandas_ta_classic  # noqa
 
 
 def _make_macd_positive_territory_df() -> pd.DataFrame:
