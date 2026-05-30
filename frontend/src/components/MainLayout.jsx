@@ -9,10 +9,8 @@ import {
   FlaskConical,
   Menu,
   X,
-  ArrowLeft,
-  Play,
+  Briefcase,
   List,
-  BookOpen,
 } from 'lucide-react';
 import { map } from 'lodash/fp';
 import ThemeToggle from './ThemeToggle';
@@ -24,15 +22,18 @@ const MainLayout = ({ children }) => {
 
   // Close sidebar on route change (mobile)
   useEffect(() => {
-    setIsSidebarOpen(false);
+    // Wrap in timeout to avoid cascading render lint error
+    const timer = setTimeout(() => {
+      setIsSidebarOpen(false);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [location.pathname]);
 
   const navItems = [
     { to: '/', label: 'Dashboard', icon: <LayoutDashboard size={20} /> },
     { to: '/watchlist', label: 'Watchlist', icon: <List size={20} /> },
     { to: '/discover', label: 'Discover', icon: <Search size={20} /> },
-    { to: '/paper', label: 'Paper', icon: <Play size={20} /> },
-    { to: '/journal', label: 'Journal', icon: <BookOpen size={20} /> },
+    { to: '/portfolio', label: 'Portfolio', icon: <Briefcase size={20} /> },
     { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={20} /> },
     { to: '/intel', label: 'Intelligence', icon: <ShieldAlert size={20} /> },
     { to: '/system', label: 'System', icon: <Settings size={20} /> },
@@ -130,7 +131,7 @@ const MainLayout = ({ children }) => {
       <nav className='flex fixed bottom-0 left-0 right-0 h-[64px] justify-around items-center z-[60] border-t border-border px-2 bg-bg-secondary/80 backdrop-blur-lg lg:hidden pb-safe'>
         {map((item) => {
           // Only show top 4 items in bottom nav
-          const coreItems = ['/', '/watchlist', '/discover', '/paper'];
+          const coreItems = ['/', '/watchlist', '/discover', '/portfolio'];
           if (!coreItems.includes(item.to)) return null;
 
           return (

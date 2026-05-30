@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { map, size } from 'lodash/fp';
@@ -15,6 +15,15 @@ export const GlobalSearch = () => {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
+
+  const handleSelect = useCallback(
+    (symbol) => {
+      navigate(`/stocks/${symbol}`);
+      setIsOpen(false);
+      setQuery('');
+    },
+    [navigate]
+  );
 
   // Keyboard event listeners
   useEffect(() => {
@@ -51,7 +60,7 @@ export const GlobalSearch = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, results, selectedIndex]);
+  }, [isOpen, results, selectedIndex, handleSelect]);
 
   // Focus input when modal opens
   useEffect(() => {
@@ -61,10 +70,14 @@ export const GlobalSearch = () => {
       }, 50);
       return () => clearTimeout(timer);
     } else {
-      setQuery('');
-      setResults([]);
-      setSelectedIndex(-1);
-      if (debounceRef.current) clearTimeout(debounceRef.current);
+      // Wrap in timeout to avoid cascading render lint error
+      const timer = setTimeout(() => {
+        setQuery('');
+        setResults([]);
+        setSelectedIndex(-1);
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
@@ -100,12 +113,6 @@ export const GlobalSearch = () => {
           setLoading(false);
         });
     }, 200);
-  };
-
-  const handleSelect = (symbol) => {
-    navigate(`/stocks/${symbol}`);
-    setIsOpen(false);
-    setQuery('');
   };
 
   return (

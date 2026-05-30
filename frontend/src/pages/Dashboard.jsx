@@ -6,13 +6,10 @@ import {
   AlertCircle,
   LayoutGrid,
   List,
-  Square,
   RefreshCcw,
   ShieldCheck,
-  ShieldAlert,
   ShieldX,
   CircleAlert,
-  Star,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { map, filter, size, times, uniqBy } from 'lodash/fp';
@@ -39,12 +36,9 @@ import WatchlistStar from '../components/WatchlistStar';
 import PipelineProgress from '../components/PipelineProgress';
 import SetupBadge from '../components/SetupBadge';
 
-const mapWithIndex = map.convert({ cap: false });
-
 const Dashboard = () => {
   // Data Fetching Hooks
   const [stocks, setStocks] = useState([]);
-  const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -67,13 +61,11 @@ const Dashboard = () => {
 
   const { market_context, error: marketError } = useMarketData();
   const { watchlist, toggle, isWatched, count } = useWatchlist();
-  const [addingToWatchlist, setAddingToWatchlist] = useState(new Set());
 
   const handleToggleWatchlist = async (row) => {
     const symbol = row.symbol;
     const isAlreadyWatched = isWatched(symbol);
 
-    setAddingToWatchlist((prev) => new Set(prev).add(symbol));
     try {
       if (isAlreadyWatched) {
         await removeFromWatchlist(symbol);
@@ -90,12 +82,6 @@ const Dashboard = () => {
       toggle(symbol);
     } catch (err) {
       alert(`Failed to update watchlist: ${err.message}`);
-    } finally {
-      setAddingToWatchlist((prev) => {
-        const next = new Set(prev);
-        next.delete(symbol);
-        return next;
-      });
     }
   };
 
@@ -111,10 +97,10 @@ const Dashboard = () => {
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   const loadMore = useCallback(
-    async (isReset = false) => {
+    async (isReset = false, showLoading = true) => {
       if (loading || (!hasMore && !isReset)) return;
 
-      setLoading(true);
+      if (showLoading) setLoading(true);
       const currentOffset = isReset ? 0 : offset;
 
       try {
@@ -178,8 +164,11 @@ const Dashboard = () => {
 
   // Filter/Sort Integration
   useEffect(() => {
-    loadMore(true);
-  }, [selectedSectors, confluenceFilter, sortBy, fundamentalFilter]);
+    const timer = setTimeout(() => {
+      loadMore(true, false);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [selectedSectors, confluenceFilter, sortBy, fundamentalFilter, loadMore]);
 
   // Implement refresh side-effect: when status transitions from running to complete, call loadMore(true)
   const prevStatusRef = useRef(status);

@@ -10,15 +10,12 @@ import {
   ChevronRight,
   Layers,
   Info,
-  Calendar,
   Loader2,
   ExternalLink,
   ShieldCheck,
   Zap,
-  TrendingDown,
   RotateCcw,
   Target,
-  Clock,
   Briefcase,
 } from 'lucide-react';
 import {

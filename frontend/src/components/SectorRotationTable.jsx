@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { DataTable } from './ui/DataTable';
-import { TrendingUp, BarChart3, Users } from 'lucide-react';
+import { BarChart3 } from 'lucide-react';
 
 export const SectorRotationTable = ({ data, loading }) => {
   const columns = useMemo(

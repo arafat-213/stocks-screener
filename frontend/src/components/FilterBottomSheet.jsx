@@ -1,4 +1,4 @@
-import { X, Filter, RotateCcw, ShieldCheck } from 'lucide-react';
+import { X, Filter, RotateCcw } from 'lucide-react';
 import { map } from 'lodash/fp';
 
 const FilterBottomSheet = ({

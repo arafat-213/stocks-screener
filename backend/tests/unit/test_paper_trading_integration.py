@@ -55,6 +55,7 @@ def test_update_open_positions_calls_sync(db: Session):
         portfolio_id=portfolio.id,
         symbol="RELIANCE.NS",
         status="open",
+        signal_date=datetime.date(2023, 12, 31),
         entry_price=2500.0,
         shares=10,
         position_size=25000.0,

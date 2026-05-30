@@ -1,6 +1,5 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { RefreshCw, Target, Zap, LayoutGrid } from 'lucide-react';
+import { useState, useCallback } from 'react';
+import { RefreshCw, Zap } from 'lucide-react';
 import { getScreenBySlug, getScreensList } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import ScreenResultTable from '../components/ScreenResultTable';
@@ -14,8 +13,7 @@ const Discover = () => {
   const [riskPct, setRiskPct] = useState(3.0);
 
   // Fetch Strategy List
-  const { data: screens = [], loading: loadingScreens } =
-    useFetch(getScreensList);
+  const { data: screens = [] } = useFetch(getScreensList);
 
   // Fetch Strategy Results
   const fetchStrategyResults = useCallback(() => {
@@ -27,14 +25,11 @@ const Discover = () => {
     return getScreenBySlug(selectedSlug, params).then((res) => res.data);
   }, [selectedSlug, liveMode, capital, riskPct]);
 
-  const {
-    data: strategyResults = [],
-    loading: loadingStrategyResults,
-    refetch: refetchStrategy,
-  } = useFetch(fetchStrategyResults, {
-    deps: [selectedSlug, capital, riskPct],
-    refreshInterval: liveMode ? 10000 : null,
-  });
+  const { data: strategyResults = [], loading: loadingStrategyResults } =
+    useFetch(fetchStrategyResults, {
+      deps: [selectedSlug, capital, riskPct],
+      refreshInterval: liveMode ? 10000 : null,
+    });
 
   return (
     <div className='w-full animate-fade-in'>

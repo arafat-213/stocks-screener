@@ -8,7 +8,6 @@ import {
   AlertCircle,
   BarChart3,
   History,
-  Activity,
   RefreshCcw,
   Star,
   Zap,

@@ -1,9 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
-import { get, getOr, size, isEmpty, map } from 'lodash/fp';
+import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { get, getOr, size, isEmpty, map, filter } from 'lodash/fp';
 import {
   TrendingUp,
-  TrendingDown,
   History,
   Briefcase,
   ChevronRight,
@@ -23,8 +22,9 @@ import {
   createJournalEntry,
 } from '../api/client';
 
-const Journal = () => {
+const Portfolio = () => {
   const [activeTab, setActiveTab] = useState('open');
+  const [sourceFilter, setSourceFilter] = useState('all'); // 'all', 'manual', 'paper'
   const [stats, setStats] = useState(null);
   const [openPositions, setOpenPositions] = useState([]);
   const [tradeHistory, setTradeHistory] = useState([]);
@@ -33,6 +33,7 @@ const Journal = () => {
   const [selectedTrade, setSelectedTrade] = useState(null);
   const [closing, setClosing] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   // Manual Entry state
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -48,7 +49,11 @@ const Journal = () => {
   });
   const [creating, setCreating] = useState(false);
 
-  // Handle pre-fill from URL params
+  // Exit Trade state
+  const [exitPrice, setExitPrice] = useState('');
+  const [exitReason, setExitReason] = useState('target');
+
+  // Handle pre-fill from URL params (e.g. from watchlist/discover)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('action') === 'new') {
@@ -58,24 +63,25 @@ const Journal = () => {
       const target = params.get('target') || '';
       const wlId = params.get('wl_id') || null;
 
-      setNewTrade((prev) => ({
-        ...prev,
-        symbol: symbol,
-        entry_price: price,
-        stop_loss: sl,
-        target: target,
-        watchlist_id: wlId,
-      }));
-      setCreateModalOpen(true);
+      // Wrap in timeout to avoid cascading render lint error
+      setTimeout(() => {
+        setNewTrade((prev) => ({
+          ...prev,
+          symbol: symbol,
+          entry_price: price,
+          stop_loss: sl,
+          target: target,
+          watchlist_id: wlId,
+        }));
+        setCreateModalOpen(true);
+        // Clean up URL after opening modal
+        navigate('/portfolio', { replace: true });
+      }, 0);
     }
-  }, [location.search]);
+  }, [location.search, navigate]);
 
-  // Form state for closing trade
-  const [exitPrice, setExitPrice] = useState('');
-  const [exitReason, setExitReason] = useState('target');
-
-  const loadData = async () => {
-    setLoading(true);
+  const loadData = async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const [statsRes, openRes, closedRes] = await Promise.all([
         getJournalStats(),
@@ -86,14 +92,17 @@ const Journal = () => {
       setOpenPositions(get('data')(openRes) || []);
       setTradeHistory(get('data')(closedRes) || []);
     } catch (error) {
-      console.error('Error loading journal data:', error);
+      console.error('Error loading portfolio data:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    loadData();
+    const timer = setTimeout(() => {
+      loadData(false); // Already loading by default
+    }, 0);
+    return () => clearTimeout(timer);
   }, []);
 
   const handleCloseClick = (trade) => {
@@ -161,13 +170,21 @@ const Journal = () => {
     }
   };
 
+  const filterBySource = (items) => {
+    if (sourceFilter === 'all') return items;
+    return filter((item) => item.source === sourceFilter)(items);
+  };
+
+  const filteredOpen = filterBySource(openPositions);
+  const filteredHistory = filterBySource(tradeHistory);
+
   if (loading && !stats) {
     return (
       <div className='flex items-center justify-center min-h-[400px]'>
         <div className='flex flex-col items-center gap-4'>
           <div className='w-12 h-12 border-4 border-primary border-t-transparent rounded-full animate-spin'></div>
           <p className='text-text-muted font-bold uppercase tracking-widest text-xs'>
-            Loading Journal...
+            Loading Portfolio...
           </p>
         </div>
       </div>
@@ -176,31 +193,44 @@ const Journal = () => {
 
   return (
     <div className='w-full flex flex-col gap-8 pb-24 animate-fade-in'>
-      <header className='flex justify-between items-start'>
+      <header className='flex flex-col md:flex-row justify-between items-start gap-4'>
         <div className='flex flex-col'>
           <h1 className='text-3xl font-black tracking-tight text-text'>
-            Trade Journal
+            Portfolio
           </h1>
           <p className='text-text-muted'>
-            Track and analyze your live market performance
+            Unified view of Manual and System-generated trades
           </p>
         </div>
-        <div className='flex gap-2'>
+        <div className='flex flex-wrap gap-2'>
+          {/* Source Filter Toggle */}
+          <div className='flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl h-[42px]'>
+            {[
+              { id: 'all', label: 'All' },
+              { id: 'manual', label: 'Manual' },
+              { id: 'paper', label: 'System' },
+            ].map((s) => (
+              <button
+                key={s.id}
+                onClick={() => setSourceFilter(s.id)}
+                className={`px-4 py-1 text-xs font-black rounded-lg transition-all uppercase tracking-widest ${
+                  sourceFilter === s.id
+                    ? 'bg-primary text-white shadow-md'
+                    : 'text-text-muted hover:text-text hover:bg-bg-elevated/50'
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
           <button
             onClick={() => setCreateModalOpen(true)}
-            className='flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl shadow-lg shadow-primary/20 transition-all font-black text-sm'
+            className='flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl shadow-lg shadow-primary/20 transition-all font-black text-sm h-[42px]'
           >
             <Plus size={18} />
-            MANUAL ENTRY
+            ADD MANUAL
           </button>
-          <div className='px-4 py-2 bg-bg-secondary border border-border rounded-xl shadow-sm'>
-            <div className='text-[10px] font-black uppercase tracking-widest text-text-muted mb-1'>
-              Last Updated
-            </div>
-            <div className='text-xs font-bold text-text'>
-              {new Date().toLocaleDateString()}
-            </div>
-          </div>
         </div>
       </header>
 
@@ -221,7 +251,7 @@ const Journal = () => {
           trend={getOr(0, 'total_unrealized_pnl')(stats) >= 0 ? 'up' : 'down'}
         />
         <StatCard
-          label='Strategy Win Rate'
+          label='Win Rate'
           value={`${getOr(0, 'win_rate')(stats)}%`}
           subValue={`${getOr(0, 'total_trades')(stats)} Total Trades`}
           icon={<TrendingUp className='text-bullish' size={20} />}
@@ -240,7 +270,7 @@ const Journal = () => {
           onClick={() => setActiveTab('open')}
         >
           <Briefcase size={16} />
-          Open Positions ({size(openPositions)})
+          Open ({size(filteredOpen)})
         </button>
         <button
           className={`px-6 py-2 text-sm font-bold rounded-lg transition-all flex items-center gap-2 ${
@@ -251,7 +281,7 @@ const Journal = () => {
           onClick={() => setActiveTab('history')}
         >
           <History size={16} />
-          Trade History
+          History
         </button>
       </div>
 
@@ -259,11 +289,11 @@ const Journal = () => {
       <div className='min-h-[400px]'>
         {activeTab === 'open' ? (
           <OpenPositionsTable
-            positions={openPositions}
+            positions={filteredOpen}
             onCloseTrade={handleCloseClick}
           />
         ) : (
-          <TradeHistoryTable trades={tradeHistory} />
+          <TradeHistoryTable trades={filteredHistory} />
         )}
       </div>
 
@@ -540,6 +570,21 @@ const StatCard = ({ label, value, subValue, icon, trend, progress }) => (
   </div>
 );
 
+const SourceBadge = ({ source }) => {
+  const isSystem = source === 'paper';
+  return (
+    <span
+      className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest border ${
+        isSystem
+          ? 'bg-bullish/10 text-bullish border-bullish/20'
+          : 'bg-blue-500/10 text-blue-500 border-blue-500/20'
+      }`}
+    >
+      {isSystem ? 'System' : 'Manual'}
+    </span>
+  );
+};
+
 const OpenPositionsTable = ({ positions, onCloseTrade }) => {
   if (isEmpty(positions)) {
     return (
@@ -561,11 +606,11 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
           <thead>
             <tr className='bg-bg-elevated border-b border-border text-[10px] uppercase tracking-widest text-text-muted font-black'>
               <th className='text-left p-4'>Symbol</th>
+              <th className='text-left p-4'>Source</th>
               <th className='text-left p-4'>Entry Date</th>
               <th className='text-right p-4'>Entry Price</th>
               <th className='text-right p-4'>Current Price</th>
               <th className='text-right p-4'>P&L (%)</th>
-              <th className='text-center p-4'>Targets</th>
               <th className='text-right p-4'>Action</th>
             </tr>
           </thead>
@@ -573,18 +618,7 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
             {map((pos) => {
               const pnlPct = getOr(0, 'live_return_pct')(pos);
               const pnlColor = pnlPct >= 0 ? 'text-bullish' : 'text-bearish';
-
-              // Calculate distance to target/SL for visual feedback
               const currentPrice = getOr(1, 'current_price')(pos);
-              const target = get('target')(pos);
-              const stopLoss = get('stop_loss')(pos);
-
-              const toTarget = target
-                ? ((target - currentPrice) / currentPrice) * 100
-                : null;
-              const toStop = stopLoss
-                ? ((currentPrice - stopLoss) / currentPrice) * 100
-                : null;
 
               return (
                 <tr
@@ -599,6 +633,9 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                       Day {get('holding_days')(pos)} Holding
                     </div>
                   </td>
+                  <td className='p-4'>
+                    <SourceBadge source={get('source')(pos)} />
+                  </td>
                   <td className='p-4 text-text-muted font-medium'>
                     {new Date(get('entry_date')(pos)).toLocaleDateString()}
                   </td>
@@ -611,30 +648,6 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                   <td className={`p-4 text-right font-black ${pnlColor}`}>
                     {pnlPct >= 0 ? '+' : ''}
                     {pnlPct.toFixed(2)}%
-                  </td>
-                  <td className='p-4'>
-                    <div className='flex flex-col gap-1 max-w-[120px] mx-auto'>
-                      <div className='flex justify-between text-[9px] font-black uppercase tracking-tighter'>
-                        <span className='text-bearish'>
-                          SL: {toStop !== null ? `${toStop.toFixed(1)}%` : '-'}
-                        </span>
-                        <span className='text-bullish'>
-                          TGT:{' '}
-                          {toTarget !== null ? `${toTarget.toFixed(1)}%` : '-'}
-                        </span>
-                      </div>
-                      <div className='h-1 bg-border rounded-full overflow-hidden flex'>
-                        <div
-                          className='h-full bg-bearish opacity-30'
-                          style={{
-                            width:
-                              toStop !== null
-                                ? `${Math.max(0, Math.min(100, 100 - (toStop || 0) * 10))}%`
-                                : '0%',
-                          }}
-                        ></div>
-                      </div>
-                    </div>
                   </td>
                   <td className='p-4 text-right'>
                     <button
@@ -690,6 +703,7 @@ const TradeHistoryTable = ({ trades }) => {
           <thead>
             <tr className='bg-bg-elevated border-b border-border text-[10px] uppercase tracking-widest text-text-muted font-black'>
               <th className='text-left p-4'>Symbol</th>
+              <th className='text-left p-4'>Source</th>
               <th className='text-left p-4'>Dates</th>
               <th className='text-right p-4'>Entry Price</th>
               <th className='text-right p-4'>Exit Price</th>
@@ -716,6 +730,9 @@ const TradeHistoryTable = ({ trades }) => {
                     <div className='text-[10px] font-bold text-text-muted uppercase tracking-tighter'>
                       {get('holding_days')(t)}d Holding
                     </div>
+                  </td>
+                  <td className='p-4'>
+                    <SourceBadge source={get('source')(t)} />
                   </td>
                   <td className='p-4'>
                     <div className='text-[10px] font-bold text-text-muted uppercase tracking-tighter'>
@@ -757,4 +774,4 @@ const TradeHistoryTable = ({ trades }) => {
   );
 };
 
-export default Journal;
+export default Portfolio;

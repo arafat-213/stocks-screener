@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle, Play } from 'lucide-react';
 
 export default function StaleBanner({

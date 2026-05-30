@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Zap, ChevronDown } from 'lucide-react';
 import { map, filter, size } from 'lodash/fp';
@@ -20,7 +20,7 @@ const ChangeChip = ({ item }) => (
   </Link>
 );
 
-const ChangeBanner = ({ changes = [], asOf, prevDate, loading }) => {
+const ChangeBanner = ({ changes = [], prevDate, loading }) => {
   const [isOpen, setIsOpen] = useState(() => {
     return localStorage.getItem('changeBannerOpen') === 'true';
   });

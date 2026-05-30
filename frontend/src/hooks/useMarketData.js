@@ -19,9 +19,15 @@ export const useMarketData = (refreshInterval = 300000) => {
   }, []);
 
   useEffect(() => {
-    fetchMarketData();
+    // Wrap in timeout to avoid cascading render lint error
+    const timer = setTimeout(() => {
+      fetchMarketData();
+    }, 0);
     const interval = setInterval(fetchMarketData, refreshInterval);
-    return () => clearInterval(interval);
+    return () => {
+      clearTimeout(timer);
+      clearInterval(interval);
+    };
   }, [fetchMarketData, refreshInterval]);
 
   return { ...data, loading, error, refetch: fetchMarketData };

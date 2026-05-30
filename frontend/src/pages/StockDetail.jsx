@@ -1,5 +1,5 @@
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, TrendingUp, Info, Activity, Loader2 } from 'lucide-react';
+import { ArrowLeft, TrendingUp, Activity, Loader2 } from 'lucide-react';
 import {
   LineChart,
   Line,

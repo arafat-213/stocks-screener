@@ -8,26 +8,15 @@ import {
 } from '../api/client';
 import { DataTable } from '../components/ui/DataTable';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
-import {
-  CheckCircle,
-  XCircle,
-  Clock,
-  TrendingUp,
-  ShieldCheck,
-  ShieldX,
-  CircleAlert,
-  Trash2,
-  Briefcase,
-} from 'lucide-react';
-import SetupBadge from '../components/SetupBadge';
+import { Clock, TrendingUp, Trash2, Briefcase, XCircle } from 'lucide-react';
 
 const Watchlist = () => {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchWatchlistData = useCallback(async () => {
-    setLoading(true);
+  const fetchWatchlistData = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
     try {
       const data = await getWatchlist();
       setItems(Array.isArray(data) ? data : []);
@@ -40,7 +29,10 @@ const Watchlist = () => {
   }, []);
 
   useEffect(() => {
-    fetchWatchlistData();
+    const timer = setTimeout(() => {
+      fetchWatchlistData(false); // Already loading by default
+    }, 0);
+    return () => clearTimeout(timer);
   }, [fetchWatchlistData]);
 
   const handleStatusUpdate = async (symbol, status) => {
@@ -198,7 +190,7 @@ const Watchlist = () => {
           {row.status === 'watching' && (
             <>
               <Link
-                to={`/journal?action=new&symbol=${row.symbol}&price=${row.live_price || row.close_price}&sl=${row.stop_loss || ''}&target=${row.target || ''}&wl_id=${row.id}`}
+                to={`/portfolio?action=new&symbol=${row.symbol}&price=${row.live_price || row.close_price}&sl=${row.stop_loss || ''}&target=${row.target || ''}&wl_id=${row.id}`}
                 className='p-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors'
                 title='Log Trade'
               >

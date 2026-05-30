@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeProvider';
 import MainLayout from './components/MainLayout';
 
@@ -10,8 +10,7 @@ import Discover from './pages/Discover';
 import Intelligence from './pages/Intelligence';
 import System from './pages/System';
 import Backtest from './pages/Backtest';
-import PaperTrading from './pages/PaperTrading';
-import Journal from './pages/Journal';
+import Portfolio from './pages/Portfolio';
 
 function App() {
   return (
@@ -22,11 +21,15 @@ function App() {
           <Route path='/watchlist' element={<Watchlist />} />
           <Route path='/stocks/:symbol' element={<StockDetail />} />
           <Route path='/discover' element={<Discover />} />
-          <Route path='/paper' element={<PaperTrading />} />
+          <Route path='/portfolio' element={<Portfolio />} />
+          <Route
+            path='/journal'
+            element={<Navigate to='/portfolio' replace />}
+          />
+          <Route path='/paper' element={<Navigate to='/portfolio' replace />} />
           <Route path='/intel' element={<Intelligence />} />
           <Route path='/system' element={<System />} />
           <Route path='/backtest' element={<Backtest />} />
-          <Route path='/journal' element={<Journal />} />
         </Routes>
       </MainLayout>
     </ThemeProvider>
