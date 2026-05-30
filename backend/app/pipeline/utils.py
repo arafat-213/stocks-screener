@@ -1,8 +1,36 @@
+import datetime
 import logging
 
 import pandas as pd
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.db.models import TechnicalSignal
 
 logger = logging.getLogger(__name__)
+
+
+def get_market_regime(db: Session, date: datetime.date) -> bool:
+    """
+    Queries regime from Nifty TechnicalSignal state.
+    Falls back to True (don't suppress alerts) if not available.
+    """
+    signal = (
+        db.query(TechnicalSignal)
+        .filter(
+            TechnicalSignal.symbol == "^NSEI",
+            TechnicalSignal.timeframe == "D",
+            func.date(TechnicalSignal.date) <= date,
+        )
+        .order_by(TechnicalSignal.date.desc())
+        .first()
+    )
+
+    if not signal:
+        return True
+
+    return bool(signal.is_bullish)
+
 
 FIELD_KEYWORDS = {
     "net_income": [

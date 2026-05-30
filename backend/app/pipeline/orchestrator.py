@@ -529,6 +529,23 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         _save_checkpoint(db, run.run_id, "scoring", completed_scoring)
         db.commit()  # Ensure all signals are committed before RS computation
 
+        # 3a. Force score indices (Nifty 50 and Sensex) for Regime Filter
+        logger.info("Force scoring market indices (^NSEI, ^BSESN)")
+        for index_sym in ["^NSEI", "^BSESN"]:
+            try:
+                index_hist = _ohlcv_cache.get(index_sym, append_ns=False, period="3y")
+                if index_hist is not None and not index_hist.empty:
+                    process_symbol(
+                        index_sym,
+                        db,
+                        hist=index_hist,
+                        info=None,
+                        cache=None,
+                        scored_at=scored_at,
+                    )
+            except Exception as e:
+                logger.warning(f"Failed to score index {index_sym}: {e}")
+
         if _is_stop_requested(db, run.run_id):
             run.status = "stopped"
             db.commit()

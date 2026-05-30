@@ -21,30 +21,9 @@ from app.db.models import (
 )
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.trade_setup import compute_trade_setup
+from app.pipeline.utils import get_market_regime
 
 logger = logging.getLogger(__name__)
-
-
-def _get_regime_status(db: Session, signal_date: datetime.date) -> bool:
-    """
-    Queries regime from Nifty TechnicalSignal state.
-    Falls back to True (don't suppress alerts) if not available.
-    """
-    signal = (
-        db.query(TechnicalSignal)
-        .filter(
-            TechnicalSignal.symbol == "^NSEI",
-            TechnicalSignal.timeframe == "D",
-            func.date(TechnicalSignal.date) <= signal_date,
-        )
-        .order_by(TechnicalSignal.date.desc())
-        .first()
-    )
-
-    if not signal:
-        return True
-
-    return bool(signal.is_bullish)
 
 
 def _compute_entry_status(close_price: float, ema20: float) -> tuple[str, float]:
@@ -114,7 +93,7 @@ def run_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> di
         signal_date = get_latest_signal_date(db, "D")
 
     logger.info("alert_cycle: scanning signals for %s", signal_date)
-    regime_bullish = _get_regime_status(db, signal_date)
+    regime_bullish = get_market_regime(db, signal_date)
 
     # Query all EMA crossover signals for the day that pass base gates
     candidates = (
