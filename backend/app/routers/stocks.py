@@ -19,7 +19,7 @@ from app.pipeline.trade_setup import compute_trade_setup
 from app.screens.base import get_latest_signal_date
 from app.tasks import execute_pipeline_task
 
-router = APIRouter()
+router = APIRouter(prefix="/stocks", tags=["stocks"])
 logger = logging.getLogger(__name__)
 
 

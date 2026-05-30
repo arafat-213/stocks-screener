@@ -71,13 +71,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(stocks.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(screens.router, prefix="/api")
 app.include_router(backtest.router, prefix="/api")
 app.include_router(paper_trading.router, prefix="/api")
 app.include_router(watchlist.router, prefix="/api")
 app.include_router(journal.router, prefix="/api")
+app.include_router(stocks.router, prefix="/api")
 app.include_router(reports.router)
 
 
