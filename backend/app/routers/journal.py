@@ -56,7 +56,9 @@ def create_entry(data: TradeEntryCreate, db: Session = Depends(get_db)):
 
 @router.get("/open")
 def get_open_trades(source: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(models.TradeJournal).filter(models.TradeJournal.status == "open")
+    query = db.query(models.TradeJournal).filter(
+        models.TradeJournal.status.in_(["open", "pending"])
+    )
     if source:
         query = query.filter(models.TradeJournal.source == source)
     trades = query.all()
@@ -73,13 +75,16 @@ def get_open_trades(source: Optional[str] = None, db: Session = Depends(get_db))
         # Robust fallback: use entry_price if current_price is None or missing
         current_price = price_map.get(t.symbol) or t.entry_price
 
-        unrealized_pnl = (current_price - t.entry_price) * t.shares
-
-        live_return_pct = 0.0
-        if t.entry_price > 0:
-            live_return_pct = round(
-                ((current_price - t.entry_price) / t.entry_price) * 100, 2
-            )
+        if t.status == "pending":
+            unrealized_pnl = 0.0
+            live_return_pct = 0.0
+        else:
+            unrealized_pnl = (current_price - t.entry_price) * t.shares
+            live_return_pct = 0.0
+            if t.entry_price > 0:
+                live_return_pct = round(
+                    ((current_price - t.entry_price) / t.entry_price) * 100, 2
+                )
 
         # Distance calculations
         # dist_to_stop: % from current_price down to stop_loss
@@ -99,6 +104,7 @@ def get_open_trades(source: Optional[str] = None, db: Session = Depends(get_db))
         trade_data = {
             "id": t.id,
             "symbol": t.symbol,
+            "status": t.status,
             "entry_date": t.entry_date,
             "entry_price": t.entry_price,
             "shares": t.shares,

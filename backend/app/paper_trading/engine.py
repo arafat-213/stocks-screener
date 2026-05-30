@@ -20,6 +20,7 @@ from app.db.models import (
     TechnicalSignal,
 )
 from app.pipeline.ohlcv_cache import OHLCVCache
+from app.pipeline.utils import get_market_regime
 
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
@@ -64,28 +65,6 @@ def _get_or_create_portfolio(db: Session) -> PaperPortfolio:
     return portfolio
 
 
-def _get_regime(db: Session, date: datetime.date) -> bool:
-    import pandas_ta_classic  # noqa
-
-    df = _ohlcv_cache.get("^NSEI", append_ns=False, period="5y")
-    if df is None or df.empty:
-        return True
-    if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
-    df.ta.ema(length=50, append=True)
-    df.ta.ema(length=200, append=True)
-
-    row = df[df.index.date <= date].tail(1)
-    if row.empty:
-        return True
-    r = row.iloc[-1]
-    return (
-        r["Close"] > r.get("EMA_50", 0)
-        and r["Close"] > r.get("EMA_200", 0)
-        and r.get("EMA_50", 0) > r.get("EMA_200", 0)
-    )
-
-
 def scan_for_new_signals(db: Session, today: datetime.date) -> int:
     """
     Scans for new technical signals and creates 'pending' paper positions.
@@ -93,7 +72,7 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
     portfolio = _get_or_create_portfolio(db)
 
     # Regime Filter
-    if not _get_regime(db, today):
+    if not get_market_regime(db, today):
         logger.info("paper_trading: regime bearish on %s, skipping new signals", today)
         return 0
 
@@ -186,6 +165,8 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
             wait_days_elapsed=0,
         )
         db.add(pending)
+        db.flush()  # To get the ID for syncing
+        sync_paper_to_journal(db, pending)
         new_pending += 1
         logger.info(
             "paper_trading: NEW PENDING %s on %s (score=%.1f)",
@@ -245,6 +226,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             pos.exit_reason = "invalidated"
             pos.is_invalidated = True
             pos.closed_at = datetime.datetime.utcnow()
+            sync_paper_to_journal(db, pos)
             results["invalidated"] += 1
             logger.info(
                 "paper_trading: INVALIDATED %s (closed below EMA20)", pos.symbol
@@ -282,6 +264,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
                 pos.status = "expired"
                 pos.exit_reason = "no_pullback"
                 pos.closed_at = datetime.datetime.utcnow()
+                sync_paper_to_journal(db, pos)
                 results["expired"] += 1
                 logger.info(
                     "paper_trading: EXPIRED %s (no pullback within window)", pos.symbol
