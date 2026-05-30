@@ -435,6 +435,8 @@ class TradeJournal(Base):
 
     status = Column(String, nullable=False, default="open")  # 'open' | 'closed'
     notes = Column(Text, nullable=True)
+    source = Column(String, nullable=False, default="manual")  # 'manual' | 'paper'
+    external_id = Column(Integer, nullable=True)  # Links to PaperPosition.id
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     __table_args__ = (
