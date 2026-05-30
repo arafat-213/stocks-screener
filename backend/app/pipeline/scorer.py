@@ -1,4 +1,5 @@
 import pandas as pd
+import pandas_ta_classic  # noqa
 
 from app.pipeline.utils import to_float
 
@@ -45,6 +46,9 @@ def calculate_fundamental_score(info: dict, fund_cache=None) -> float:
     else:
         roe = to_float(info.get("returnOnEquity"))
 
+    if roe is not None and roe > 5.0:
+        roe = roe / 100.0
+
     if roe is not None:
         if roe > 0.15:
             score += 5
@@ -55,6 +59,9 @@ def calculate_fundamental_score(info: dict, fund_cache=None) -> float:
     roce = None
     if fund_cache and fund_cache.roce is not None:
         roce = fund_cache.roce
+
+    if roce is not None and roce > 5.0:
+        roce = roce / 100.0
 
     if roce is not None:
         if roce > 0.15:

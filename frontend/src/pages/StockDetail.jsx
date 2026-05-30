@@ -203,6 +203,12 @@ const StockDetail = () => {
                 data={ohlcv}
                 isDark={isDark}
                 containerHeight={600}
+                emaLevels={{
+                  ema5: dailyScore?.ema5_level,
+                  ema13: dailyScore?.ema13_level,
+                  ema20: dailyScore?.ema20_level,
+                  ema26: dailyScore?.ema26_level,
+                }}
               />
             </div>
           </section>

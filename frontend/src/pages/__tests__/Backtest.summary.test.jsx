@@ -1,6 +1,6 @@
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
-import { vi } from 'vitest';
 import Backtest from '../Backtest';
 import * as client from '../../api/client';
 
