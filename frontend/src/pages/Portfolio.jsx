@@ -619,6 +619,7 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
               const pnlPct = getOr(0, 'live_return_pct')(pos);
               const pnlColor = pnlPct >= 0 ? 'text-bullish' : 'text-bearish';
               const currentPrice = getOr(1, 'current_price')(pos);
+              const isPending = get('status')(pos) === 'pending';
 
               return (
                 <tr
@@ -629,9 +630,15 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                     <div className='font-black text-text tracking-tight group-hover:text-primary transition-colors'>
                       {get('symbol')(pos)}
                     </div>
-                    <div className='text-[10px] font-bold text-text-muted uppercase tracking-tighter'>
-                      Day {get('holding_days')(pos)} Holding
-                    </div>
+                    {isPending ? (
+                      <div className='inline-flex mt-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-widest bg-amber-500/10 text-amber-500 border border-amber-500/20'>
+                        PENDING PULLBACK
+                      </div>
+                    ) : (
+                      <div className='text-[10px] font-bold text-text-muted uppercase tracking-tighter'>
+                        Day {get('holding_days')(pos)} Holding
+                      </div>
+                    )}
                   </td>
                   <td className='p-4'>
                     <SourceBadge source={get('source')(pos)} />
@@ -640,21 +647,39 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                     {new Date(get('entry_date')(pos)).toLocaleDateString()}
                   </td>
                   <td className='p-4 text-right font-mono font-bold text-text-muted'>
+                    {isPending && (
+                      <span className='text-[9px] block text-amber-500/70 -mb-1'>
+                        TARGET
+                      </span>
+                    )}
                     ₹{getOr(0, 'entry_price')(pos).toLocaleString()}
                   </td>
                   <td className='p-4 text-right font-mono font-black text-text'>
                     ₹{currentPrice.toLocaleString()}
                   </td>
-                  <td className={`p-4 text-right font-black ${pnlColor}`}>
-                    {pnlPct >= 0 ? '+' : ''}
-                    {pnlPct.toFixed(2)}%
+                  <td
+                    className={`p-4 text-right font-black ${isPending ? 'text-text-muted' : pnlColor}`}
+                  >
+                    {isPending ? (
+                      <span className='text-xs opacity-50 italic'>Waiting</span>
+                    ) : (
+                      <>
+                        {pnlPct >= 0 ? '+' : ''}
+                        {pnlPct.toFixed(2)}%
+                      </>
+                    )}
                   </td>
                   <td className='p-4 text-right'>
                     <button
                       onClick={() => onCloseTrade(pos)}
-                      className='px-4 py-1.5 bg-bg-elevated hover:bg-primary hover:text-white border border-border rounded-lg text-xs font-black transition-all shadow-sm'
+                      disabled={isPending}
+                      className={`px-4 py-1.5 border border-border rounded-lg text-xs font-black transition-all shadow-sm ${
+                        isPending
+                          ? 'bg-bg-elevated/50 text-text-muted cursor-not-allowed'
+                          : 'bg-bg-elevated hover:bg-primary hover:text-white'
+                      }`}
                     >
-                      CLOSE TRADE
+                      {isPending ? 'WATCHING' : 'CLOSE TRADE'}
                     </button>
                   </td>
                 </tr>
