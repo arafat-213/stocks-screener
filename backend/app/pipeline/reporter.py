@@ -23,7 +23,7 @@ def generate_daily_report(db: Session):
             db.query(
                 TechnicalSignal.symbol,
                 Stock.name,
-                func.sum(case((TechnicalSignal.is_bullish == True, 1), else_=0)).label(
+                func.sum(case((TechnicalSignal.is_bullish, 1), else_=0)).label(
                     "confluence_count"
                 ),
                 func.max(

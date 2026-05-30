@@ -846,8 +846,6 @@ def simulate_trades(
             and signal_ema20 > 0
         )
 
-        entry_path = "immediate"  # Track which path was used for stop logic
-
         if use_pullback:
             # Wait up to pullback_max_wait_bars for price to touch EMA20
             tol = config.pullback_tolerance_pct / 100.0
@@ -895,7 +893,6 @@ def simulate_trades(
                     # Enter at this bar's close — the close confirms support held.
                     # Using next-bar open risks entering after a gap-up with the same
                     # structural stop, making the effective risk distance tighter.
-                    entry_path = "pullback_a"
                     entry_idx = wait_k
                     entry_date = wait_date
                     entry_price = float(df.iloc[wait_k]["Close"])
@@ -912,7 +909,6 @@ def simulate_trades(
                     last_wait_k = min(
                         signal_idx + config.pullback_max_wait_bars, len(df) - 1
                     )
-                    entry_path = "momentum_b"
                     entry_idx = last_wait_k
                     entry_date = df.index[last_wait_k]
                     entry_price = float(df.iloc[last_wait_k]["Open"])

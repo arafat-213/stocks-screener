@@ -120,7 +120,7 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
                     today + datetime.timedelta(days=1), datetime.time.min
                 ),
                 TechnicalSignal.timeframe == "D",
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.entry_score >= PAPER_CONFIG.effective_score_threshold,
                 TechnicalSignal.ema_signal.in_(["bullish_cross", "bullish_pullback"]),
             )
@@ -223,7 +223,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             continue
         row = rows.iloc[0]
 
-        day_high = float(row["High"])
+        float(row["High"])
         day_low = float(row["Low"])
         day_close = float(row["Close"])
         day_open = float(row["Open"])

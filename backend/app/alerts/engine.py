@@ -126,13 +126,13 @@ def run_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> di
                 func.date(TechnicalSignal.date) == signal_date,
                 TechnicalSignal.timeframe == "D",
                 TechnicalSignal.ema_signal == "bullish_cross",
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.rsi >= 35,
                 TechnicalSignal.rsi <= 65,
                 TechnicalSignal.momentum_12m > 0,
-                TechnicalSignal.is_consolidating == True,
+                TechnicalSignal.is_consolidating,
                 or_(
-                    TechnicalSignal.volume_breakout == True,
+                    TechnicalSignal.volume_breakout,
                     TechnicalSignal.adx >= 25,
                 ),
             )

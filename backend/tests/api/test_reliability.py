@@ -63,7 +63,7 @@ def test_startup_cleanup_in_lifespan(db: Session):
     # 2. Re-trigger lifespan. TestClient(app) with 'with' block triggers lifespan.
     # Note: app is already imported and client is global, but lifespan usually runs
     # when the first request is made or when using 'with TestClient(app) as client'.
-    with TestClient(app) as ac:
+    with TestClient(app):
         # On startup, it should have called cleanup_zombie_runs
         db.refresh(run)
         assert run.status == "failed"

@@ -232,7 +232,7 @@ def get_dashboard_results(
     confluence_sub = (
         db.query(
             TechnicalSignal.symbol,
-            func.sum(case((TechnicalSignal.is_bullish == True, 1), else_=0)).label(
+            func.sum(case((TechnicalSignal.is_bullish, 1), else_=0)).label(
                 "confluence_count"
             ),
         )
@@ -258,9 +258,9 @@ def get_dashboard_results(
     )
 
     if fundamental_filter:
-        query = query.filter(
-            FundamentalCache.profitability_streak_passed == True
-        ).filter(FundamentalCache.de_check_passed == True)
+        query = query.filter(FundamentalCache.profitability_streak_passed).filter(
+            FundamentalCache.de_check_passed
+        )
 
     # Apply filters
     if sector:

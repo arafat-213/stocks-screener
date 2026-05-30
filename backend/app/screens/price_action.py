@@ -20,8 +20,8 @@ def screen_52w_high(db: Session, timeframe: str = "D", target_date=None):
                 TechnicalSignal.timeframe == timeframe,
                 TechnicalSignal.pct_from_52w_high >= -5.0,
                 TechnicalSignal.pct_from_52w_high <= 0.0,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi < 78,  # exclude overbought
             )
         )
@@ -76,11 +76,11 @@ def screen_near_breakout(db: Session, timeframe: str = "D", target_date=None):
                 TechnicalSignal.pct_from_resistance >= -3.0,
                 TechnicalSignal.pct_from_resistance
                 <= 0.5,  # slight leeway past resistance
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi < 75,
                 or_(
-                    TechnicalSignal.volume_breakout == True,
+                    TechnicalSignal.volume_breakout,
                     TechnicalSignal.ema_slope_20 > 0.0,
                 ),
             )

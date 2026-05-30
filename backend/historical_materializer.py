@@ -50,7 +50,7 @@ def backfill_screens():
                 .scalar()
             )
 
-            mtf_count = (
+            (
                 db.query(func.count(ScreenResult.id))
                 .filter(
                     ScreenResult.computed_at == target_date,
@@ -59,7 +59,7 @@ def backfill_screens():
                 .scalar()
             )
 
-            near_breakout_count = (
+            (
                 db.query(func.count(ScreenResult.id))
                 .filter(
                     ScreenResult.computed_at == target_date,
@@ -70,7 +70,7 @@ def backfill_screens():
 
             # Since MTF and Near-Breakout can naturally be 0 on many days,
             # we also check if there are ANY results at all for the date.
-            any_results_count = (
+            (
                 db.query(func.count(ScreenResult.id))
                 .filter(ScreenResult.computed_at == target_date)
                 .scalar()

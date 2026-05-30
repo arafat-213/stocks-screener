@@ -95,7 +95,7 @@ def test_run_pipeline_resumes_from_checkpoint(
     call_idx = [0]
 
     def first_side_effect():
-        idx = call_idx[0]
+        call_idx[0]
         call_idx[0] += 1
         return mock_run
 

@@ -54,7 +54,7 @@ def test_refresh_cache_case_insensitive_suffix(db, client):
         db.query(FundamentalCache).filter(FundamentalCache.symbol == "RELIANCE").first()
     )
     assert cache is not None
-    assert cache.force_refresh == True
+    assert cache.force_refresh
 
 
 def test_cache_status_case_insensitive_suffix(db, client):

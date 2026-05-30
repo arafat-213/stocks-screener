@@ -65,7 +65,7 @@ def test_get_screener_results_includes_setup(client, db):
     confluence_sub = (
         db.query(
             TechnicalSignal.symbol,
-            func.sum(case((TechnicalSignal.is_bullish == True, 1), else_=0)).label(
+            func.sum(case((TechnicalSignal.is_bullish, 1), else_=0)).label(
                 "confluence_count"
             ),
         )
@@ -88,8 +88,8 @@ def test_get_screener_results_includes_setup(client, db):
         db.query(Stock, FundamentalCache, confluence_sub.c.confluence_count)
         .join(confluence_sub, Stock.symbol == confluence_sub.c.symbol)
         .outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol)
-        .filter(FundamentalCache.profitability_streak_passed == True)
-        .filter(FundamentalCache.de_check_passed == True)
+        .filter(FundamentalCache.profitability_streak_passed)
+        .filter(FundamentalCache.de_check_passed)
     )
 
     debug_final = query.all()

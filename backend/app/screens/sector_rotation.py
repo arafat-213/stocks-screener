@@ -90,8 +90,8 @@ def screen_hot_sectors(db: Session, timeframe: str = "D", target_date=None):
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rs_score >= 60,
                 Stock.sector.in_(top_sectors),
             )

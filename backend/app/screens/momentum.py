@@ -21,7 +21,7 @@ def screen_momentum_monsters(db: Session, timeframe: str = "D", target_date=None
                 TechnicalSignal.rs_score >= 80.0,
                 TechnicalSignal.momentum_3m >= 15.0,
                 TechnicalSignal.adx >= 25.0,
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.rsi < 78,
             )
         )
@@ -45,7 +45,7 @@ def screen_value_with_momentum(db: Session, timeframe: str = "D", target_date=No
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.rsi < 75,
                 FundamentalCache.peg_ratio > 0,
                 FundamentalCache.peg_ratio < 2.0,
@@ -74,7 +74,7 @@ def screen_ema_crossover_signals(db: Session, timeframe: str = "D", target_date=
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
                 TechnicalSignal.ema_signal == "bullish_cross",
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.adx >= 20.0,
                 TechnicalSignal.rsi >= 35,
                 TechnicalSignal.rsi < 70,
@@ -100,9 +100,9 @@ def screen_volume_surge(db: Session, timeframe: str = "D", target_date=None):
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.volume_breakout == True,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.volume_breakout,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi >= 35,
                 TechnicalSignal.rsi < 75,
             )
@@ -130,7 +130,7 @@ def screen_rsi_recovery(db: Session, timeframe: str = "D", target_date=None):
                 TechnicalSignal.rsi_signal.in_(
                     ["bullish_recovery", "bullish_recovery_confirmed"]
                 ),
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.rsi >= 35,
                 TechnicalSignal.rsi <= 60,  # hasn't run away yet
                 TechnicalSignal.ema_slope_20 > 0,
@@ -158,14 +158,14 @@ def screen_actionable_entries(db: Session, timeframe: str = "D", target_date=Non
             TechnicalSignal.entry_score,
             sa_case(
                 (
-                    (FundamentalCache.profitability_streak_passed == True)
-                    & (FundamentalCache.de_check_passed == True)
-                    & (FundamentalCache.fcf_positive == True),
+                    (FundamentalCache.profitability_streak_passed)
+                    & (FundamentalCache.de_check_passed)
+                    & (FundamentalCache.fcf_positive),
                     "A",
                 ),
                 (
-                    (FundamentalCache.profitability_streak_passed == True)
-                    | (FundamentalCache.de_check_passed == True),
+                    (FundamentalCache.profitability_streak_passed)
+                    | (FundamentalCache.de_check_passed),
                     "B",
                 ),
                 else_="C",
@@ -178,13 +178,13 @@ def screen_actionable_entries(db: Session, timeframe: str = "D", target_date=Non
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
                 TechnicalSignal.ema_signal == "bullish_cross",
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.rsi >= 35,
                 TechnicalSignal.rsi <= 65,
                 TechnicalSignal.momentum_12m > 0,
-                TechnicalSignal.is_consolidating == True,
+                TechnicalSignal.is_consolidating,
                 or_(
-                    TechnicalSignal.volume_breakout == True,
+                    TechnicalSignal.volume_breakout,
                     TechnicalSignal.adx >= 25,
                 ),
             )

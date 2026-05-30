@@ -41,7 +41,7 @@ def screen_mtf_confluence(db: Session, timeframe: str = "D", target_date=None):
                 daily.symbol == weekly.symbol,
                 weekly.date == latest_weekly_date,
                 weekly.timeframe == "W",
-                weekly.is_bullish == True,
+                weekly.is_bullish,
             ),
         )
         .join(
@@ -50,15 +50,15 @@ def screen_mtf_confluence(db: Session, timeframe: str = "D", target_date=None):
                 daily.symbol == monthly.symbol,
                 monthly.date == latest_monthly_date,
                 monthly.timeframe == "M",
-                monthly.is_bullish == True,
+                monthly.is_bullish,
             ),
         )
         .filter(
             and_(
                 func.date(daily.date) == date_d,
                 daily.timeframe == "D",
-                daily.is_bullish == True,
-                daily.above_200ema == True,
+                daily.is_bullish,
+                daily.above_200ema,
                 daily.rsi >= 40,
                 daily.rsi < 75,
             )
@@ -95,8 +95,8 @@ def screen_sector_leaders(db: Session, timeframe: str = "D", target_date=None):
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rs_score.isnot(None),
                 Stock.sector.isnot(None),
             )
@@ -131,8 +131,8 @@ def screen_fresh_52w_breakout(db: Session, timeframe: str = "D", target_date=Non
                 TechnicalSignal.pct_from_52w_high >= -1.0,  # within 1% below or above
                 TechnicalSignal.pct_from_52w_high
                 <= 3.0,  # not too extended past breakout
-                TechnicalSignal.volume_breakout == True,
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.volume_breakout,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.rsi >= 50,
                 TechnicalSignal.rsi < 80,
                 TechnicalSignal.adx >= 20,

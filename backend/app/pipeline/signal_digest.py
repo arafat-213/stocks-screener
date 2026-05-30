@@ -68,7 +68,7 @@ def generate_signal_digest(db: Session, config: BacktestConfig = None) -> str | 
             and_(
                 func.date(TechnicalSignal.date) == today,
                 TechnicalSignal.timeframe == "D",
-                TechnicalSignal.above_200ema == True,
+                TechnicalSignal.above_200ema,
                 TechnicalSignal.entry_score >= config.effective_score_threshold,
                 TechnicalSignal.ema_signal.in_(["bullish_cross", "bullish_pullback"]),
             )

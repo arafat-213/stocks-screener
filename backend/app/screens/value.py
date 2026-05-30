@@ -19,15 +19,15 @@ def screen_low_debt_midcap(db: Session, timeframe: str = "D", target_date=None):
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi >= 40,
                 TechnicalSignal.rsi < 75,
                 TechnicalSignal.ema_slope_20 > 0,
                 FundamentalCache.market_cap_category == "midcap",
-                FundamentalCache.de_check_passed == True,
-                FundamentalCache.fcf_positive == True,
-                FundamentalCache.profitability_streak_passed == True,
+                FundamentalCache.de_check_passed,
+                FundamentalCache.fcf_positive,
+                FundamentalCache.profitability_streak_passed,
             )
         )
         .order_by(TechnicalSignal.entry_score.desc())
@@ -51,8 +51,8 @@ def screen_undervalued_fundamentals(
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi >= 40,
                 TechnicalSignal.rsi < 75,
                 TechnicalSignal.ema_slope_20 > 0,
@@ -61,7 +61,7 @@ def screen_undervalued_fundamentals(
                 FundamentalCache.roe >= 0.15,
                 FundamentalCache.ev_to_ebitda < 20,
                 FundamentalCache.dividend_yield > 0,
-                FundamentalCache.de_check_passed == True,
+                FundamentalCache.de_check_passed,
             )
         )
         .order_by(TechnicalSignal.entry_score.desc())
@@ -84,14 +84,14 @@ def screen_steady_compounders(db: Session, timeframe: str = "D", target_date=Non
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi >= 40,
                 TechnicalSignal.rsi < 75,
                 TechnicalSignal.ema_slope_20 > 0,
                 FundamentalCache.roce >= 0.15,
-                FundamentalCache.dividend_consistency == True,
-                FundamentalCache.profitability_streak_passed == True,
+                FundamentalCache.dividend_consistency,
+                FundamentalCache.profitability_streak_passed,
             )
         )
         .order_by(TechnicalSignal.entry_score.desc())
@@ -116,17 +116,17 @@ def screen_qarp(db: Session, timeframe: str = "D", target_date=None):
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.rsi >= 40,
                 TechnicalSignal.rsi < 75,
                 TechnicalSignal.ema_slope_20 > 0,
                 # Quality bar
                 FundamentalCache.roce >= 0.15,
                 FundamentalCache.roe >= 0.15,
-                FundamentalCache.profitability_streak_passed == True,
-                FundamentalCache.de_check_passed == True,
-                FundamentalCache.fcf_positive == True,
+                FundamentalCache.profitability_streak_passed,
+                FundamentalCache.de_check_passed,
+                FundamentalCache.fcf_positive,
                 # Reasonable price (PEG or PEG-like constraint)
                 FundamentalCache.peg_ratio > 0,
                 FundamentalCache.peg_ratio <= 2.5,
@@ -153,15 +153,15 @@ def screen_dividend_growth(db: Session, timeframe: str = "D", target_date=None):
             and_(
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
-                TechnicalSignal.above_200ema == True,
-                TechnicalSignal.is_bullish == True,
+                TechnicalSignal.above_200ema,
+                TechnicalSignal.is_bullish,
                 TechnicalSignal.ema_slope_20 > 0,
                 TechnicalSignal.rsi >= 40,
                 FundamentalCache.dividend_yield >= 0.015,  # 1.5%
-                FundamentalCache.dividend_consistency == True,
-                FundamentalCache.fcf_positive == True,
-                FundamentalCache.profitability_streak_passed == True,
-                FundamentalCache.de_check_passed == True,
+                FundamentalCache.dividend_consistency,
+                FundamentalCache.fcf_positive,
+                FundamentalCache.profitability_streak_passed,
+                FundamentalCache.de_check_passed,
                 TechnicalSignal.rsi < 75,
             )
         )
