@@ -11,6 +11,7 @@ from app.backtest.engine import (
     _compute_signal_tier,
     _is_consolidating,
 )
+from app.backtest.sync_service import sync_paper_to_journal
 from app.db.models import (
     PaperPortfolio,
     PaperPosition,
@@ -262,7 +263,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
         if touched_ema:
             # ENTRY Path A
             _convert_to_open(
-                pos, entry_price=day_close, entry_type="pullback_a", today=today
+                db, pos, entry_price=day_close, entry_type="pullback_a", today=today
             )
             results["opened"] += 1
             continue
@@ -274,7 +275,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             ):  # Within 8% of EMA20 at some point
                 # ENTRY Path B
                 _convert_to_open(
-                    pos, entry_price=day_open, entry_type="momentum_b", today=today
+                    db, pos, entry_price=day_open, entry_type="momentum_b", today=today
                 )
                 results["opened"] += 1
             else:
@@ -294,7 +295,11 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
 
 
 def _convert_to_open(
-    pos: PaperPosition, entry_price: float, entry_type: str, today: datetime.date
+    db: Session,
+    pos: PaperPosition,
+    entry_price: float,
+    entry_type: str,
+    today: datetime.date,
 ):
     """Transition a pending position to open."""
     pos.status = "open"
@@ -350,6 +355,7 @@ def _convert_to_open(
         pos.stop_loss_price,
         pos.target_price,
     )
+    sync_paper_to_journal(db, pos)
 
 
 def update_open_positions(db: Session, today: datetime.date) -> dict:
@@ -451,6 +457,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
             )
             db.add(trade)
             pos.status = "closed"
+            pos.exit_price = exit_price
             pos.exit_reason = exit_reason
             pos.closed_at = datetime.datetime.utcnow()
             exit_counts[exit_reason] += 1
@@ -461,6 +468,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
                 net_return,
                 exit_reason,
             )
+            sync_paper_to_journal(db, pos)
 
     db.commit()
     return exit_counts
