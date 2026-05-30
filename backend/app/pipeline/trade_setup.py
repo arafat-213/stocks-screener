@@ -4,7 +4,10 @@ from app.db.models import TechnicalSignal
 ATR_STOP_MULTIPLIER = 2.0
 TARGET_R_LEVELS = [1.5, 2.5]
 
-def compute_trade_setup(signal: TechnicalSignal, capital: float = 1_000_000.0, risk_pct: float = 3.0) -> dict | None:
+
+def compute_trade_setup(
+    signal: TechnicalSignal, capital: float = 1_000_000.0, risk_pct: float = 3.0
+) -> dict | None:
     if not signal:
         return None
 
@@ -53,9 +56,9 @@ def compute_trade_setup(signal: TechnicalSignal, capital: float = 1_000_000.0, r
         "stop_basis": f"{ATR_STOP_MULTIPLIER}× ATR below entry",
         "targets": [
             {
-              "level": round(entry_mid + r * risk, 2),
-              "rr": r,
-              "label": "partial" if r == TARGET_R_LEVELS[0] else "primary",
+                "level": round(entry_mid + r * risk, 2),
+                "rr": r,
+                "label": "partial" if r == TARGET_R_LEVELS[0] else "primary",
             }
             for r in TARGET_R_LEVELS
         ],
@@ -65,17 +68,17 @@ def compute_trade_setup(signal: TechnicalSignal, capital: float = 1_000_000.0, r
 
     # Position sizing — computed from caller-supplied capital and risk %
     if risk > 0 and capital > 0:
-        risk_amount   = capital * (risk_pct / 100.0)
-        shares        = int(risk_amount / risk)          # floor — never size up
-        position_val  = round(shares * entry_mid, 2)
+        risk_amount = capital * (risk_pct / 100.0)
+        shares = int(risk_amount / risk)  # floor — never size up
+        position_val = round(shares * entry_mid, 2)
         setup["position_sizing"] = {
-            "capital":           capital,
-            "risk_pct":          risk_pct,
-            "risk_amount":       round(risk_amount, 2),
-            "shares":            shares,
-            "position_value":    position_val,
-            "position_pct":      round(position_val / capital * 100, 1),
-            "formula":           f"shares = floor({capital:,.0f} × {risk_pct}% / {risk:.2f})",
+            "capital": capital,
+            "risk_pct": risk_pct,
+            "risk_amount": round(risk_amount, 2),
+            "shares": shares,
+            "position_value": position_val,
+            "position_pct": round(position_val / capital * 100, 1),
+            "formula": f"shares = floor({capital:,.0f} × {risk_pct}% / {risk:.2f})",
         }
 
     return setup

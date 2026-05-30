@@ -1,14 +1,16 @@
 # app/alerts/email.py
-import os
 import logging
-import httpx
+import os
 from typing import Optional
+
+import httpx
 from dotenv import load_dotenv
 
 logger = logging.getLogger(__name__)
 
 # Ensure env vars are loaded
 load_dotenv()
+
 
 def send_alert_email(subject: str, html_body: str) -> Optional[str]:
     """
@@ -52,14 +54,18 @@ def send_alert_email(subject: str, html_body: str) -> Optional[str]:
         logger.error("Failed to send alert email: %s", e)
         return None
 
-def build_signal_email(signals: list[dict], signal_date: str, regime_bullish: bool) -> str:
+
+def build_signal_email(
+    signals: list[dict], signal_date: str, regime_bullish: bool
+) -> str:
     """
     Builds the HTML email body for a batch of signals.
     signals: list of dicts with keys: symbol, name, sector, score, quality_tier, signal_tier, ema_signal, rsi, adx, volume_breakout, entry_price, stop_loss, target_price, entry_status, pct_above_ema20, momentum_12m
     """
     regime_badge = (
         '<span style="color:#16a34a;font-weight:bold;">BULLISH ✓</span>'
-        if regime_bullish else '<span style="color:#dc2626;font-weight:bold;">BEARISH ✗</span>'
+        if regime_bullish
+        else '<span style="color:#dc2626;font-weight:bold;">BEARISH ✗</span>'
     )
 
     # FIX 1: Group by signal_tier (Technical) instead of quality_tier (Fundamental)
@@ -83,28 +89,28 @@ def build_signal_email(signals: list[dict], signal_date: str, regime_bullish: bo
     def signal_rows(signal_list):
         if not signal_list:
             return "<tr><td colspan='8' style='color:#6b7280;padding:12px;'>None today</td></tr>"
-        
+
         rows = ""
         for s in signal_list:
             # FIX 2: Added 'or 0.0' fallbacks to prevent None formatting crashes
             rows += f"""
             <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:10px 8px;font-weight:600;">{s['symbol']}</td>
-                <td style="padding:10px 8px;color:#475569;font-size:12px;">{s.get('sector','—')}</td>
-                <td style="padding:10px 8px;">{tier_badge(s.get('quality_tier'))}</td>
-                <td style="padding:10px 8px;">{entry_badge(s.get('entry_status','unknown'))}</td>
-                <td style="padding:10px 8px;font-family:monospace;">{(s.get('score') or 0.0):.1f}</td>
+                <td style="padding:10px 8px;font-weight:600;">{s["symbol"]}</td>
+                <td style="padding:10px 8px;color:#475569;font-size:12px;">{s.get("sector", "—")}</td>
+                <td style="padding:10px 8px;">{tier_badge(s.get("quality_tier"))}</td>
+                <td style="padding:10px 8px;">{entry_badge(s.get("entry_status", "unknown"))}</td>
+                <td style="padding:10px 8px;font-family:monospace;">{(s.get("score") or 0.0):.1f}</td>
                 <td style="padding:10px 8px;font-family:monospace;">
-                    RSI {(s.get('rsi') or 0.0):.0f} &nbsp;|&nbsp; ADX {(s.get('adx') or 0.0):.0f} 
-                    {'&nbsp;|&nbsp;<b>VOL✓</b>' if s.get('volume_breakout') else ''}
+                    RSI {(s.get("rsi") or 0.0):.0f} &nbsp;|&nbsp; ADX {(s.get("adx") or 0.0):.0f}
+                    {"&nbsp;|&nbsp;<b>VOL✓</b>" if s.get("volume_breakout") else ""}
                 </td>
                 <td style="padding:10px 8px;font-family:monospace;font-size:12px;">
-                    SL: ₹{(s.get('stop_loss') or 0.0):,.2f}<br>
-                    T: ₹{(s.get('target_price') or 0.0):,.2f}
+                    SL: ₹{(s.get("stop_loss") or 0.0):,.2f}<br>
+                    T: ₹{(s.get("target_price") or 0.0):,.2f}
                 </td>
                 <td style="padding:10px 8px;color:#64748b;font-size:12px;">
-                    {s.get('pct_above_ema20', 0):+.1f}% vs EMA20<br>
-                    12m mom: {s.get('momentum_12m', 0):+.1f}%
+                    {s.get("pct_above_ema20", 0):+.1f}% vs EMA20<br>
+                    12m mom: {s.get("momentum_12m", 0):+.1f}%
                 </td>
             </tr>"""
         return rows
@@ -119,7 +125,7 @@ def build_signal_email(signals: list[dict], signal_date: str, regime_bullish: bo
             📊 Stock Alerts — {signal_date}
         </h1>
         <p style="margin:0 0 20px;color:#64748b;font-size:14px;">
-            Market Regime: {regime_badge} &nbsp;·&nbsp; {len(signals)} signal{'s' if len(signals) != 1 else ''} found
+            Market Regime: {regime_badge} &nbsp;·&nbsp; {len(signals)} signal{"s" if len(signals) != 1 else ""} found
         </p>
 
         <h2 style="font-size:15px;color:#0f172a;margin:0 0 8px;">
@@ -168,11 +174,13 @@ def build_signal_email(signals: list[dict], signal_date: str, regime_bullish: bo
 </html>
 """
 
+
 def build_exit_alert_email(alerts: list[dict], signal_date: str) -> str:
     """
     Builds HTML email for exit/position alerts.
     alerts: list of dict with symbol, alert_type, urgency, entry_price, current_price, stop_loss, target, unrealised_pct, distance_to_stop_pct, holding_days
     """
+
     def urgency_badge(urgency):
         colors = {"critical": "#dc2626", "high": "#d97706", "medium": "#2563eb"}
         c = colors.get(urgency, "#6b7280")
@@ -183,31 +191,31 @@ def build_exit_alert_email(alerts: list[dict], signal_date: str) -> str:
             "stop_hit": "🔴 Stop Hit",
             "stop_approached": "🟠 Near Stop",
             "target_hit": "🟢 Target Hit",
-            "target_approached": "🔵 Near Target"
+            "target_approached": "🔵 Near Target",
         }
         return labels.get(atype, atype.replace("_", " ").title())
 
     rows = ""
     for a in alerts:
-        pnl_color = "#16a34a" if a['unrealised_pct'] >= 0 else "#dc2626"
+        pnl_color = "#16a34a" if a["unrealised_pct"] >= 0 else "#dc2626"
         rows += f"""
         <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:12px 8px;font-weight:600;">{a['symbol']}</td>
-            <td style="padding:12px 8px;">{type_label(a['alert_type'])}</td>
-            <td style="padding:12px 8px;">{urgency_badge(a['urgency'])}</td>
+            <td style="padding:12px 8px;font-weight:600;">{a["symbol"]}</td>
+            <td style="padding:12px 8px;">{type_label(a["alert_type"])}</td>
+            <td style="padding:12px 8px;">{urgency_badge(a["urgency"])}</td>
             <td style="padding:12px 8px;font-family:monospace;color:{pnl_color};font-weight:bold;">
-                {a['unrealised_pct']:+.2f}%
+                {a["unrealised_pct"]:+.2f}%
             </td>
             <td style="padding:12px 8px;font-family:monospace;font-size:12px;">
-                Entry: ₹{a['entry_price']:,}<br>
-                CMP: ₹{a['current_price']:,}
+                Entry: ₹{a["entry_price"]:,}<br>
+                CMP: ₹{a["current_price"]:,}
             </td>
             <td style="padding:12px 8px;font-family:monospace;font-size:12px;">
-                SL: ₹{(a['stop_loss'] or 0):,}<br>
-                T: ₹{(a['target'] or 0):,}
+                SL: ₹{(a["stop_loss"] or 0):,}<br>
+                T: ₹{(a["target"] or 0):,}
             </td>
             <td style="padding:12px 8px;color:#64748b;font-size:12px;">
-                {a['holding_days']} days held
+                {a["holding_days"]} days held
             </td>
         </tr>"""
 
@@ -241,7 +249,7 @@ def build_exit_alert_email(alerts: list[dict], signal_date: str) -> str:
 
         <div style="margin-top:24px;padding:16px;background:#fff7ed;border-radius:8px;border:1px solid #ffedd5;">
             <p style="margin:0;font-size:13px;color:#9a3412;line-height:1.5;">
-                <strong>Trader Discipline Note:</strong> Exit alerts are generated based on today's High/Low/Close. 
+                <strong>Trader Discipline Note:</strong> Exit alerts are generated based on today's High/Low/Close.
                 If a Stop was hit, consider closing the position at the next market open or as per your trading rules.
             </p>
         </div>

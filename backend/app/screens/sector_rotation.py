@@ -1,15 +1,16 @@
+from sqlalchemy import Float, Integer, and_, func
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, cast, Date, func, Float, Integer
-from app.db.models import TechnicalSignal, Stock, SectorSnapshot
+
+from app.db.models import SectorSnapshot, Stock, TechnicalSignal
 from app.screens.base import get_latest_signal_date
-import datetime
+
 
 def compute_sector_rotation(db: Session) -> list[dict]:
     """
     Computes sector-level aggregates from latest daily signals and persists them.
     Called from the pipeline after rs_ranks. Returns sorted sector data.
     """
-    date = get_latest_signal_date(db, 'D')
+    date = get_latest_signal_date(db, "D")
 
     rows = (
         db.query(
@@ -25,13 +26,13 @@ def compute_sector_rotation(db: Session) -> list[dict]:
         .filter(
             and_(
                 func.date(TechnicalSignal.date) == date,
-                TechnicalSignal.timeframe == 'D',
+                TechnicalSignal.timeframe == "D",
                 TechnicalSignal.rs_score.isnot(None),
                 Stock.sector.isnot(None),
             )
         )
         .group_by(Stock.sector)
-        .having(func.count(TechnicalSignal.symbol) >= 3) # ignore micro-sectors
+        .having(func.count(TechnicalSignal.symbol) >= 3)  # ignore micro-sectors
         .order_by(func.avg(TechnicalSignal.rs_score).desc())
         .all()
     )
@@ -42,31 +43,36 @@ def compute_sector_rotation(db: Session) -> list[dict]:
         if not snap:
             snap = SectorSnapshot(date=date, sector=row.sector)
             db.add(snap)
-        
+
         snap.avg_rs = float(row.avg_rs) if row.avg_rs else None
-        snap.avg_momentum_3m = float(row.avg_momentum_3m) if row.avg_momentum_3m else None
+        snap.avg_momentum_3m = (
+            float(row.avg_momentum_3m) if row.avg_momentum_3m else None
+        )
         snap.bullish_pct = float(row.bullish_pct * 100) if row.bullish_pct else None
         snap.stock_count = int(row.stock_count)
-        
-        results.append({
-            "sector": row.sector,
-            "avg_rs": snap.avg_rs,
-            "avg_momentum_3m": snap.avg_momentum_3m,
-            "bullish_pct": snap.bullish_pct,
-            "stock_count": snap.stock_count,
-        })
-    
+
+        results.append(
+            {
+                "sector": row.sector,
+                "avg_rs": snap.avg_rs,
+                "avg_momentum_3m": snap.avg_momentum_3m,
+                "bullish_pct": snap.bullish_pct,
+                "stock_count": snap.stock_count,
+            }
+        )
+
     db.commit()
     return results
 
-def screen_hot_sectors(db: Session, timeframe: str = 'D', target_date=None):
+
+def screen_hot_sectors(db: Session, timeframe: str = "D", target_date=None):
     """
     Returns top stocks from the top 3 sectors by average RS score.
     Combines sector rotation signal with individual stock quality.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     snapshot_date = db.query(func.max(SectorSnapshot.date)).scalar()
-    
+
     if not snapshot_date:
         return []
 

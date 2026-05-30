@@ -25,15 +25,15 @@ class Watchlist(Base):
     symbol = Column(String, ForeignKey('stocks.symbol'), nullable=False)
     added_date = Column(Date, nullable=False, default=datetime.date.today)
     signal_date = Column(Date, nullable=False)
-    
-    alert_type = Column(String, nullable=True) 
-    quality_tier = Column(String(1), nullable=True) 
+
+    alert_type = Column(String, nullable=True)
+    quality_tier = Column(String(1), nullable=True)
     signal_score = Column(Float, nullable=True)
     planned_entry_low = Column(Float, nullable=True)
     planned_entry_high = Column(Float, nullable=True)
     stop_loss = Column(Float, nullable=True)
     target = Column(Float, nullable=True)
-    
+
     notes = Column(Text, nullable=True)
     status = Column(String, nullable=False, default='watching') # 'watching', 'entered', 'skipped', 'expired'
 
@@ -94,7 +94,7 @@ class WatchlistAdd(BaseModel):
 def add_to_watchlist(data: WatchlistAdd, db: Session = Depends(get_db)):
     # 1. Check if already exists
     existing = db.query(Watchlist).filter(
-        Watchlist.symbol == data.symbol, 
+        Watchlist.symbol == data.symbol,
         Watchlist.signal_date == data.signal_date
     ).first()
     if existing:
@@ -106,7 +106,7 @@ def add_to_watchlist(data: WatchlistAdd, db: Session = Depends(get_db)):
         func.date(TechnicalSignal.date) == data.signal_date,
         TechnicalSignal.timeframe == 'D'
     ).first()
-    
+
     # 3. Create entry
     entry = Watchlist(
         symbol=data.symbol,
@@ -156,11 +156,11 @@ def compute_watchlist_live_data(entry: Watchlist, ohlcv_cache):
     df = ohlcv_cache.get(entry.symbol)
     if df is None or df.empty:
         return {"current_price": None, "days_elapsed": 0, "in_zone": False}
-    
+
     # Count sessions since signal_date
     recent = df[df.index.date > entry.signal_date]
     days_elapsed = len(recent)
-    
+
     # Live status
     current_price = df['Close'].iloc[-1]
     # ... compute EMA20 ...

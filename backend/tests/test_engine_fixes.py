@@ -1,21 +1,23 @@
-import pandas as pd
 import numpy as np
-import datetime
-import pytest
-from app.backtest.engine import score_series, simulate_trades, BacktestConfig
+import pandas as pd
+
+from app.backtest.engine import BacktestConfig, score_series, simulate_trades
 
 
 def _make_ohlcv(n: int) -> pd.DataFrame:
     """Returns a simple uptrending OHLCV DataFrame of length n."""
     np.random.seed(0)
     closes = np.linspace(100, 200, n) + np.random.normal(0, 0.3, n)
-    df = pd.DataFrame({
-        "Open":   closes * 0.998,
-        "High":   closes * 1.01,
-        "Low":    closes * 0.99,
-        "Close":  closes,
-        "Volume": np.full(n, 2_000_000.0),
-    }, index=pd.date_range("2020-01-01", periods=n, freq="B"))
+    df = pd.DataFrame(
+        {
+            "Open": closes * 0.998,
+            "High": closes * 1.01,
+            "Low": closes * 0.99,
+            "Close": closes,
+            "Volume": np.full(n, 2_000_000.0),
+        },
+        index=pd.date_range("2020-01-01", periods=n, freq="B"),
+    )
     return df
 
 
@@ -46,10 +48,11 @@ class TestMinBars:
             "60-bar DataFrame should produce no signals after MIN_BARS fix."
         )
 
+
 class TestAbove200EMAGate:
     def _base_config(self) -> BacktestConfig:
         return BacktestConfig(
-            score_threshold=10.0,   # low so score doesn't interfere
+            score_threshold=10.0,  # low so score doesn't interfere
             stop_loss_pct=0.0,
             target_pct=0.0,
             holding_days=5,
@@ -62,7 +65,7 @@ class TestAbove200EMAGate:
 
     def _make_signal(self, df, above_200ema, score=80.0) -> dict:
         return {
-            "date": df.index[250], # Middle of 300-bar DF
+            "date": df.index[250],  # Middle of 300-bar DF
             "score": score,
             "above_200ema": above_200ema,
             "rsi": 55.0,
@@ -94,6 +97,7 @@ class TestAbove200EMAGate:
         signal = self._make_signal(df, above_200ema=True)
         trades = simulate_trades("TEST", "Tech", df, [signal], self._base_config())
         assert len(trades) == 1, "above_200ema=True should produce a trade"
+
 
 class TestADXGate:
     def _config(self, min_adx: float) -> BacktestConfig:
@@ -156,6 +160,7 @@ class TestADXGate:
         """BacktestConfig default min_adx must be 0.0 (disabled)."""
         config = BacktestConfig()
         assert config.min_adx == 0.0
+
 
 class TestConfigDefaults:
     def test_default_score_threshold_is_55(self):

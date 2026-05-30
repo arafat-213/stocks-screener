@@ -17,7 +17,7 @@ To bypass Yahoo Finance's aggressive rate-limiting (`429 Too Many Requests`) wit
 
 ### 2. Automatic Retries with Exponential Backoff
 *   **Mechanism:** The cached session is mounted with a custom HTTP adapter utilizing `urllib3.util.retry.Retry`.
-*   **Configuration:** 
+*   **Configuration:**
     *   **Max Retries:** 5 attempts.
     *   **Backoff Factor:** 2. Given `urllib3`'s math (`{backoff_factor} * (2 ** (retry_number - 1))`), this yields actual wait times of 0s, 2s, 4s, 8s, and 16s before final failure.
     *   **Triggers:** HTTP status codes `[429, 500, 502, 503, 504]`.

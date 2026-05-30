@@ -1,7 +1,7 @@
 # Technical Specification: Multi-Timeframe Entry Confirmation
 
-**Version:** 1.0  
-**Status:** Draft  
+**Version:** 1.0
+**Status:** Draft
 **Scope:** `app/backtest/engine.py`, `app/routers/backtest.py`
 
 ---
@@ -16,7 +16,7 @@ This specification defines a confirmation gate that requires the Weekly timefram
 
 ## Specification 1 — Weekly Bullish Confirmation Gate
 
-**ID:** MTF-001  
+**ID:** MTF-001
 **Priority:** Critical
 
 ### Problem
@@ -54,7 +54,7 @@ The default is `True` because the purpose of this feature is to eliminate counte
 
 ## Specification 2 — Monthly Bullish Confirmation Gate
 
-**ID:** MTF-002  
+**ID:** MTF-002
 **Priority:** High
 
 ### Problem
@@ -90,7 +90,7 @@ The default is `False` because Monthly signals are slow-moving and will filter o
 
 ## Specification 3 — Weekly and Monthly State Map Construction
 
-**ID:** MTF-003  
+**ID:** MTF-003
 **Priority:** Critical
 
 ### Problem
@@ -118,7 +118,7 @@ The Weekly and Monthly state maps required by MTF-001 and MTF-002 must be derive
 
 ## Specification 4 — Backtest API Schema Updates
 
-**ID:** MTF-004  
+**ID:** MTF-004
 **Priority:** High
 
 ### Problem
@@ -143,7 +143,7 @@ The two new configuration fields must be exposed in the backtest API so that use
 
 ## Specification 5 — Gate Ordering and Interaction
 
-**ID:** MTF-005  
+**ID:** MTF-005
 **Priority:** Medium
 
 ### Problem

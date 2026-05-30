@@ -36,7 +36,7 @@ class LoggingManager:
         handler = logging.FileHandler(log_file)
         formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
         handler.setFormatter(formatter)
-        
+
         root_logger = logging.getLogger()
         root_logger.addHandler(handler)
         self.current_handler = handler

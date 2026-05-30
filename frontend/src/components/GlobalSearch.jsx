@@ -15,32 +15,32 @@ export const GlobalSearch = () => {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
-  
+
   // Keyboard event listeners
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Toggle search modal with Cmd/Ctrl + K
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault();
-        setIsOpen(prev => !prev);
+        setIsOpen((prev) => !prev);
       }
-      
+
       // Close on Escape
       if (e.key === 'Escape') {
         setIsOpen(false);
       }
-      
+
       // Keyboard navigation when open
       if (isOpen) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
-          setSelectedIndex(prev => 
+          setSelectedIndex((prev) =>
             size(results) > 0 ? Math.min(prev + 1, size(results) - 1) : -1
           );
         }
         if (e.key === 'ArrowUp') {
           e.preventDefault();
-          setSelectedIndex(prev => Math.max(prev - 1, 0));
+          setSelectedIndex((prev) => Math.max(prev - 1, 0));
         }
         if (e.key === 'Enter' && selectedIndex >= 0) {
           e.preventDefault();
@@ -48,7 +48,7 @@ export const GlobalSearch = () => {
         }
       }
     };
-    
+
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, results, selectedIndex]);
@@ -78,21 +78,21 @@ export const GlobalSearch = () => {
     const val = e.target.value;
     setQuery(val);
     setSelectedIndex(-1);
-    
+
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
     }
-    
+
     if (size(val) < 2) {
       setResults([]);
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     debounceRef.current = setTimeout(() => {
       searchStocks(val)
-        .then(res => {
+        .then((res) => {
           setResults(res.data);
           setLoading(false);
         })
@@ -109,64 +109,87 @@ export const GlobalSearch = () => {
   };
 
   return (
-    <div className="relative z-[100] w-full flex justify-end">
+    <div className='relative z-[100] w-full flex justify-end'>
       {/* Desktop Search Bar */}
-      <div 
-        className="hidden md:flex items-center gap-3 px-4 py-2.5 bg-bg-secondary border border-border rounded-md cursor-pointer transition-all duration-200 min-w-[240px] text-text-muted text-[0.9rem] hover:border-primary hover:text-text hover:shadow-sm" 
+      <div
+        className='hidden md:flex items-center gap-3 px-4 py-2.5 bg-bg-secondary border border-border rounded-md cursor-pointer transition-all duration-200 min-w-[240px] text-text-muted text-[0.9rem] hover:border-primary hover:text-text hover:shadow-sm'
         onClick={() => setIsOpen(true)}
-        role="button"
+        role='button'
         tabIndex={0}
       >
         <Search size={18} />
         <span>Search stocks...</span>
-        <kbd className="ml-auto bg-bg-elevated px-1.5 py-0.5 rounded-sm text-[0.7rem] font-mono border border-border">⌘K</kbd>
+        <kbd className='ml-auto bg-bg-elevated px-1.5 py-0.5 rounded-sm text-[0.7rem] font-mono border border-border'>
+          ⌘K
+        </kbd>
       </div>
 
       {/* Mobile Search Icon */}
-      <button 
-        className="flex md:hidden p-2 text-text-muted hover:text-text active:scale-95 transition-transform"
+      <button
+        className='flex md:hidden p-2 text-text-muted hover:text-text active:scale-95 transition-transform'
         onClick={() => setIsOpen(true)}
       >
         <Search size={22} />
       </button>
-      
+
       {isOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-md flex justify-center pt-[10vh] z-[1000]" onClick={() => setIsOpen(false)}>
-          <div className="w-full max-w-[500px] bg-bg-secondary border border-border rounded-lg shadow-lg overflow-hidden flex flex-col h-fit animate-fade-in" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-3 p-4 border-b border-border">
-              <Search size={20} className="text-text-muted" />
-              <input 
+        <div
+          className='fixed inset-0 bg-black/40 backdrop-blur-md flex justify-center pt-[10vh] z-[1000]'
+          onClick={() => setIsOpen(false)}
+        >
+          <div
+            className='w-full max-w-[500px] bg-bg-secondary border border-border rounded-lg shadow-lg overflow-hidden flex flex-col h-fit animate-fade-in'
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className='flex items-center gap-3 p-4 border-b border-border'>
+              <Search size={20} className='text-text-muted' />
+              <input
                 ref={inputRef}
-                value={query} 
+                value={query}
                 onChange={handleQueryChange}
-                placeholder="Search symbol or name (e.g. RELIANCE)..."
-                autoComplete="off"
-                className="flex-1 border-none text-[1.1rem] p-0 bg-transparent text-text focus:outline-none focus:ring-0"
+                placeholder='Search symbol or name (e.g. RELIANCE)...'
+                autoComplete='off'
+                className='flex-1 border-none text-[1.1rem] p-0 bg-transparent text-text focus:outline-none focus:ring-0'
               />
             </div>
-            
-            <div className="max-h-[400px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-border">
+
+            <div className='max-h-[400px] overflow-y-auto p-2 scrollbar-thin scrollbar-thumb-border'>
               {loading && size(query) >= 2 && size(results) === 0 ? (
-                <div className="p-6 text-center text-text-muted">Searching...</div>
+                <div className='p-6 text-center text-text-muted'>
+                  Searching...
+                </div>
               ) : size(results) > 0 ? (
-                mapWithIndex((s, i) => (
-                  <div 
-                    key={s.symbol} 
-                    className={`px-3 py-2.5 cursor-pointer flex justify-between items-center rounded-sm transition-all duration-200 hover:bg-bg-elevated ${i === selectedIndex ? 'bg-bg-elevated' : ''}`} 
-                    onClick={() => handleSelect(s.symbol)}
-                    onMouseEnter={() => setSelectedIndex(i)}
-                  >
-                    <div className="flex items-baseline">
-                      <span className="font-semibold text-[0.9rem] text-text">{s.symbol}</span>
-                      <span className="text-[0.8rem] ml-2 text-text-muted">{s.name}</span>
+                mapWithIndex(
+                  (s, i) => (
+                    <div
+                      key={s.symbol}
+                      className={`px-3 py-2.5 cursor-pointer flex justify-between items-center rounded-sm transition-all duration-200 hover:bg-bg-elevated ${i === selectedIndex ? 'bg-bg-elevated' : ''}`}
+                      onClick={() => handleSelect(s.symbol)}
+                      onMouseEnter={() => setSelectedIndex(i)}
+                    >
+                      <div className='flex items-baseline'>
+                        <span className='font-semibold text-[0.9rem] text-text'>
+                          {s.symbol}
+                        </span>
+                        <span className='text-[0.8rem] ml-2 text-text-muted'>
+                          {s.name}
+                        </span>
+                      </div>
+                      <span className='text-[0.75rem] text-text-muted'>
+                        {s.sector}
+                      </span>
                     </div>
-                    <span className="text-[0.75rem] text-text-muted">{s.sector}</span>
-                  </div>
-                ), results)
+                  ),
+                  results
+                )
               ) : size(query) >= 2 ? (
-                <div className="p-6 text-center text-text-muted">No stocks found</div>
+                <div className='p-6 text-center text-text-muted'>
+                  No stocks found
+                </div>
               ) : (
-                <div className="p-6 text-center text-text-muted">Type at least 2 characters...</div>
+                <div className='p-6 text-center text-text-muted'>
+                  Type at least 2 characters...
+                </div>
               )}
             </div>
           </div>

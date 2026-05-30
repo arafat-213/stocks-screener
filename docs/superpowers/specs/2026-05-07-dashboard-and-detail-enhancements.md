@@ -10,7 +10,7 @@
     2. **Price Data:** Fetch last 1 year of daily OHLCV from `yfinance` on-demand.
     3. **Multi-Timeframe Scores:** Query `TechnicalSignal` for the latest 'D', 'W', and 'M' records.
     4. **Score History:** Query `TechnicalSignal` for the last 30 daily scores (`timeframe='D'`).
-    5. **Fundamentals:** 
+    5. **Fundamentals:**
         - `FundamentalCache`: Fetch `de_ratio`, `sector`.
         - `FundamentalData`: Fetch `pe`, `pb`, `roe`, `eps_growth`.
 - **Response Shape:**

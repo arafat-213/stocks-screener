@@ -28,7 +28,7 @@ Use `batch_alter_table` for safe constraint handling (especially for SQLite/Post
 def upgrade():
     # 1. Rename table
     op.rename_table('daily_scores', 'technical_signals')
-    
+
     # 2. Add columns and constraints
     with op.batch_alter_table('technical_signals') as batch_op:
         batch_op.add_column(sa.Column('id', sa.Integer(), autoincrement=True, nullable=True))
@@ -65,7 +65,7 @@ class TechnicalSignal(Base):
     volume_signal = Column(String)
     rsi_signal = Column(String)
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
-    
+
     __table_args__ = (UniqueConstraint('symbol', 'date', 'timeframe'),)
 ```
 
@@ -146,10 +146,10 @@ scored_at = datetime.datetime.utcnow()
 for tf, freq in [('D', None), ('W', 'W-FRI'), ('M', 'ME')]:
     working_df = hist if tf == 'D' else resample_ohlcv(hist, freq)
     if working_df.empty: continue
-    
+
     signal_date = working_df.index[-1].date()
     ta_data = calculate_combined_score(working_df, info, timeframe=tf)
-    
+
     # Explicit Upsert Pattern
     signal = db.query(TechnicalSignal).filter_by(
         symbol=symbol, date=signal_date, timeframe=tf
@@ -157,7 +157,7 @@ for tf, freq in [('D', None), ('W', 'W-FRI'), ('M', 'ME')]:
     if not signal:
         signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
         db.add(signal)
-    
+
     signal.entry_score = ta_data['score']
     signal.is_bullish = ta_data['is_bullish']
     signal.rsi = ta_data['rsi']

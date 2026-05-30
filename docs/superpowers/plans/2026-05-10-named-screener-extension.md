@@ -4,7 +4,7 @@
 
 **Goal:** Transform the pipeline into a data enrichment engine and implement a "Named Screens" platform where screens are queries over persisted signals and fundamentals.
 
-**Architecture:** 
+**Architecture:**
 1. **Schema Expansion:** Add columns to `technical_signals` and `fundamental_cache` for rich indicators. Create `screen_results` for materialization.
 2. **Enrichment Engine:** Update `scorer.py` and `screener.py` to compute new metrics (Momentum, RS, ROCE, PEG, etc.).
 3. **Optimized Pipeline:** Loosen Tier 1 filters, implement adaptive fetching for yfinance, and bulk-update RS scores.

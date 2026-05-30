@@ -1,10 +1,8 @@
-import pytest
-from fastapi.testclient import TestClient
-from app.main import app
-from app.db.session import get_db
-from app.db import models
 import datetime
 from unittest.mock import patch
+
+from app.db import models
+
 
 def test_get_open_trades_with_live_pnl(client, db):
     # Add a dummy open trade
@@ -15,33 +13,36 @@ def test_get_open_trades_with_live_pnl(client, db):
         position_value=25000.0,
         stop_loss=2400.0,
         target=2700.0,
-        status='open',
-        entry_date=datetime.date.today()
+        status="open",
+        entry_date=datetime.date.today(),
     )
     db.add(trade)
     db.commit()
 
     with patch("app.routers.journal.fetch_market_snapshots") as mock_fetch:
-        mock_fetch.return_value = [{"symbol": "RELIANCE.NS", "close": 2600.0, "change_pct": 1.0}]
-        
+        mock_fetch.return_value = [
+            {"symbol": "RELIANCE.NS", "close": 2600.0, "change_pct": 1.0}
+        ]
+
         response = client.get("/api/journal/open")
         assert response.status_code == 200
         data = response.json()
         assert len(data) > 0
-        
+
         trade_data = data[0]
         assert trade_data["current_price"] == 2600.0
-        assert trade_data["unrealized_pnl"] == 1000.0 # (2600-2500)*10
-        assert trade_data["live_return_pct"] == 4.0 # (2600-2500)/2500 * 100
-        
+        assert trade_data["unrealized_pnl"] == 1000.0  # (2600-2500)*10
+        assert trade_data["live_return_pct"] == 4.0  # (2600-2500)/2500 * 100
+
         # Verify new fields
         # dist_to_stop = (2600 - 2400) / 2600 * 100 = 200 / 2600 * 100 = 7.6923... -> 7.69
         assert "dist_to_stop" in trade_data
         assert trade_data["dist_to_stop"] == 7.69
-        
+
         # dist_to_target = (2700 - 2600) / 2600 * 100 = 100 / 2600 * 100 = 3.846... -> 3.85
         assert "dist_to_target" in trade_data
         assert trade_data["dist_to_target"] == 3.85
+
 
 def test_get_open_trades_price_fallback(client, db):
     # Add a dummy open trade
@@ -52,8 +53,8 @@ def test_get_open_trades_price_fallback(client, db):
         position_value=10000.0,
         stop_loss=900.0,
         target=1200.0,
-        status='open',
-        entry_date=datetime.date.today()
+        status="open",
+        entry_date=datetime.date.today(),
     )
     db.add(trade)
     db.commit()
@@ -61,19 +62,20 @@ def test_get_open_trades_price_fallback(client, db):
     with patch("app.routers.journal.fetch_market_snapshots") as mock_fetch:
         # Mock empty response to trigger fallback to entry_price
         mock_fetch.return_value = []
-        
+
         response = client.get("/api/journal/open")
         assert response.status_code == 200
         data = response.json()
-        
+
         # Find our trade in the results
         trade_data = next((t for t in data if t["symbol"] == "FALLBACK.NS"), None)
         assert trade_data is not None
-        
+
         # Should fallback to entry_price (1000.0)
         assert trade_data["current_price"] == 1000.0
         assert trade_data["unrealized_pnl"] == 0.0
         assert trade_data["live_return_pct"] == 0.0
+
 
 def test_get_closed_trades(client, db):
     # Add a dummy closed trade
@@ -88,7 +90,7 @@ def test_get_closed_trades(client, db):
         exit_date=datetime.date.today(),
         pnl=1000.0,
         return_pct=6.67,
-        status='closed'
+        status="closed",
     )
     db.add(trade)
     db.commit()
@@ -100,6 +102,7 @@ def test_get_closed_trades(client, db):
     assert data[0]["status"] == "closed"
     assert data[0]["pnl"] == 1000.0
 
+
 def test_close_trade(client, db):
     # Add an open trade
     trade = models.TradeJournal(
@@ -109,8 +112,8 @@ def test_close_trade(client, db):
         position_value=15000.0,
         stop_loss=1400.0,
         target=1700.0,
-        status='open',
-        entry_date=datetime.date.today() - datetime.timedelta(days=5)
+        status="open",
+        entry_date=datetime.date.today() - datetime.timedelta(days=5),
     )
     db.add(trade)
     db.commit()
@@ -119,7 +122,7 @@ def test_close_trade(client, db):
     close_data = {
         "exit_price": 1600.0,
         "exit_date": str(datetime.date.today()),
-        "exit_reason": "target"
+        "exit_reason": "target",
     }
     response = client.patch(f"/api/journal/{trade_id}/close", json=close_data)
     assert response.status_code == 200
@@ -129,35 +132,57 @@ def test_close_trade(client, db):
     assert abs(data["return_pct"] - 6.666) < 0.01
     assert data["holding_days"] == 5
 
+
 def test_get_journal_stats(client, db):
     # Add one winner and one loser (closed)
     trade1 = models.TradeJournal(
-        symbol="W1.NS", entry_price=100, shares=10, exit_price=110, 
-        position_value=1000.0, stop_loss=90.0, target=120.0,
-        status='closed', pnl=100, return_pct=10, exit_date=datetime.date.today()
+        symbol="W1.NS",
+        entry_price=100,
+        shares=10,
+        exit_price=110,
+        position_value=1000.0,
+        stop_loss=90.0,
+        target=120.0,
+        status="closed",
+        pnl=100,
+        return_pct=10,
+        exit_date=datetime.date.today(),
     )
     trade2 = models.TradeJournal(
-        symbol="L1.NS", entry_price=100, shares=10, exit_price=90, 
-        position_value=1000.0, stop_loss=90.0, target=120.0,
-        status='closed', pnl=-100, return_pct=-10, exit_date=datetime.date.today()
+        symbol="L1.NS",
+        entry_price=100,
+        shares=10,
+        exit_price=90,
+        position_value=1000.0,
+        stop_loss=90.0,
+        target=120.0,
+        status="closed",
+        pnl=-100,
+        return_pct=-10,
+        exit_date=datetime.date.today(),
     )
     # Add one open trade
     trade3 = models.TradeJournal(
-        symbol="O1.NS", entry_price=100, shares=10,
-        position_value=1000.0, stop_loss=90.0, target=120.0,
-        status='open', entry_date=datetime.date.today()
+        symbol="O1.NS",
+        entry_price=100,
+        shares=10,
+        position_value=1000.0,
+        stop_loss=90.0,
+        target=120.0,
+        status="open",
+        entry_date=datetime.date.today(),
     )
     db.add_all([trade1, trade2, trade3])
     db.commit()
 
     with patch("app.routers.journal.fetch_market_snapshots") as mock_fetch:
         mock_fetch.return_value = [{"symbol": "O1.NS", "close": 105.0}]
-        
+
         response = client.get("/api/journal/stats")
         assert response.status_code == 200
         data = response.json()
         assert data["total_trades"] == 2
         assert data["win_rate"] == 50.0
         assert data["total_pnl"] == 0.0
-        assert data["total_unrealized_pnl"] == 50.0 # (105-100)*10
+        assert data["total_unrealized_pnl"] == 50.0  # (105-100)*10
         assert data["open_positions"] == 1

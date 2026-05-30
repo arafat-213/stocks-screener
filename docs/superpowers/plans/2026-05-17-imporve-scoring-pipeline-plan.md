@@ -297,10 +297,10 @@ In `backend/app/pipeline/scorer.py`, inside `calculate_technical_score`, locate 
                 # Check for recovery in last 5 days
                 recent_rsi = df['RSI_14'].tail(5)
                 was_oversold = any(recent_rsi < 30)
-                
+
                 recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
                 crossing_50 = prev_rsi <= 50 and rsi > 50
-                
+
                 if recovering and fresh_ema_cross:
                     score += 20
                     rsi_signal = "bullish_recovery_confirmed"
@@ -322,10 +322,10 @@ with:
                 # Check for recovery in last 5 days
                 recent_rsi = df['RSI_14'].tail(5)
                 was_oversold = any(recent_rsi < 30)
-                
+
                 recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
                 crossing_50 = prev_rsi <= 50 and rsi > 50
-                
+
                 if recovering and fresh_ema_cross:
                     score += 15   # capped at RSI budget; EMA cross already scored separately
                     rsi_signal = "bullish_recovery_confirmed"
@@ -438,7 +438,7 @@ In `backend/app/backtest/engine.py`, inside `score_series`, replace:
 ```python
     results = []
     MIN_BARS = 60
-    
+
     # Iterate from MIN_BARS to end
     for i in range(MIN_BARS, len(df)):
 ```
@@ -448,7 +448,7 @@ with:
 ```python
     results = []
     MIN_BARS = 210  # 200 EMA requires 200 bars; 10-bar buffer for stability
-    
+
     # Iterate from MIN_BARS to end
     for i in range(MIN_BARS, len(df)):
 ```
@@ -563,7 +563,7 @@ In `backend/app/backtest/engine.py`, inside `simulate_trades`, locate the block 
 ```python
         if signal_idx is None or signal_idx <= last_exit_idx:
             continue
-            
+
         if signal['score'] >= config.score_threshold:
 ```
 
@@ -576,7 +576,7 @@ Add the `above_200ema` gate immediately after the score check (as a separate `if
         # 200 EMA null-safety gate (belt-and-suspenders; also enforced in score_series)
         if signal.get('above_200ema') is not True:
             continue
-            
+
         if signal['score'] >= config.score_threshold:
 ```
 

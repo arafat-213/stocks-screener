@@ -38,11 +38,11 @@ Implement the "inverted hierarchy" tokens.
   --color-border: #E5E7EB;
   --color-bullish: #10B981;
   --color-bearish: #F43F5E;
-  
+
   --font-main: 'Inter', sans-serif;
   --font-heading: 'Plus Jakarta Sans', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
-  
+
   --radius-standard: 12px;
   --radius-dense: 8px;
 }

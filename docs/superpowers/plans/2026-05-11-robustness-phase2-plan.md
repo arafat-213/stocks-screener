@@ -27,7 +27,7 @@ from sqlalchemy import Column, String, Float, DateTime, PrimaryKeyConstraint, Te
 class PipelineCheckpoint(Base):
     __tablename__ = "pipeline_checkpoints"
     run_id = Column(String, ForeignKey('pipeline_runs.run_id'), primary_key=True)
-    phase = Column(String, primary_key=True)  
+    phase = Column(String, primary_key=True)
     completed_symbols = Column(Text)  # JSON array of symbols
     started_at = Column(DateTime)
     completed_at = Column(DateTime, nullable=True)
@@ -37,8 +37,8 @@ class PipelineError(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     run_id = Column(String, ForeignKey('pipeline_runs.run_id'), nullable=False)
     symbol = Column(String, nullable=True)
-    phase = Column(String, nullable=False)  
-    error_type = Column(String, nullable=False)  
+    phase = Column(String, nullable=False)
+    error_type = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     traceback = Column(Text, nullable=True)
     occurred_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -164,7 +164,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     completed_symbols_tier1 = syms
                 elif cp.phase == 'scoring':
                     completed_symbols_scoring = syms
-        
+
         # We reuse the run
         run = db.query(PipelineRun).filter(PipelineRun.run_id == resume_run_id).first()
         run.status = "running"

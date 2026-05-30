@@ -246,10 +246,10 @@ def fetch_stock_data(symbol: str):
         ticker = yf.Ticker(f"{symbol}.NS")
         hist = ticker.history(period="1y")
         info = ticker.info
-        
+
         if hist.empty:
             return None, None
-            
+
         return hist, info
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {e}")
@@ -265,30 +265,30 @@ def fetch_stock_data(symbol: str):
 def passes_fundamental_filters(info: dict) -> bool:
     if not info:
         return False
-        
+
     try:
         roe = info.get('returnOnEquity', 0)
         if roe is None: roe = 0
-            
+
         debt_equity = info.get('debtToEquity', 100)
         if debt_equity is None: debt_equity = 100
-        
+
         eps_growth = info.get('earningsGrowth', 0)
         if eps_growth is None: eps_growth = 0
-            
+
         market_cap = info.get('marketCap', 0)
         if market_cap is None: market_cap = 0
-            
+
         promoter_holding = info.get('heldPercentInsiders', 0)
         if promoter_holding is None: promoter_holding = 0
 
         if roe < 0.15: return False
         # yfinance debtToEquity is often returned as percentage (e.g., 40.5 for 0.4)
-        if debt_equity > 100: return False 
+        if debt_equity > 100: return False
         if eps_growth < 0.10: return False
         if market_cap < 5000000000: return False # 500 Cr in absolute
         if promoter_holding < 0.40: return False
-        
+
         return True
     except Exception:
         return False
@@ -306,7 +306,7 @@ import pandas as pd
 def calculate_technical_score(df: pd.DataFrame) -> dict:
     if len(df) < 60:
         return {"score": 0, "rsi": 0, "macd": 0, "ema_signal": "neutral", "volume_signal": "neutral"}
-        
+
     # Calculate Indicators
     df.ta.ema(length=5, append=True)
     df.ta.ema(length=13, append=True)
@@ -314,43 +314,43 @@ def calculate_technical_score(df: pd.DataFrame) -> dict:
     df.ta.macd(fast=12, slow=26, signal=9, append=True)
     df.ta.rsi(length=14, append=True)
     df.ta.sma(close='Volume', length=20, append=True)
-    
+
     latest = df.iloc[-1]
-    
+
     score = 0
     ema_signal = "neutral"
     volume_signal = "neutral"
-    
+
     # EMA Stack (25 points)
     if latest['EMA_5'] > latest['EMA_13'] > latest['EMA_26']:
         score += 25
         ema_signal = "bullish"
     elif latest['EMA_5'] < latest['EMA_13'] < latest['EMA_26']:
         ema_signal = "bearish"
-        
+
     # MACD (25 points)
     macd_line = latest['MACD_12_26_9']
     signal_line = latest['MACDs_12_26_9']
     if macd_line > signal_line and macd_line > 0:
         score += 25
-        
+
     # RSI (20 points)
     rsi = latest['RSI_14']
     if 40 <= rsi <= 60:
         score += 20 # Recovery zone
     elif rsi > 60:
         score += 10 # Overbought but strong
-        
+
     # Volume (15 points)
     if latest['Volume'] > latest['SMA_20']:
         score += 15
         volume_signal = "bullish"
-        
+
     # 52-week breakout proxy (15 points)
     high_52w = df['High'].tail(252).max()
     if latest['Close'] > (high_52w * 0.90):
         score += 15
-        
+
     return {
         "score": score,
         "rsi": float(rsi) if not pd.isna(rsi) else 0.0,
@@ -384,55 +384,55 @@ def run_pipeline(db: Session):
     run = PipelineRun(status="running", stocks_fetched=0, stocks_scored=0, errors="")
     db.add(run)
     db.commit()
-    
+
     try:
         symbols = get_nse_symbols()
         if not symbols:
             raise ValueError("No symbols fetched")
-            
+
         scored_count = 0
         fetched_count = 0
-        
+
         for symbol in symbols:
             hist, info = fetch_stock_data(symbol)
             fetched_count += 1
-            
+
             if hist is None or info is None:
                 continue
-                
+
             # Upsert Stock Info
             stock = db.query(Stock).filter(Stock.symbol == symbol).first()
             if not stock:
                 stock = Stock(symbol=symbol, name=info.get('longName', symbol), sector=info.get('sector', ''), industry=info.get('industry', ''), market_cap=info.get('marketCap', 0))
                 db.add(stock)
-            
+
             # Screen
             if not passes_fundamental_filters(info):
                 continue
-                
+
             # Score
             ta_data = calculate_technical_score(hist)
             scored_count += 1
-            
+
             # Persist Score
             score_entry = db.query(DailyScore).filter(DailyScore.symbol == symbol, DailyScore.date == datetime.datetime.utcnow().date()).first()
             if not score_entry:
                 score_entry = DailyScore(symbol=symbol, date=datetime.datetime.utcnow().date())
                 db.add(score_entry)
-            
+
             score_entry.entry_score = ta_data['score']
             score_entry.rsi = ta_data['rsi']
             score_entry.macd = ta_data['macd']
             score_entry.ema_signal = ta_data['ema_signal']
             score_entry.volume_signal = ta_data['volume_signal']
-            
+
             db.commit()
-            
+
         run.status = "complete"
         run.stocks_fetched = fetched_count
         run.stocks_scored = scored_count
         db.commit()
-        
+
     except Exception as e:
         logger.error(f"Pipeline failed: {e}")
         run.status = "failed"
@@ -593,7 +593,7 @@ function App() {
           Run Screener Now
         </button>
       </div>
-      
+
       <h2>Top Scored Stocks</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '16px' }}>
         {stocks.map(s => <ScoreCard key={s.symbol} stock={s} />)}

@@ -1,23 +1,29 @@
-import pytest
-import pandas as pd
+from unittest.mock import MagicMock, patch
+
 import numpy as np
-from unittest.mock import patch, MagicMock
+import pandas as pd
+
 from app.pipeline.ohlcv_cache import OHLCVCache
+
 
 def test_ohlcv_cache_instantiates(tmp_path):
     cache = OHLCVCache(cache_dir=str(tmp_path))
     assert cache is not None
 
+
 def _make_df(days: int = 5) -> pd.DataFrame:
     """Helper: returns a minimal OHLCV DataFrame with a DatetimeIndex."""
     idx = pd.date_range("2024-01-01", periods=days, freq="D")
-    return pd.DataFrame({
-        "Open":   np.ones(days) * 100,
-        "High":   np.ones(days) * 105,
-        "Low":    np.ones(days) * 95,
-        "Close":  np.ones(days) * 102,
-        "Volume": np.ones(days, dtype=int) * 1_000_000,
-    }, index=idx)
+    return pd.DataFrame(
+        {
+            "Open": np.ones(days) * 100,
+            "High": np.ones(days) * 105,
+            "Low": np.ones(days) * 95,
+            "Close": np.ones(days) * 102,
+            "Volume": np.ones(days, dtype=int) * 1_000_000,
+        },
+        index=idx,
+    )
 
 
 def test_stats_empty_cache(tmp_path):
@@ -60,10 +66,14 @@ def test_get_cold_miss_fetches_and_writes(tmp_path):
     cache = OHLCVCache(cache_dir=str(tmp_path))
     mock_df = _make_df(days=10)
 
-    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(mock_df, None)) as mock_fetch:
+    with patch(
+        "app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(mock_df, None)
+    ) as mock_fetch:
         result = cache.get("RELIANCE", append_ns=True, period="3y")
 
-    mock_fetch.assert_called_once_with("RELIANCE", append_ns=True, period="3y", fetch_info=False)
+    mock_fetch.assert_called_once_with(
+        "RELIANCE", append_ns=True, period="3y", fetch_info=False
+    )
     assert result is not None
     assert len(result) == 10
     assert cache._file_path("RELIANCE").exists()
@@ -79,13 +89,14 @@ def test_get_returns_none_when_fetch_fails(tmp_path):
     assert result is None
     assert not cache._file_path("BADSTOCK").exists()
 
+
 def test_get_cache_hit_no_network_call(tmp_path):
     """Fresh parquet file → return cached data, never call fetch_stock_data."""
     cache = OHLCVCache(cache_dir=str(tmp_path))
     # Write a file whose last row is within the past 24 hours
-    now = pd.Timestamp.now(tz='UTC').replace(tzinfo=None)
+    now = pd.Timestamp.now(tz="UTC").replace(tzinfo=None)
     df = _make_df(days=5)
-    idx = pd.date_range(end=now.floor('D'), periods=len(df), freq="D")
+    idx = pd.date_range(end=now.floor("D"), periods=len(df), freq="D")
     df.index = idx
     df.to_parquet(cache._file_path("TCS"))
 
@@ -102,14 +113,16 @@ def test_get_stale_file_triggers_incremental_fetch(tmp_path):
     cache = OHLCVCache(cache_dir=str(tmp_path))
 
     # Old data ending 5 days ago
-    old_end = pd.Timestamp.now(tz='UTC').replace(tzinfo=None) - pd.Timedelta(days=5)
+    old_end = pd.Timestamp.now(tz="UTC").replace(tzinfo=None) - pd.Timedelta(days=5)
     old_df = _make_df(days=10)
-    old_idx = pd.date_range(end=old_end.floor('D'), periods=len(old_df), freq="D")
+    old_idx = pd.date_range(end=old_end.floor("D"), periods=len(old_df), freq="D")
     old_df.index = old_idx
     old_df.to_parquet(cache._file_path("INFY"))
 
     # Tail that yfinance would return for the missing window
-    tail_idx = pd.date_range(start=old_idx[-1] + pd.Timedelta(days=1), periods=3, freq="D")
+    tail_idx = pd.date_range(
+        start=old_idx[-1] + pd.Timedelta(days=1), periods=3, freq="D"
+    )
     tail_df = _make_df(days=3)
     tail_df.index = tail_idx
 
@@ -127,18 +140,21 @@ def test_get_stale_file_triggers_incremental_fetch(tmp_path):
 def test_get_force_refresh_bypasses_fresh_cache(tmp_path):
     """force_refresh=True should re-fetch even if the cache is fresh."""
     cache = OHLCVCache(cache_dir=str(tmp_path))
-    now = pd.Timestamp.now(tz='UTC').replace(tzinfo=None)
+    now = pd.Timestamp.now(tz="UTC").replace(tzinfo=None)
     df = _make_df(days=5)
-    idx = pd.date_range(end=now.floor('D'), periods=len(df), freq="D")
+    idx = pd.date_range(end=now.floor("D"), periods=len(df), freq="D")
     df.index = idx
     df.to_parquet(cache._file_path("WIPRO"))
 
     fresh_df = _make_df(days=20)
-    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)) as mock_fetch:
+    with patch(
+        "app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)
+    ) as mock_fetch:
         result = cache.get("WIPRO", append_ns=True, period="3y", force_refresh=True)
 
     mock_fetch.assert_called_once()
     assert len(result) == 20
+
 
 def test_corrupt_parquet_is_deleted_and_refetched(tmp_path):
     """A corrupt Parquet file should be removed and a fresh fetch attempted."""
@@ -147,7 +163,9 @@ def test_corrupt_parquet_is_deleted_and_refetched(tmp_path):
     path.write_bytes(b"this is not a parquet file")
 
     fresh_df = _make_df(days=5)
-    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)):
+    with patch(
+        "app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)
+    ):
         result = cache.get("CORRUPT", append_ns=True, period="3y")
 
     assert result is not None
@@ -159,7 +177,9 @@ def test_special_characters_in_symbol_name(tmp_path):
     """Symbols like ^NSEI must produce a valid filename."""
     cache = OHLCVCache(cache_dir=str(tmp_path))
     fresh_df = _make_df(days=5)
-    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)):
+    with patch(
+        "app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(fresh_df, None)
+    ):
         cache.get("^NSEI", append_ns=False, period="3y")
 
     files = list(cache._root.glob("*.parquet"))
@@ -170,7 +190,9 @@ def test_special_characters_in_symbol_name(tmp_path):
 def test_empty_dataframe_from_fetch_is_not_written(tmp_path):
     """An empty DataFrame returned by yfinance should not be cached."""
     cache = OHLCVCache(cache_dir=str(tmp_path))
-    with patch("app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(pd.DataFrame(), None)):
+    with patch(
+        "app.pipeline.ohlcv_cache.fetch_stock_data", return_value=(pd.DataFrame(), None)
+    ):
         result = cache.get("EMPTY", append_ns=True, period="3y")
 
     assert result is None
@@ -181,9 +203,9 @@ def test_incremental_no_new_data_returns_cached(tmp_path):
     """If the incremental fetch returns empty (market closed), serve the cached file."""
     cache = OHLCVCache(cache_dir=str(tmp_path))
 
-    old_end = pd.Timestamp.now(tz='UTC').replace(tzinfo=None) - pd.Timedelta(days=3)
+    old_end = pd.Timestamp.now(tz="UTC").replace(tzinfo=None) - pd.Timedelta(days=3)
     old_df = _make_df(days=5)
-    old_idx = pd.date_range(end=old_end.floor('D'), periods=5, freq="D")
+    old_idx = pd.date_range(end=old_end.floor("D"), periods=5, freq="D")
     old_df.index = old_idx
     old_df.to_parquet(cache._file_path("STABLE"))
 

@@ -1,13 +1,16 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from sqlalchemy import func, cast, Date
-from app.db.session import get_db
-from app.db.models import Stock, TechnicalSignal
+import json
 from datetime import datetime
 from pathlib import Path
-import json
+
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.db.models import Stock, TechnicalSignal
+from app.db.session import get_db
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
+
 
 @router.get("/digest/latest")
 def get_latest_digest():
@@ -20,6 +23,7 @@ def get_latest_digest():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
 
+
 @router.get("/digest/{date}")
 def get_digest_by_date(date: str):
     reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
@@ -31,12 +35,17 @@ def get_digest_by_date(date: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
 
+
 @router.get("")
 def list_reports(db: Session = Depends(get_db)):
     # Get unique dates from technical_signals table, using func.date to remove time component
-    dates = db.query(func.distinct(func.date(TechnicalSignal.date))).\
-        order_by(func.date(TechnicalSignal.date).desc()).all()
+    dates = (
+        db.query(func.distinct(func.date(TechnicalSignal.date)))
+        .order_by(func.date(TechnicalSignal.date).desc())
+        .all()
+    )
     return [d[0] for d in dates if d[0]]
+
 
 @router.get("/latest")
 def get_latest_report(db: Session = Depends(get_db)):
@@ -44,14 +53,15 @@ def get_latest_report(db: Session = Depends(get_db)):
     max_date = db.query(func.max(TechnicalSignal.date)).scalar()
     if not max_date:
         return []
-    
+
     # If it's a string (SQLite might return it as such), just take the date part
     if isinstance(max_date, str):
-        date_str = max_date.split(' ')[0]
+        date_str = max_date.split(" ")[0]
     else:
         date_str = max_date.strftime("%Y-%m-%d")
-        
+
     return get_report_by_date(date_str, db)
+
 
 @router.get("/{date}")
 def get_report_by_date(date: str, db: Session = Depends(get_db)):
@@ -59,12 +69,17 @@ def get_report_by_date(date: str, db: Session = Depends(get_db)):
         # Validate format
         datetime.strptime(date, "%Y-%m-%d")
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid date format. Use YYYY-MM-DD")
+        raise HTTPException(
+            status_code=400, detail="Invalid date format. Use YYYY-MM-DD"
+        )
 
     # Join TechnicalSignal with Stock
-    query_results = db.query(TechnicalSignal, Stock).\
-        join(Stock, TechnicalSignal.symbol == Stock.symbol).\
-        filter(func.date(TechnicalSignal.date) == date).all()
+    query_results = (
+        db.query(TechnicalSignal, Stock)
+        .join(Stock, TechnicalSignal.symbol == Stock.symbol)
+        .filter(func.date(TechnicalSignal.date) == date)
+        .all()
+    )
 
     if not query_results:
         return []
@@ -79,15 +94,15 @@ def get_report_by_date(date: str, db: Session = Depends(get_db)):
                 "confluence_count": 0,
                 "total_timeframes": 0,
                 "daily_score": None,
-                "rsi": None
+                "rsi": None,
             }
-        
+
         if signal.is_bullish:
             stocks_map[stock.symbol]["confluence_count"] += 1
-        
+
         stocks_map[stock.symbol]["total_timeframes"] += 1
-        
-        if signal.timeframe == 'D':
+
+        if signal.timeframe == "D":
             stocks_map[stock.symbol]["daily_score"] = signal.entry_score
             stocks_map[stock.symbol]["rsi"] = signal.rsi
 
@@ -98,7 +113,8 @@ def get_report_by_date(date: str, db: Session = Depends(get_db)):
         final_results.append(data)
 
     # Order by confluence count DESC, then daily score DESC
-    final_results.sort(key=lambda x: (x["confluence_count"], x["daily_score"] or 0), reverse=True)
+    final_results.sort(
+        key=lambda x: (x["confluence_count"], x["daily_score"] or 0), reverse=True
+    )
 
     return final_results[:50]
-

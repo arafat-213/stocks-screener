@@ -29,7 +29,7 @@ Update the logic in `compute_metrics`:
     - `benchmark_equity` on day `t` will be `config.starting_capital * (BenchmarkPrice_t / BenchmarkPrice_0)`.
 
 ### 2.4 DB Schema Update
-Add `starting_capital` (Float) and `position_size` (Float) as dedicated columns on the `BacktestRun` model in addition to being present in the `config` JSON field. 
+Add `starting_capital` (Float) and `position_size` (Float) as dedicated columns on the `BacktestRun` model in addition to being present in the `config` JSON field.
 - Update `_serialize_run` in `backend/app/routers/backtest.py` to read from these columns directly.
 - **Action:** Generate an Alembic migration to add these columns to the `backtest_runs` table.
 

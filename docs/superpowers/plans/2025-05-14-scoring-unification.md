@@ -102,7 +102,7 @@ elif rsi > 50:
 - [x] **Step 2: Update `is_bullish` definition**
 ```python
 is_bullish = (
-    (fresh_ema_cross or pullback_to_ema20 or 
+    (fresh_ema_cross or pullback_to_ema20 or
      (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 > ema13 > ema26)) and
     pd.notna(macd_line) and pd.notna(signal_line) and macd_line > signal_line and
     pd.notna(rsi) and rsi > 45
@@ -132,7 +132,7 @@ def score_series(df: pd.DataFrame, fund_cache=None, config: BacktestConfig = Non
     for i in range(MIN_BARS, len(df)):
         bar_df = df.iloc[:i+1]
         ta_data = calculate_technical_score(bar_df, timeframe='D')
-        
+
         price = float(bar_df['Close'].iloc[-1])
         open_price = float(bar_df['Open'].iloc[-1])
         total_score = ta_data['score'] + fund_score

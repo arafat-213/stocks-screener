@@ -132,7 +132,7 @@ Note: `fresh_ema_cross` is computed in 3.1.1 above. Since RSI runs after EMA in 
 
 The new maximum technical score (Daily timeframe) is:
 - EMA: 20 pts
-- MACD: 20 pts  
+- MACD: 20 pts
 - RSI: 20 pts (recovery + EMA cross combo)
 - Volume: 15 pts
 - **Total: 75 pts**
@@ -146,8 +146,8 @@ The `is_bullish` flag definition should reflect early entry, not extended confir
 **Current:**
 ```python
 is_bullish = (
-    pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
-    pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
+    pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and
+    pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
     ema5 > ema13 > ema26 and price > ema26
 )
 ```
@@ -155,7 +155,7 @@ is_bullish = (
 **Replace with:**
 ```python
 is_bullish = (
-    (fresh_ema_cross or pullback_to_ema20 or 
+    (fresh_ema_cross or pullback_to_ema20 or
      (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 > ema13 > ema26)) and
     pd.notna(macd_line) and pd.notna(signal_line) and macd_line > signal_line and
     pd.notna(rsi) and rsi > 45

@@ -23,16 +23,16 @@ class Watchlist(Base):
     symbol = Column(String, ForeignKey('stocks.symbol'), nullable=False)
     added_date = Column(Date, nullable=False, default=datetime.date.today)
     signal_date = Column(Date, nullable=False)
-    
+
     # Snapshot of signal metadata at time of addition
-    alert_type = Column(String, nullable=True) 
-    quality_tier = Column(String(1), nullable=True) 
+    alert_type = Column(String, nullable=True)
+    quality_tier = Column(String(1), nullable=True)
     signal_score = Column(Float, nullable=True)
     planned_entry_low = Column(Float, nullable=True)
     planned_entry_high = Column(Float, nullable=True)
     stop_loss = Column(Float, nullable=True)
     target = Column(Float, nullable=True)
-    
+
     notes = Column(Text, nullable=True)
     status = Column(String, nullable=False, default='watching') # 'watching', 'entered', 'skipped', 'expired'
 

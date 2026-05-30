@@ -46,7 +46,7 @@ from app.pipeline.fetcher import session
 def test_session_configuration():
     assert session.__class__.__name__ == 'CachedSession'
     assert session.cache.backend.__class__.__name__ == 'SQLiteCache'
-    
+
     # Check TTLs (Testing the underlying dict pattern)
     urls_expire_dict = dict(session.settings.urls_expire_after)
     assert '*/v8/finance/chart/^NSEI*' in urls_expire_dict
@@ -60,7 +60,7 @@ def test_session_configuration():
     assert retry.backoff_factor == 2
     assert 429 in retry.status_forcelist
     assert retry.respect_retry_after_header is True
-    
+
     # Check allowed methods (urllib3 v2+ uses allowed_methods)
     assert 'GET' in retry.allowed_methods
 ```
@@ -165,17 +165,17 @@ def test_fetch_stock_data_uses_session(mock_ticker):
     mock_ticker.return_value = mock_instance
     # Ensure hist has an index so hist.empty works correctly
     mock_instance.history.return_value = pd.DataFrame({'Close': [100, 101]}, index=pd.date_range('2023-01-01', periods=2))
-    
+
     # We pass fetch_info=False to test the new signature
     fetch_stock_data("RELIANCE", fetch_info=False)
-    
+
     mock_ticker.assert_called_once_with("RELIANCE.NS", session=session)
 
 @patch('yfinance.download')
 def test_fetch_market_snapshots_uses_session(mock_download):
     mock_download.return_value = pd.DataFrame()
     fetch_market_snapshots(["^NSEI"])
-    
+
     mock_download.assert_called_once_with(["^NSEI"], period="5d", progress=False, session=session)
 ```
 
@@ -185,7 +185,7 @@ Expected: Fail, because `fetch_stock_data` doesn't have the `fetch_info` paramet
 
 - [ ] **Step 3: Update fetcher.py and dashboard.py**
 
-In `backend/app/pipeline/fetcher.py`, update the signatures and inject the session. 
+In `backend/app/pipeline/fetcher.py`, update the signatures and inject the session.
 *Note: `fetch_info=True` is the default to preserve existing behavior for orchestrator callers.*
 ```python
 # Add these functions to backend/app/pipeline/fetcher.py
@@ -194,14 +194,14 @@ def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fe
         ticker_symbol = f"{symbol}.NS" if append_ns else symbol
         ticker = yf.Ticker(ticker_symbol, session=session)
         hist = ticker.history(period=period)
-        
+
         info = None
         if fetch_info:
             info = ticker.info
-        
+
         if hist.empty:
             return None, None
-            
+
         return hist, info
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {e}")
@@ -210,10 +210,10 @@ def fetch_stock_data(symbol: str, append_ns: bool = True, period: str = "1y", fe
 def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str = "5d") -> list[dict]:
     try:
         data = yf.download(symbols, period=period, progress=False, session=session)
-        
+
         if data.empty:
             return []
-            
+
         snapshots = []
         for symbol in symbols:
             try:
@@ -221,12 +221,12 @@ def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str
                     close_series = data['Close'][symbol].dropna()
                 else:
                     close_series = data['Close'].dropna()
-                    
+
                 if len(close_series) >= 2:
                     current_close = float(close_series.iloc[-1])
                     prev_close = float(close_series.iloc[-2])
                     change_pct = ((current_close - prev_close) / prev_close) * 100
-                    
+
                     snapshots.append({
                         "symbol": symbol,
                         "close": current_close,
@@ -235,7 +235,7 @@ def fetch_market_snapshots(symbols: list[str] = ["^NSEI", "^BSESN"], period: str
             except KeyError:
                 logger.warning(f"Could not extract data for {symbol} from bulk download.")
                 continue
-                
+
         return snapshots
     except Exception as e:
         logger.error(f"Error bulk fetching market snapshots: {e}")
@@ -299,16 +299,16 @@ def test_screener_uses_resilient_session(mock_ticker):
     mock_instance.financials = MagicMock(empty=True)
     mock_instance.balance_sheet = MagicMock(empty=True)
     mock_instance.cashflow = MagicMock(empty=True)
-    
+
     mock_db_session = MagicMock()
     mock_cache = MagicMock()
     # Mocking properties to prevent TypeError during comparisons
     mock_cache.last_updated = datetime.datetime.utcnow()
     mock_cache.cache_version = CURRENT_SCREENER_VERSION
     mock_db_session.query.return_value.filter.return_value.first.return_value = mock_cache
-    
+
     fetch_and_cache_deep_fundamentals(["TEST"], mock_db_session)
-    
+
     mock_ticker.assert_called_with("TEST.NS", session=yf_session)
 ```
 

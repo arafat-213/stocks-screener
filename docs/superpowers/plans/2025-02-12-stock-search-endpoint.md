@@ -81,17 +81,17 @@ from sqlalchemy import or_, func
 def search_stocks(q: str = "", db: Session = Depends(get_db)):
     if len(q) < 2:
         return []
-        
+
     query = q.strip()
-    
+
     # Ordering: Exact symbol match, then symbol starts with, then name contains
     results = db.query(Stock).filter(
         or_(
             Stock.symbol.ilike(f"%{query}%"),
             Stock.name.ilike(f"%{query}%")
         )
-    ).limit(50).all() 
-    
+    ).limit(50).all()
+
     # Sort in Python for smart ordering
     query_upper = query.upper()
     def sort_key(s):
@@ -99,12 +99,12 @@ def search_stocks(q: str = "", db: Session = Depends(get_db)):
         if s.symbol.startswith(query_upper): return 1
         if s.name.lower().startswith(query.lower()): return 2
         return 3
-        
+
     sorted_results = sorted(results, key=sort_key)
     final_results = sorted_results[:15]
-    
+
     return [
-        {"symbol": s.symbol, "name": s.name, "sector": s.sector} 
+        {"symbol": s.symbol, "name": s.name, "sector": s.sector}
         for s in final_results
     ]
 ```

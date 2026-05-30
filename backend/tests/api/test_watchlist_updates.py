@@ -1,15 +1,12 @@
-import pytest
-from datetime import date, datetime
-from app.db.models import Stock, TechnicalSignal, Watchlist
+from datetime import date
+
+from app.db.models import Watchlist
+
 
 def test_update_watchlist_status_success(client, db):
     # Setup
     symbol = "RELIANCE.NS"
-    entry = Watchlist(
-        symbol=symbol,
-        signal_date=date(2026, 5, 20),
-        status="watching"
-    )
+    entry = Watchlist(symbol=symbol, signal_date=date(2026, 5, 20), status="watching")
     db.add(entry)
     db.commit()
     db.refresh(entry)
@@ -21,19 +18,16 @@ def test_update_watchlist_status_success(client, db):
     # Assertions
     assert response.status_code == 200
     assert response.json()["status"] == "entered"
-    
+
     # Verify in DB
     db.refresh(entry)
     assert entry.status == "entered"
 
+
 def test_update_watchlist_status_invalid_status(client, db):
     # Setup
     symbol = "TCS.NS"
-    entry = Watchlist(
-        symbol=symbol,
-        signal_date=date(2026, 5, 20),
-        status="watching"
-    )
+    entry = Watchlist(symbol=symbol, signal_date=date(2026, 5, 20), status="watching")
     db.add(entry)
     db.commit()
     db.refresh(entry)
@@ -43,7 +37,8 @@ def test_update_watchlist_status_invalid_status(client, db):
     response = client.patch(f"/api/watchlist/{symbol}", json=payload)
 
     # Assertions
-    assert response.status_code == 422 # Pydantic validation error or 400
+    assert response.status_code == 422  # Pydantic validation error or 400
+
 
 def test_update_watchlist_status_not_found(client, db):
     # Call endpoint for non-existent symbol
@@ -53,14 +48,11 @@ def test_update_watchlist_status_not_found(client, db):
     # Assertions
     assert response.status_code == 404
 
+
 def test_remove_from_watchlist_success(client, db):
     # Setup
     symbol = "INFY.NS"
-    entry = Watchlist(
-        symbol=symbol,
-        signal_date=date(2026, 5, 20),
-        status="watching"
-    )
+    entry = Watchlist(symbol=symbol, signal_date=date(2026, 5, 20), status="watching")
     db.add(entry)
     db.commit()
 
@@ -70,9 +62,10 @@ def test_remove_from_watchlist_success(client, db):
     # Assertions
     assert response.status_code == 200
     assert response.json()["status"] == "success"
-    
+
     # Verify in DB
     assert db.query(Watchlist).filter_by(symbol=symbol).first() is None
+
 
 def test_get_expired_watchlist_entries(client, db):
     # Setup

@@ -1,9 +1,11 @@
-import os
 import logging
+import os
 import tempfile
 from pathlib import Path
+
 import pandas as pd
 import yfinance as yf
+
 from app.pipeline.fetcher import fetch_stock_data
 
 logger = logging.getLogger(__name__)
@@ -50,7 +52,9 @@ class OHLCVCache:
                 # Stale — incremental fetch handled in Task 4
                 return self._incremental_fetch(symbol, cached_df, append_ns, path)
             except Exception as exc:
-                logger.warning("ohlcv_cache: corrupt file for %s (%s), re-fetching", symbol, exc)
+                logger.warning(
+                    "ohlcv_cache: corrupt file for %s (%s), re-fetching", symbol, exc
+                )
                 path.unlink(missing_ok=True)
 
         # Cold miss or force_refresh
@@ -59,35 +63,37 @@ class OHLCVCache:
     def _is_fresh(self, df: pd.DataFrame) -> bool:
         if df.empty:
             return False
-        
+
         max_age_hours = int(os.environ.get("OHLCV_CACHE_MAX_AGE_HOURS", "24"))
         last_ts = df.index[-1]
         if hasattr(last_ts, "tzinfo") and last_ts.tzinfo is not None:
             last_ts = last_ts.tz_localize(None)
-            
-        now = pd.Timestamp.now('UTC').tz_localize(None)
+
+        now = pd.Timestamp.now("UTC").tz_localize(None)
         age_hours = (now - last_ts).total_seconds() / 3600
-        
+
         # 1. Standard age check
         if age_hours < max_age_hours:
             return True
-            
-        # 2. Weekend bypass: If it's Saturday (5) or Sunday (6) in UTC, 
+
+        # 2. Weekend bypass: If it's Saturday (5) or Sunday (6) in UTC,
         # and we already have data from the most recent Friday (4), we are fresh.
         now_weekday = now.weekday()
         if now_weekday in [5, 6]:
-            days_since_friday = (now_weekday - 4)
+            days_since_friday = now_weekday - 4
             expected_friday = (now - pd.Timedelta(days=days_since_friday)).date()
             if last_ts.date() >= expected_friday:
                 return True
-                
+
         return False
 
     def _full_fetch(
         self, symbol: str, append_ns: bool, period: str, path: Path
     ) -> pd.DataFrame | None:
         logger.info("ohlcv_cache: MISS %s — full fetch", symbol)
-        df, _ = fetch_stock_data(symbol, append_ns=append_ns, period=period, fetch_info=False)
+        df, _ = fetch_stock_data(
+            symbol, append_ns=append_ns, period=period, fetch_info=False
+        )
         if df is None or df.empty:
             return None
         self._write_atomic(df, path)
@@ -101,11 +107,13 @@ class OHLCVCache:
             last_date = last_date.tz_localize(None)
 
         start_str = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
-        end_str = (pd.Timestamp.now('UTC') + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+        end_str = (pd.Timestamp.now("UTC") + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
 
         logger.info(
             "ohlcv_cache: STALE %s — incremental fetch %s → %s",
-            symbol, start_str, end_str,
+            symbol,
+            start_str,
+            end_str,
         )
 
         ticker_sym = symbol
@@ -115,7 +123,9 @@ class OHLCVCache:
             ticker = yf.Ticker(ticker_sym)
             tail = ticker.history(start=start_str, end=end_str)
         except Exception as exc:
-            logger.warning("ohlcv_cache: incremental fetch failed for %s: %s", symbol, exc)
+            logger.warning(
+                "ohlcv_cache: incremental fetch failed for %s: %s", symbol, exc
+            )
             return cached_df
 
         if tail is None or tail.empty:
@@ -178,5 +188,10 @@ class OHLCVCache:
     # ------------------------------------------------------------------ #
 
     def _file_path(self, symbol: str) -> Path:
-        safe = symbol.replace("^", "_").replace("/", "_").replace("\\", "_").replace(":", "_")
+        safe = (
+            symbol.replace("^", "_")
+            .replace("/", "_")
+            .replace("\\", "_")
+            .replace(":", "_")
+        )
         return self._root / f"{safe}.parquet"

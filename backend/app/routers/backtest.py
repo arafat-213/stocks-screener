@@ -1,16 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
-from sqlalchemy.orm import Session
-from sqlalchemy import desc
-from app.db.session import get_db, SessionLocal
-from app.db import models
-from app.backtest.engine import run_backtest, BacktestConfig
-from pydantic import BaseModel, Field
-from typing import List, Optional
 import datetime
 import json
 import uuid
+from typing import Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
+from sqlalchemy import desc
+from sqlalchemy.orm import Session
+
+from app.backtest.engine import BacktestConfig, run_backtest
+from app.db import models
+from app.db.session import SessionLocal, get_db
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
+
 
 class BacktestRequest(BaseModel):
     score_threshold: float = Field(
@@ -27,48 +30,74 @@ class BacktestRequest(BaseModel):
         ),
     )
     holding_days: int = Field(
-        default=30,     # was 20 — EMA cross momentum needs time to develop
+        default=30,  # was 20 — EMA cross momentum needs time to develop
         ge=1,
-        le=252
+        le=252,
     )
-    stop_loss_pct: float = Field(default=7.0, ge=0, le=50,
-        description="0 disables stop-loss.")
-    target_pct: float = Field(default=0.0, ge=0, le=200,
-        description="0 disables profit target.")
-    trailing_stop_pct: float = Field(default=0.0, ge=0, le=50,
-        description="Percentage drop from peak to trigger exit.")
-    require_volume_breakout: bool = Field(default=False,
-        description="Requires volume > 2x SMA20 for entry. The tier gate (EMA cross/pullback) already enforces signal quality.")
+    stop_loss_pct: float = Field(
+        default=7.0, ge=0, le=50, description="0 disables stop-loss."
+    )
+    target_pct: float = Field(
+        default=0.0, ge=0, le=200, description="0 disables profit target."
+    )
+    trailing_stop_pct: float = Field(
+        default=0.0,
+        ge=0,
+        le=50,
+        description="Percentage drop from peak to trigger exit.",
+    )
+    require_volume_breakout: bool = Field(
+        default=False,
+        description="Requires volume > 2x SMA20 for entry. The tier gate (EMA cross/pullback) already enforces signal quality.",
+    )
     use_regime_filter: bool = True
     require_weekly_confirmation: bool = Field(
         default=False,
         description="Requires the Weekly timeframe to be bullish (RSI > 50, price > EMA26) "
-                    "before entering a Daily signal. The regime filter already provides macro "
-                    "context; enable this for additional confirmation at the cost of signal frequency."
+        "before entering a Daily signal. The regime filter already provides macro "
+        "context; enable this for additional confirmation at the cost of signal frequency.",
     )
     require_monthly_confirmation: bool = Field(
         default=False,
-        description="Additionally requires the Monthly signal to be bullish."
+        description="Additionally requires the Monthly signal to be bullish.",
     )
-    atr_multiplier: float = Field(default=2.0, ge=1.0, le=10.0,
-        description="Multiplier for ATR-based stop loss.")
-    risk_reward_ratio: float = Field(default=1.5, ge=0.5, le=10.0,
+    atr_multiplier: float = Field(
+        default=2.0, ge=1.0, le=10.0, description="Multiplier for ATR-based stop loss."
+    )
+    risk_reward_ratio: float = Field(
+        default=1.5,
+        ge=0.5,
+        le=10.0,
         description="Target profit as a multiple of risk. With atr_multiplier=2.0, "
-                    "a ratio of 1.5 places the target at 3 ATR from entry.")
+        "a ratio of 1.5 places the target at 3 ATR from entry.",
+    )
     use_atr_stops: bool = True
-    use_atr_trailing_stop: bool = Field(default=True, description="ATR-based trailing stop. Activates after atr_trailing_activation × ATR gain. Always floors at breakeven.")
-    atr_trailing_multiplier: float = Field(default=1.5, ge=0.5, le=5.0,
-        description="Trail this many ATR below the peak. With activation=2.5, profit floor when first activated = 2.5-1.5 = 1.0 ATR.")
-    atr_trailing_activation: float = Field(default=2.5, ge=0.5, le=5.0,
-        description="Activate trailing stop after this many ATR of profit. At 2.5, the trade is 83% toward the 3.0 ATR target before the trail engages.")
-    use_partial_exits: bool = Field(default=False, description="Split exit: 50% at 1.5x RR, 50% at 2.5x RR.")
+    use_atr_trailing_stop: bool = Field(
+        default=True,
+        description="ATR-based trailing stop. Activates after atr_trailing_activation × ATR gain. Always floors at breakeven.",
+    )
+    atr_trailing_multiplier: float = Field(
+        default=1.5,
+        ge=0.5,
+        le=5.0,
+        description="Trail this many ATR below the peak. With activation=2.5, profit floor when first activated = 2.5-1.5 = 1.0 ATR.",
+    )
+    atr_trailing_activation: float = Field(
+        default=2.5,
+        ge=0.5,
+        le=5.0,
+        description="Activate trailing stop after this many ATR of profit. At 2.5, the trade is 83% toward the 3.0 ATR target before the trail engages.",
+    )
+    use_partial_exits: bool = Field(
+        default=False, description="Split exit: 50% at 1.5x RR, 50% at 2.5x RR."
+    )
     use_signal_invalidation_exit: bool = Field(
         default=False,
-        description="Exit if close drops >3% below entry for 2 consecutive bars."
+        description="Exit if close drops >3% below entry for 2 consecutive bars.",
     )
     invalidation_threshold_pct: float = Field(default=3.0, ge=1.0, le=10.0)
     min_signal_tier: int = Field(
-        default=2,          # was 1 — Run 5 showed Tier 2 is safe and slightly better
+        default=2,  # was 1 — Run 5 showed Tier 2 is safe and slightly better
         ge=1,
         le=2,
         description=(
@@ -94,7 +123,7 @@ class BacktestRequest(BaseModel):
     )
     pullback_max_wait_bars: int = Field(default=8, ge=1, le=15)
     pullback_tolerance_pct: float = Field(
-        default=3.0,        # was 2.0 — 2% is too tight for NSE mid/smallcap volatility
+        default=3.0,  # was 2.0 — 2% is too tight for NSE mid/smallcap volatility
         ge=0.5,
         le=5.0,
         description="How close to EMA20 price must come to trigger pullback entry (%).",
@@ -139,16 +168,18 @@ class BacktestRequest(BaseModel):
     )
     consolidation_max_range_pct: float = Field(default=12.0, ge=5.0, le=25.0)
     min_adx: float = Field(
-        default=0.0,    # was 25.0 — tier gate (min_signal_tier) handles ADX filtering
+        default=0.0,  # was 25.0 — tier gate (min_signal_tier) handles ADX filtering
         ge=0,
         le=50,
-        description="Minimum ADX required to enter a trade. 0 disables the filter. Tier gate already handles ADX filtering."
+        description="Minimum ADX required to enter a trade. 0 disables the filter. Tier gate already handles ADX filtering.",
     )
     include_fundamentals: bool = False
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
-    screen_slug: Optional[str] = Field(default=None, description="Slug of the screen to filter symbols by.")
-    date_from: Optional[str] = None   # "YYYY-MM-DD"
-    date_to: Optional[str] = None     # "YYYY-MM-DD"
+    screen_slug: Optional[str] = Field(
+        default=None, description="Slug of the screen to filter symbols by."
+    )
+    date_from: Optional[str] = None  # "YYYY-MM-DD"
+    date_to: Optional[str] = None  # "YYYY-MM-DD"
     starting_capital: float = Field(default=1000000.0, ge=10000)
     position_size: float = Field(default=10000.0, ge=100)
     use_volatility_sizing: bool = Field(
@@ -184,6 +215,7 @@ class BacktestRequest(BaseModel):
         description="Maximum open positions in a single sector. 0 = unlimited.",
     )
 
+
 def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
     config = json.loads(run.config) if run.config else {}
     result = {
@@ -196,12 +228,14 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
         "progress": {
             "symbols_done": run.symbols_done or 0,
             "symbols_total": run.symbols_total or 0,
-            "pct": round((run.symbols_done or 0) / max(run.symbols_total or 1, 1) * 100, 1)
+            "pct": round(
+                (run.symbols_done or 0) / max(run.symbols_total or 1, 1) * 100, 1
+            ),
         },
         "error_message": run.error_message,
-        "metrics": None
+        "metrics": None,
     }
-    if run.status == 'complete':
+    if run.status == "complete":
         result["metrics"] = {
             "total_trades": run.total_trades,
             "winning_trades": run.winning_trades,
@@ -230,6 +264,7 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
         #     result["equity_curve"] = json.loads(run.equity_curve_json)
     return result
 
+
 def _serialize_trade(trade: models.BacktestTrade):
     return {
         "id": trade.id,
@@ -245,25 +280,28 @@ def _serialize_trade(trade: models.BacktestTrade):
         "return_pct": trade.return_pct,
         "rsi_at_signal": trade.rsi_at_signal,
         "adx_at_signal": trade.adx_at_signal,
-        "ema_signal": trade.ema_signal
+        "ema_signal": trade.ema_signal,
     }
+
 
 @router.post("/run")
 def start_backtest(
     request: BacktestRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Starts a backtest as a background task.
     Returns run_id immediately; poll GET /api/backtest/{run_id} for status.
     """
     # Validate and parse dates
-    date_from = datetime.date.fromisoformat(request.date_from) if request.date_from else None
-    date_to   = datetime.date.fromisoformat(request.date_to)   if request.date_to   else None
+    date_from = (
+        datetime.date.fromisoformat(request.date_from) if request.date_from else None
+    )
+    date_to = datetime.date.fromisoformat(request.date_to) if request.date_to else None
 
     run_id = str(uuid.uuid4())
-    
+
     # Save run record
     db_run = models.BacktestRun(
         run_id=run_id,
@@ -276,7 +314,7 @@ def start_backtest(
     )
     db.add(db_run)
     db.commit()
-    
+
     # Prepare config for engine
     config = BacktestConfig(
         score_threshold=request.score_threshold,
@@ -322,7 +360,7 @@ def start_backtest(
         screen_reentry_gap_days=request.screen_reentry_gap_days,
         screen_driven_rsi_max=request.screen_driven_rsi_max,
     )
-    
+
     # Add to background tasks
     # We use SessionLocal() because run_backtest needs its own session in a separate thread
     def run_wrapper(rid, cfg):
@@ -331,16 +369,23 @@ def start_backtest(
             run_backtest(engine_db, rid, cfg)
         finally:
             engine_db.close()
-            
+
     background_tasks.add_task(run_wrapper, run_id, config)
-    
+
     return {"run_id": run_id, "status": "pending"}
+
 
 @router.get("/runs")
 def list_backtest_runs(db: Session = Depends(get_db)):
     """Returns the 20 most recent backtest runs (summary only, no trades)."""
-    runs = db.query(models.BacktestRun).order_by(desc(models.BacktestRun.created_at)).limit(20).all()
+    runs = (
+        db.query(models.BacktestRun)
+        .order_by(desc(models.BacktestRun.created_at))
+        .limit(20)
+        .all()
+    )
     return [_serialize_run(r, include_curve=False) for r in runs]
+
 
 @router.get("/{run_id}")
 def get_backtest_run(run_id: str, db: Session = Depends(get_db)):
@@ -348,26 +393,31 @@ def get_backtest_run(run_id: str, db: Session = Depends(get_db)):
     Returns full run details including equity curve JSON.
     Poll this endpoint every 3s while status='running'.
     """
-    run = db.query(models.BacktestRun).filter(models.BacktestRun.run_id == run_id).first()
+    run = (
+        db.query(models.BacktestRun).filter(models.BacktestRun.run_id == run_id).first()
+    )
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
     return _serialize_run(run, include_curve=True)
+
 
 @router.get("/{run_id}/trades")
 def get_backtest_trades(
     run_id: str,
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=50, ge=10, le=200),
-    sort_by: str = Query(default='exit_date'),
-    sort_dir: str = Query(default='desc'),
+    sort_by: str = Query(default="exit_date"),
+    sort_dir: str = Query(default="desc"),
     exit_reason: Optional[str] = Query(default=None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
 ):
     """
     Paginated trade list for a backtest run.
     Supports filtering by exit_reason ('holding_period', 'stop_loss', 'target').
     """
-    run = db.query(models.BacktestRun).filter(models.BacktestRun.run_id == run_id).first()
+    run = (
+        db.query(models.BacktestRun).filter(models.BacktestRun.run_id == run_id).first()
+    )
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
 
@@ -379,7 +429,7 @@ def get_backtest_trades(
 
     # Sorting
     sort_col = getattr(models.BacktestTrade, sort_by, models.BacktestTrade.exit_date)
-    q = q.order_by(desc(sort_col) if sort_dir == 'desc' else sort_col)
+    q = q.order_by(desc(sort_col) if sort_dir == "desc" else sort_col)
 
     trades = q.offset((page - 1) * page_size).limit(page_size).all()
 
@@ -387,5 +437,5 @@ def get_backtest_trades(
         "total": total,
         "page": page,
         "page_size": page_size,
-        "trades": [_serialize_trade(t) for t in trades]
+        "trades": [_serialize_trade(t) for t in trades],
     }

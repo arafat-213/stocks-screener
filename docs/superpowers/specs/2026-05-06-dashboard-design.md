@@ -9,7 +9,7 @@ A redesign of the Stock AI frontend to replace the basic HTML look with a "Termi
 - **Color Palette**:
   - Background: Clean white (light mode) or deep gray (dark mode support planned).
   - Borders/Separators: Subtle grays.
-  - Signals: 
+  - Signals:
     - Green (`#16a34a`) for positive/Buy signals, low RSI.
     - Red (`#dc2626`) for negative/Sell signals, high RSI.
     - Yellow/Orange for warnings or 'running' states.

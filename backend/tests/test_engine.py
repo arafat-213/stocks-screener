@@ -1,19 +1,22 @@
-import pytest
-import pandas as pd
-import numpy as np
 import datetime
+
+import numpy as np
+import pandas as pd
+import pytest
+
 from app.backtest.engine import (
-    BacktestConfig, 
-    simulate_trades, 
-    _compute_position_size, 
-    TradeResult, 
+    BacktestConfig,
+    TradeResult,
+    _compute_all_indicators,
+    _compute_position_size,
+    _compute_signal_tier,
+    _score_bar_from_precomputed,
     compute_metrics,
     score_series,
     simulate_portfolio,
-    _compute_all_indicators,
-    _score_bar_from_precomputed,
-    _compute_signal_tier
+    simulate_trades,
 )
+
 
 def test_tier1_requires_cross_or_pullback_plus_volume_plus_adx():
     signal = {
@@ -24,6 +27,7 @@ def test_tier1_requires_cross_or_pullback_plus_volume_plus_adx():
     }
     assert _compute_signal_tier(signal) == 1
 
+
 def test_tier2_cross_with_adx_no_volume():
     signal = {
         "ema_signal": "bullish_pullback",
@@ -32,6 +36,7 @@ def test_tier2_cross_with_adx_no_volume():
         "rsi": 62.0,
     }
     assert _compute_signal_tier(signal) == 2
+
 
 def test_tier3_when_rsi_above_68():
     signal = {
@@ -42,6 +47,7 @@ def test_tier3_when_rsi_above_68():
     }
     assert _compute_signal_tier(signal) == 3
 
+
 def test_tier4_generic_bullish():
     signal = {
         "ema_signal": "bullish",
@@ -50,6 +56,7 @@ def test_tier4_generic_bullish():
         "rsi": 55.0,
     }
     assert _compute_signal_tier(signal) == 4
+
 
 def test_generic_bullish_signal_is_not_entered():
     """Verify simulate_trades blocks a Tier 4 signal even if score is high."""
@@ -63,14 +70,18 @@ def test_generic_bullish_signal_is_not_entered():
     )
     # Generic 'bullish' is Tier 4
     signal = make_signal(df, idx=260, score=80.0)
-    signal['ema_signal'] = 'bullish'
-    signal['rsi'] = 55.0
-    signal['adx'] = 30.0
-    
+    signal["ema_signal"] = "bullish"
+    signal["rsi"] = 55.0
+    signal["adx"] = 30.0
+
     trades = simulate_trades("TEST", "Tech", df, [signal], config)
     assert len(trades) == 0
-from tests.conftest import make_trending_df, make_signal
+
+
 import time
+
+from tests.conftest import make_signal, make_trending_df
+
 
 class TestEffectiveScoreThreshold:
     def test_scales_to_70_pct_when_technical_only(self):
@@ -126,6 +137,7 @@ class TestEffectiveScoreThreshold:
         signal = make_signal(df, idx=260, score=30.0)
         trades = simulate_trades("TEST", "Technology", df, [signal], config)
         assert len(trades) == 0
+
 
 class TestPositionSizing:
     def _base_config(self, **kwargs) -> BacktestConfig:
@@ -208,9 +220,11 @@ class TestPositionSizing:
         Returns: +10% and -10%. PnL = 2_000 - 1_000 = 1_000.
         total_return_pct = 1_000 / 1_000_000 * 100 = 0.1%.
         """
+
         def _make_trade(ret: float, size: float) -> TradeResult:
             return TradeResult(
-                symbol="X", sector="Tech",
+                symbol="X",
+                sector="Tech",
                 signal_date=datetime.date(2024, 1, 1),
                 entry_date=datetime.date(2024, 1, 2),
                 exit_date=datetime.date(2024, 1, 22),
@@ -235,6 +249,7 @@ class TestPositionSizing:
         # total_return_pct = 925 / 1_000_000 * 100 = 0.0925%
         assert metrics["total_return_pct"] == pytest.approx(0.0925, abs=0.0001)
 
+
 class TestScoreSeriesPerformance:
     def test_score_series_completes_300_bars_under_2_seconds(self):
         """
@@ -257,6 +272,7 @@ class TestScoreSeriesPerformance:
         on the same slice, for a spot-check bar.
         """
         from app.pipeline.scorer import calculate_technical_score
+
         df = make_trending_df(n=300)
         results = score_series(df)
         assert len(results) > 0
@@ -271,8 +287,11 @@ class TestScoreSeriesPerformance:
             f"is_bullish mismatch: vectorized={last['is_bullish']}, direct={direct['is_bullish']}"
         )
 
+
 class TestPortfolioSimulation:
-    def _make_config(self, max_concurrent: int = 2, max_sector: int = 1) -> BacktestConfig:
+    def _make_config(
+        self, max_concurrent: int = 2, max_sector: int = 1
+    ) -> BacktestConfig:
         return BacktestConfig(
             score_threshold=60.0,
             include_fundamentals=False,
@@ -293,7 +312,11 @@ class TestPortfolioSimulation:
         )
 
     def _make_simultaneous_signals(
-        self, df: pd.DataFrame, symbols: list[str], sectors: list[str], score: float = 50.0
+        self,
+        df: pd.DataFrame,
+        symbols: list[str],
+        sectors: list[str],
+        score: float = 50.0,
     ) -> tuple[dict, dict]:
         """Returns all_signals and all_dfs where all symbols fire on the same day."""
         all_signals = {}
@@ -351,6 +374,7 @@ class TestPortfolioSimulation:
         trades = simulate_portfolio(all_signals, all_dfs, stocks_info, config)
         assert len(trades) == 2  # Both should fire because A exits before B's signal
 
+
 def _make_df_momentum(n=300):
     """Monotonically rising price series — simple, predictable."""
     closes = np.linspace(100, 200, n)
@@ -365,6 +389,7 @@ def _make_df_momentum(n=300):
         index=pd.date_range("2021-01-01", periods=n, freq="B"),
     )
 
+
 def test_momentum_1m_uses_21_bars():
     df = _make_df_momentum(300)
     df_ind = _compute_all_indicators(df)
@@ -375,6 +400,7 @@ def test_momentum_1m_uses_21_bars():
     expected = (price_now / price_21 - 1) * 100
     assert bar["momentum_1m"] == pytest.approx(expected, rel=1e-6)
 
+
 def test_momentum_3m_uses_63_bars():
     df = _make_df_momentum(300)
     df_ind = _compute_all_indicators(df)
@@ -383,6 +409,7 @@ def test_momentum_3m_uses_63_bars():
     price_63 = df_ind["Close"].iloc[250 - 63]
     expected = (price_now / price_63 - 1) * 100
     assert bar["momentum_3m"] == pytest.approx(expected, rel=1e-6)
+
 
 class TestMomentumCalculation:
     def _make_df(self, n=300):
@@ -402,23 +429,24 @@ class TestMomentumCalculation:
     def test_scorer_lookbacks_are_consistent(self):
         """Verify scorer.py uses correct negative indices for all 4 momentum timeframes."""
         from app.pipeline.scorer import calculate_technical_score
+
         df = self._make_df(300)
         res = calculate_technical_score(df)
-        
+
         price_now = df["Close"].iloc[-1]
-        
+
         # 1m (21 bars)
         p21 = df["Close"].iloc[-22]
         assert res["momentum_1m"] == pytest.approx((price_now / p21 - 1) * 100)
-        
+
         # 3m (63 bars)
         p63 = df["Close"].iloc[-64]
         assert res["momentum_3m"] == pytest.approx((price_now / p63 - 1) * 100)
-        
+
         # 6m (126 bars)
         p126 = df["Close"].iloc[-127]
         assert res["momentum_6m"] == pytest.approx((price_now / p126 - 1) * 100)
-        
+
         # 12m (252 bars)
         p252 = df["Close"].iloc[-253]
         assert res["momentum_12m"] == pytest.approx((price_now / p252 - 1) * 100)
@@ -429,20 +457,28 @@ class TestMomentumCalculation:
         df_ind = _compute_all_indicators(df)
         i = 280
         bar = _score_bar_from_precomputed(df_ind, i)
-        
+
         price_now = df_ind["Close"].iloc[i]
-        
+
         # 1m (21 bars)
-        assert bar["momentum_1m"] == pytest.approx((price_now / df_ind["Close"].iloc[i - 21] - 1) * 100)
-        
+        assert bar["momentum_1m"] == pytest.approx(
+            (price_now / df_ind["Close"].iloc[i - 21] - 1) * 100
+        )
+
         # 3m (63 bars)
-        assert bar["momentum_3m"] == pytest.approx((price_now / df_ind["Close"].iloc[i - 63] - 1) * 100)
-        
+        assert bar["momentum_3m"] == pytest.approx(
+            (price_now / df_ind["Close"].iloc[i - 63] - 1) * 100
+        )
+
         # 6m (126 bars)
-        assert bar["momentum_6m"] == pytest.approx((price_now / df_ind["Close"].iloc[i - 126] - 1) * 100)
-        
+        assert bar["momentum_6m"] == pytest.approx(
+            (price_now / df_ind["Close"].iloc[i - 126] - 1) * 100
+        )
+
         # 12m (252 bars)
-        assert bar["momentum_12m"] == pytest.approx((price_now / df_ind["Close"].iloc[i - 252] - 1) * 100)
+        assert bar["momentum_12m"] == pytest.approx(
+            (price_now / df_ind["Close"].iloc[i - 252] - 1) * 100
+        )
 
     def test_engine_handles_min_bars_buffer(self):
         """Verify score_series uses MIN_BARS=260 and doesn't crash."""
@@ -453,28 +489,33 @@ class TestMomentumCalculation:
         # Check first result's date
         assert results[0]["date"] == df.index[260]
 
+
 def test_high_rsi_signal_not_entered():
     """Signal with RSI > 68 must not produce a trade even if score is high."""
-    from app.backtest.engine import simulate_trades, BacktestConfig
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
+    from app.backtest.engine import BacktestConfig, simulate_trades
 
     # Create dummy data
     n = 300
     closes = np.linspace(100, 110, n)
-    df = pd.DataFrame({
-        "Open": closes * 0.995,
-        "High": closes * 1.01,
-        "Low":  closes * 0.99,
-        "Close": closes,
-        "Volume": np.full(n, 1_000_000.0),
-    }, index=pd.date_range("2021-01-01", periods=n, freq="B"))
+    df = pd.DataFrame(
+        {
+            "Open": closes * 0.995,
+            "High": closes * 1.01,
+            "Low": closes * 0.99,
+            "Close": closes,
+            "Volume": np.full(n, 1_000_000.0),
+        },
+        index=pd.date_range("2021-01-01", periods=n, freq="B"),
+    )
 
     signal = {
         "date": df.index[270],
         "score": 65.0,
         "is_bullish": True,
-        "rsi": 74.0,           # above 68 ceiling
+        "rsi": 74.0,  # above 68 ceiling
         "adx": 30.0,
         "ema_signal": "bullish_cross",
         "volume_signal": "bullish",
@@ -494,26 +535,33 @@ def test_high_rsi_signal_not_entered():
     trades = simulate_trades("TEST", "Tech", df, [signal], config)
     assert len(trades) == 0, "RSI > 68 should be blocked at entry"
 
+
 def test_atr_trailing_stop_locks_in_profit():
-    from app.backtest.engine import simulate_trades, BacktestConfig
-    import pandas as pd
     import numpy as np
+    import pandas as pd
+
+    from app.backtest.engine import BacktestConfig, simulate_trades
 
     entry_price = 100.0
     atr = 5.0
     n = 30
     closes = np.array(
-        [100.0] * 5 +
-        list(np.linspace(100, 112, 10)) +   # rise to 112 (activates at 105)
-        list(np.linspace(112, 104.0, 15))   # drop to 104 (hits trail at 112 - 7.5 = 104.5)
+        [100.0] * 5
+        + list(np.linspace(100, 112, 10))  # rise to 112 (activates at 105)
+        + list(
+            np.linspace(112, 104.0, 15)
+        )  # drop to 104 (hits trail at 112 - 7.5 = 104.5)
     )[:n]
-    df = pd.DataFrame({
-        "Open":  closes * 0.995,
-        "High":  closes + 1.0,
-        "Low":   closes - 1.5,
-        "Close": closes,
-        "Volume": np.full(n, 1_000_000.0),
-    }, index=pd.date_range("2023-01-01", periods=n, freq="B"))
+    df = pd.DataFrame(
+        {
+            "Open": closes * 0.995,
+            "High": closes + 1.0,
+            "Low": closes - 1.5,
+            "Close": closes,
+            "Volume": np.full(n, 1_000_000.0),
+        },
+        index=pd.date_range("2023-01-01", periods=n, freq="B"),
+    )
 
     signal = {
         "date": df.index[0],
@@ -551,6 +599,8 @@ def test_atr_trailing_stop_locks_in_profit():
     trade = trades[0]
     assert trade.exit_reason == "atr_trailing_stop"
     assert trade.return_pct > 0
+
+
 def test_partial_exit_produces_two_trade_records():
     """
     With use_partial_exits=True, a trade that hits T1 then T2 should produce
@@ -560,14 +610,16 @@ def test_partial_exit_produces_two_trade_records():
     atr = 4.0
     # T1 = entry + 1.5 * 2.0 * atr = 100 + 12 = 112
     # T2 = entry + 2.5 * 2.0 * atr = 100 + 20 = 120
-    closes = np.array([100, 100, 102, 105, 108, 112, 115, 118, 121, 120, 119, 118] + [118] * 18)[:30]
+    closes = np.array(
+        [100, 100, 102, 105, 108, 112, 115, 118, 121, 120, 119, 118] + [118] * 18
+    )[:30]
     highs = closes + 2.0
     lows = closes - 1.0
     df = pd.DataFrame(
         {
-            "Open":  closes * 0.995,
-            "High":  highs,
-            "Low":   lows,
+            "Open": closes * 0.995,
+            "High": highs,
+            "Low": lows,
             "Close": closes,
             "Volume": np.full(30, 1_000_000.0),
         },
@@ -614,27 +666,38 @@ def test_partial_exit_produces_two_trade_records():
     assert t1.position_size_used == config.position_size * 0.5
     assert t2.position_size_used == config.position_size * 0.5
 
+
 def test_invalidation_exit_triggers_after_two_bearish_bars():
     """
     If price closes below 3% from entry for 2 consecutive bars, exit at next open.
     """
-    from app.backtest.engine import simulate_trades, BacktestConfig
-    import pandas as pd
+
     import numpy as np
-    import datetime
+    import pandas as pd
+
+    from app.backtest.engine import BacktestConfig, simulate_trades
 
     entry_price = 100.0
     closes = np.array(
-        [100.0, 101.0, 100.5,
-         96.5,   # -3.5% — first bearish bar
-         96.0,   # -4.0% — second consecutive bearish bar → exit next open
-         97.0, 98.0, 100.0, 102.0, 105.0] + [105.0] * 20
+        [
+            100.0,
+            101.0,
+            100.5,
+            96.5,  # -3.5% — first bearish bar
+            96.0,  # -4.0% — second consecutive bearish bar → exit next open
+            97.0,
+            98.0,
+            100.0,
+            102.0,
+            105.0,
+        ]
+        + [105.0] * 20
     )
     df = pd.DataFrame(
         {
-            "Open":  closes * 0.995,
-            "High":  closes + 0.5,
-            "Low":   closes - 0.5,
+            "Open": closes * 0.995,
+            "High": closes + 0.5,
+            "Low": closes - 0.5,
             "Close": closes,
             "Volume": np.full(len(closes), 1_000_000.0),
         },
@@ -658,7 +721,7 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
     config = BacktestConfig(
         score_threshold=0.0,
         holding_days=29,
-        stop_loss_pct=10.0,           # high enough not to trigger before invalidation
+        stop_loss_pct=10.0,  # high enough not to trigger before invalidation
         use_atr_stops=False,
         use_atr_trailing_stop=False,
         use_signal_invalidation_exit=True,
@@ -683,8 +746,10 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
     # exit_date = df.index[5]
     assert trade.exit_date == df.index[5].date()
 
+
 def test_default_config_has_updated_values():
     from app.backtest.engine import BacktestConfig
+
     cfg = BacktestConfig()
     assert cfg.score_threshold == 60.0
     assert cfg.require_volume_breakout is False

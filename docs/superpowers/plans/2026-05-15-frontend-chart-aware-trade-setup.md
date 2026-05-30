@@ -4,7 +4,7 @@
 
 **Goal:** Update the React frontend to display actionable trade setups (Entry, Stop, Target) and support ATR-based backtesting configurations.
 
-**Architecture:** 
+**Architecture:**
 1. **Presentation Layer:** Create reusable `SetupBadge` and `TradingPlan` components to visualize the `setup` object provided by the backend.
 2. **Component Integration:** Inject these components into `StockCard`, `DataTable`, and `StockDetail` page.
 3. **Configuration Layer:** Update the `Backtest` page state and UI to support new ATR-based parameters.
@@ -35,7 +35,7 @@ const SetupBadge = ({ setup }) => {
   if (!setup) return null;
 
   const label = SETUP_LABELS[setup.setup_type] || 'Setup';
-  
+
   return (
     <div className={`setup-badge setup-${setup.setup_type}`}>
       {label}
@@ -141,19 +141,19 @@ const TradingPlan = ({ setup }) => {
         <Zap size={18} className="text-primary" />
         <h3>Trading Plan: {setup.setup_type.replace(/_/g, ' ')}</h3>
       </div>
-      
+
       <div className="plan-grid">
         <div className="plan-item entry">
           <label>Entry Zone</label>
           <div className="value">₹{setup.entry_zone.low} - ₹{setup.entry_zone.high}</div>
         </div>
-        
+
         <div className="plan-item stop">
           <label><ShieldAlert size={14} /> Stop Loss</label>
           <div className="value negative">₹{setup.stop_loss}</div>
           <span className="basis">{setup.stop_basis}</span>
         </div>
-        
+
         <div className="plan-targets">
           <label><Target size={14} /> Targets (R-Multiple)</label>
           <div className="target-list">
@@ -166,7 +166,7 @@ const TradingPlan = ({ setup }) => {
           </div>
         </div>
       </div>
-      
+
       <div className="plan-footer">
         <span>Risk per share: ₹{setup.risk_per_share}</span>
         <span>ATR: {setup.atr}</span>
@@ -323,16 +323,16 @@ Add a new section in the settings panel for ATR-based exits.
 {/* Inside Settings panel */}
 <div className="config-section">
   <h3><ShieldCheck size={16} /> Risk Management</h3>
-  
-  <Toggle 
+
+  <Toggle
     label="Use ATR-based Stops & Targets"
     checked={config.use_atr_stops}
     onChange={(val) => setConfig(prev => ({ ...prev, use_atr_stops: val }))}
   />
-  
+
   {config.use_atr_stops ? (
     <div className="sub-settings mt-4 space-y-4">
-      <Slider 
+      <Slider
         label="ATR Multiplier (Stop Loss)"
         min={1.0}
         max={5.0}
@@ -340,7 +340,7 @@ Add a new section in the settings panel for ATR-based exits.
         value={config.atr_multiplier}
         onChange={(val) => setConfig(prev => ({ ...prev, atr_multiplier: val }))}
       />
-      <Slider 
+      <Slider
         label="Risk/Reward Ratio (Targets)"
         min={1.0}
         max={10.0}
@@ -351,14 +351,14 @@ Add a new section in the settings panel for ATR-based exits.
     </div>
   ) : (
     <div className="sub-settings mt-4 space-y-4">
-      <Slider 
+      <Slider
         label="Stop Loss %"
         min={1}
         max={25}
         value={config.stop_loss_pct}
         onChange={(val) => setConfig(prev => ({ ...prev, stop_loss_pct: val }))}
       />
-      <Slider 
+      <Slider
         label="Profit Target %"
         min={0}
         max={100}

@@ -300,7 +300,7 @@ def materialize_all_screens(db: Session):
     db.query(ScreenResult).filter(
         func.date(ScreenResult.computed_at) == computed_at.date()
     ).delete()
-    
+
     for slug, meta in SCREEN_REGISTRY.items():
         try:
             results = meta['fn'](db)
@@ -314,7 +314,7 @@ def materialize_all_screens(db: Session):
                 ))
         except Exception as e:
             logger.error(f"Screen materialization failed for {slug}: {e}")
-    
+
     db.commit()
 ```
 

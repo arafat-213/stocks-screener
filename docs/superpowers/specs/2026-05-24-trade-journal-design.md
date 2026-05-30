@@ -11,20 +11,20 @@ class TradeJournal(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=False)
     watchlist_id = Column(Integer, ForeignKey('watchlist.id'), nullable=True) # Bridge link
-    
+
     # Entry
     signal_date = Column(Date, nullable=True)
     entry_date = Column(Date, nullable=False, default=datetime.date.today)
     entry_price = Column(Float, nullable=False)
     shares = Column(Integer, nullable=False)
     position_value = Column(Float, nullable=False) # Computed: entry_price * shares
-    
+
     # Risk Management (Pre-filled from signal if available)
     stop_loss = Column(Float, nullable=False)
     target = Column(Float, nullable=False)
     quality_tier = Column(String(1), nullable=True)
     signal_score = Column(Float, nullable=True)
-    
+
     # Exit
     exit_date = Column(Date, nullable=True)
     exit_price = Column(Float, nullable=True)
@@ -32,7 +32,7 @@ class TradeJournal(Base):
     pnl = Column(Float, nullable=True)
     return_pct = Column(Float, nullable=True)
     holding_days = Column(Integer, nullable=True)
-    
+
     status = Column(String, nullable=False, default='open') # 'open' | 'closed'
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

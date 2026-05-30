@@ -1,7 +1,7 @@
 /**
  * Infers the sub-score breakdown from a Daily signal object.
  * Returns an array of { label, earned, max, signal, category } objects.
- * 
+ *
  * All inference is approximate — we don't store sub-scores in the DB.
  * The source of truth for rules is backend/app/pipeline/scorer.py.
  */
@@ -11,14 +11,14 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
   const breakdown = [];
 
   // Technical sub-scores (max 70)
-  
+
   // EMA Alignment: 20 pts — bullish if ema_signal === 'bullish'
   breakdown.push({
     label: 'EMA Alignment',
     earned: dailySignal.ema_signal === 'bullish' ? 20 : 0,
     max: 20,
     signal: dailySignal.ema_signal || 'neutral',
-    category: 'technical'
+    category: 'technical',
   });
 
   // MACD: 20 pts — macd > 0 is a proxy (actual rule: macd > signal AND macd > 0)
@@ -30,20 +30,24 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
     earned: dailySignal.ema_signal === 'bullish' ? 20 : 0,
     max: 20,
     signal: dailySignal.macd > 0 ? 'bullish' : 'bearish',
-    category: 'technical'
+    category: 'technical',
   });
 
   // RSI: 15 pts — use rsi_signal field
-  const rsiEarned = 
-    dailySignal.rsi_signal === 'bullish_recovery' ? 15 :
-    dailySignal.rsi_signal === 'bullish_crossing' ? 15 :
-    dailySignal.rsi_signal === 'bullish_strong'   ? 5  : 0;
+  const rsiEarned =
+    dailySignal.rsi_signal === 'bullish_recovery'
+      ? 15
+      : dailySignal.rsi_signal === 'bullish_crossing'
+        ? 15
+        : dailySignal.rsi_signal === 'bullish_strong'
+          ? 5
+          : 0;
   breakdown.push({
     label: 'RSI',
     earned: rsiEarned,
     max: 15,
     signal: dailySignal.rsi_signal || 'neutral',
-    category: 'technical'
+    category: 'technical',
   });
 
   // Volume: 15 pts — use volume_signal field
@@ -52,52 +56,54 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
     earned: dailySignal.volume_signal === 'bullish' ? 15 : 0,
     max: 15,
     signal: dailySignal.volume_signal || 'neutral',
-    category: 'technical'
+    category: 'technical',
   });
 
   // Fundamental sub-scores (max 30) — inferred from fundamentals object
   // PE: max 10 pts
   const pe = fundamentals?.pe;
-  const peEarned = pe == null ? 0 : pe < 25 ? 10 : pe < 40 ? 6 : pe < 60 ? 2 : 0;
+  const peEarned =
+    pe == null ? 0 : pe < 25 ? 10 : pe < 40 ? 6 : pe < 60 ? 2 : 0;
   breakdown.push({
     label: 'P/E Ratio',
     earned: peEarned,
     max: 10,
     signal: pe ? `PE ${pe.toFixed(1)}` : 'no data',
-    category: 'fundamental'
+    category: 'fundamental',
   });
 
   // ROE: max 5 pts (roe from fundamentals, stored as decimal e.g. 0.15)
   const roe = fundamentals?.roe;
-  const roeEarned = roe == null ? 0 : roe > 0.15 ? 5 : roe > 0.10 ? 2 : 0;
+  const roeEarned = roe == null ? 0 : roe > 0.15 ? 5 : roe > 0.1 ? 2 : 0;
   breakdown.push({
     label: 'ROE',
     earned: roeEarned,
     max: 5,
     signal: roe ? `${(roe * 100).toFixed(1)}%` : 'no data',
-    category: 'fundamental'
+    category: 'fundamental',
   });
 
   // ROCE: max 5 pts (roce stored as decimal e.g. 0.15)
   const roce = fundamentals?.roce;
-  const roceEarned = roce == null ? 0 : roce > 0.15 ? 5 : roce > 0.10 ? 2 : 0;
+  const roceEarned = roce == null ? 0 : roce > 0.15 ? 5 : roce > 0.1 ? 2 : 0;
   breakdown.push({
     label: 'ROCE',
     earned: roceEarned,
     max: 5,
     signal: roce ? `${(roce * 100).toFixed(1)}%` : 'no data',
-    category: 'fundamental'
+    category: 'fundamental',
   });
 
   // Pledge: max 5 pts (pledged_percent stored as decimal e.g. 0.05)
   const pledged = fundamentals?.pledged_percent;
-  const pledgedEarned = pledged == null ? 0 : pledged === 0 ? 5 : pledged < 0.10 ? 2 : 0;
+  const pledgedEarned =
+    pledged == null ? 0 : pledged === 0 ? 5 : pledged < 0.1 ? 2 : 0;
   breakdown.push({
     label: 'Pledge',
     earned: pledgedEarned,
     max: 5,
     signal: pledged != null ? `${(pledged * 100).toFixed(1)}%` : 'no data',
-    category: 'fundamental'
+    category: 'fundamental',
   });
 
   // D/E: max 5 pts
@@ -108,7 +114,7 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
     earned: deEarned,
     max: 5,
     signal: de != null ? `D/E ${de.toFixed(2)}` : 'no data',
-    category: 'fundamental'
+    category: 'fundamental',
   });
 
   return breakdown;

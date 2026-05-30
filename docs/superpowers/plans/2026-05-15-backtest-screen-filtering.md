@@ -88,18 +88,18 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
     # ...
     try:
         # ... Fetch benchmark
-        
+
         # 2. Select symbols
         if config.screen_slug and config.screen_slug != "all":
             from app.screens.registry import SCREEN_REGISTRY
             if config.screen_slug not in SCREEN_REGISTRY:
                 raise ValueError(f"Invalid screen slug: {config.screen_slug}")
-            
+
             logger.info(f"Filtering symbols using screen: {config.screen_slug}")
             screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
             screen_results = screen_fn(db)
             symbols = [r[0] for r in screen_results]
-            
+
             if not symbols:
                  raise ValueError(f"Selected screen '{config.screen_slug}' returned no symbols for backtesting.")
         else:
@@ -113,7 +113,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         if config.symbol_limit:
             symbols = symbols[:config.symbol_limit]
-        
+
         run.symbols_total = len(symbols)
         # ...
 ```
@@ -155,7 +155,7 @@ def test_run_backtest_with_screen_filter(db_session):
 
     # Mock screen function returning only 2 symbols
     mock_screen_fn = MagicMock(return_value=[("RELIANCE.NS", 80), ("TCS.NS", 75)])
-    
+
     with patch("app.screens.registry.SCREEN_REGISTRY", {
         "52w-high": {"fn": mock_screen_fn}
     }):
@@ -231,7 +231,7 @@ import {
     <label className="form-label flex items-center gap-2">
       <Layers size={13} /> Starting Universe
     </label>
-    <select 
+    <select
       className="input-styled w-full"
       value={config.screen_slug}
       onChange={(e) => handleConfigChange('screen_slug', e.target.value)}

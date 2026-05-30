@@ -1,5 +1,6 @@
 import sqlalchemy.exc
 
+
 def classify_error(exc: Exception) -> str:
     """Returns one of: 'rate_limit', 'empty_data', 'db_write', 'timeout', 'unknown'"""
     msg = str(exc).lower()

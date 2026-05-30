@@ -40,7 +40,7 @@ Replace hard filters:
     query = db.query(Stock, FundamentalCache, confluence_sub.c.confluence_count).\
         join(confluence_sub, Stock.symbol == confluence_sub.c.symbol).\
         outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol)
-    
+
     if fundamental_filter:
         query = query.filter(FundamentalCache.profitability_streak_passed == True).\
             filter(FundamentalCache.de_check_passed == True)

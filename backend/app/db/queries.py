@@ -6,6 +6,7 @@ def get_top_stocks(db: Session, limit: int = 10):
     # TODO: Implement DB query
     return []
 
+
 def log_pipeline_run(db: Session, run_status: str, fetched: int, scored: int):
     """Logs pipeline execution results."""
     # TODO: Implement DB write

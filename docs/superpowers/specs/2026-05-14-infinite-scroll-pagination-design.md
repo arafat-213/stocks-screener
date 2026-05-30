@@ -7,7 +7,7 @@
 ---
 
 ## 1. Problem Statement
-The current `/api/dashboard/screener/results` endpoint returns the entire "Elite List" (~1,100+ stocks) in a single JSON payload. 
+The current `/api/dashboard/screener/results` endpoint returns the entire "Elite List" (~1,100+ stocks) in a single JSON payload.
 - **Payload Size:** High (Multi-MB)
 - **Frontend Performance:** Sorting and filtering 1000+ items in a table/grid is becoming laggy.
 - **Initial Load:** Slow, as the user must wait for the full list before anything renders.

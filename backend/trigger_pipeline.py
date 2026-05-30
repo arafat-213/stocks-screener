@@ -1,17 +1,17 @@
-import sys
-import os
-import time
 import logging
+import os
+import sys
+import time
 
 # Add the backend directory to sys.path
-sys.path.append(os.path.join(os.getcwd(), 'backend'))
+sys.path.append(os.path.join(os.getcwd(), "backend"))
 
-from sqlalchemy.orm import Session
 from app.db.session import SessionLocal
 from app.pipeline.orchestrator import run_pipeline
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 def main():
     db = SessionLocal()
@@ -26,6 +26,7 @@ def main():
         logger.error(f"Pipeline failed: {e}")
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     main()

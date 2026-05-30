@@ -1,7 +1,7 @@
 # Screener AI — Feature Additions Spec
 
-**Version:** 1.0  
-**Scope:** 8 frontend/fullstack features across Dashboard, StockDetail, Discover, and shared components  
+**Version:** 1.0
+**Scope:** 8 frontend/fullstack features across Dashboard, StockDetail, Discover, and shared components
 **Purpose:** Implementation-ready specification for an AI coding agent
 
 ---
@@ -44,9 +44,9 @@ def get_signal_changes(db: Session = Depends(get_db)):
 
 1. Find the two most recent distinct dates in `TechnicalSignal` for `timeframe = 'D'`:
    ```sql
-   SELECT DISTINCT DATE(date) FROM technical_signals 
-   WHERE timeframe = 'D' 
-   ORDER BY DATE(date) DESC 
+   SELECT DISTINCT DATE(date) FROM technical_signals
+   WHERE timeframe = 'D'
+   ORDER BY DATE(date) DESC
    LIMIT 2
    ```
    If fewer than 2 dates exist, return `{"changes": [], "as_of": null, "prev_date": null}`.
@@ -104,7 +104,7 @@ Structure:
     <span className="change-count-pill">{changes.length}</span>
     <ChevronDown size={14} className={isOpen ? 'rotated' : ''} />
   </button>
-  
+
   {isOpen && (
     <div className="change-banner-body">
       <div className="change-group">
@@ -157,7 +157,7 @@ import { getDashboardChanges } from '../api/client';
 const { data: changesData, loading: changesLoading } = useFetch(getDashboardChanges);
 
 // Render: insert between summary-bar and filters-container
-<ChangeBanner 
+<ChangeBanner
   changes={changesData?.changes || []}
   asOf={changesData?.as_of}
   prevDate={changesData?.prev_date}
@@ -315,12 +315,12 @@ The `COLUMN_META` object in `Discover.jsx` already defines columns with `sortabl
 
 ```js
 // In Discover.jsx COLUMN_META, fix the score accessor:
-score: { 
-  label: 'Score', 
-  key: 'score', 
+score: {
+  label: 'Score',
+  key: 'score',
   sortable: true,
   accessor: (row) => row.score ?? row.timeframes?.D?.score ?? 0,
-  render: (v) => v != null ? v.toFixed(1) : '—' 
+  render: (v) => v != null ? v.toFixed(1) : '—'
 },
 ```
 
@@ -330,7 +330,7 @@ Screen results from the screen endpoint have a top-level `score` field (set by t
 
 In `Discover.jsx`, the `selectedSlug` results section currently renders:
 ```jsx
-<DataTable 
+<DataTable
   columns={getColumnsForSlug(selectedSlug)}
   data={strategyResults}
   loading={loadingStrategyResults}
@@ -375,7 +375,7 @@ This logic must be implemented in the frontend as a pure function. It mirrors th
 /**
  * Infers the sub-score breakdown from a Daily signal object.
  * Returns an array of { label, earned, max, signal } objects.
- * 
+ *
  * All inference is approximate — we don't store sub-scores in the DB.
  * The source of truth for rules is backend/app/pipeline/scorer.py.
  */
@@ -385,7 +385,7 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
   const breakdown = [];
 
   // Technical sub-scores (max 70)
-  
+
   // EMA Alignment: 20 pts — bullish if ema_signal === 'bullish'
   breakdown.push({
     label: 'EMA Alignment',
@@ -408,7 +408,7 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
   });
 
   // RSI: 15 pts — use rsi_signal field
-  const rsiEarned = 
+  const rsiEarned =
     dailySignal.rsi_signal === 'bullish_recovery' ? 15 :
     dailySignal.rsi_signal === 'bullish_crossing' ? 15 :
     dailySignal.rsi_signal === 'bullish_strong'   ? 5  : 0;
@@ -534,7 +534,7 @@ const BreakdownRow = ({ item }) => {
     <div className="breakdown-row">
       <div className="breakdown-row-label">{item.label}</div>
       <div className="breakdown-bar-container">
-        <div 
+        <div
           className={`breakdown-bar-fill ${isZero ? 'zero' : ''}`}
           style={{ width: `${pct}%` }}
         />
@@ -723,9 +723,9 @@ const { toggle, isWatched, count } = useWatchlist();
   <label key={c} className={`radio-label ${confluenceFilter === c ? 'active' : ''}`}>
     <input type="radio" name="confluence" value={c} checked={confluenceFilter === c}
       onChange={(e) => setConfluenceFilter(e.target.value)} />
-    {c === 'all' ? 'All Stocks' 
-      : c === 'watchlist' ? `Watchlist (${count})` 
-      : c === '3' ? '3/3 Only' 
+    {c === 'all' ? 'All Stocks'
+      : c === 'watchlist' ? `Watchlist (${count})`
+      : c === '3' ? '3/3 Only'
       : '2/3+'}
   </label>
 ))}
@@ -749,10 +749,10 @@ Pass `onToggleWatch={toggle}` and `isWatched={isWatched(stock.symbol)}` to each 
   label: '★',
   sortable: false,
   render: (_, row) => (
-    <WatchlistStar 
-      symbol={row.symbol} 
-      isWatched={isWatched(row.symbol)} 
-      onToggle={toggle} 
+    <WatchlistStar
+      symbol={row.symbol}
+      isWatched={isWatched(row.symbol)}
+      onToggle={toggle}
     />
   )
 }
@@ -820,7 +820,7 @@ import { downloadCsv } from '../utils/exportCsv';
 <button
   className="export-btn"
   onClick={() => downloadCsv(
-    strategyResults, 
+    strategyResults,
     getColumnsForSlug(selectedSlug).filter(c => c.key !== 'symbol'),  // exclude Link columns
     `${selectedSlug}-${new Date().toISOString().split('T')[0]}.csv`
   )}
@@ -904,16 +904,16 @@ const Pagination = ({ total, page, pageSize, onPageChange, onPageSizeChange }) =
         <span className="pagination-info">
           {((page - 1) * pageSize) + 1}–{Math.min(page * pageSize, total)} of {total}
         </span>
-        <button 
+        <button
           className="page-btn"
-          onClick={() => onPageChange(page - 1)} 
+          onClick={() => onPageChange(page - 1)}
           disabled={page === 1}
         >
           <ChevronLeft size={16} />
         </button>
-        <button 
+        <button
           className="page-btn"
-          onClick={() => onPageChange(page + 1)} 
+          onClick={() => onPageChange(page + 1)}
           disabled={page === totalPages}
         >
           <ChevronRight size={16} />
@@ -1046,19 +1046,19 @@ const PipelineProgress = ({ fetched, scored, total, tier1Count }) => {
   // Phase 1: Fetching (0% to 50% of bar)
   // Phase 2: Scoring (50% to 100% of bar)
   // Use tier1_count as the denominator for scoring phase if total unknown
-  
+
   const fetchPct = total > 0 ? Math.min((fetched / total) * 100, 100) : 0;
   const scorePct = tier1Count > 0 ? Math.min((scored / tier1Count) * 100, 100) : 0;
-  
+
   // Overall: fetching is first half, scoring is second half
-  const overallPct = total > 0 
+  const overallPct = total > 0
     ? Math.min(((fetched / total) * 50) + (scored / Math.max(tier1Count, 1)) * 50, 100)
     : fetchPct;
 
   return (
     <div className="pipeline-progress">
       <div className="progress-bar-track">
-        <div 
+        <div
           className="progress-bar-fill"
           style={{ width: `${overallPct}%` }}
         />
@@ -1078,15 +1078,15 @@ export default PipelineProgress;
 ```css
 /* frontend/src/components/PipelineProgress.css */
 .pipeline-progress { width: 100%; margin-top: 8px; }
-.progress-bar-track { 
-  height: 4px; 
-  background: var(--color-bg-elevated); 
-  border-radius: 2px; 
+.progress-bar-track {
+  height: 4px;
+  background: var(--color-bg-elevated);
+  border-radius: 2px;
   overflow: hidden;
 }
-.progress-bar-fill { 
-  height: 100%; 
-  background: var(--color-bullish); 
+.progress-bar-fill {
+  height: 100%;
+  background: var(--color-bullish);
   border-radius: 2px;
   transition: width 0.5s ease;
 }

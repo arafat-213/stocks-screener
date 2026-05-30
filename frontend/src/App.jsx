@@ -18,15 +18,15 @@ function App() {
     <ThemeProvider>
       <MainLayout>
         <Routes>
-          <Route path="/" element={<Dashboard />} />
-          <Route path="/watchlist" element={<Watchlist />} />
-          <Route path="/stocks/:symbol" element={<StockDetail />} />
-          <Route path="/discover" element={<Discover />} />
-          <Route path="/paper" element={<PaperTrading />} />
-          <Route path="/intel" element={<Intelligence />} />
-          <Route path="/system" element={<System />} />
-          <Route path="/backtest" element={<Backtest />} />
-          <Route path="/journal" element={<Journal />} />
+          <Route path='/' element={<Dashboard />} />
+          <Route path='/watchlist' element={<Watchlist />} />
+          <Route path='/stocks/:symbol' element={<StockDetail />} />
+          <Route path='/discover' element={<Discover />} />
+          <Route path='/paper' element={<PaperTrading />} />
+          <Route path='/intel' element={<Intelligence />} />
+          <Route path='/system' element={<System />} />
+          <Route path='/backtest' element={<Backtest />} />
+          <Route path='/journal' element={<Journal />} />
         </Routes>
       </MainLayout>
     </ThemeProvider>

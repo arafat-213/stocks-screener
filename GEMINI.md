@@ -7,7 +7,7 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 - **Purpose:** Daily automated screening of NSE stocks using fundamental filters and technical analysis scoring.
 - **Data Sources:** `yfinance` (EOD OHLCV + Fundamentals), `nsepython` (NSE universe).
 - **Processing:** Two-stage engine (Fundamental Screener -> Technical Scorer).
-- **Architecture:** 
+- **Architecture:**
     - **Backend:** `FastAPI` (Python) with distributed task queue via `Celery` and `Redis`.
     - **Database:** `PostgreSQL` (Managed via Neon/Supabase or local Docker).
     - **Frontend:** `React` (Vite) dashboard with `Recharts` and `lightweight-charts`.

@@ -54,7 +54,7 @@ def compute_rs_ranks(db: Session, signal_date: datetime.date, benchmark_symbol: 
                 benchmark_symbol = candidate
                 benchmark_return = (hist['Close'].iloc[-1] / hist['Close'].iloc[-252] - 1) * 100
                 break
-    
+
     if not benchmark_symbol:
         return {"error": "No suitable RS benchmark found"}
 
@@ -69,16 +69,16 @@ def compute_rs_ranks(db: Session, signal_date: datetime.date, benchmark_symbol: 
 
     valid_signals.sort(key=lambda x: (x.momentum_12m - benchmark_return))
     count = len(valid_signals)
-    
+
     updates = []
     for i, s in enumerate(valid_signals):
         rank = ((i + 1) / count) * 100
         updates.append({"id": s.id, "rs_score": rank})
-    
+
     if updates:
         db.bulk_update_mappings(TechnicalSignal, updates)
         db.commit()
-        
+
     return {
         "benchmark_used": benchmark_symbol,
         "benchmark_return": benchmark_return,
@@ -113,7 +113,7 @@ def recompute_rs(
         # Default to the latest date we have signals for
         latest = get_latest_signal_date(db, timeframe='D')
         target_date = latest.date() if hasattr(latest, 'date') else latest
-    
+
     summary = compute_rs_ranks(db, target_date)
     return summary
 ```
@@ -164,11 +164,11 @@ def health_check(db: Session = Depends(get_db)):
         db.execute(text("SELECT 1"))
     except Exception:
         db_status = "error"
-    
+
     # We omit pipeline stale check for brevity here, but agent should implement it
     # based on the spec
     status = "error" if db_status == "error" else "ok"
-    
+
     return {
         "status": status,
         "db": db_status,

@@ -38,7 +38,7 @@ The design uses an "inverted hierarchy" where row/card elements are lighter than
 ### 3.1 Responsive Shell
 - **Desktop (>= 1024px):** Fixed left sidebar (260px).
 - **Tablet (768px - 1024px):** Icon-only sidebar with `title` tooltips on hover.
-- **Mobile (< 768px):** 
+- **Mobile (< 768px):**
     - Bottom Navigation Bar: `[Dashboard, Screener, Reports]`.
     - Active state: Emerald (`--color-bullish`) top border.
     - Filter Drawer: Slide-up "Bottom Sheet" for sectors and pipeline controls.

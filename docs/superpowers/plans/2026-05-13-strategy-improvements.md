@@ -98,8 +98,8 @@ Find:
 ```python
         # is_bullish definition
         is_bullish = (
-            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
-            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
+            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and
+            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
             ema5 > ema13 > ema26 and price > ema26
         )
 ```
@@ -108,11 +108,11 @@ Replace with:
 ```python
         # is_bullish definition
         is_bullish = (
-            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and 
-            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and 
+            pd.notna(macd_line) and macd_line > signal_line and macd_line > 0 and
+            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
             ema5 > ema13 > ema26 and price > ema26
         )
-        
+
           # Hard Filters (zero out score if violated, skip ADX weighting)
 	ema200 = row.get('EMA_200')
 	hard_filter_triggered = (
@@ -187,7 +187,7 @@ Add below it:
         if config.use_regime_filter and regime_dict is not None:
             if not regime_dict.get(compare_date, False):
                 continue
-                
+
         # Volume Breakout Filter
         if config.require_volume_breakout:
             if not signal.get('volume_breakout', False):
@@ -204,14 +204,14 @@ Find the inner loop:
 Replace the inner loop logic (up to `if exit_price is None:`) with:
 ```python
             highest_price_since_entry = entry_price
-            
+
             for k in range(entry_idx, final_idx + 1):
                 day_low = df.iloc[k]['Low']
                 day_high = df.iloc[k]['High']
                 day_open = df.iloc[k]['Open']
-                
+
                 highest_price_since_entry = max(highest_price_since_entry, day_high)
-                
+
                 # Check Stop Loss first (conservative)
                 if day_low <= stop_loss_price:
                     exit_price = stop_loss_price
@@ -219,7 +219,7 @@ Replace the inner loop logic (up to `if exit_price is None:`) with:
                     exit_reason = 'stop_loss'
                     last_exit_idx = k
                     break
-                    
+
                 # Check Trailing Stop
                 if config.trailing_stop_pct > 0:
                     trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
@@ -230,7 +230,7 @@ Replace the inner loop logic (up to `if exit_price is None:`) with:
                         exit_reason = 'trailing_stop'
                         last_exit_idx = k
                         break
-                
+
                 # Check Profit Target
                 if day_high >= target_price:
                     exit_price = target_price

@@ -4,7 +4,7 @@
 
 **Goal:** Move the long-running stock screening pipeline out of the FastAPI process into a distributed task queue using Celery and Redis.
 
-**Architecture:** 
+**Architecture:**
 - Redis service added to `docker-compose.yml`.
 - Celery worker process handles pipeline execution.
 - Celery Beat process handles scheduling (replacing APScheduler).

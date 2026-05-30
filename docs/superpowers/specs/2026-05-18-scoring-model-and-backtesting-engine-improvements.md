@@ -1,8 +1,8 @@
 # Technical Specification: Scoring Model & Backtest Strategy Improvements
 
-**Version:** 1.0  
-**Date:** 2026-05-18  
-**Status:** Draft  
+**Version:** 1.0
+**Date:** 2026-05-18
+**Status:** Draft
 
 ---
 

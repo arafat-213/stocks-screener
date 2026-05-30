@@ -66,18 +66,22 @@ const BacktestResults = memo(
 
     if (activeRun.status === 'running' || activeRun.status === 'pending') {
       return (
-        <div className="bg-bg-secondary border-2 border-border rounded-2xl p-8 text-center shadow-sm">
-          <div className="flex justify-between items-center mb-4">
-            <h3 className="text-xl font-black text-text uppercase tracking-tight">Backtest in Progress...</h3>
-            <span className="font-black text-blue-500 text-2xl">{activeRun.progress.pct}%</span>
+        <div className='bg-bg-secondary border-2 border-border rounded-2xl p-8 text-center shadow-sm'>
+          <div className='flex justify-between items-center mb-4'>
+            <h3 className='text-xl font-black text-text uppercase tracking-tight'>
+              Backtest in Progress...
+            </h3>
+            <span className='font-black text-blue-500 text-2xl'>
+              {activeRun.progress.pct}%
+            </span>
           </div>
-          <div className="h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4 border border-border">
+          <div className='h-3 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden mb-4 border border-border'>
             <div
-              className="h-full bg-blue-600 shadow-[0_0_12px_rgba(37,99,235,0.4)] transition-all duration-300"
+              className='h-full bg-blue-600 shadow-[0_0_12px_rgba(37,99,235,0.4)] transition-all duration-300'
               style={{ width: `${activeRun.progress.pct}%` }}
             ></div>
           </div>
-          <p className="text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+          <p className='text-sm font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest'>
             Processing symbols: {activeRun.progress.symbols_done} /{' '}
             {activeRun.progress.symbols_total}
           </p>
@@ -87,11 +91,11 @@ const BacktestResults = memo(
 
     if (activeRun.status === 'failed') {
       return (
-        <div className="bg-red-500/10 border-2 border-red-500/30 rounded-2xl p-6 shadow-sm">
-          <h3 className="text-red-600 dark:text-red-400 flex items-center gap-2 mb-3 font-black uppercase tracking-tight text-lg">
+        <div className='bg-red-500/10 border-2 border-red-500/30 rounded-2xl p-6 shadow-sm'>
+          <h3 className='text-red-600 dark:text-red-400 flex items-center gap-2 mb-3 font-black uppercase tracking-tight text-lg'>
             <AlertTriangle size={24} /> Backtest Failed
           </h3>
-          <p className="text-sm font-bold text-text">
+          <p className='text-sm font-bold text-text'>
             {activeRun.error_message ||
               'An unknown error occurred during execution.'}
           </p>
@@ -104,27 +108,27 @@ const BacktestResults = memo(
         <>
           {/* Metrics Grid */}
           {metrics.total_trades < 100 && (
-            <div
-              className="bg-amber-500/10 border-2 border-amber-500/20 rounded-xl p-4 flex gap-4 text-amber-700 dark:text-amber-400 text-sm leading-relaxed mb-6 shadow-sm"
-            >
-              <AlertTriangle
-                size={24}
-                className="shrink-0 text-amber-500"
-              />
-              <div className="font-bold">
-                <strong className="uppercase tracking-wide text-xs block mb-1">Low sample size warning</strong> 
-                Only {metrics.total_trades} trades recorded. Statistical confidence requires at least 100 trades.
+            <div className='bg-amber-500/10 border-2 border-amber-500/20 rounded-xl p-4 flex gap-4 text-amber-700 dark:text-amber-400 text-sm leading-relaxed mb-6 shadow-sm'>
+              <AlertTriangle size={24} className='shrink-0 text-amber-500' />
+              <div className='font-bold'>
+                <strong className='uppercase tracking-wide text-xs block mb-1'>
+                  Low sample size warning
+                </strong>
+                Only {metrics.total_trades} trades recorded. Statistical
+                confidence requires at least 100 trades.
               </div>
             </div>
           )}
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 sm:gap-4">
+          <div className='grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 sm:gap-4'>
             {[
               // 1. Headline Returns & Risk
               {
                 label: 'Total Return',
                 value: `${metrics.total_return_pct?.toFixed(2)}%`,
                 className:
-                  metrics.total_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                  metrics.total_return_pct >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'vs Nifty 50',
@@ -133,51 +137,65 @@ const BacktestResults = memo(
                   metrics.total_return_pct >= metrics.benchmark_return_pct
                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
                     : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                isBadge: true
+                isBadge: true,
               },
               {
                 label: 'Max Drawdown',
                 value: `${metrics.max_drawdown_pct?.toFixed(1)}%`,
-                className: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
-                isBadge: true
+                className:
+                  'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+                isBadge: true,
               },
               {
                 label: 'Sharpe Ratio',
                 value: metrics.sharpe_ratio?.toFixed(2),
-                className: 'text-blue-600 dark:text-blue-400'
+                className: 'text-blue-600 dark:text-blue-400',
               },
-              
+
               // 2. High-Level Strategy Stats
               { label: 'Total Trades', value: metrics.total_trades },
               {
                 label: 'Win Rate',
                 value: `${metrics.win_rate?.toFixed(1)}%`,
-                className: metrics.win_rate >= 50 ? 'bg-green-500 text-white shadow-green-500/20' : 'bg-red-500 text-white shadow-red-500/20',
-                isBadge: true
+                className:
+                  metrics.win_rate >= 50
+                    ? 'bg-green-500 text-white shadow-green-500/20'
+                    : 'bg-red-500 text-white shadow-red-500/20',
+                isBadge: true,
               },
               {
                 label: 'Profit Factor',
                 value: metrics.profit_factor?.toFixed(2),
-                className: metrics.profit_factor >= 1 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                className:
+                  metrics.profit_factor >= 1
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Expectancy',
                 value: `${metrics.expectancy?.toFixed(2)}%`,
-                className: metrics.expectancy >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                className:
+                  metrics.expectancy >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400',
               },
-              
+
               // 3. Trade Averages & Medians
               {
                 label: 'Avg Return',
                 value: `${metrics.avg_return_pct?.toFixed(2)}%`,
                 className:
-                  metrics.avg_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                  metrics.avg_return_pct >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Median Return',
                 value: `${metrics.median_return_pct?.toFixed(2)}%`,
                 className:
-                  metrics.median_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                  metrics.median_return_pct >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Avg Win',
@@ -189,7 +207,7 @@ const BacktestResults = memo(
                 value: `${metrics.avg_loss_pct?.toFixed(2)}%`,
                 className: 'text-red-600 dark:text-red-400',
               },
-              
+
               // 4. Extremes & Costs
               {
                 label: 'Best Trade',
@@ -205,7 +223,9 @@ const BacktestResults = memo(
                 label: 'Gross Return',
                 value: `${metrics.gross_return_pct?.toFixed(2)}%`,
                 className:
-                  metrics.gross_return_pct >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400',
+                  metrics.gross_return_pct >= 0
+                    ? 'text-green-600 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400',
               },
               {
                 label: 'Cost Drag',
@@ -215,16 +235,22 @@ const BacktestResults = memo(
             ].map((m, idx) => (
               <div
                 key={m.label}
-                className="bg-bg-secondary border-2 border-border rounded-2xl p-5 flex flex-col gap-2 transition-all hover:border-blue-500/30 shadow-sm animate-fade-in"
+                className='bg-bg-secondary border-2 border-border rounded-2xl p-5 flex flex-col gap-2 transition-all hover:border-blue-500/30 shadow-sm animate-fade-in'
                 style={{ '--delay': `${idx * 0.05}s` }}
               >
-                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.15em]">{m.label}</span>
+                <span className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.15em]'>
+                  {m.label}
+                </span>
                 {m.isBadge ? (
-                   <span className={`text-lg font-black font-mono w-fit px-2 py-0.5 rounded-lg shadow-sm ${m.className}`}>
-                      {m.value}
-                   </span>
+                  <span
+                    className={`text-lg font-black font-mono w-fit px-2 py-0.5 rounded-lg shadow-sm ${m.className}`}
+                  >
+                    {m.value}
+                  </span>
                 ) : (
-                  <span className={`text-2xl font-black font-mono tracking-tighter ${m.className || 'text-text'}`}>
+                  <span
+                    className={`text-2xl font-black font-mono tracking-tighter ${m.className || 'text-text'}`}
+                  >
                     {m.value}
                   </span>
                 )}
@@ -233,13 +259,13 @@ const BacktestResults = memo(
           </div>
 
           <div
-            className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in"
+            className='bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in'
             style={{ '--delay': '0.55s' }}
           >
-            <h3 className="text-lg font-black flex items-center gap-3 mb-6 text-text uppercase tracking-tight">
-              <Target size={20} className="text-blue-500" /> Exit Distribution
+            <h3 className='text-lg font-black flex items-center gap-3 mb-6 text-text uppercase tracking-tight'>
+              <Target size={20} className='text-blue-500' /> Exit Distribution
             </h3>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4">
+            <div className='grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4'>
               {[
                 { key: 'target', label: 'Hit Target', color: 'bg-green-500' },
                 {
@@ -270,16 +296,25 @@ const BacktestResults = memo(
                 },
               ].map(({ key, label, color }) => {
                 const count = metrics.exit_breakdown[key] || 0;
-                const pct = metrics.total_trades > 0 ? (count / metrics.total_trades) * 100 : 0;
+                const pct =
+                  metrics.total_trades > 0
+                    ? (count / metrics.total_trades) * 100
+                    : 0;
                 if (count === 0) return null;
                 return (
-                  <div key={key} className="flex flex-col gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-border">
-                    <div className="flex justify-between items-center text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <div
+                    key={key}
+                    className='flex flex-col gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-border'
+                  >
+                    <div className='flex justify-between items-center text-[11px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400'>
                       <span>{label}</span>
                       <span>{count}</span>
                     </div>
-                    <div className="h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                      <div className={`h-full ${color} rounded-full`} style={{ width: `${pct}%` }}></div>
+                    <div className='h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden'>
+                      <div
+                        className={`h-full ${color} rounded-full`}
+                        style={{ width: `${pct}%` }}
+                      ></div>
                     </div>
                   </div>
                 );
@@ -289,19 +324,24 @@ const BacktestResults = memo(
 
           {/* Equity Curve Chart */}
           <div
-            className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in"
+            className='bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in'
             style={{ '--delay': '0.5s' }}
           >
-            <h3 className="text-lg font-black flex items-center gap-3 mb-8 text-text uppercase tracking-tight">
-              <TrendingUp size={20} className="text-blue-500" /> Equity Curve Performance
+            <h3 className='text-lg font-black flex items-center gap-3 mb-8 text-text uppercase tracking-tight'>
+              <TrendingUp size={20} className='text-blue-500' /> Equity Curve
+              Performance
             </h3>
-            <div className="w-full h-[400px]">
+            <div className='w-full h-[400px]'>
               <ResponsiveContainer>
                 <LineChart data={activeRun.equity_curve}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1E293B" : "#E2E8F0"} vertical={false} />
+                  <CartesianGrid
+                    strokeDasharray='3 3'
+                    stroke={isDark ? '#1E293B' : '#E2E8F0'}
+                    vertical={false}
+                  />
                   <XAxis
-                    dataKey="date"
-                    stroke="#64748B"
+                    dataKey='date'
+                    stroke='#64748B'
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
@@ -315,7 +355,7 @@ const BacktestResults = memo(
                     }}
                   />
                   <YAxis
-                    stroke="#64748B"
+                    stroke='#64748B'
                     fontSize={11}
                     tickLine={false}
                     axisLine={false}
@@ -329,27 +369,37 @@ const BacktestResults = memo(
                       borderRadius: '12px',
                       boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
                       border: '2px solid',
-                      fontFamily: 'monospace'
+                      fontFamily: 'monospace',
                     }}
                     itemStyle={{ fontWeight: '900', fontSize: '12px' }}
                   />
-                  <Legend verticalAlign="top" align="right" iconType="circle" wrapperStyle={{ paddingBottom: '20px', fontSize: '11px', fontWeight: 'bold', textTransform: 'uppercase' }} />
+                  <Legend
+                    verticalAlign='top'
+                    align='right'
+                    iconType='circle'
+                    wrapperStyle={{
+                      paddingBottom: '20px',
+                      fontSize: '11px',
+                      fontWeight: 'bold',
+                      textTransform: 'uppercase',
+                    }}
+                  />
                   <Line
-                    name="Strategy Equity"
-                    type="monotone"
-                    dataKey="equity"
-                    stroke="#3B82F6"
+                    name='Strategy Equity'
+                    type='monotone'
+                    dataKey='equity'
+                    stroke='#3B82F6'
                     strokeWidth={4}
                     dot={false}
                     activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }}
                   />
                   <Line
-                    name="Benchmark (Nifty 50)"
-                    type="monotone"
-                    dataKey="benchmark_equity"
-                    stroke="#94A3B8"
+                    name='Benchmark (Nifty 50)'
+                    type='monotone'
+                    dataKey='benchmark_equity'
+                    stroke='#94A3B8'
                     strokeWidth={2}
-                    strokeDasharray="6 4"
+                    strokeDasharray='6 4'
                     dot={false}
                   />
                 </LineChart>
@@ -359,33 +409,36 @@ const BacktestResults = memo(
 
           {/* Trades Table */}
           <div
-            className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in overflow-hidden"
+            className='bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm animate-fade-in overflow-hidden'
             style={{ '--delay': '0.6s' }}
           >
-            <div className="flex justify-between items-center mb-6">
-              <h3 className="text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight">
-                <Layers size={20} className="text-blue-500" /> Performance Journal
+            <div className='flex justify-between items-center mb-6'>
+              <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+                <Layers size={20} className='text-blue-500' /> Performance
+                Journal
               </h3>
-              <div className="flex items-center gap-4">
-                <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full">
+              <div className='flex items-center gap-4'>
+                <span className='text-[11px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest bg-slate-100 dark:bg-slate-800 px-3 py-1 rounded-full'>
                   {totalTradesCount} TOTAL TRADES
                 </span>
-                <div className="flex items-center gap-2">
-                    <button
-                    className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30"
+                <div className='flex items-center gap-2'>
+                  <button
+                    className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30'
                     onClick={() => onPageChange((p) => Math.max(1, p - 1))}
                     disabled={tradesPage === 1}
-                    >
-                    <ChevronLeft size={16} className="text-text" />
-                    </button>
-                    <span className="font-black font-mono text-sm min-w-[20px] text-center">{tradesPage}</span>
-                    <button
-                    className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30"
+                  >
+                    <ChevronLeft size={16} className='text-text' />
+                  </button>
+                  <span className='font-black font-mono text-sm min-w-[20px] text-center'>
+                    {tradesPage}
+                  </span>
+                  <button
+                    className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30'
                     onClick={() => onPageChange((p) => p + 1)}
                     disabled={tradesPage * pageSize >= totalTradesCount}
-                    >
-                    <ChevronRight size={16} className="text-text" />
-                    </button>
+                  >
+                    <ChevronRight size={16} className='text-text' />
+                  </button>
                 </div>
               </div>
             </div>
@@ -401,7 +454,7 @@ const BacktestResults = memo(
     }
 
     return null;
-  },
+  }
 );
 
 const Backtest = () => {
@@ -496,7 +549,7 @@ const Backtest = () => {
       console.error('Failed to start backtest:', err);
       alert(
         'Failed to start backtest: ' +
-          (err.response?.data?.detail || err.message),
+          (err.response?.data?.detail || err.message)
       );
     } finally {
       setIsSubmitting(false);
@@ -557,7 +610,10 @@ const Backtest = () => {
         key: 'symbol',
         label: 'Symbol',
         render: (val) => (
-          <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-black tracking-tighter">
+          <Link
+            to={`/stocks/${val}`}
+            className='text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-black tracking-tighter'
+          >
             {val.replace('.NS', '')} <ExternalLink size={12} />
           </Link>
         ),
@@ -565,17 +621,28 @@ const Backtest = () => {
       {
         key: 'signal_date',
         label: 'Signal Date',
-        render: (val) => (val ? <span className="font-bold text-slate-500 dark:text-slate-400">{new Date(val).toLocaleDateString()}</span> : '-'),
+        render: (val) =>
+          val ? (
+            <span className='font-bold text-slate-500 dark:text-slate-400'>
+              {new Date(val).toLocaleDateString()}
+            </span>
+          ) : (
+            '-'
+          ),
       },
       {
         key: 'entry_price',
         label: 'Entry',
-        render: (val) => <span className="font-mono font-bold">₹{val?.toFixed(2)}</span>,
+        render: (val) => (
+          <span className='font-mono font-bold'>₹{val?.toFixed(2)}</span>
+        ),
       },
       {
         key: 'exit_price',
         label: 'Exit',
-        render: (val) => <span className="font-mono font-bold">₹{val?.toFixed(2)}</span>,
+        render: (val) => (
+          <span className='font-mono font-bold'>₹{val?.toFixed(2)}</span>
+        ),
       },
       {
         key: 'days_held',
@@ -585,19 +652,31 @@ const Backtest = () => {
           const start = new Date(row.entry_date);
           const end = new Date(row.exit_date);
           const diff = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
-          return <span className="font-mono font-black text-slate-600 dark:text-slate-300">{diff}d</span>;
+          return (
+            <span className='font-mono font-black text-slate-600 dark:text-slate-300'>
+              {diff}d
+            </span>
+          );
         },
       },
       {
         key: 'signal_score',
         label: 'Score',
-        render: (val) => <span className={`font-black font-mono ${val >= 70 ? 'text-green-500' : val >= 50 ? 'text-blue-500' : 'text-text'}`}>{val?.toFixed(1)}</span>,
+        render: (val) => (
+          <span
+            className={`font-black font-mono ${val >= 70 ? 'text-green-500' : val >= 50 ? 'text-blue-500' : 'text-text'}`}
+          >
+            {val?.toFixed(1)}
+          </span>
+        ),
       },
       {
         key: 'return_pct',
         label: 'Return %',
         render: (val) => (
-          <span className={`font-black font-mono px-2 py-0.5 rounded shadow-sm ${val >= 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}>
+          <span
+            className={`font-black font-mono px-2 py-0.5 rounded shadow-sm ${val >= 0 ? 'bg-green-500 text-white' : 'bg-red-500 text-white'}`}
+          >
             {val >= 0 ? '+' : ''}
             {val?.toFixed(2)}%
           </span>
@@ -613,45 +692,51 @@ const Backtest = () => {
             target: 'bg-green-500 text-white',
             holding_period: 'bg-blue-600 text-white',
           };
-          const reasonClass = reasonClasses[val] || 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+          const reasonClass =
+            reasonClasses[val] ||
+            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
           return (
-            <span className={`text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-widest shadow-sm ${reasonClass}`}>
+            <span
+              className={`text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-widest shadow-sm ${reasonClass}`}
+            >
               {val?.replace('_', ' ')}
             </span>
           );
         },
       },
     ],
-    [],
+    []
   );
 
   return (
-    <div className="w-full animate-fade-in">
-      <header className="mb-10">
-        <h1 className="text-3xl sm:text-4xl font-black flex items-center gap-4 text-text tracking-tighter">
-          <History className="text-blue-500" size={40} /> Backtest Engine
+    <div className='w-full animate-fade-in'>
+      <header className='mb-10'>
+        <h1 className='text-3xl sm:text-4xl font-black flex items-center gap-4 text-text tracking-tighter'>
+          <History className='text-blue-500' size={40} /> Backtest Engine
         </h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-2 font-medium uppercase tracking-[0.1em] text-xs">
+        <p className='text-slate-500 dark:text-slate-400 mt-2 font-medium uppercase tracking-[0.1em] text-xs'>
           Simulate screening strategies against historical NSE daily data.
         </p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 lg:gap-8 items-start">
+      <div className='grid grid-cols-1 lg:grid-cols-[380px_1fr] gap-6 lg:gap-8 items-start'>
         {/* Sidebar Configuration */}
-        <aside className="flex flex-col gap-6 lg:gap-8 lg:sticky lg:top-6">
-          <section className="bg-bg-secondary border-2 border-border rounded-2xl p-5 sm:p-6 shadow-sm">
-            <h2 className="text-[11px] font-black flex items-center gap-2 mb-6 text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+        <aside className='flex flex-col gap-6 lg:gap-8 lg:sticky lg:top-6'>
+          <section className='bg-bg-secondary border-2 border-border rounded-2xl p-5 sm:p-6 shadow-sm'>
+            <h2 className='text-[11px] font-black flex items-center gap-2 mb-6 text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]'>
               <History size={16} /> Recent Runs
             </h2>
-            <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2">
+            <div className='flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-2'>
               {recentRuns?.map((run) => (
                 <div
                   key={run.run_id}
                   className={`p-4 rounded-xl border-2 transition-all duration-300 cursor-pointer group ${activeRunId === run.run_id ? 'bg-slate-50 dark:bg-slate-900 border-blue-500 shadow-lg shadow-blue-500/10' : 'bg-transparent border-transparent hover:border-slate-200 dark:hover:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900/50'}`}
                   onClick={() => handleSelectRun(run.run_id)}
                 >
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={`text-[13px] font-black tracking-tight ${activeRunId === run.run_id ? 'text-blue-600 dark:text-blue-400' : 'text-text'}`}>
+                  <div className='flex justify-between items-start mb-2'>
+                    <span
+                      className={`text-[13px] font-black tracking-tight ${activeRunId === run.run_id ? 'text-blue-600 dark:text-blue-400' : 'text-text'}`}
+                    >
                       {new Date(run.created_at).toLocaleString([], {
                         month: 'short',
                         day: 'numeric',
@@ -659,42 +744,57 @@ const Backtest = () => {
                         minute: '2-digit',
                       })}
                     </span>
-                    <span className={`text-[9px] px-2 py-0.5 rounded-lg uppercase font-black tracking-widest shadow-sm
-                      ${run.status === 'complete' ? 'bg-green-500 text-white' : 
-                        run.status === 'running' ? 'bg-blue-600 text-white animate-pulse' :
-                        run.status === 'failed' ? 'bg-red-500 text-white' :
-                        'bg-slate-200 text-slate-500 dark:bg-slate-800'}`}>
+                    <span
+                      className={`text-[9px] px-2 py-0.5 rounded-lg uppercase font-black tracking-widest shadow-sm
+                      ${
+                        run.status === 'complete'
+                          ? 'bg-green-500 text-white'
+                          : run.status === 'running'
+                            ? 'bg-blue-600 text-white animate-pulse'
+                            : run.status === 'failed'
+                              ? 'bg-red-500 text-white'
+                              : 'bg-slate-200 text-slate-500 dark:bg-slate-800'
+                      }`}
+                    >
                       {run.status}
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider flex flex-wrap gap-x-2 gap-y-1">
-                    <span>T:{run.config.score_threshold}</span> <span>H:{run.config.holding_days}d</span>
+                  <div className='text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider flex flex-wrap gap-x-2 gap-y-1'>
+                    <span>T:{run.config.score_threshold}</span>{' '}
+                    <span>H:{run.config.holding_days}d</span>
                     <span>SL:{run.config.stop_loss_pct}%</span>
-                    <span>W:{run.config.require_weekly_confirmation !== false ? 'YES' : 'NO'}</span>
+                    <span>
+                      W:
+                      {run.config.require_weekly_confirmation !== false
+                        ? 'YES'
+                        : 'NO'}
+                    </span>
                   </div>
                 </div>
               ))}
               {recentRuns?.length === 0 && (
-                <p className="text-center text-slate-400 py-8 italic text-sm">No recent runs available</p>
+                <p className='text-center text-slate-400 py-8 italic text-sm'>
+                  No recent runs available
+                </p>
               )}
             </div>
           </section>
 
-          <section className="bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-[11px] font-black flex items-center gap-2 text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]">
+          <section className='bg-bg-secondary border-2 border-border rounded-2xl p-6 shadow-sm'>
+            <div className='flex justify-between items-center mb-6'>
+              <h2 className='text-[11px] font-black flex items-center gap-2 text-slate-500 dark:text-slate-400 uppercase tracking-[0.2em]'>
                 <Settings size={16} /> Strategy Config
               </h2>
               <button
-                className="text-slate-400 p-2 rounded-lg transition-all duration-300 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className='text-slate-400 p-2 rounded-lg transition-all duration-300 hover:text-blue-500 hover:bg-slate-100 dark:hover:bg-slate-800'
                 onClick={handleResetConfig}
-                title="Reset to defaults"
+                title='Reset to defaults'
               >
                 <RotateCcw size={18} />
               </button>
             </div>
 
-            <div className="flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl mb-6 border border-border/50">
+            <div className='flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl mb-6 border border-border/50'>
               {[
                 { id: 'strategy', label: 'Engine', icon: Zap },
                 { id: 'risk', label: 'Risk', icon: ShieldCheck },
@@ -711,21 +811,21 @@ const Backtest = () => {
               ))}
             </div>
 
-            <div className="flex flex-col gap-6">
+            <div className='flex flex-col gap-6'>
               {activeTab === 'strategy' && (
-                <div className="flex flex-col gap-4 animate-fade-in">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em] flex items-center gap-2">
+                <div className='flex flex-col gap-4 animate-fade-in'>
+                  <div className='flex flex-col gap-2'>
+                    <label className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em] flex items-center gap-2'>
                       <Layers size={12} /> Starting Universe
                     </label>
                     <select
-                      className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text text-sm font-bold outline-none transition-all focus:border-blue-500"
+                      className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text text-sm font-bold outline-none transition-all focus:border-blue-500'
                       value={config.screen_slug}
                       onChange={(e) =>
                         handleConfigChange('screen_slug', e.target.value)
                       }
                     >
-                      <option value="all">ALL NSE SYMBOLS</option>
+                      <option value='all'>ALL NSE SYMBOLS</option>
                       {screens?.map((screen) => (
                         <option key={screen.slug} value={screen.slug}>
                           {screen.label.toUpperCase()}
@@ -734,139 +834,296 @@ const Backtest = () => {
                     </select>
                   </div>
                   <Slider
-                    label="Score Threshold"
+                    label='Score Threshold'
                     value={config.score_threshold}
-                    onChange={(val) => handleConfigChange('score_threshold', val)}
+                    onChange={(val) =>
+                      handleConfigChange('score_threshold', val)
+                    }
                     min={0}
                     max={100}
                   />
                   <Slider
-                    label="Max Holding (Days)"
+                    label='Max Holding (Days)'
                     value={config.holding_days}
                     onChange={(val) => handleConfigChange('holding_days', val)}
                     min={1}
                     max={252}
                   />
                   <Slider
-                    label="Symbol Depth"
+                    label='Symbol Depth'
                     value={config.symbol_limit}
                     onChange={(val) => handleConfigChange('symbol_limit', val)}
                     min={10}
                     max={500}
                   />
 
-                  <div className="flex flex-col gap-4 pt-6 border-t-2 border-border/50">
-                    <h3 className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1">Strategy Filters</h3>
-                    <div className="space-y-4">
-                      <Toggle label="Fundamental Filter" checked={config.include_fundamentals} onChange={(v) => handleConfigChange('include_fundamentals', v)} />
-                      <Toggle label="Market Regime" checked={config.use_regime_filter} onChange={(v) => handleConfigChange('use_regime_filter', v)} />
-                      <Toggle label="Volume Breakout" checked={config.require_volume_breakout} onChange={(v) => handleConfigChange('require_volume_breakout', v)} />
-                      <Toggle label="Weekly Confirmation" checked={config.require_weekly_confirmation} onChange={(v) => handleConfigChange('require_weekly_confirmation', v)} />
+                  <div className='flex flex-col gap-4 pt-6 border-t-2 border-border/50'>
+                    <h3 className='text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1'>
+                      Strategy Filters
+                    </h3>
+                    <div className='space-y-4'>
+                      <Toggle
+                        label='Fundamental Filter'
+                        checked={config.include_fundamentals}
+                        onChange={(v) =>
+                          handleConfigChange('include_fundamentals', v)
+                        }
+                      />
+                      <Toggle
+                        label='Market Regime'
+                        checked={config.use_regime_filter}
+                        onChange={(v) =>
+                          handleConfigChange('use_regime_filter', v)
+                        }
+                      />
+                      <Toggle
+                        label='Volume Breakout'
+                        checked={config.require_volume_breakout}
+                        onChange={(v) =>
+                          handleConfigChange('require_volume_breakout', v)
+                        }
+                      />
+                      <Toggle
+                        label='Weekly Confirmation'
+                        checked={config.require_weekly_confirmation}
+                        onChange={(v) =>
+                          handleConfigChange('require_weekly_confirmation', v)
+                        }
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'risk' && (
-                <div className="flex flex-col gap-4 animate-fade-in">
-                   <Toggle label="ATR Dynamic Stops" checked={config.use_atr_stops} onChange={(v) => handleConfigChange('use_atr_stops', v)} />
+                <div className='flex flex-col gap-4 animate-fade-in'>
+                  <Toggle
+                    label='ATR Dynamic Stops'
+                    checked={config.use_atr_stops}
+                    onChange={(v) => handleConfigChange('use_atr_stops', v)}
+                  />
 
                   {config.use_atr_stops ? (
                     <>
-                      <Slider label="ATR Multiplier" min={1.0} max={5.0} step={0.1} value={config.atr_multiplier} onChange={(v) => handleConfigChange('atr_multiplier', v)} />
-                      <Slider label="Target RR Ratio" min={1.0} max={10.0} step={0.5} value={config.risk_reward_ratio} onChange={(v) => handleConfigChange('risk_reward_ratio', v)} />
+                      <Slider
+                        label='ATR Multiplier'
+                        min={1.0}
+                        max={5.0}
+                        step={0.1}
+                        value={config.atr_multiplier}
+                        onChange={(v) =>
+                          handleConfigChange('atr_multiplier', v)
+                        }
+                      />
+                      <Slider
+                        label='Target RR Ratio'
+                        min={1.0}
+                        max={10.0}
+                        step={0.5}
+                        value={config.risk_reward_ratio}
+                        onChange={(v) =>
+                          handleConfigChange('risk_reward_ratio', v)
+                        }
+                      />
                     </>
                   ) : (
                     <>
-                      <Slider label="Fixed SL %" min={1} max={25} value={config.stop_loss_pct} onChange={(v) => handleConfigChange('stop_loss_pct', v)} />
-                      <Slider label="Fixed TP %" min={0} max={100} value={config.target_pct} onChange={(v) => handleConfigChange('target_pct', v)} />
+                      <Slider
+                        label='Fixed SL %'
+                        min={1}
+                        max={25}
+                        value={config.stop_loss_pct}
+                        onChange={(v) => handleConfigChange('stop_loss_pct', v)}
+                      />
+                      <Slider
+                        label='Fixed TP %'
+                        min={0}
+                        max={100}
+                        value={config.target_pct}
+                        onChange={(v) => handleConfigChange('target_pct', v)}
+                      />
                     </>
                   )}
 
-                  <Slider label="Manual Trail %" min={0} max={20} step={0.5} value={config.trailing_stop_pct} onChange={(v) => handleConfigChange('trailing_stop_pct', v)} />
+                  <Slider
+                    label='Manual Trail %'
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    value={config.trailing_stop_pct}
+                    onChange={(v) => handleConfigChange('trailing_stop_pct', v)}
+                  />
 
-                  <div className="flex flex-col gap-4 pt-6 border-t-2 border-border/50 mt-2">
-                    <h3 className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1">Advanced Exits</h3>
-                    <div className="space-y-4">
-                      <Toggle label="ATR Trailing Stop" checked={config.use_atr_trailing_stop} onChange={(v) => handleConfigChange('use_atr_trailing_stop', v)} />
+                  <div className='flex flex-col gap-4 pt-6 border-t-2 border-border/50 mt-2'>
+                    <h3 className='text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1'>
+                      Advanced Exits
+                    </h3>
+                    <div className='space-y-4'>
+                      <Toggle
+                        label='ATR Trailing Stop'
+                        checked={config.use_atr_trailing_stop}
+                        onChange={(v) =>
+                          handleConfigChange('use_atr_trailing_stop', v)
+                        }
+                      />
                       {config.use_atr_trailing_stop && (
                         <>
-                          <Slider label="ATR Trail Multiplier" min={0.5} max={5.0} step={0.1} value={config.atr_trailing_multiplier} onChange={(v) => handleConfigChange('atr_trailing_multiplier', v)} />
-                          <Slider label="ATR Trail Activation (×ATR profit)" min={0.5} max={5.0} step={0.1} value={config.atr_trailing_activation} onChange={(v) => handleConfigChange('atr_trailing_activation', v)} />
+                          <Slider
+                            label='ATR Trail Multiplier'
+                            min={0.5}
+                            max={5.0}
+                            step={0.1}
+                            value={config.atr_trailing_multiplier}
+                            onChange={(v) =>
+                              handleConfigChange('atr_trailing_multiplier', v)
+                            }
+                          />
+                          <Slider
+                            label='ATR Trail Activation (×ATR profit)'
+                            min={0.5}
+                            max={5.0}
+                            step={0.1}
+                            value={config.atr_trailing_activation}
+                            onChange={(v) =>
+                              handleConfigChange('atr_trailing_activation', v)
+                            }
+                          />
                         </>
                       )}
-                      <Toggle label="Partial Take-Profit" checked={config.use_partial_exits} onChange={(v) => handleConfigChange('use_partial_exits', v)} />
-                      <Toggle label="Signal Invalidation" checked={config.use_signal_invalidation_exit} onChange={(v) => handleConfigChange('use_signal_invalidation_exit', v)} />
+                      <Toggle
+                        label='Partial Take-Profit'
+                        checked={config.use_partial_exits}
+                        onChange={(v) =>
+                          handleConfigChange('use_partial_exits', v)
+                        }
+                      />
+                      <Toggle
+                        label='Signal Invalidation'
+                        checked={config.use_signal_invalidation_exit}
+                        onChange={(v) =>
+                          handleConfigChange('use_signal_invalidation_exit', v)
+                        }
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
               {activeTab === 'account' && (
-                <div className="flex flex-col gap-5 animate-fade-in">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">Starting Capital (₹)</label>
+                <div className='flex flex-col gap-5 animate-fade-in'>
+                  <div className='flex flex-col gap-2'>
+                    <label className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]'>
+                      Starting Capital (₹)
+                    </label>
                     <input
-                      type="number"
-                      className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
+                      type='number'
+                      className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none'
                       value={config.starting_capital}
-                      onChange={(e) => handleConfigChange('starting_capital', parseFloat(e.target.value) || 1000000)}
+                      onChange={(e) =>
+                        handleConfigChange(
+                          'starting_capital',
+                          parseFloat(e.target.value) || 1000000
+                        )
+                      }
                       step={100000}
                     />
                   </div>
-                  <div className="flex flex-col gap-2">
-                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">Trade Size (₹)</label>
+                  <div className='flex flex-col gap-2'>
+                    <label className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]'>
+                      Trade Size (₹)
+                    </label>
                     <input
-                      type="number"
-                      className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
+                      type='number'
+                      className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-3 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none'
                       value={config.position_size}
-                      onChange={(e) => handleConfigChange('position_size', parseFloat(e.target.value) || 10000)}
+                      onChange={(e) =>
+                        handleConfigChange(
+                          'position_size',
+                          parseFloat(e.target.value) || 10000
+                        )
+                      }
                       step={1000}
                     />
                   </div>
-                  
-                  <Toggle label="Volatility-based Sizing" checked={config.use_volatility_sizing} onChange={(v) => handleConfigChange('use_volatility_sizing', v)} />
-                  
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest">Max Conc.</label>
+
+                  <Toggle
+                    label='Volatility-based Sizing'
+                    checked={config.use_volatility_sizing}
+                    onChange={(v) =>
+                      handleConfigChange('use_volatility_sizing', v)
+                    }
+                  />
+
+                  <div className='grid grid-cols-2 gap-4'>
+                    <div className='flex flex-col gap-2'>
+                      <label className='text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest'>
+                        Max Conc.
+                      </label>
                       <input
-                        type="number"
-                        className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-3 py-2 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
+                        type='number'
+                        className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-3 py-2 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none'
                         value={config.max_concurrent_positions}
-                        onChange={(e) => handleConfigChange('max_concurrent_positions', parseInt(e.target.value) || 0)}
+                        onChange={(e) =>
+                          handleConfigChange(
+                            'max_concurrent_positions',
+                            parseInt(e.target.value) || 0
+                          )
+                        }
                       />
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest">Sector Cap</label>
+                    <div className='flex flex-col gap-2'>
+                      <label className='text-[9px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-widest'>
+                        Sector Cap
+                      </label>
                       <input
-                        type="number"
-                        className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-3 py-2 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none"
+                        type='number'
+                        className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-3 py-2 text-text font-mono font-bold text-sm focus:border-blue-500 outline-none'
                         value={config.max_sector_positions}
-                        onChange={(e) => handleConfigChange('max_sector_positions', parseInt(e.target.value) || 0)}
+                        onChange={(e) =>
+                          handleConfigChange(
+                            'max_sector_positions',
+                            parseInt(e.target.value) || 0
+                          )
+                        }
                       />
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-3 pt-4">
-                    <label className="text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]">Simulation Range</label>
-                    <div className="flex flex-col gap-2">
-                      <input type="date" className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-2.5 text-text font-mono text-xs font-bold outline-none" value={config.date_from} onChange={(e) => handleConfigChange('date_from', e.target.value)} />
-                      <input type="date" className="bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-2.5 text-text font-mono text-xs font-bold outline-none" value={config.date_to} onChange={(e) => handleConfigChange('date_to', e.target.value)} />
+                  <div className='flex flex-col gap-3 pt-4'>
+                    <label className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]'>
+                      Simulation Range
+                    </label>
+                    <div className='flex flex-col gap-2'>
+                      <input
+                        type='date'
+                        className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-2.5 text-text font-mono text-xs font-bold outline-none'
+                        value={config.date_from}
+                        onChange={(e) =>
+                          handleConfigChange('date_from', e.target.value)
+                        }
+                      />
+                      <input
+                        type='date'
+                        className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-xl px-4 py-2.5 text-text font-mono text-xs font-bold outline-none'
+                        value={config.date_to}
+                        onChange={(e) =>
+                          handleConfigChange('date_to', e.target.value)
+                        }
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
               <button
-                className="bg-blue-600 text-white border-none rounded-xl py-4 font-black uppercase tracking-[0.2em] text-xs cursor-pointer flex items-center justify-center gap-3 transition-all hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98] disabled:opacity-50 mt-4 shadow-lg shadow-blue-500/20"
+                className='bg-blue-600 text-white border-none rounded-xl py-4 font-black uppercase tracking-[0.2em] text-xs cursor-pointer flex items-center justify-center gap-3 transition-all hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98] disabled:opacity-50 mt-4 shadow-lg shadow-blue-500/20'
                 onClick={handleRunBacktest}
                 disabled={isSubmitting || activeRun?.status === 'running'}
               >
                 {isSubmitting ? (
-                  <Loader2 className="animate-spin" size={18} />
+                  <Loader2 className='animate-spin' size={18} />
                 ) : (
-                  <Play size={18} fill="currentColor" />
+                  <Play size={18} fill='currentColor' />
                 )}
                 Run Simulation
               </button>
@@ -875,23 +1132,31 @@ const Backtest = () => {
         </aside>
 
         {/* Results Panel */}
-        <main className="flex flex-col gap-8">
-          <div className="bg-slate-100 dark:bg-slate-900 border-2 border-border/50 rounded-2xl p-5 flex gap-4 text-slate-600 dark:text-slate-400 text-sm leading-relaxed shadow-sm">
-            <Info size={24} className="shrink-0 text-blue-500" />
-            <div className="font-medium">
-              <strong className="text-text font-black uppercase tracking-widest text-[10px] block mb-1">Market Simulation Intelligence</strong>
-              Past performance does not guarantee future results. This tool provides statistical simulations based on daily closing prices and pre-defined technical criteria. Use results to validate strategy logic, not as direct financial advice.
+        <main className='flex flex-col gap-8'>
+          <div className='bg-slate-100 dark:bg-slate-900 border-2 border-border/50 rounded-2xl p-5 flex gap-4 text-slate-600 dark:text-slate-400 text-sm leading-relaxed shadow-sm'>
+            <Info size={24} className='shrink-0 text-blue-500' />
+            <div className='font-medium'>
+              <strong className='text-text font-black uppercase tracking-widest text-[10px] block mb-1'>
+                Market Simulation Intelligence
+              </strong>
+              Past performance does not guarantee future results. This tool
+              provides statistical simulations based on daily closing prices and
+              pre-defined technical criteria. Use results to validate strategy
+              logic, not as direct financial advice.
             </div>
           </div>
 
           {!activeRunId && !loadingActiveRun && (
-            <div className="py-24 text-center bg-bg-secondary border-2 border-border border-dashed rounded-3xl text-slate-400 shadow-sm">
-              <div className="bg-slate-100 dark:bg-slate-900 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6">
-                 <BarChart3 size={40} className="opacity-40" />
+            <div className='py-24 text-center bg-bg-secondary border-2 border-border border-dashed rounded-3xl text-slate-400 shadow-sm'>
+              <div className='bg-slate-100 dark:bg-slate-900 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6'>
+                <BarChart3 size={40} className='opacity-40' />
               </div>
-              <h3 className="text-xl font-black text-text uppercase tracking-tight">No Simulation Active</h3>
-              <p className="max-w-[300px] mx-auto mt-2 font-bold uppercase tracking-widest text-[10px]">
-                Configure parameters in the sidebar to start a new historical backtest.
+              <h3 className='text-xl font-black text-text uppercase tracking-tight'>
+                No Simulation Active
+              </h3>
+              <p className='max-w-[300px] mx-auto mt-2 font-bold uppercase tracking-widest text-[10px]'>
+                Configure parameters in the sidebar to start a new historical
+                backtest.
               </p>
             </div>
           )}

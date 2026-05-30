@@ -4,7 +4,7 @@
 
 **Goal:** Fix Yahoo Finance 429 rate limiting by implementing a "Bulk-First" pipeline and resolve API unresponsiveness by isolating network sessions and offloading blocking calls.
 
-**Architecture:** 
+**Architecture:**
 1. **Bulk Pipeline:** Segmented `yf.download` batches (500 symbols) -> Technical Filter -> `fast_info` check -> Surgical Deep Fundamentals.
 2. **Resiliency:** Separate `yf_session` (API) and `pipeline_session` (Pipeline) with `respect_retry_after_header=False` and async offloading for the market-live endpoint.
 
@@ -62,7 +62,7 @@ pipeline_session.headers.update({
     'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 })
 
-# Update existing functions to use yf_session by default, 
+# Update existing functions to use yf_session by default,
 # but orchestrator will use pipeline_session for bulk.
 # (Update fetch_stock_data and fetch_market_snapshots to use yf_session)
 ```
@@ -80,7 +80,7 @@ def slice_bulk_df(bulk_df: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
         else:
             # Fallback for single-symbol batches where yfinance returns flat columns
             df = bulk_df.copy()
-            
+
         df = df.dropna(how='all')
         if df.empty:
             return None
@@ -155,14 +155,14 @@ technical_survivors = []
 for i in range(0, len(symbols), batch_size):
     batch = symbols[i:i+batch_size]
     suffix_batch = [s + ".NS" for s in batch]
-    
+
     logger.info(f"Bulk downloading Tier 1 data for batch {i//batch_size + 1}")
     bulk_data = yf.download(suffix_batch, period="2y", progress=False, session=pipeline_session)
-    
+
     for symbol in batch:
         hist = slice_bulk_df(bulk_data, symbol)
         if hist is None: continue
-        
+
         # Technical Score Only
         scores = calculate_combined_score(hist, {})  # Pass empty dict, not None
         if scores['is_bullish'] or scores['score'] > 40:  # 'score', not 'combined_score'
@@ -236,7 +236,7 @@ async def get_live_market(response: Response):
     if hit:
         response.headers["X-Cache"] = "HIT"
         return cached
-    
+
     response.headers["X-Cache"] = "MISS"
     # Offload sync yfinance call to thread
     market_context = await asyncio.to_thread(get_live_market_data)

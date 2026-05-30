@@ -4,7 +4,7 @@
 
 **Goal:** Implement dynamic ATR-based stops and targets in the backtest engine to match the pipeline logic.
 
-**Architecture:** 
+**Architecture:**
 1. Update `score_series` to include ATR in the technical signals list.
 2. Update `simulate_trades` to use ATR-based stop loss and profit target calculations if `use_atr_stops` is enabled in the configuration.
 
@@ -32,25 +32,25 @@ def test_simulate_trades_uses_atr_stops():
         "ema_signal": "bullish",
         "atr": atr_value
     }]
-    
+
     # config: multiplier 2.0, RR 2.0
     # Stop Loss = entry_price - (2.0 * 5.0) = entry_price - 10.0
     # Target = entry_price + (2.0 * 2.0 * 5.0) = entry_price + 20.0
     config = BacktestConfig(
-        score_threshold=80.0, 
+        score_threshold=80.0,
         use_atr_stops=True,
         atr_multiplier=2.0,
         risk_reward_ratio=2.0,
         holding_days=10
     )
-    
+
     # Mock price movement to trigger ATR target
     entry_price = float(df.iloc[61]['Open'])
     target_price = entry_price + 20.0
     df.iloc[62, df.columns.get_loc('High')] = target_price + 1.0
-    
+
     trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
-    
+
     assert len(trades) == 1
     trade = trades[0]
     assert trade.exit_reason == 'target'

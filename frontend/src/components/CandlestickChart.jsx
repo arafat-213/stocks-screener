@@ -10,13 +10,18 @@ const CandlestickChart = ({ data, isDark, containerHeight = 400 }) => {
 
     const handleResize = () => {
       if (chartRef.current) {
-        chartRef.current.applyOptions({ width: chartContainerRef.current.clientWidth });
+        chartRef.current.applyOptions({
+          width: chartContainerRef.current.clientWidth,
+        });
       }
     };
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
-        background: { type: ColorType.Solid, color: isDark ? '#020617' : '#F8FAFC' },
+        background: {
+          type: ColorType.Solid,
+          color: isDark ? '#020617' : '#F8FAFC',
+        },
         textColor: isDark ? '#F8FAFC' : '#0F172A',
       },
       grid: {
@@ -61,12 +66,12 @@ const CandlestickChart = ({ data, isDark, containerHeight = 400 }) => {
         grid: {
           vertLines: { color: isDark ? '#1E293B' : '#E2E8F0' },
           horzLines: { color: isDark ? '#1E293B' : '#E2E8F0' },
-        }
+        },
       });
     }
   }, [isDark]);
 
-  return <div ref={chartContainerRef} className="w-full" />;
+  return <div ref={chartContainerRef} className='w-full' />;
 };
 
 export default CandlestickChart;

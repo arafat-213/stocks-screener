@@ -57,7 +57,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     clean_symbol = symbol.replace(".NS", "").upper()
     stock = db.query(Stock).filter(Stock.symbol == clean_symbol).first()
     if not stock: raise HTTPException(status_code=404, detail="Stock not found")
-    
+
     # Use existing helper for consistency
     hist, _ = fetch_stock_data(clean_symbol, period="1y")
     ohlcv = []
@@ -87,7 +87,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
                 "rsi_signal": s.rsi_signal,
                 "rsi": s.rsi
             }
-    
+
     # History (last 30 daily)
     history = db.query(TechnicalSignal).filter(
         TechnicalSignal.symbol == clean_symbol,
@@ -98,7 +98,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     # Fundamentals
     cache = db.query(FundamentalCache).filter(FundamentalCache.symbol == clean_symbol).first()
     data = db.query(FundamentalData).filter(FundamentalData.symbol == clean_symbol).order_by(FundamentalData.date.desc()).first()
-    
+
     return {
         "symbol": clean_symbol,
         "name": stock.name,

@@ -25,20 +25,20 @@ class TradeJournal(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=False)
     watchlist_id = Column(Integer, ForeignKey('watchlist.id'), nullable=True)
-    
+
     # Entry
     signal_date = Column(Date, nullable=True)
     entry_date = Column(Date, nullable=False, default=datetime.date.today)
     entry_price = Column(Float, nullable=False)
     shares = Column(Integer, nullable=False)
     position_value = Column(Float, nullable=False)
-    
+
     # Risk Management
     stop_loss = Column(Float, nullable=False)
     target = Column(Float, nullable=False)
     quality_tier = Column(String(1), nullable=True)
     signal_score = Column(Float, nullable=True)
-    
+
     # Exit
     exit_date = Column(Date, nullable=True)
     exit_price = Column(Float, nullable=True)
@@ -46,7 +46,7 @@ class TradeJournal(Base):
     pnl = Column(Float, nullable=True)
     return_pct = Column(Float, nullable=True)
     holding_days = Column(Integer, nullable=True)
-    
+
     status = Column(String, nullable=False, default='open') # 'open' | 'closed'
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -113,13 +113,13 @@ def create_entry(data: TradeEntryCreate, db: Session = Depends(get_db)):
         status='open'
     )
     db.add(db_entry)
-    
+
     # Bridge: Update watchlist status if linked
     if data.watchlist_id:
         wl = db.query(models.Watchlist).filter(models.Watchlist.id == data.watchlist_id).first()
         if wl:
             wl.status = 'entered'
-            
+
     db.commit()
     db.refresh(db_entry)
     return db_entry
@@ -163,18 +163,18 @@ def get_open_positions(db: Session = Depends(get_db)):
     positions = db.query(models.TradeJournal).filter(models.TradeJournal.status == 'open').all()
     if not positions:
         return []
-    
+
     symbols = [p.symbol for p in positions]
     # Fetch live quotes
     snapshots = fetch_market_snapshots(symbols)
     prices = {s['symbol']: s['close'] for s in snapshots}
-    
+
     results = []
     for p in positions:
         curr_price = prices.get(p.symbol) or prices.get(f"{p.symbol}.NS") or p.entry_price
         unrealized_pnl = (curr_price - p.entry_price) * p.shares
         return_pct = ((curr_price - p.entry_price) / p.entry_price) * 100
-        
+
         results.append({
             "id": p.id,
             "symbol": p.symbol,
@@ -205,7 +205,7 @@ def close_trade(id: int, data: TradeExit, db: Session = Depends(get_db)):
     trade = db.query(models.TradeJournal).filter(models.TradeJournal.id == id).first()
     if not trade:
         raise HTTPException(status_code=404)
-        
+
     trade.exit_price = data.exit_price
     trade.exit_date = data.exit_date
     trade.exit_reason = data.exit_reason
@@ -213,7 +213,7 @@ def close_trade(id: int, data: TradeExit, db: Session = Depends(get_db)):
     trade.pnl = (data.exit_price - trade.entry_price) * trade.shares
     trade.return_pct = ((data.exit_price - trade.entry_price) / trade.entry_price) * 100
     trade.holding_days = (data.exit_date - trade.entry_date).days
-    
+
     db.commit()
     return trade
 
@@ -222,10 +222,10 @@ def get_journal_stats(db: Session = Depends(get_db)):
     trades = db.query(models.TradeJournal).filter(models.TradeJournal.status == 'closed').all()
     if not trades:
         return {"win_rate": 0, "total_pnl": 0, "count": 0}
-        
+
     wins = [t for t in trades if t.pnl > 0]
     total_pnl = sum(t.pnl for t in trades)
-    
+
     return {
         "count": len(trades),
         "win_rate": len(wins) / len(trades) * 100,
@@ -321,7 +321,7 @@ git commit -m "feat: journal page with open positions and history"
 ```javascript
 // frontend/src/pages/Watchlist.jsx
 // In the table row actions:
-<button 
+<button
   onClick={() => navigate(`/journal?action=new&symbol=${item.symbol}&price=${item.signal_price}&sl=${item.stop_loss}&target=${item.target}&wl_id=${item.id}`)}
   className="btn-primary"
 >

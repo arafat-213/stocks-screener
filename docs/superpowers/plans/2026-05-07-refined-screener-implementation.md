@@ -29,8 +29,8 @@ class FundamentalData(Base):
     debt_equity = Column(Float, nullable=True)
     eps_growth = Column(Float, nullable=True)
     promoter_holding = Column(Float, nullable=True)
-    pledged_percent = Column(Float, nullable=True) 
-    market_cap = Column(Float, nullable=True)     
+    pledged_percent = Column(Float, nullable=True)
+    market_cap = Column(Float, nullable=True)
     __table_args__ = (PrimaryKeyConstraint('date', 'symbol'),)
 
 class FundamentalCache(Base):
@@ -85,8 +85,8 @@ class FundamentalData(Base):
     debt_equity = Column(Float, nullable=True)
     eps_growth = Column(Float, nullable=True)
     promoter_holding = Column(Float, nullable=True)
-    pledged_percent = Column(Float, nullable=True) 
-    market_cap = Column(Float, nullable=True)     
+    pledged_percent = Column(Float, nullable=True)
+    market_cap = Column(Float, nullable=True)
     __table_args__ = (PrimaryKeyConstraint('date', 'symbol'),)
 
 class FundamentalCache(Base):
@@ -129,19 +129,19 @@ CURRENT_SCREENER_VERSION = 1
 def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""
     if not info: return False, False
-    
+
     # 1. Market Cap > ₹500 Cr (~$6M USD)
     mcap = info.get('marketCap', 0) or 0
     if mcap < 6_000_000: return False, False
-    
+
     # 2. P/E (0 < pe < 150)
     pe = info.get('trailingPE') or info.get('forwardPE')
     if pe is None or pe <= 0 or pe > 150: return False, False
-    
+
     # 3. ROE > 15%
     roe = info.get('returnOnEquity', 0) or 0
     if roe < 0.15: return False, False
-    
+
     # 4. Promoter Pledge < 20%
     pledged = info.get('pledgedPercent')
     flag_missing = False
@@ -149,11 +149,11 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
         flag_missing = True
     elif pledged > 0.20:
         return False, False
-    
+
     # 5. Liquidity (20-day avg vol > 500k)
     avg_vol = info.get('averageVolume', 0) or 0
     if avg_vol < 500_000: return False, False
-    
+
     return True, flag_missing
 ```
 
@@ -229,12 +229,12 @@ def check_profitability_streak(financials) -> bool:
     """Checks if Net Income and Revenue are positive for last 3 years."""
     try:
         if financials.empty or len(financials.columns) < 3: return False
-        
+
         ni_row = get_row(financials, ['net income', 'net earnings'])
         rev_row = get_row(financials, ['total revenue', 'revenue', 'total operating revenue'])
-        
+
         if ni_row is None or rev_row is None: return False
-        
+
         # yf returns reverse chrono: iloc[0:3] are last 3 years
         for i in range(3):
             if ni_row.iloc[i] <= 0 or rev_row.iloc[i] <= 0: return False
@@ -307,12 +307,12 @@ def fetch_and_cache_deep_fundamentals(symbols, db_session):
                 ticker = yf.Ticker(symbol)
                 financials = ticker.financials
                 info = ticker.info
-                
+
                 streak = check_profitability_streak(financials)
                 de = info.get('debtToEquity', 100) # Default to failing
                 sector = info.get('sector', 'default')
                 limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
-                
+
                 # Update FundamentalCache row here...
             except Exception as e:
                 print(f"Failed {symbol}: {e}")
@@ -338,14 +338,14 @@ Modify `orchestrator.py` to:
 def calculate_fundamental_score(info: dict) -> float:
     score = 0
     pe = info.get('trailingPE') or info.get('forwardPE')
-    
+
     # P/E Score (20% weight relative to 100 total, so 20 pts max)
     if pe is None: score += 0
     elif pe < 25: score += 20
     elif pe < 50: score += 15
     elif pe < 100: score += 5
     else: score -= 5 # Penalty for very expensive
-    
+
     # Promoter Pledge (10% weight -> 10 pts max)
     pledged = info.get('pledgedPercent')
     if pledged is None: score += 0
@@ -353,7 +353,7 @@ def calculate_fundamental_score(info: dict) -> float:
     elif pledged < 0.15: score += 5
     elif pledged < 0.20: score += 2
     else: score += 0 # Should have been filtered, but safe default
-    
+
     return score
 ```
 
@@ -392,19 +392,19 @@ CURRENT_SCREENER_VERSION = 1
 def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
     """Returns (passes_filter, should_flag_missing_pledge)"""
     if not info: return False, False
-    
+
     # 1. Market Cap > ₹500 Cr (~$6M USD)
     mcap = info.get('marketCap', 0) or 0
     if mcap < 6_000_000: return False, False
-    
+
     # 2. P/E (0 < pe < 150)
     pe = info.get('trailingPE') or info.get('forwardPE')
     if pe is None or pe <= 0 or pe > 150: return False, False
-    
+
     # 3. ROE > 15%
     roe = info.get('returnOnEquity', 0) or 0
     if roe < 0.15: return False, False
-    
+
     # 4. Promoter Pledge < 20%
     pledged = info.get('pledgedPercent')
     flag_missing = False
@@ -412,11 +412,11 @@ def passes_tier1_fast_filters(info: dict) -> tuple[bool, bool]:
         flag_missing = True
     elif pledged > 0.20:
         return False, False
-    
+
     # 5. Liquidity (20-day avg vol > 500k)
     avg_vol = info.get('averageVolume', 0) or 0
     if avg_vol < 500_000: return False, False
-    
+
     return True, flag_missing
 ```
 
@@ -492,12 +492,12 @@ def check_profitability_streak(financials) -> bool:
     """Checks if Net Income and Revenue are positive for last 3 years."""
     try:
         if financials.empty or len(financials.columns) < 3: return False
-        
+
         ni_row = get_row(financials, ['net income', 'net earnings'])
         rev_row = get_row(financials, ['total revenue', 'revenue', 'total operating revenue'])
-        
+
         if ni_row is None or rev_row is None: return False
-        
+
         # yf returns reverse chrono: iloc[0:3] are last 3 years
         for i in range(3):
             if ni_row.iloc[i] <= 0 or rev_row.iloc[i] <= 0: return False
@@ -570,12 +570,12 @@ def fetch_and_cache_deep_fundamentals(symbols, db_session):
                 ticker = yf.Ticker(symbol)
                 financials = ticker.financials
                 info = ticker.info
-                
+
                 streak = check_profitability_streak(financials)
                 de = info.get('debtToEquity', 100) # Default to failing
                 sector = info.get('sector', 'default')
                 limit = DE_LIMITS.get(sector, DE_LIMITS['default'])
-                
+
                 # Update FundamentalCache row here...
             except Exception as e:
                 print(f"Failed {symbol}: {e}")
@@ -601,14 +601,14 @@ Modify `orchestrator.py` to:
 def calculate_fundamental_score(info: dict) -> float:
     score = 0
     pe = info.get('trailingPE') or info.get('forwardPE')
-    
+
     # P/E Score (20% weight relative to 100 total, so 20 pts max)
     if pe is None: score += 0
     elif pe < 25: score += 20
     elif pe < 50: score += 15
     elif pe < 100: score += 5
     else: score -= 5 # Penalty for very expensive
-    
+
     # Promoter Pledge (10% weight -> 10 pts max)
     pledged = info.get('pledgedPercent')
     if pledged is None: score += 0
@@ -616,7 +616,7 @@ def calculate_fundamental_score(info: dict) -> float:
     elif pledged < 0.15: score += 5
     elif pledged < 0.20: score += 2
     else: score += 0 # Should have been filtered, but safe default
-    
+
     return score
 ```
 

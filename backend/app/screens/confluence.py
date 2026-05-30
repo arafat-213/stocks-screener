@@ -1,28 +1,30 @@
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, aliased
-from sqlalchemy import and_, cast, Date, func
-from app.db.models import TechnicalSignal, Stock
+
+from app.db.models import Stock, TechnicalSignal
 from app.screens.base import get_latest_signal_date
 
-def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
+
+def screen_mtf_confluence(db: Session, timeframe: str = "D", target_date=None):
     """
     All three timeframes (Daily, Weekly, Monthly) simultaneously bullish.
     This is the strongest signal in the system — rare but high conviction.
     Weekly and Monthly bullish mean RSI>50 + price>EMA26 on those timeframes.
-    
-    Fix: Instead of joining on exact date (which fails because W/M signals 
+
+    Fix: Instead of joining on exact date (which fails because W/M signals
     are on Sundays/Month-ends), we join on the most recent signal for each symbol.
     """
-    date_d = target_date if target_date else get_latest_signal_date(db, 'D')
+    date_d = target_date if target_date else get_latest_signal_date(db, "D")
 
     # Subqueries to find the latest signal <= date_d for each timeframe
     latest_weekly_date = (
         db.query(func.max(TechnicalSignal.date))
-        .filter(TechnicalSignal.timeframe == 'W', TechnicalSignal.date <= date_d)
+        .filter(TechnicalSignal.timeframe == "W", TechnicalSignal.date <= date_d)
         .scalar_subquery()
     )
     latest_monthly_date = (
         db.query(func.max(TechnicalSignal.date))
-        .filter(TechnicalSignal.timeframe == 'M', TechnicalSignal.date <= date_d)
+        .filter(TechnicalSignal.timeframe == "M", TechnicalSignal.date <= date_d)
         .scalar_subquery()
     )
 
@@ -38,7 +40,7 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
             and_(
                 daily.symbol == weekly.symbol,
                 weekly.date == latest_weekly_date,
-                weekly.timeframe == 'W',
+                weekly.timeframe == "W",
                 weekly.is_bullish == True,
             ),
         )
@@ -47,14 +49,14 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
             and_(
                 daily.symbol == monthly.symbol,
                 monthly.date == latest_monthly_date,
-                monthly.timeframe == 'M',
+                monthly.timeframe == "M",
                 monthly.is_bullish == True,
             ),
         )
         .filter(
             and_(
                 func.date(daily.date) == date_d,
-                daily.timeframe == 'D',
+                daily.timeframe == "D",
                 daily.is_bullish == True,
                 daily.above_200ema == True,
                 daily.rsi >= 40,
@@ -66,7 +68,8 @@ def screen_mtf_confluence(db: Session, timeframe: str = 'D', target_date=None):
     )
     return results
 
-def screen_sector_leaders(db: Session, timeframe: str = 'D', target_date=None):
+
+def screen_sector_leaders(db: Session, timeframe: str = "D", target_date=None):
     """
     Top 3 stocks by RS score within each sector.
     Useful for sector rotation — buy the leaders when rotating into a sector.
@@ -109,7 +112,8 @@ def screen_sector_leaders(db: Session, timeframe: str = 'D', target_date=None):
     )
     return results
 
-def screen_fresh_52w_breakout(db: Session, timeframe: str = 'D', target_date=None):
+
+def screen_fresh_52w_breakout(db: Session, timeframe: str = "D", target_date=None):
     """
     Price just broke above 52-week high (within +3%) with volume confirmation.
     This is a pure price-action momentum entry — stock is in price discovery.
@@ -125,7 +129,8 @@ def screen_fresh_52w_breakout(db: Session, timeframe: str = 'D', target_date=Non
                 func.date(TechnicalSignal.date) == date,
                 TechnicalSignal.timeframe == timeframe,
                 TechnicalSignal.pct_from_52w_high >= -1.0,  # within 1% below or above
-                TechnicalSignal.pct_from_52w_high <= 3.0,   # not too extended past breakout
+                TechnicalSignal.pct_from_52w_high
+                <= 3.0,  # not too extended past breakout
                 TechnicalSignal.volume_breakout == True,
                 TechnicalSignal.above_200ema == True,
                 TechnicalSignal.rsi >= 50,

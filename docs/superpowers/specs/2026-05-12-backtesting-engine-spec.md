@@ -1,8 +1,8 @@
 # Backtesting Engine — Spec
 
-**Version:** 1.2  
-**Status:** Approved (Brainstorming Complete)  
-**Scope:** Full-stack backtesting engine: async backend runner, DB persistence, REST API, React UI  
+**Version:** 1.2
+**Status:** Approved (Brainstorming Complete)
+**Scope:** Full-stack backtesting engine: async backend runner, DB persistence, REST API, React UI
 **Purpose:** Implementation-ready specification for parameter optimization in the Screener AI tool.
 
 ---

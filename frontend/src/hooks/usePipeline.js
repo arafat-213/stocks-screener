@@ -12,9 +12,10 @@ export const usePipeline = () => {
     return () => clearInterval(id);
   }, [statusData?.status, refetch]);
 
-  const isBusy = useMemo(() => 
-    statusData?.status === 'running' || statusData?.status === 'stopping', 
-  [statusData]);
+  const isBusy = useMemo(
+    () => statusData?.status === 'running' || statusData?.status === 'stopping',
+    [statusData]
+  );
 
   const run = async (limit) => {
     await runScreener(limit);
@@ -33,6 +34,6 @@ export const usePipeline = () => {
     run,
     stop,
     loading,
-    refetch
+    refetch,
   };
 };

@@ -1,7 +1,7 @@
 # Backtesting Engine — Spec
 
-**Version:** 1.0  
-**Scope:** Full-stack backtesting engine: async backend runner, DB persistence, REST API, React UI  
+**Version:** 1.0
+**Scope:** Full-stack backtesting engine: async backend runner, DB persistence, REST API, React UI
 **Purpose:** Implementation-ready specification for an AI coding agent
 
 ---
@@ -1087,7 +1087,7 @@ Shown prominently at the top of the results section when `include_fundamentals =
 <div className="backtest-disclaimer">
   <Info size={16} />
   <span>
-    <strong>Technical signals only.</strong> Fundamental score excluded because historical 
+    <strong>Technical signals only.</strong> Fundamental score excluded because historical
     P/E, ROE, and other metrics are not stored per date. Scores are on a 0–70 scale.
     Enable "Include Fundamentals" to use current cache values (anachronistic).
   </span>
@@ -1098,7 +1098,7 @@ When `include_fundamentals = true`, show a different warning:
 
 ```jsx
 <div className="backtest-disclaimer warning">
-  Current fundamental data applied to all historical dates. 
+  Current fundamental data applied to all historical dates.
   This overstates quality of older signals for companies whose financials have changed.
 </div>
 ```

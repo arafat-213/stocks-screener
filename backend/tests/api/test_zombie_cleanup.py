@@ -1,8 +1,8 @@
-import pytest
 from sqlalchemy.orm import Session
+
 from app.db.models import PipelineRun
 from app.pipeline.orchestrator import cleanup_zombie_runs, request_pipeline_stop
-from app.db.session import SessionLocal
+
 
 def test_cleanup_zombie_runs(db: Session):
     # 1. Create a zombie run
@@ -12,11 +12,12 @@ def test_cleanup_zombie_runs(db: Session):
 
     # 2. Run cleanup
     cleanup_zombie_runs(db)
-    
+
     # 3. Verify status changed to failed
     db.refresh(zombie)
     assert zombie.status == "failed"
     assert "Interrupted" in zombie.errors
+
 
 def test_force_stop_logic(db: Session):
     # 1. Create a running run

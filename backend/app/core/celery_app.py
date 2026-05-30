@@ -1,14 +1,12 @@
 import os
+
 from celery import Celery
 from celery.schedules import crontab
 
 redis_url = os.getenv("REDIS_URL", "redis://localhost:6380/0")
 
 celery_app = Celery(
-    "stock_ai",
-    broker=redis_url,
-    backend=redis_url,
-    include=["app.tasks"]
+    "stock_ai", broker=redis_url, backend=redis_url, include=["app.tasks"]
 )
 
 celery_app.conf.update(

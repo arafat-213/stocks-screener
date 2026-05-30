@@ -1,8 +1,27 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Play, Filter, ArrowUpDown, AlertCircle, LayoutGrid, List, Square, RefreshCcw, ShieldCheck, ShieldAlert, ShieldX, CircleAlert, Star } from 'lucide-react';
+import {
+  Play,
+  Filter,
+  ArrowUpDown,
+  AlertCircle,
+  LayoutGrid,
+  List,
+  Square,
+  RefreshCcw,
+  ShieldCheck,
+  ShieldAlert,
+  ShieldX,
+  CircleAlert,
+  Star,
+} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { map, filter, size, times, uniqBy } from 'lodash/fp';
-import { fetchResults, getDashboardChanges, addToWatchlist, removeFromWatchlist } from '../api/client';
+import {
+  fetchResults,
+  getDashboardChanges,
+  addToWatchlist,
+  removeFromWatchlist,
+} from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
 import { useMarketData } from '../hooks/useMarketData';
@@ -31,26 +50,30 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  const { data: changesData, loading: changesLoading, refetch: refetchChanges } = useFetch(getDashboardChanges);
+  const {
+    data: changesData,
+    loading: changesLoading,
+    refetch: refetchChanges,
+  } = useFetch(getDashboardChanges);
 
-  const { 
-    status, 
-    stats: pipeline, 
-    isBusy, 
-    run: handleRunPipeline, 
-    stop: handleStopPipeline, 
-    error: pipelineError 
+  const {
+    status,
+    stats: pipeline,
+    isBusy,
+    run: handleRunPipeline,
+    stop: handleStopPipeline,
+    error: pipelineError,
   } = usePipeline();
-  
+
   const { market_context, error: marketError } = useMarketData();
   const { watchlist, toggle, isWatched, count } = useWatchlist();
   const [addingToWatchlist, setAddingToWatchlist] = useState(new Set());
-  
+
   const handleToggleWatchlist = async (row) => {
     const symbol = row.symbol;
     const isAlreadyWatched = isWatched(symbol);
-    
-    setAddingToWatchlist(prev => new Set(prev).add(symbol));
+
+    setAddingToWatchlist((prev) => new Set(prev).add(symbol));
     try {
       if (isAlreadyWatched) {
         await removeFromWatchlist(symbol);
@@ -58,22 +81,24 @@ const Dashboard = () => {
         await addToWatchlist({
           symbol: symbol,
           signal_date: row.date || new Date().toISOString().split('T')[0],
-          quality_tier: row.quality_tier || (row.fundamental_quality?.profitability_ok ? 'A' : 'B'),
-          signal_score: row.timeframes?.D?.score || row.score
+          quality_tier:
+            row.quality_tier ||
+            (row.fundamental_quality?.profitability_ok ? 'A' : 'B'),
+          signal_score: row.timeframes?.D?.score || row.score,
         });
       }
       toggle(symbol);
     } catch (err) {
       alert(`Failed to update watchlist: ${err.message}`);
     } finally {
-      setAddingToWatchlist(prev => {
+      setAddingToWatchlist((prev) => {
         const next = new Set(prev);
         next.delete(symbol);
         return next;
       });
     }
   };
-  
+
   // Filters and Sort State
   const [confluenceFilter, setConfluenceFilter] = useState('all'); // 'all', 'watchlist', '3', '2+'
   const [selectedSectors, setSelectedSectors] = useState([]);
@@ -85,48 +110,67 @@ const Dashboard = () => {
   const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
-  const loadMore = useCallback(async (isReset = false) => {
-    if (loading || (!hasMore && !isReset)) return;
+  const loadMore = useCallback(
+    async (isReset = false) => {
+      if (loading || (!hasMore && !isReset)) return;
 
-    setLoading(true);
-    const currentOffset = isReset ? 0 : offset;
-    
-    try {
-      const data = await fetchResults({
-        offset: currentOffset,
-        limit: 50,
-        sector: selectedSectors.join(','),
-        confluence: confluenceFilter === 'watchlist' ? undefined : confluenceFilter,
-        symbols: confluenceFilter === 'watchlist' ? [...watchlist].join(',') : undefined,
-        sort_by: sortBy,
-        fundamental_filter: fundamentalFilter
-      });
+      setLoading(true);
+      const currentOffset = isReset ? 0 : offset;
 
-      if (isReset) {
-        setStocks(data.items);
-        setOffset(50);
-      } else {
-        setStocks(prev => uniqBy('symbol', [...prev, ...data.items]));
-        setOffset(currentOffset + 50);
+      try {
+        const data = await fetchResults({
+          offset: currentOffset,
+          limit: 50,
+          sector: selectedSectors.join(','),
+          confluence:
+            confluenceFilter === 'watchlist' ? undefined : confluenceFilter,
+          symbols:
+            confluenceFilter === 'watchlist'
+              ? [...watchlist].join(',')
+              : undefined,
+          sort_by: sortBy,
+          fundamental_filter: fundamentalFilter,
+        });
+
+        if (isReset) {
+          setStocks(data.items);
+          setOffset(50);
+        } else {
+          setStocks((prev) => uniqBy('symbol', [...prev, ...data.items]));
+          setOffset(currentOffset + 50);
+        }
+
+        setHasMore(data.has_more);
+        setError(null);
+      } catch (err) {
+        setError(err.message || 'Failed to fetch stocks');
+      } finally {
+        setLoading(false);
       }
-
-      setHasMore(data.has_more);
-      setError(null);
-    } catch (err) {
-      setError(err.message || 'Failed to fetch stocks');
-    } finally {
-      setLoading(false);
-    }
-  }, [offset, hasMore, loading, selectedSectors, confluenceFilter, sortBy, fundamentalFilter, watchlist]);
+    },
+    [
+      offset,
+      hasMore,
+      loading,
+      selectedSectors,
+      confluenceFilter,
+      sortBy,
+      fundamentalFilter,
+      watchlist,
+    ]
+  );
 
   // Infinite Scroll Trigger
   const sentinelRef = useRef(null);
   useEffect(() => {
-    const obs = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && hasMore && !loading) {
-        loadMore();
-      }
-    }, { threshold: 0.1 });
+    const obs = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !loading) {
+          loadMore();
+        }
+      },
+      { threshold: 0.1 }
+    );
 
     if (sentinelRef.current) obs.observe(sentinelRef.current);
     return () => obs.disconnect();
@@ -162,7 +206,12 @@ const Dashboard = () => {
   // Derived: Available Sectors (only from current stocks)
   const availableSectors = useMemo(() => {
     if (size(stocks) === 0) return [];
-    const sectors = new Set(filter(Boolean, map(s => s.sector, stocks)));
+    const sectors = new Set(
+      filter(
+        Boolean,
+        map((s) => s.sector, stocks)
+      )
+    );
     return Array.from(sectors).sort();
   }, [stocks]);
 
@@ -173,22 +222,25 @@ const Dashboard = () => {
       label: '★',
       sortable: false,
       render: (_, row) => (
-        <WatchlistStar 
-          symbol={row.symbol} 
-          isWatched={isWatched(row.symbol)} 
-          onToggle={() => handleToggleWatchlist(row)} 
+        <WatchlistStar
+          symbol={row.symbol}
+          isWatched={isWatched(row.symbol)}
+          onToggle={() => handleToggleWatchlist(row)}
         />
-      )
+      ),
     },
-    { 
-      key: 'symbol', 
-      label: 'Symbol', 
+    {
+      key: 'symbol',
+      label: 'Symbol',
       sortable: true,
       render: (val) => (
-        <Link to={`/stocks/${val}`} className="text-blue-600 dark:text-blue-400 font-black no-underline hover:underline transition-all tracking-tighter">
+        <Link
+          to={`/stocks/${val}`}
+          className='text-blue-600 dark:text-blue-400 font-black no-underline hover:underline transition-all tracking-tighter'
+        >
           {val.replace('.NS', '')}
         </Link>
-      )
+      ),
     },
     {
       key: 'quality',
@@ -196,92 +248,112 @@ const Dashboard = () => {
       sortable: false,
       render: (_, row) => {
         if (!row.fundamental_quality) return '-';
-        const { profitability_ok, debt_ok, has_fundamentals } = row.fundamental_quality;
-        if (!has_fundamentals) return <CircleAlert size={14} className="text-slate-400" />;
+        const { profitability_ok, debt_ok, has_fundamentals } =
+          row.fundamental_quality;
+        if (!has_fundamentals)
+          return <CircleAlert size={14} className='text-slate-400' />;
         return (
-          <div className="flex gap-1">
-            {profitability_ok ? <ShieldCheck size={14} className="text-green-500" /> : <ShieldX size={14} className="text-red-500" />}
-            {debt_ok ? <ShieldCheck size={14} className="text-green-500" /> : <ShieldX size={14} className="text-red-500" />}
+          <div className='flex gap-1'>
+            {profitability_ok ? (
+              <ShieldCheck size={14} className='text-green-500' />
+            ) : (
+              <ShieldX size={14} className='text-red-500' />
+            )}
+            {debt_ok ? (
+              <ShieldCheck size={14} className='text-green-500' />
+            ) : (
+              <ShieldX size={14} className='text-red-500' />
+            )}
           </div>
         );
-      }
+      },
     },
-    { 
-      key: 'setup', 
-      label: 'Setup', 
+    {
+      key: 'setup',
+      label: 'Setup',
       sortable: true,
       accessor: (row) => row.setup?.setup_type || '',
-      render: (_, row) => <SetupBadge setup={row.setup} />
+      render: (_, row) => <SetupBadge setup={row.setup} />,
     },
-    { 
-      key: 'close_price', 
-      label: 'Price', 
+    {
+      key: 'close_price',
+      label: 'Price',
       sortable: true,
-      render: (val) => `₹${val?.toLocaleString('en-IN', { minimumFractionDigits: 1 })}`
+      render: (val) =>
+        `₹${val?.toLocaleString('en-IN', { minimumFractionDigits: 1 })}`,
     },
-    { 
-      key: 'price_change_pct', 
-      label: 'Change %', 
+    {
+      key: 'price_change_pct',
+      label: 'Change %',
       sortable: true,
       render: (val) => (
-        <span className={`px-2 py-1 rounded-md font-mono font-bold text-xs ${val >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-          {val >= 0 ? '+' : ''}{val?.toFixed(2)}%
+        <span
+          className={`px-2 py-1 rounded-md font-mono font-bold text-xs ${val >= 0 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}
+        >
+          {val >= 0 ? '+' : ''}
+          {val?.toFixed(2)}%
         </span>
-      )
+      ),
     },
-    { 
-      key: 'score', 
-      label: 'Score', 
+    {
+      key: 'score',
+      label: 'Score',
       sortable: true,
       accessor: (row) => row.timeframes?.D?.score || 0,
       render: (val) => (
-        <span className={`font-black text-sm px-2 py-1 rounded ${val >= 70 ? 'bg-green-500 text-white' : val >= 50 ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}>
+        <span
+          className={`font-black text-sm px-2 py-1 rounded ${val >= 70 ? 'bg-green-500 text-white' : val >= 50 ? 'bg-blue-500 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300'}`}
+        >
           {val || '-'}
         </span>
-      )
+      ),
     },
-    { 
-      key: 'rs_score', 
-      label: 'RS', 
+    {
+      key: 'rs_score',
+      label: 'RS',
       sortable: true,
       accessor: (row) => row.timeframes?.D?.rs_score || 0,
       render: (val) => (
-        <span className={`font-black text-sm ${val >= 80 ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}>
+        <span
+          className={`font-black text-sm ${val >= 80 ? 'text-green-600 dark:text-green-400' : 'text-blue-600 dark:text-blue-400'}`}
+        >
           {val?.toFixed(0) || '-'}
         </span>
-      )
+      ),
     },
-    { 
-      key: 'adx', 
-      label: 'ADX', 
+    {
+      key: 'adx',
+      label: 'ADX',
       sortable: true,
       accessor: (row) => row.timeframes?.D?.adx || 0,
-      render: (val) => val?.toFixed(1) || '-'
+      render: (val) => val?.toFixed(1) || '-',
     },
-    { 
-      key: 'roe', 
-      label: 'ROE %', 
+    {
+      key: 'roe',
+      label: 'ROE %',
       sortable: true,
       accessor: (row) => row.fundamentals?.roe || 0,
-      render: (val) => `${val?.toFixed(1) || '-'}%`
+      render: (val) => `${val?.toFixed(1) || '-'}%`,
     },
-    { 
-      key: 'pe', 
-      label: 'P/E', 
+    {
+      key: 'pe',
+      label: 'P/E',
       sortable: true,
       accessor: (row) => row.fundamentals?.pe || 999,
-      render: (val) => val?.toFixed(1) || '-'
+      render: (val) => val?.toFixed(1) || '-',
     },
-    { 
-      key: 'sector', 
-      label: 'Sector', 
-      sortable: true 
-    }
+    {
+      key: 'sector',
+      label: 'Sector',
+      sortable: true,
+    },
   ];
 
   const toggleSector = (sector) => {
-    setSelectedSectors(prev => 
-      prev.includes(sector) ? prev.filter(s => s !== sector) : [...prev, sector]
+    setSelectedSectors((prev) =>
+      prev.includes(sector)
+        ? prev.filter((s) => s !== sector)
+        : [...prev, sector]
     );
   };
 
@@ -295,38 +367,67 @@ const Dashboard = () => {
 
   if (loading && !hasData) {
     return (
-      <div className="w-full">
-        <main className="flex-1">
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {map(i => (
-              <div key={i} className="bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1">
-                <div className="h-10 w-full bg-bg-elevated rounded-md animate-pulse"></div>
-              </div>
-            ), [1, 2, 3, 4])}
+      <div className='w-full'>
+        <main className='flex-1'>
+          <div className='grid grid-cols-2 lg:grid-cols-4 gap-4'>
+            {map(
+              (i) => (
+                <div
+                  key={i}
+                  className='bg-bg-secondary p-4 rounded-xl border border-border flex flex-col gap-1'
+                >
+                  <div className='h-10 w-full bg-bg-elevated rounded-md animate-pulse'></div>
+                </div>
+              ),
+              [1, 2, 3, 4]
+            )}
           </div>
-          <div className="mt-8">
+          <div className='mt-8'>
             {viewMode === 'grid' ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                {map(i => <StockCardSkeleton key={i} />, [1, 2, 3, 4, 5, 6])}
+              <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'>
+                {map(
+                  (i) => (
+                    <StockCardSkeleton key={i} />
+                  ),
+                  [1, 2, 3, 4, 5, 6]
+                )}
               </div>
             ) : (
-              <div className="bg-bg-secondary rounded-xl border border-border mt-4 overflow-hidden">
-                <div className="flex bg-bg-elevated border-bottom border-border min-w-fit">
-                  {map(col => (
-                    <div key={col.key} className="px-4 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 flex-1 min-w-[120px]">
-                      {col.label}
-                    </div>
-                  ), columns)}
-                </div>
-                {times(i => (
-                  <div key={i} className="flex border-b border-border transition-colors hover:bg-bg-elevated">
-                    {map(col => (
-                      <div key={col.key} className="p-4 text-sm text-text flex-1 min-w-[120px] flex items-center">
-                        <div className="h-4 w-full bg-bg-elevated rounded-sm animate-pulse" />
+              <div className='bg-bg-secondary rounded-xl border border-border mt-4 overflow-hidden'>
+                <div className='flex bg-bg-elevated border-bottom border-border min-w-fit'>
+                  {map(
+                    (col) => (
+                      <div
+                        key={col.key}
+                        className='px-4 py-3 text-[11px] font-bold text-text-muted uppercase tracking-wider flex items-center gap-2 flex-1 min-w-[120px]'
+                      >
+                        {col.label}
                       </div>
-                    ), columns)}
-                  </div>
-                ), 10)}
+                    ),
+                    columns
+                  )}
+                </div>
+                {times(
+                  (i) => (
+                    <div
+                      key={i}
+                      className='flex border-b border-border transition-colors hover:bg-bg-elevated'
+                    >
+                      {map(
+                        (col) => (
+                          <div
+                            key={col.key}
+                            className='p-4 text-sm text-text flex-1 min-w-[120px] flex items-center'
+                          >
+                            <div className='h-4 w-full bg-bg-elevated rounded-sm animate-pulse' />
+                          </div>
+                        ),
+                        columns
+                      )}
+                    </div>
+                  ),
+                  10
+                )}
               </div>
             )}
           </div>
@@ -337,24 +438,26 @@ const Dashboard = () => {
 
   if (pipeline?.status === 'never_run') {
     return (
-      <div className="flex flex-col items-center justify-center py-20 text-center text-text-muted">
+      <div className='flex flex-col items-center justify-center py-20 text-center text-text-muted'>
         <AlertCircle size={64} />
-        <h1 className="text-text my-4 text-2xl font-bold">No Data Available</h1>
-        <p>The pipeline hasn't been run yet. Start it to see market analysis.</p>
-        <button 
-          className="mt-8 bg-blue-600 text-white border-none py-4 px-8 rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 cursor-pointer transition-all hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-[0.98]" 
-          onClick={() => handleRunPipeline()} 
+        <h1 className='text-text my-4 text-2xl font-bold'>No Data Available</h1>
+        <p>
+          The pipeline hasn't been run yet. Start it to see market analysis.
+        </p>
+        <button
+          className='mt-8 bg-blue-600 text-white border-none py-4 px-8 rounded-2xl font-black uppercase tracking-[0.2em] text-xs flex items-center gap-3 cursor-pointer transition-all hover:bg-blue-700 shadow-lg shadow-blue-500/20 active:scale-[0.98]'
+          onClick={() => handleRunPipeline()}
           disabled={isBusy}
         >
-          <Play size={18} fill="currentColor" /> Initialize Analysis Engine
+          <Play size={18} fill='currentColor' /> Initialize Analysis Engine
         </button>
       </div>
     );
   }
 
   const market = market_context || [];
-  const nifty = market.find(m => m.symbol === '^NSEI') || {};
-  const sensex = market.find(m => m.symbol === '^BSESN') || {};
+  const nifty = market.find((m) => m.symbol === '^NSEI') || {};
+  const sensex = market.find((m) => m.symbol === '^BSESN') || {};
 
   const isNiftyUp = nifty.change_pct >= 0;
   const isSensexUp = sensex.change_pct >= 0;
@@ -362,7 +465,7 @@ const Dashboard = () => {
   const hasMarketData = size(market) > 0;
 
   return (
-    <div className="w-full animate-fade-in">
+    <div className='w-full animate-fade-in'>
       {(error || pipelineError || marketError) && (
         <ErrorBanner message={error || pipelineError || marketError} />
       )}
@@ -377,79 +480,109 @@ const Dashboard = () => {
       )}
 
       {!hasMarketData && !loading && (
-        <div className="bg-bg-secondary p-4 mb-4 rounded-lg border border-border text-text-muted">
+        <div className='bg-bg-secondary p-4 mb-4 rounded-lg border border-border text-text-muted'>
           Market data is currently unavailable.
         </div>
       )}
 
       {/* Main Content */}
-      <main className="flex-1">
-        <header className="mb-8 sm:mb-10 flex flex-col gap-6">
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
+      <main className='flex-1'>
+        <header className='mb-8 sm:mb-10 flex flex-col gap-6'>
+          <div className='flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6'>
             <div>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tighter mb-1 uppercase">Market Dashboard</h1>
-              <p className="text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-[10px]">Real-time intelligence and automated technical screening.</p>
+              <h1 className='text-3xl sm:text-4xl font-black tracking-tighter mb-1 uppercase'>
+                Market Dashboard
+              </h1>
+              <p className='text-slate-500 dark:text-slate-400 font-bold uppercase tracking-widest text-[10px]'>
+                Real-time intelligence and automated technical screening.
+              </p>
             </div>
             {!isMobile && <GlobalSearch />}
           </div>
 
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className='grid grid-cols-2 lg:grid-cols-4 gap-4'>
             {status === 'running' && (
-              <div className="bg-blue-600 border-2 border-blue-700 p-5 rounded-2xl flex flex-col gap-4 shadow-lg shadow-blue-500/20 col-span-1 sm:col-span-2 lg:col-span-1 animate-fade-in">
-                <div className="flex justify-between items-start">
-                    <div className="flex flex-col gap-0.5">
-                        <span className="text-[9px] font-black text-white/70 uppercase tracking-[0.2em]">Live Analysis</span>
-                        <div className="flex items-center gap-2">
-                             <RefreshCcw size={14} className="animate-spin text-white" />
-                             <span className="text-sm font-black text-white uppercase tracking-tight">Engine Active</span>
-                        </div>
+              <div className='bg-blue-600 border-2 border-blue-700 p-5 rounded-2xl flex flex-col gap-4 shadow-lg shadow-blue-500/20 col-span-1 sm:col-span-2 lg:col-span-1 animate-fade-in'>
+                <div className='flex justify-between items-start'>
+                  <div className='flex flex-col gap-0.5'>
+                    <span className='text-[9px] font-black text-white/70 uppercase tracking-[0.2em]'>
+                      Live Analysis
+                    </span>
+                    <div className='flex items-center gap-2'>
+                      <RefreshCcw
+                        size={14}
+                        className='animate-spin text-white'
+                      />
+                      <span className='text-sm font-black text-white uppercase tracking-tight'>
+                        Engine Active
+                      </span>
                     </div>
-                    <button 
-                        className="bg-white/20 hover:bg-white/30 text-white border-none py-1 px-2.5 rounded-lg font-black text-[9px] uppercase tracking-tighter cursor-pointer transition-colors backdrop-blur-md" 
-                        onClick={handleStopPipeline}
-                        disabled={status === 'stopping'}
-                    >
-                        {status === 'stopping' ? 'Stopping' : 'Stop'}
-                    </button>
+                  </div>
+                  <button
+                    className='bg-white/20 hover:bg-white/30 text-white border-none py-1 px-2.5 rounded-lg font-black text-[9px] uppercase tracking-tighter cursor-pointer transition-colors backdrop-blur-md'
+                    onClick={handleStopPipeline}
+                    disabled={status === 'stopping'}
+                  >
+                    {status === 'stopping' ? 'Stopping' : 'Stop'}
+                  </button>
                 </div>
-                
-                <div className="flex flex-col">
-                    <div className="flex justify-between items-end mb-1">
-                        <span className="text-[10px] font-black text-white">PROGRESS</span>
-                        <span className="text-[10px] font-black text-white">{pipeline?.stocks_scored || 0} / {pipeline?.tier1_count || 0}</span>
-                    </div>
-                    <PipelineProgress
-                      fetched={pipeline?.stocks_fetched || 0}
-                      scored={pipeline?.stocks_scored || 0}
-                      total={pipeline?.total_symbols || 0}
-                      tier1Count={pipeline?.tier1_count || 0}
-                    />
+
+                <div className='flex flex-col'>
+                  <div className='flex justify-between items-end mb-1'>
+                    <span className='text-[10px] font-black text-white'>
+                      PROGRESS
+                    </span>
+                    <span className='text-[10px] font-black text-white'>
+                      {pipeline?.stocks_scored || 0} /{' '}
+                      {pipeline?.tier1_count || 0}
+                    </span>
+                  </div>
+                  <PipelineProgress
+                    fetched={pipeline?.stocks_fetched || 0}
+                    scored={pipeline?.stocks_scored || 0}
+                    total={pipeline?.total_symbols || 0}
+                    tier1Count={pipeline?.tier1_count || 0}
+                  />
                 </div>
               </div>
             )}
-            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
-              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Total Scored</span>
-              <span className="text-3xl font-black text-text tracking-tighter">{size(stocks)}</span>
+            <div className='bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30'>
+              <span className='text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black'>
+                Total Scored
+              </span>
+              <span className='text-3xl font-black text-text tracking-tighter'>
+                {size(stocks)}
+              </span>
             </div>
-            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
-              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">Nifty 50</span>
-              <div className="flex flex-col">
-                <span className="text-2xl font-black text-text tracking-tighter">
+            <div className='bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30'>
+              <span className='text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black'>
+                Nifty 50
+              </span>
+              <div className='flex flex-col'>
+                <span className='text-2xl font-black text-text tracking-tighter'>
                   {nifty.close?.toLocaleString('en-IN')}
                 </span>
-                <span className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isNiftyUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}>
-                  {isNiftyUp ? '▲' : '▼'} {Math.abs(nifty.change_pct)?.toFixed(2)}%
+                <span
+                  className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isNiftyUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}
+                >
+                  {isNiftyUp ? '▲' : '▼'}{' '}
+                  {Math.abs(nifty.change_pct)?.toFixed(2)}%
                 </span>
               </div>
             </div>
-            <div className="bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30">
-              <span className="text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black">SENSEX</span>
-              <div className="flex flex-col">
-                <span className="text-2xl font-black text-text tracking-tighter">
+            <div className='bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex flex-col gap-1 transition-colors hover:border-blue-500/30'>
+              <span className='text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black'>
+                SENSEX
+              </span>
+              <div className='flex flex-col'>
+                <span className='text-2xl font-black text-text tracking-tighter'>
                   {sensex.close?.toLocaleString('en-IN')}
                 </span>
-                <span className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isSensexUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}>
-                  {isSensexUp ? '▲' : '▼'} {Math.abs(sensex.change_pct)?.toFixed(2)}%
+                <span
+                  className={`text-xs font-black px-2 py-0.5 rounded-full w-fit mt-1 ${isSensexUp ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}
+                >
+                  {isSensexUp ? '▲' : '▼'}{' '}
+                  {Math.abs(sensex.change_pct)?.toFixed(2)}%
                 </span>
               </div>
             </div>
@@ -463,45 +596,54 @@ const Dashboard = () => {
           />
 
           {!isMobile && (
-            <div className="p-6 bg-bg-secondary border-2 border-border rounded-2xl shadow-sm">
-              <div className="flex flex-wrap gap-10 items-start">
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-2">
-                    <Filter size={18} className="text-blue-500" />
-                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Confluence</h3>
+            <div className='p-6 bg-bg-secondary border-2 border-border rounded-2xl shadow-sm'>
+              <div className='flex flex-wrap gap-10 items-start'>
+                <div className='flex flex-col gap-4'>
+                  <div className='flex items-center gap-2'>
+                    <Filter size={18} className='text-blue-500' />
+                    <h3 className='text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400'>
+                      Confluence
+                    </h3>
                   </div>
-                  <div className="flex flex-row gap-2.5">
-                    {map((c) => (
-                      <label
-                        key={c}
-                        className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
-                      >
-                        <input
-                          type="radio"
-                          name="confluence"
-                          value={c}
-                          checked={confluenceFilter === c}
-                          onChange={(e) => setConfluenceFilter(e.target.value)}
-                          className="hidden"
-                        />
-                        {c === 'all'
-                          ? 'All Stocks'
-                          : c === 'watchlist'
-                            ? `Watchlist (${count})`
-                            : c === '3'
-                              ? '3/3 Only'
-                              : '2/3+'}
-                      </label>
-                    ), ['all', 'watchlist', '3', '2+'])}
+                  <div className='flex flex-row gap-2.5'>
+                    {map(
+                      (c) => (
+                        <label
+                          key={c}
+                          className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${confluenceFilter === c ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
+                        >
+                          <input
+                            type='radio'
+                            name='confluence'
+                            value={c}
+                            checked={confluenceFilter === c}
+                            onChange={(e) =>
+                              setConfluenceFilter(e.target.value)
+                            }
+                            className='hidden'
+                          />
+                          {c === 'all'
+                            ? 'All Stocks'
+                            : c === 'watchlist'
+                              ? `Watchlist (${count})`
+                              : c === '3'
+                                ? '3/3 Only'
+                                : '2/3+'}
+                        </label>
+                      ),
+                      ['all', 'watchlist', '3', '2+']
+                    )}
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck size={18} className="text-blue-500" />
-                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">Quality Filter</h3>
+                <div className='flex flex-col gap-4'>
+                  <div className='flex items-center gap-2'>
+                    <ShieldCheck size={18} className='text-blue-500' />
+                    <h3 className='text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400'>
+                      Quality Filter
+                    </h3>
                   </div>
-                  <div className="flex flex-row gap-2.5">
+                  <div className='flex flex-row gap-2.5'>
                     <button
                       onClick={() => setFundamentalFilter(true)}
                       className={`flex items-center gap-2 py-2 px-4 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition-all border-2 shadow-sm ${fundamentalFilter ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
@@ -517,45 +659,54 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-4 flex-1 min-w-[300px]">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400">
+                <div className='flex flex-col gap-4 flex-1 min-w-[300px]'>
+                  <div className='flex items-center justify-between'>
+                    <h3 className='text-[11px] font-black uppercase tracking-[0.2em] text-slate-500 dark:text-slate-400'>
                       Sectors Selection
                     </h3>
-                    <span className="text-[10px] bg-blue-500 text-white py-0.5 px-2 rounded-full font-black shadow-sm">
-                        {size(availableSectors)} AVAILABLE
+                    <span className='text-[10px] bg-blue-500 text-white py-0.5 px-2 rounded-full font-black shadow-sm'>
+                      {size(availableSectors)} AVAILABLE
                     </span>
                   </div>
-                  <div className="flex flex-row flex-wrap gap-2 max-h-[240px] overflow-y-auto pr-2">
-                    {map((sector) => (
-                      <label
-                        key={sector}
-                        className={`flex items-center gap-2.5 py-1.5 px-3.5 rounded-full text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all border-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={selectedSectors.includes(sector)}
-                          onChange={() => toggleSector(sector)}
-                          className="hidden"
-                        />
-                        <span>{sector}</span>
-                      </label>
-                    ), availableSectors)}
+                  <div className='flex flex-row flex-wrap gap-2 max-h-[240px] overflow-y-auto pr-2'>
+                    {map(
+                      (sector) => (
+                        <label
+                          key={sector}
+                          className={`flex items-center gap-2.5 py-1.5 px-3.5 rounded-full text-[11px] font-bold uppercase tracking-tight cursor-pointer transition-all border-2 ${selectedSectors.includes(sector) ? 'bg-green-500 text-white border-green-500 shadow-lg shadow-green-500/20' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200 dark:hover:border-slate-800'}`}
+                        >
+                          <input
+                            type='checkbox'
+                            checked={selectedSectors.includes(sector)}
+                            onChange={() => toggleSector(sector)}
+                            className='hidden'
+                          />
+                          <span>{sector}</span>
+                        </label>
+                      ),
+                      availableSectors
+                    )}
                   </div>
                 </div>
               </div>
             </div>
           )}
 
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-            <h2 className="text-3xl font-black m-0 tracking-tighter text-text uppercase">Live Market Control</h2>
-            <div className="flex gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap">
+          <div className='flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4'>
+            <h2 className='text-3xl font-black m-0 tracking-tighter text-text uppercase'>
+              Live Market Control
+            </h2>
+            <div className='flex gap-3 w-full sm:w-auto flex-wrap sm:flex-nowrap'>
               <button
-                className="bg-slate-100 dark:bg-slate-800 border-2 border-border py-2 px-5 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer text-text transition-all hover:border-blue-500 disabled:opacity-50 shadow-sm"
+                className='bg-slate-100 dark:bg-slate-800 border-2 border-border py-2 px-5 rounded-xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 cursor-pointer text-text transition-all hover:border-blue-500 disabled:opacity-50 shadow-sm'
                 onClick={() => handleRunPipeline(50)}
                 disabled={isBusy}
               >
-                {isBusy && status !== 'running' ? <RefreshCcw size={16} className="animate-spin" /> : <Play size={16} />}
+                {isBusy && status !== 'running' ? (
+                  <RefreshCcw size={16} className='animate-spin' />
+                ) : (
+                  <Play size={16} />
+                )}
                 RAPID TEST (50)
               </button>
 
@@ -566,33 +717,34 @@ const Dashboard = () => {
                 >
                   <Filter size={18} />
                   <span>Filters</span>
-                  {(confluenceFilter !== 'all' || selectedSectors.length > 0) && (
-                    <span className="absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full border-2 border-white dark:border-slate-900" />
+                  {(confluenceFilter !== 'all' ||
+                    selectedSectors.length > 0) && (
+                    <span className='absolute -top-1 -right-1 w-3 h-3 bg-blue-600 rounded-full border-2 border-white dark:border-slate-900' />
                   )}
                 </button>
               )}
 
               {!isMobile && (
-                <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border-2 border-border shadow-inner">
+                <div className='flex items-center gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border-2 border-border shadow-inner'>
                   <button
                     className={`p-2 rounded-lg cursor-pointer flex transition-all ${viewMode === 'table' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-text'}`}
                     onClick={() => setViewMode('table')}
-                    title="Table View"
+                    title='Table View'
                   >
                     <List size={18} />
                   </button>
                   <button
                     className={`p-2 rounded-lg cursor-pointer flex transition-all ${viewMode === 'grid' ? 'bg-blue-600 text-white shadow-md' : 'text-slate-500 hover:text-text'}`}
                     onClick={() => setViewMode('grid')}
-                    title="Grid View"
+                    title='Grid View'
                   >
                     <LayoutGrid size={20} />
                   </button>
                 </div>
               )}
 
-              <div className="flex items-center gap-2 flex-1 sm:flex-none justify-center">
-                <ArrowUpDown size={16} className="text-text-muted" />
+              <div className='flex items-center gap-2 flex-1 sm:flex-none justify-center'>
+                <ArrowUpDown size={16} className='text-text-muted' />
                 <Select
                   value={sortBy}
                   onChange={setSortBy}
@@ -602,7 +754,7 @@ const Dashboard = () => {
                     { value: 'rsi', label: 'Low RSI' },
                     { value: 'pe', label: 'Value (P/E)' },
                   ]}
-                  className="w-full sm:w-[150px]"
+                  className='w-full sm:w-[150px]'
                 />
               </div>
             </div>
@@ -611,15 +763,18 @@ const Dashboard = () => {
 
         {size(stocks) > 0 ? (
           viewMode === 'grid' ? (
-            <div className="grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 sm:gap-6">
-              {map((stock) => (
-                <StockCard
-                  key={stock.symbol}
-                  stock={stock}
-                  isWatched={isWatched(stock.symbol)}
-                  onToggleWatch={() => handleToggleWatchlist(stock)}
-                />
-              ), stocks)}
+            <div className='grid grid-cols-1 sm:grid-cols-[repeat(auto-fill,minmax(300px,1fr))] gap-4 sm:gap-6'>
+              {map(
+                (stock) => (
+                  <StockCard
+                    key={stock.symbol}
+                    stock={stock}
+                    isWatched={isWatched(stock.symbol)}
+                    onToggleWatch={() => handleToggleWatchlist(stock)}
+                  />
+                ),
+                stocks
+              )}
             </div>
           ) : (
             <DataTable
@@ -631,11 +786,16 @@ const Dashboard = () => {
           )
         ) : (
           !loading && (
-            <div className="flex flex-col items-center justify-center py-20 text-center text-text-muted">
+            <div className='flex flex-col items-center justify-center py-20 text-center text-text-muted'>
               <Filter size={48} />
-              <h3 className="text-text my-4 text-lg font-bold">No stocks match filters</h3>
+              <h3 className='text-text my-4 text-lg font-bold'>
+                No stocks match filters
+              </h3>
               <p>Try adjusting your confluence or sector selections.</p>
-              <button onClick={resetFilters} className="bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest text-[10px] py-2 px-4 rounded-xl border-2 border-transparent hover:border-blue-500 cursor-pointer mt-4 transition-all">
+              <button
+                onClick={resetFilters}
+                className='bg-slate-100 dark:bg-slate-800 text-blue-600 dark:text-blue-400 font-black uppercase tracking-widest text-[10px] py-2 px-4 rounded-xl border-2 border-transparent hover:border-blue-500 cursor-pointer mt-4 transition-all'
+              >
                 Reset Selection
               </button>
             </div>
@@ -644,17 +804,19 @@ const Dashboard = () => {
 
         {/* Sentinel and Footer UI */}
         {loading && size(stocks) > 0 && (
-          <div className="flex flex-col justify-center items-center gap-4 py-12 text-slate-500 animate-pulse bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-border border-dashed mt-8">
-            <RefreshCcw size={32} className="animate-spin text-blue-500" />
-            <span className="text-[10px] font-black uppercase tracking-[0.2em]">Synchronizing Deep Market Data...</span>
+          <div className='flex flex-col justify-center items-center gap-4 py-12 text-slate-500 animate-pulse bg-slate-50 dark:bg-slate-900/50 rounded-2xl border-2 border-border border-dashed mt-8'>
+            <RefreshCcw size={32} className='animate-spin text-blue-500' />
+            <span className='text-[10px] font-black uppercase tracking-[0.2em]'>
+              Synchronizing Deep Market Data...
+            </span>
           </div>
         )}
         {!hasMore && size(stocks) > 0 && (
-          <div className="text-center py-5 text-text-muted">
+          <div className='text-center py-5 text-text-muted'>
             <p>No more stocks to show</p>
           </div>
         )}
-        <div ref={sentinelRef} className="h-5 my-5" />
+        <div ref={sentinelRef} className='h-5 my-5' />
       </main>
 
       <FilterBottomSheet

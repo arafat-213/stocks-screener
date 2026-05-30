@@ -1,11 +1,14 @@
+import datetime
+
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.db.models import Base, Watchlist, Stock
-import datetime
+
+from app.db.models import Base, Stock, Watchlist
 
 # Use in-memory SQLite for testing the model mapping
 DATABASE_URL = "sqlite:///:memory:"
+
 
 @pytest.fixture
 def session():
@@ -16,8 +19,9 @@ def session():
     yield session
     session.close()
 
+
 def test_watchlist_model_mapping(session):
-    # First, need a stock for the foreign key if it was strictly enforced, 
+    # First, need a stock for the foreign key if it was strictly enforced,
     # but SQLite doesn't enforce it by default unless configured.
     # However, let's add it for completeness if we were using a real DB.
     stock = Stock(symbol="RELIANCE.NS", name="Reliance Industries")
@@ -30,7 +34,7 @@ def test_watchlist_model_mapping(session):
         alert_type="tier1_entry",
         quality_tier="A",
         signal_score=85.5,
-        status="watching"
+        status="watching",
     )
     session.add(watchlist_item)
     session.commit()

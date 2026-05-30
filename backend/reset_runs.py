@@ -1,11 +1,13 @@
-from app.db.session import SessionLocal
 from app.db.models import PipelineRun
-from sqlalchemy import update
+from app.db.session import SessionLocal
+
 
 def reset_runs():
     db = SessionLocal()
     try:
-        db.query(PipelineRun).filter(PipelineRun.status == "running").update({"status": "failed"})
+        db.query(PipelineRun).filter(PipelineRun.status == "running").update(
+            {"status": "failed"}
+        )
         db.commit()
         print("Reset all 'running' runs to 'failed'.")
     except Exception as e:
@@ -13,6 +15,7 @@ def reset_runs():
         db.rollback()
     finally:
         db.close()
+
 
 if __name__ == "__main__":
     reset_runs()

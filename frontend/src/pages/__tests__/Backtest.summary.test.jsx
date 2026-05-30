@@ -11,7 +11,9 @@ vi.mock('../../api/client', () => ({
   getBacktestRuns: vi.fn(),
   getBacktestRun: vi.fn(() => Promise.resolve({ data: null })),
   getScreensList: vi.fn(() => Promise.resolve({ data: [] })),
-  getBacktestTrades: vi.fn(() => Promise.resolve({ data: { trades: [], total: 0 } })),
+  getBacktestTrades: vi.fn(() =>
+    Promise.resolve({ data: { trades: [], total: 0 } })
+  ),
   runBacktest: vi.fn(() => Promise.resolve({ data: { run_id: 'test-run' } })),
 }));
 
@@ -52,7 +54,7 @@ describe('Backtest Summary Chip', () => {
           require_weekly_confirmation: false,
           require_monthly_confirmation: true,
         },
-      }
+      },
     ];
 
     vi.mocked(client.getBacktestRuns).mockResolvedValue(mockRuns);
@@ -85,7 +87,7 @@ describe('Backtest Summary Chip', () => {
           // require_weekly_confirmation is undefined
           require_monthly_confirmation: false,
         },
-      }
+      },
     ];
 
     vi.mocked(client.getBacktestRuns).mockResolvedValue(mockRuns);
@@ -93,7 +95,9 @@ describe('Backtest Summary Chip', () => {
     renderBacktest();
 
     await waitFor(() => {
-      expect(screen.getByText(/T:60 | H:20 | SL:7% | W:✓ | M:✗/)).toBeInTheDocument();
+      expect(
+        screen.getByText(/T:60 | H:20 | SL:7% | W:✓ | M:✗/)
+      ).toBeInTheDocument();
     });
   });
 });

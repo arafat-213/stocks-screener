@@ -4,7 +4,7 @@
 
 **Goal:** Refactor backtest engine to use realistic portfolio capital, properly filtered benchmark comparisons, and time-aware Sharpe ratios.
 
-**Architecture:** 
+**Architecture:**
 - Update `BacktestRun` model with `starting_capital` and `position_size`.
 - Slice benchmark data in `run_backtest` based on trade entry dates.
 - Refactor `compute_metrics` to calculate PnL and Sharpe Ratio from daily equity series.
@@ -95,7 +95,7 @@ if all_trades:
     first_entry = min(t.entry_date for t in all_trades)
     effective_from = config.date_from or first_entry
     effective_to = config.date_to or datetime.date.today()
-    
+
     benchmark_df = benchmark_df[
       (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
       (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
@@ -116,7 +116,7 @@ git commit -m "fix: slice benchmark data to match backtest trade range"
 - Modify: `backend/app/backtest/engine.py:compute_metrics`
 
 - [ ] **Step 1: Update PnL and Total Return logic**
-Use `config.starting_capital` and `config.position_size`. 
+Use `config.starting_capital` and `config.position_size`.
 
 **Critical:** Ensure the call site in `run_backtest` passes the `config` object to `compute_metrics`.
 

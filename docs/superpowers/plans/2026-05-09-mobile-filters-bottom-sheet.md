@@ -22,15 +22,15 @@
 import { X, Filter, RotateCcw } from 'lucide-react';
 import './FilterBottomSheet.css';
 
-const FilterBottomSheet = ({ 
-  isOpen, 
-  onClose, 
-  confluenceFilter, 
-  setConfluenceFilter, 
-  availableSectors, 
-  selectedSectors, 
-  toggleSector, 
-  resetFilters 
+const FilterBottomSheet = ({
+  isOpen,
+  onClose,
+  confluenceFilter,
+  setConfluenceFilter,
+  availableSectors,
+  selectedSectors,
+  toggleSector,
+  resetFilters
 }) => {
   if (!isOpen) return null;
 
@@ -52,8 +52,8 @@ const FilterBottomSheet = ({
             <h4>Confluence</h4>
             <div className="chip-group">
               {['all', '3', '2+'].map(c => (
-                <button 
-                  key={c} 
+                <button
+                  key={c}
                   className={`chip ${confluenceFilter === c ? 'active' : ''}`}
                   onClick={() => setConfluenceFilter(c)}
                 >
@@ -70,8 +70,8 @@ const FilterBottomSheet = ({
             </div>
             <div className="chip-group wrap">
               {availableSectors.map(sector => (
-                <button 
-                  key={sector} 
+                <button
+                  key={sector}
                   className={`chip ${selectedSectors.includes(sector) ? 'active' : ''}`}
                   onClick={() => toggleSector(sector)}
                 >

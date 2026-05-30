@@ -1,24 +1,29 @@
-import pandas as pd
-import numpy as np
-from dataclasses import dataclass
-from collections import Counter
-from typing import Optional
+import bisect
 import datetime
 import json
 import logging
 import traceback
-import bisect
-import threading
-from sqlalchemy.orm import Session
+from collections import Counter
+from dataclasses import dataclass
+from typing import Optional
+
+import pandas as pd
 from sqlalchemy import func
-from app.pipeline.scorer import calculate_fundamental_score, calculate_technical_score
-from app.pipeline.utils import resample_ohlcv
-from app.db.models import BacktestRun, BacktestTrade, TechnicalSignal, Stock, FundamentalCache, ScreenResult
-from app.pipeline.fetcher import fetch_stock_data
-from app.pipeline.ohlcv_cache import OHLCVCache
-from app.screens.registry import SCREEN_REGISTRY
+from sqlalchemy.orm import Session
 
 from app.core.logging_manager import logging_manager
+from app.db.models import (
+    BacktestRun,
+    BacktestTrade,
+    FundamentalCache,
+    ScreenResult,
+    Stock,
+    TechnicalSignal,
+)
+from app.pipeline.ohlcv_cache import OHLCVCache
+from app.pipeline.scorer import calculate_technical_score
+from app.pipeline.utils import resample_ohlcv
+from app.screens.registry import SCREEN_REGISTRY
 
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
@@ -27,16 +32,17 @@ _ohlcv_cache = OHLCVCache()
 # Stores {symbol: DataFrame} where DataFrame contains all precomputed indicators.
 # Metadata tracks the latest date in the cached DataFrame to ensure freshness.
 _TA_CACHE = {}
-_TA_METADATA = {} # {symbol: latest_date}
+_TA_METADATA = {}  # {symbol: latest_date}
 
 # Cache for raw OHLCV data to avoid redundant Parquet reads during sequential runs.
-_OHLCV_CACHE = {} # {symbol: DataFrame}
+_OHLCV_CACHE = {}  # {symbol: DataFrame}
 
 ROUND_TRIP_COST_PCT = 0.25  # 0.25% per trade: brokerage + STT + slippage
 
+
 @dataclass
 class BacktestConfig:
-    score_threshold: float = 60.0          # ← was 50.0; effective = 60*0.70 = 42 on 70pt scale
+    score_threshold: float = 60.0  # ← was 50.0; effective = 60*0.70 = 42 on 70pt scale
     holding_days: int = 30
     stop_loss_pct: float = 7.0
     target_pct: float = 0.0
@@ -50,7 +56,7 @@ class BacktestConfig:
     use_atr_stops: bool = True
     min_adx: float = 0.0
     include_fundamentals: bool = False
-    timeframe: str = 'D'
+    timeframe: str = "D"
     date_from: datetime.date = None
     date_to: datetime.date = None
     symbol_limit: int = None
@@ -68,18 +74,24 @@ class BacktestConfig:
     use_partial_exits: bool = False
     use_signal_invalidation_exit: bool = False
     invalidation_threshold_pct: float = 5.0
-    screen_signal_mode: bool = False      # When True, screen dates drive signals (Model B)
-    screen_membership_window_days: int = 7 # Model A only: how far back to look for screen membership
-    screen_reentry_gap_days: int = 60     # Model B only: min days between signals for same symbol
-    screen_driven_rsi_max: float = 75.0   # Model B only: max RSI allowed at qualification date
+    screen_signal_mode: bool = False  # When True, screen dates drive signals (Model B)
+    screen_membership_window_days: int = (
+        7  # Model A only: how far back to look for screen membership
+    )
+    screen_reentry_gap_days: int = (
+        60  # Model B only: min days between signals for same symbol
+    )
+    screen_driven_rsi_max: float = (
+        75.0  # Model B only: max RSI allowed at qualification date
+    )
 
     # ── New fields ────────────────────────────────────────────────────────────
-    min_signal_tier: int = 2              # was 1; Run 5 validated Tier 2 quality
-    require_consolidation: bool = True    # only enter after a consolidation period
-    consolidation_bars: int = 15          # look-back window for consolidation check
-    consolidation_max_range_pct: float = 12.0   # max High-Low range to qualify
-    use_pullback_entry: bool = True       # wait for pullback to EMA20 after cross
-    pullback_max_wait_bars: int = 8       # was 5; allow setup to develop
+    min_signal_tier: int = 2  # was 1; Run 5 validated Tier 2 quality
+    require_consolidation: bool = True  # only enter after a consolidation period
+    consolidation_bars: int = 15  # look-back window for consolidation check
+    consolidation_max_range_pct: float = 12.0  # max High-Low range to qualify
+    use_pullback_entry: bool = True  # wait for pullback to EMA20 after cross
+    pullback_max_wait_bars: int = 8  # was 5; allow setup to develop
     pullback_tolerance_pct: float = 3.0  # was 2.0; NSE mid/smallcap needs room
 
     @property
@@ -96,6 +108,7 @@ class BacktestConfig:
             return self.score_threshold * 0.70
         return self.score_threshold
 
+
 @dataclass
 class TradeResult:
     symbol: str
@@ -103,7 +116,7 @@ class TradeResult:
     signal_date: datetime.date
     entry_date: datetime.date
     exit_date: datetime.date
-    exit_reason: str          # 'holding_period' | 'stop_loss' | 'target'
+    exit_reason: str  # 'holding_period' | 'stop_loss' | 'target'
     signal_score: float
     entry_price: float
     exit_price: float
@@ -111,9 +124,12 @@ class TradeResult:
     rsi_at_signal: float
     adx_at_signal: float
     ema_signal: str
-    position_size_used: float = 0.0   # actual rupee position, may differ from config.position_size
+    position_size_used: float = (
+        0.0  # actual rupee position, may differ from config.position_size
+    )
 
-def _get_cached_ohlcv(symbol: str, period: str = '5y') -> Optional[pd.DataFrame]:
+
+def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]:
     """
     Wraps _ohlcv_cache.get with a process-level in-memory cache to avoid
     redundant Parquet deserialization during sequential runs.
@@ -122,15 +138,16 @@ def _get_cached_ohlcv(symbol: str, period: str = '5y') -> Optional[pd.DataFrame]
         return _OHLCV_CACHE[symbol]
 
     df = _ohlcv_cache.get(symbol, period=period)
-    
+
     if df is not None and not df.empty:
         if df.index.tz is not None:
             df.index = df.index.tz_localize(None)
-        
+
         _OHLCV_CACHE[symbol] = df
         return df
-            
+
     return None
+
 
 def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
     """
@@ -140,35 +157,36 @@ def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
     """
     if df is None or df.empty:
         return {}
-    
-    freq = 'W' if timeframe == 'W' else 'ME'
+
+    freq = "W" if timeframe == "W" else "ME"
     resampled = resample_ohlcv(df, freq=freq, drop_incomplete=True)
     if resampled.empty:
         return {}
-        
+
     state_map = {}
     # Technical scoring needs some history (60 bars for W, 24 for M)
-    min_bars = 24 if timeframe == 'M' else 60
-    
+    min_bars = 24 if timeframe == "M" else 60
+
     for i in range(len(resampled)):
         # Important: only use data up to bar i to avoid look-ahead bias
         bar_slice = resampled.iloc[: i + 1]
         if len(bar_slice) < min_bars:
             continue
-            
+
         try:
             ta_data = calculate_technical_score(bar_slice, timeframe=timeframe)
         except Exception as e:
             logger.error(f"Error scoring MTF bar {i} for {timeframe}: {e}")
             continue
-            
+
         bar_date = resampled.index[i]
-        if hasattr(bar_date, 'date'):
+        if hasattr(bar_date, "date"):
             bar_date = bar_date.date()
-        
-        state_map[bar_date] = bool(ta_data.get('is_bullish', False))
-        
+
+        state_map[bar_date] = bool(ta_data.get("is_bullish", False))
+
     return state_map
+
 
 def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
     """
@@ -184,7 +202,6 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
 
     df = df.copy()
     # Import pandas_ta_classic locally if not global to ensure extensions are ready
-    import pandas_ta_classic as ta
     df.ta.ema(length=5, append=True)
     df.ta.ema(length=13, append=True)
     df.ta.ema(length=20, append=True)
@@ -194,20 +211,21 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
     df.ta.rsi(length=14, append=True)
     df.ta.atr(length=14, append=True)
     df.ta.adx(length=14, append=True)
-    if 'Volume' in df.columns:
-        df['VOL_SMA_20'] = df['Volume'].rolling(window=20).mean()
+    if "Volume" in df.columns:
+        df["VOL_SMA_20"] = df["Volume"].rolling(window=20).mean()
     else:
-        df['VOL_SMA_20'] = pd.Series(dtype='float64')
+        df["VOL_SMA_20"] = pd.Series(dtype="float64")
     # EMA slope: (EMA_20[i] - EMA_20[i-5]) / 5
-    ema20_col = 'EMA_20'
+    ema20_col = "EMA_20"
     if ema20_col in df.columns:
-        df['EMA_SLOPE_20'] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
+        df["EMA_SLOPE_20"] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
 
     if symbol:
         _TA_CACHE[symbol] = df
         _TA_METADATA[symbol] = df.index[-1]
 
     return df
+
 
 def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     """
@@ -218,81 +236,104 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     latest = df_ind.iloc[i]
     prev = df_ind.iloc[i - 1] if i > 0 else latest
 
-    ema5  = latest.get('EMA_5')
-    ema13 = latest.get('EMA_13')
-    ema20 = latest.get('EMA_20')
-    ema26 = latest.get('EMA_26')
-    ema200 = latest.get('EMA_200')
-    price = latest.get('Close')
-    macd_line   = latest.get('MACD_12_26_9')
-    signal_line = latest.get('MACDs_12_26_9')
-    rsi         = latest.get('RSI_14')
-    prev_rsi    = prev.get('RSI_14')
-    atr         = latest.get('ATRr_14')
-    adx         = latest.get('ADX_14')
-    volume      = latest.get('Volume')
-    sma20_vol   = latest.get('VOL_SMA_20')
-    ema_slope_20 = latest.get('EMA_SLOPE_20')
+    ema5 = latest.get("EMA_5")
+    ema13 = latest.get("EMA_13")
+    ema20 = latest.get("EMA_20")
+    ema26 = latest.get("EMA_26")
+    ema200 = latest.get("EMA_200")
+    price = latest.get("Close")
+    macd_line = latest.get("MACD_12_26_9")
+    signal_line = latest.get("MACDs_12_26_9")
+    rsi = latest.get("RSI_14")
+    prev_rsi = prev.get("RSI_14")
+    atr = latest.get("ATRr_14")
+    adx = latest.get("ADX_14")
+    volume = latest.get("Volume")
+    sma20_vol = latest.get("VOL_SMA_20")
+    ema_slope_20 = latest.get("EMA_SLOPE_20")
 
-    prev_ema5  = prev.get('EMA_5')
-    prev_ema13 = prev.get('EMA_13')
-    prev_macd  = prev.get('MACD_12_26_9')
-    prev_sig   = prev.get('MACDs_12_26_9')
+    prev_ema5 = prev.get("EMA_5")
+    prev_ema13 = prev.get("EMA_13")
+    prev_macd = prev.get("MACD_12_26_9")
+    prev_sig = prev.get("MACDs_12_26_9")
 
     score = 0.0
-    ema_signal    = 'neutral'
-    volume_signal = 'neutral'
-    rsi_signal    = 'neutral'
-    is_bullish    = False
+    ema_signal = "neutral"
+    volume_signal = "neutral"
+    rsi_signal = "neutral"
+    is_bullish = False
 
     is_green = (
-        pd.notna(price) and pd.notna(latest.get('Open')) and
-        price > latest.get('Open')
+        pd.notna(price) and pd.notna(latest.get("Open")) and price > latest.get("Open")
     )
 
     # Volume breakout flag (2× threshold, matches scorer.py)
     volume_breakout = (
-        pd.notna(volume) and pd.notna(sma20_vol) and
-        volume > 2.0 * sma20_vol and is_green
+        pd.notna(volume)
+        and pd.notna(sma20_vol)
+        and volume > 2.0 * sma20_vol
+        and is_green
     )
 
     # Momentum (lookback from full df_ind)
-    momentum_1m  = float((price / df_ind['Close'].iloc[i - 21]  - 1) * 100) if i >= 21  else None
-    momentum_3m  = float((price / df_ind['Close'].iloc[i - 63]  - 1) * 100) if i >= 63  else None
-    momentum_6m  = float((price / df_ind['Close'].iloc[i - 126] - 1) * 100) if i >= 126 else None
-    momentum_12m = float((price / df_ind['Close'].iloc[i - 252] - 1) * 100) if i >= 252 else None
+    momentum_1m = (
+        float((price / df_ind["Close"].iloc[i - 21] - 1) * 100) if i >= 21 else None
+    )
+    momentum_3m = (
+        float((price / df_ind["Close"].iloc[i - 63] - 1) * 100) if i >= 63 else None
+    )
+    momentum_6m = (
+        float((price / df_ind["Close"].iloc[i - 126] - 1) * 100) if i >= 126 else None
+    )
+    momentum_12m = (
+        float((price / df_ind["Close"].iloc[i - 252] - 1) * 100) if i >= 252 else None
+    )
 
     # 1. EMA Alignment (20 pts)
     fresh_ema_cross = (
-        pd.notna(ema5) and pd.notna(ema13) and
-        pd.notna(prev_ema5) and pd.notna(prev_ema13) and
-        ema5 > ema13 and prev_ema5 <= prev_ema13
+        pd.notna(ema5)
+        and pd.notna(ema13)
+        and pd.notna(prev_ema5)
+        and pd.notna(prev_ema13)
+        and ema5 > ema13
+        and prev_ema5 <= prev_ema13
     )
     pullback_to_ema20 = (
-        pd.notna(ema20) and pd.notna(price) and
-        pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
-        ema5 > ema13 > ema26 and
-        abs(price - ema20) / ema20 < 0.02
+        pd.notna(ema20)
+        and pd.notna(price)
+        and pd.notna(ema5)
+        and pd.notna(ema13)
+        and pd.notna(ema26)
+        and ema5 > ema13 > ema26
+        and abs(price - ema20) / ema20 < 0.02
     )
     if fresh_ema_cross:
         score += 20
-        ema_signal = 'bullish_cross'
+        ema_signal = "bullish_cross"
     elif pullback_to_ema20:
         score += 15
-        ema_signal = 'bullish_pullback'
-    elif (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
-          ema5 > ema13 > ema26 and price > ema26):
+        ema_signal = "bullish_pullback"
+    elif (
+        pd.notna(ema5)
+        and pd.notna(ema13)
+        and pd.notna(ema26)
+        and ema5 > ema13 > ema26
+        and price > ema26
+    ):
         score += 8
-        ema_signal = 'bullish'
-    elif (pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
-          ema5 < ema13 < ema26):
-        ema_signal = 'bearish'
+        ema_signal = "bullish"
+    elif (
+        pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and ema5 < ema13 < ema26
+    ):
+        ema_signal = "bearish"
 
     # 2. MACD (15 pts — decoupled from EMA cross)
     if pd.notna(macd_line) and pd.notna(signal_line):
         fresh_macd_cross = (
-            pd.notna(prev_macd) and pd.notna(prev_sig) and
-            macd_line > signal_line and prev_macd <= prev_sig
+            pd.notna(prev_macd)
+            and pd.notna(prev_sig)
+            and macd_line > signal_line
+            and prev_macd <= prev_sig
         )
         if fresh_macd_cross and fresh_ema_cross:
             score += 8
@@ -305,25 +346,25 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
 
     # 3. RSI (15 pts)
     if pd.notna(rsi) and pd.notna(prev_rsi):
-        recent_rsi = df_ind['RSI_14'].iloc[max(0, i - 4): i + 1]
+        recent_rsi = df_ind["RSI_14"].iloc[max(0, i - 4) : i + 1]
         was_oversold = any(recent_rsi < 30)
         recovering = was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
         crossing_50 = prev_rsi <= 50 and rsi > 50
         if recovering and fresh_ema_cross:
             score += 15
-            rsi_signal = 'bullish_recovery_confirmed'
+            rsi_signal = "bullish_recovery_confirmed"
         elif recovering:
             score += 15
-            rsi_signal = 'bullish_recovery'
+            rsi_signal = "bullish_recovery"
         elif crossing_50:
             score += 10
-            rsi_signal = 'bullish_crossing'
+            rsi_signal = "bullish_crossing"
         elif 50 < rsi <= 65:
             score += 5
-            rsi_signal = 'bullish_strong'
+            rsi_signal = "bullish_strong"
         elif 65 < rsi <= 68:
-            score += 0 # No bonus for extended RSI
-            rsi_signal = 'bullish_extended'
+            score += 0  # No bonus for extended RSI
+            rsi_signal = "bullish_extended"
         elif rsi > 68:
             pass
 
@@ -331,7 +372,7 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     if pd.notna(volume) and pd.notna(sma20_vol):
         if volume > 2.0 * sma20_vol and is_green:
             score += 15
-            volume_signal = 'bullish'
+            volume_signal = "bullish"
 
     # 5. Trend Quality: ADX + 3-Month Momentum (max 5 pts)
     trend_pts = 0
@@ -351,35 +392,45 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
 
     # is_bullish definition (same as scorer.py Daily)
     is_bullish = bool(
-        (fresh_ema_cross or pullback_to_ema20 or (
-            pd.notna(ema5) and pd.notna(ema13) and pd.notna(ema26) and
-            ema5 > ema13 > ema26
-        )) and
-        pd.notna(macd_line) and pd.notna(signal_line) and macd_line > signal_line and
-        pd.notna(rsi) and rsi > 45
+        (
+            fresh_ema_cross
+            or pullback_to_ema20
+            or (
+                pd.notna(ema5)
+                and pd.notna(ema13)
+                and pd.notna(ema26)
+                and ema5 > ema13 > ema26
+            )
+        )
+        and pd.notna(macd_line)
+        and pd.notna(signal_line)
+        and macd_line > signal_line
+        and pd.notna(rsi)
+        and rsi > 45
     )
 
     above_200ema = bool(price > ema200) if pd.notna(ema200) else None
 
     return {
-        'score': float(score),
-        'rsi': float(rsi) if pd.notna(rsi) else 0.0,
-        'macd': float(macd_line) if pd.notna(macd_line) else 0.0,
-        'ema_signal': ema_signal,
-        'volume_signal': volume_signal,
-        'rsi_signal': rsi_signal,
-        'is_bullish': is_bullish,
-        'volume_breakout': bool(volume_breakout),
-        'atr': float(atr) if pd.notna(atr) else None,
-        'adx': float(adx) if pd.notna(adx) else None,
-        'above_200ema': above_200ema,
-        'ema_slope_20': float(ema_slope_20) if pd.notna(ema_slope_20) else None,
-        'momentum_1m': momentum_1m,
-        'momentum_3m': momentum_3m,
-        'momentum_6m': momentum_6m,
-        'momentum_12m': momentum_12m,
-        'ema20': float(ema20) if pd.notna(ema20) else None,
+        "score": float(score),
+        "rsi": float(rsi) if pd.notna(rsi) else 0.0,
+        "macd": float(macd_line) if pd.notna(macd_line) else 0.0,
+        "ema_signal": ema_signal,
+        "volume_signal": volume_signal,
+        "rsi_signal": rsi_signal,
+        "is_bullish": is_bullish,
+        "volume_breakout": bool(volume_breakout),
+        "atr": float(atr) if pd.notna(atr) else None,
+        "adx": float(adx) if pd.notna(adx) else None,
+        "above_200ema": above_200ema,
+        "ema_slope_20": float(ema_slope_20) if pd.notna(ema_slope_20) else None,
+        "momentum_1m": momentum_1m,
+        "momentum_3m": momentum_3m,
+        "momentum_6m": momentum_6m,
+        "momentum_12m": momentum_12m,
+        "ema20": float(ema20) if pd.notna(ema20) else None,
     }
+
 
 def _build_screen_driven_signals(
     symbol: str,
@@ -404,11 +455,13 @@ def _build_screen_driven_signals(
 
     df_ind = _compute_all_indicators(df, symbol=symbol)
     # Map dates to indices for O(1) lookup
-    date_to_idx = {d.date() if hasattr(d, 'date') else d: i for i, d in enumerate(df.index)}
-    
+    date_to_idx = {
+        d.date() if hasattr(d, "date") else d: i for i, d in enumerate(df.index)
+    }
+
     signals = []
     last_signal_date = None
-    reentry_gap = getattr(config, 'screen_reentry_gap_days', 60)
+    reentry_gap = getattr(config, "screen_reentry_gap_days", 60)
 
     # Ensure screen_dates are sorted
     sorted_screen_dates = sorted(screen_dates)
@@ -420,7 +473,9 @@ def _build_screen_driven_signals(
                 continue
 
         idx = date_to_idx.get(screen_date)
-        if idx is None or idx < 260: # need enough history for indicators (200 EMA + 12m momentum)
+        if (
+            idx is None or idx < 260
+        ):  # need enough history for indicators (200 EMA + 12m momentum)
             continue
 
         if config.date_from and screen_date < config.date_from:
@@ -436,44 +491,49 @@ def _build_screen_driven_signals(
 
         # Hard structural gates — everything else is the screen's responsibility
         # We still respect the 200 EMA as a absolute minimum for long positions
-        if bar.get('above_200ema') is not True:
+        if bar.get("above_200ema") is not True:
             continue
-        
+
         # We also skip stocks in structural 12m downtrends (negative momentum)
-        if bar.get('momentum_12m') is not None and bar['momentum_12m'] < 0:
+        if bar.get("momentum_12m") is not None and bar["momentum_12m"] < 0:
             continue
 
         # RSI ceiling — even in Model B, don't enter extremely overbought stocks.
         # Momentum stocks with RSI > 75 are statistically at elevated reversal risk.
-        rsi_max = getattr(config, 'screen_driven_rsi_max', 75.0)
-        rsi = bar.get('rsi') or 0.0
+        rsi_max = getattr(config, "screen_driven_rsi_max", 75.0)
+        rsi = bar.get("rsi") or 0.0
         if rsi > rsi_max:
             continue
 
-        signals.append({
-            'date': df.index[idx],
-            'score': 100.0, # screen qualification = full score
-            'is_bullish': True,
-            'rsi': bar['rsi'],
-            'adx': bar['adx'],
-            'ema_signal': bar['ema_signal'] or 'bullish',
-            'volume_signal': bar.get('volume_signal', 'neutral'),
-            'rsi_signal': bar.get('rsi_signal', 'neutral'),
-            'close': float(df_ind['Close'].iloc[idx]),
-            'open': float(df_ind['Open'].iloc[idx]),
-            'volume_breakout': bar['volume_breakout'],
-            'atr': bar['atr'],
-            'above_200ema': True,
-            'momentum_12m': bar.get('momentum_12m'),
-            'momentum_3m': bar.get('momentum_3m'),
-            'ema20': bar.get('ema20'),
-            'is_consolidating': True, # bypass — screen validated quality
-        })
+        signals.append(
+            {
+                "date": df.index[idx],
+                "score": 100.0,  # screen qualification = full score
+                "is_bullish": True,
+                "rsi": bar["rsi"],
+                "adx": bar["adx"],
+                "ema_signal": bar["ema_signal"] or "bullish",
+                "volume_signal": bar.get("volume_signal", "neutral"),
+                "rsi_signal": bar.get("rsi_signal", "neutral"),
+                "close": float(df_ind["Close"].iloc[idx]),
+                "open": float(df_ind["Open"].iloc[idx]),
+                "volume_breakout": bar["volume_breakout"],
+                "atr": bar["atr"],
+                "above_200ema": True,
+                "momentum_12m": bar.get("momentum_12m"),
+                "momentum_3m": bar.get("momentum_3m"),
+                "ema20": bar.get("ema20"),
+                "is_consolidating": True,  # bypass — screen validated quality
+            }
+        )
         last_signal_date = screen_date
 
     return signals
 
-def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: BacktestConfig = None):
+
+def score_series(
+    df: pd.DataFrame, symbol: str = None, fund_cache=None, config: BacktestConfig = None
+):
     """
     Computes per-bar scores for all bars in df using a single indicator pass (O(n)).
 
@@ -487,6 +547,7 @@ def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: 
     fund_score = 0.0
     if config and config.include_fundamentals and fund_cache:
         from app.pipeline.scorer import calculate_fundamental_score
+
         fund_score = calculate_fundamental_score(None, fund_cache=fund_cache)
 
     # Single indicator computation pass — O(n)
@@ -494,8 +555,8 @@ def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: 
 
     lookback = config.consolidation_bars if config else 15
     max_range = config.consolidation_max_range_pct if config else 12.0
-    rolling_high = df_ind['High'].rolling(lookback).max().shift(1)
-    rolling_low = df_ind['Low'].rolling(lookback).min().shift(1)
+    rolling_high = df_ind["High"].rolling(lookback).max().shift(1)
+    rolling_low = df_ind["Low"].rolling(lookback).min().shift(1)
     range_pct = (rolling_high - rolling_low) / rolling_low * 100
     is_consolidating_series = range_pct <= max_range
 
@@ -509,38 +570,41 @@ def score_series(df: pd.DataFrame, symbol: str = None, fund_cache=None, config: 
             logger.error("score_series bar %d error: %s", i, e)
             continue
 
-        total_score = bar_data['score'] + fund_score
+        total_score = bar_data["score"] + fund_score
 
-        if bar_data.get('above_200ema') is not True:
+        if bar_data.get("above_200ema") is not True:
             total_score = 0.0
 
-        if bar_data.get('rsi', 0) > 80:
+        if bar_data.get("rsi", 0) > 80:
             total_score = 0.0
 
         # Consolidation check uses pre-computed series
         is_consolidating = bool(is_consolidating_series.iloc[i])
 
-        results.append({
-            'date':           df_ind.index[i],
-            'score':          float(total_score),
-            'is_bullish':     bar_data['is_bullish'],
-            'rsi':            bar_data['rsi'],
-            'adx':            bar_data['adx'],
-            'ema_signal':     bar_data['ema_signal'],
-            'volume_signal':  bar_data['volume_signal'],
-            'rsi_signal':     bar_data['rsi_signal'],
-            'close':          float(df_ind['Close'].iloc[i]),
-            'open':           float(df_ind['Open'].iloc[i]),
-            'volume_breakout': bar_data['volume_breakout'],
-            'atr':            bar_data['atr'],
-            'above_200ema':   bar_data['above_200ema'],
-            'momentum_12m':   bar_data.get('momentum_12m'),
-            'momentum_3m':    bar_data.get('momentum_3m'),
-            'ema20':          bar_data.get('ema20'),
-            'is_consolidating': is_consolidating,
-        })
+        results.append(
+            {
+                "date": df_ind.index[i],
+                "score": float(total_score),
+                "is_bullish": bar_data["is_bullish"],
+                "rsi": bar_data["rsi"],
+                "adx": bar_data["adx"],
+                "ema_signal": bar_data["ema_signal"],
+                "volume_signal": bar_data["volume_signal"],
+                "rsi_signal": bar_data["rsi_signal"],
+                "close": float(df_ind["Close"].iloc[i]),
+                "open": float(df_ind["Open"].iloc[i]),
+                "volume_breakout": bar_data["volume_breakout"],
+                "atr": bar_data["atr"],
+                "above_200ema": bar_data["above_200ema"],
+                "momentum_12m": bar_data.get("momentum_12m"),
+                "momentum_3m": bar_data.get("momentum_3m"),
+                "ema20": bar_data.get("ema20"),
+                "is_consolidating": is_consolidating,
+            }
+        )
 
     return results
+
 
 def _lookup_mtf_state(state_map: dict, signal_date: datetime.date) -> bool:
     """
@@ -550,15 +614,16 @@ def _lookup_mtf_state(state_map: dict, signal_date: datetime.date) -> bool:
     """
     if not state_map:
         return False
-    
+
     sorted_dates = sorted(state_map.keys())
     idx = bisect.bisect_right(sorted_dates, signal_date)
-    
+
     if idx == 0:
         return False
-        
+
     match_date = sorted_dates[idx - 1]
     return state_map[match_date]
+
 
 def _compute_position_size(
     config: BacktestConfig,
@@ -587,6 +652,7 @@ def _compute_position_size(
     max_position = config.starting_capital * (config.max_position_pct / 100.0)
     return min(position_value, max_position)
 
+
 def _compute_signal_tier(signal: dict) -> int:
     """
     Computes the signal quality tier (1-4).
@@ -597,26 +663,27 @@ def _compute_signal_tier(signal: dict) -> int:
     vol = signal.get("volume_breakout", False)
     adx = signal.get("adx") or 0.0
     rsi = signal.get("rsi") or 0.0
-    
+
     is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
-    
+
     if not is_core_ema:
         return 4
-        
+
     if rsi > 65.0:
         return 3
-        
+
     # Tier 1 & 2 require 40 <= RSI <= 65
     if rsi < 40.0:
         return 3
-        
+
     if vol and adx >= 25.0:
         return 1
-        
+
     if vol or adx >= 25.0:
         return 2
-        
-    return 3 # missing both volume breakout and strong ADX
+
+    return 3  # missing both volume breakout and strong ADX
+
 
 def _is_consolidating(
     df: pd.DataFrame,
@@ -637,9 +704,9 @@ def _is_consolidating(
     if signal_idx < lookback + 1:
         return False
 
-    window = df.iloc[signal_idx - lookback: signal_idx]
-    period_high = window['High'].max()
-    period_low = window['Low'].min()
+    window = df.iloc[signal_idx - lookback : signal_idx]
+    period_high = window["High"].max()
+    period_low = window["Low"].min()
 
     if period_low <= 0 or pd.isna(period_high) or pd.isna(period_low):
         return False
@@ -647,12 +714,13 @@ def _is_consolidating(
     range_pct = (period_high - period_low) / period_low * 100
     return range_pct <= max_range_pct
 
+
 def simulate_trades(
-    symbol: str, 
-    sector: str, 
-    df: pd.DataFrame, 
-    scored_dates: list[dict], 
-    config: BacktestConfig, 
+    symbol: str,
+    sector: str,
+    df: pd.DataFrame,
+    scored_dates: list[dict],
+    config: BacktestConfig,
     regime_dict: dict = None,
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
@@ -663,34 +731,36 @@ def simulate_trades(
     Simulates trades based on scored signals.
     Entry: Next day's Open.
     Exit: SL, Target, or Holding Period.
-    
-    screen_dates: if provided, a signal is only acted on if the symbol was in the 
+
+    screen_dates: if provided, a signal is only acted on if the symbol was in the
     screen within config.screen_membership_window_days before the signal date.
-    
-    is_screen_driven: if True (Model B), bypasses quality/tier gates since the 
+
+    is_screen_driven: if True (Model B), bypasses quality/tier gates since the
     screen already validated the entry quality on that exact date.
     """
     trades = []
     last_exit_idx = -1
-    
+
     # Pre-sort screen_dates for efficient binary search
     _sorted_screen_dates = sorted(screen_dates) if screen_dates else None
-    
+
     # Pre-map dates to indices for faster lookup
     date_to_idx = {date: i for i, date in enumerate(df.index)}
-    
+
     for signal in scored_dates:
-        signal_date = signal['date']
+        signal_date = signal["date"]
         # Convert signal_date to datetime.date if it's a Timestamp or string
-        compare_date = signal_date.date() if hasattr(signal_date, 'date') else signal_date
+        compare_date = (
+            signal_date.date() if hasattr(signal_date, "date") else signal_date
+        )
         if isinstance(compare_date, str):
-             compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
+            compare_date = datetime.datetime.strptime(compare_date, "%Y-%m-%d").date()
 
         # ── Screen membership gate (Model A only) ─────────────────────────────
         # If in Model A (is_screen_driven=False) but a screen is provided,
         # we only enter if the symbol was in the named screen recently.
         if _sorted_screen_dates is not None and not is_screen_driven:
-            window_days = getattr(config, 'screen_membership_window_days', 7)
+            window_days = getattr(config, "screen_membership_window_days", 7)
             window_start = compare_date - datetime.timedelta(days=window_days)
             # bisect to find dates in [window_start, compare_date]
             lo = bisect.bisect_left(_sorted_screen_dates, window_start)
@@ -705,24 +775,24 @@ def simulate_trades(
             continue
 
         signal_idx = date_to_idx.get(signal_date)
-        
+
         if signal_idx is None or signal_idx <= last_exit_idx:
             continue
 
         # 200 EMA null-safety gate (belt-and-suspenders; also enforced in score_series)
-        if signal.get('above_200ema') is not True:
+        if signal.get("above_200ema") is not True:
             continue
 
         # Relative strength gate: require positive 12m momentum.
         # EMA crosses on stocks that are down year-over-year are almost always
         # failed bounces in a structural downtrend, not new uptrends.
-        momentum_12m = signal.get('momentum_12m')
+        momentum_12m = signal.get("momentum_12m")
         if momentum_12m is not None and momentum_12m < 0:
             continue
 
         # ADX trend-strength gate (min_adx=0 disables)
         if config.min_adx > 0:
-            adx_val = signal.get('adx')
+            adx_val = signal.get("adx")
             if adx_val is None or adx_val < config.min_adx:
                 continue
 
@@ -742,26 +812,28 @@ def simulate_trades(
             signal_tier = _compute_signal_tier(signal)
             if signal_tier > config.min_signal_tier:
                 continue
-                
+
             rsi_at_signal = signal.get("rsi", 0.0) or 0.0
             if rsi_at_signal > 65.0:
                 continue
-                
-            if signal['score'] < config.effective_score_threshold:
+
+            if signal["score"] < config.effective_score_threshold:
                 continue
 
             # Volume Breakout Filter
             if config.require_volume_breakout:
-                if not signal.get('volume_breakout', False):
+                if not signal.get("volume_breakout", False):
                     continue
 
             # ── Consolidation gate ────────────────────────────────────────────
-            if config.require_consolidation and not signal.get('is_consolidating', False):
+            if config.require_consolidation and not signal.get(
+                "is_consolidating", False
+            ):
                 continue
-        
+
         # ── Entry Logic (Pullback vs Immediate) ───────────────────────────────
-        signal_ema20 = signal.get('ema20')
-        ema_signal_type = signal.get('ema_signal', '')
+        signal_ema20 = signal.get("ema20")
+        ema_signal_type = signal.get("ema_signal", "")
 
         entry_idx = None
         entry_price = None
@@ -769,26 +841,29 @@ def simulate_trades(
 
         use_pullback = (
             config.use_pullback_entry
-            and ema_signal_type == 'bullish_cross'
+            and ema_signal_type == "bullish_cross"
             and signal_ema20 is not None
             and signal_ema20 > 0
         )
 
-        entry_path = 'immediate'  # Track which path was used for stop logic
+        entry_path = "immediate"  # Track which path was used for stop logic
 
         if use_pullback:
             # Wait up to pullback_max_wait_bars for price to touch EMA20
             tol = config.pullback_tolerance_pct / 100.0
-            
+
             # Track whether price held above EMA20 throughout the wait
             all_bars_above_ema20 = True
-            closest_approach_pct = float('inf')  # How close price got to EMA20 (%)
-            
-            for wait_k in range(signal_idx + 1,
-                                min(signal_idx + config.pullback_max_wait_bars + 1,
-                                    len(df))):
+            closest_approach_pct = float("inf")  # How close price got to EMA20 (%)
+
+            for wait_k in range(
+                signal_idx + 1,
+                min(signal_idx + config.pullback_max_wait_bars + 1, len(df)),
+            ):
                 wait_date = df.index[wait_k]
-                wait_compare = wait_date.date() if hasattr(wait_date, 'date') else wait_date
+                wait_compare = (
+                    wait_date.date() if hasattr(wait_date, "date") else wait_date
+                )
 
                 # Abort if regime turns bearish during the wait
                 if config.use_regime_filter and regime_dict is not None:
@@ -796,9 +871,9 @@ def simulate_trades(
                         all_bars_above_ema20 = False
                         break
 
-                day_low   = df.iloc[wait_k]['Low']
-                day_close = df.iloc[wait_k]['Close']
-                day_open  = df.iloc[wait_k]['Open']
+                day_low = df.iloc[wait_k]["Low"]
+                day_close = df.iloc[wait_k]["Close"]
+                day_open = df.iloc[wait_k]["Open"]
 
                 # Invalidation: closed meaningfully below EMA20
                 if day_close < signal_ema20 * (1 - 0.025):
@@ -820,21 +895,27 @@ def simulate_trades(
                     # Enter at this bar's close — the close confirms support held.
                     # Using next-bar open risks entering after a gap-up with the same
                     # structural stop, making the effective risk distance tighter.
-                    entry_path = 'pullback_a'
+                    entry_path = "pullback_a"
                     entry_idx = wait_k
                     entry_date = wait_date
-                    entry_price = float(df.iloc[wait_k]['Close'])
+                    entry_price = float(df.iloc[wait_k]["Close"])
                     break
 
             # Path B: Momentum continuation — price never pulled back but
             # consolidated above EMA20 throughout the wait window.
-            if entry_idx is None and all_bars_above_ema20 and closest_approach_pct != float('inf'):
+            if (
+                entry_idx is None
+                and all_bars_above_ema20
+                and closest_approach_pct != float("inf")
+            ):
                 if closest_approach_pct <= 8.0:
-                    last_wait_k = min(signal_idx + config.pullback_max_wait_bars, len(df) - 1)
-                    entry_path  = 'momentum_b'
-                    entry_idx   = last_wait_k
-                    entry_date  = df.index[last_wait_k]
-                    entry_price = float(df.iloc[last_wait_k]['Open'])
+                    last_wait_k = min(
+                        signal_idx + config.pullback_max_wait_bars, len(df) - 1
+                    )
+                    entry_path = "momentum_b"
+                    entry_idx = last_wait_k
+                    entry_date = df.index[last_wait_k]
+                    entry_price = float(df.iloc[last_wait_k]["Open"])
 
             if entry_idx is None:
                 continue
@@ -845,28 +926,30 @@ def simulate_trades(
                 break
 
             entry_date = df.index[entry_idx]
-            entry_compare_date = entry_date.date() if hasattr(entry_date, 'date') else entry_date
+            entry_compare_date = (
+                entry_date.date() if hasattr(entry_date, "date") else entry_date
+            )
 
             if config.use_regime_filter and regime_dict is not None:
                 if not regime_dict.get(entry_compare_date, False):
                     continue
 
-            entry_price = float(df.iloc[entry_idx]['Open'])
+            entry_price = float(df.iloc[entry_idx]["Open"])
 
         # Model B momentum guard: verify stock is still trending at entry.
         # A momentum stock that has lost 1-month momentum since screen qualification
         # is a failed setup — the thesis has already broken down before entry.
         if is_screen_driven and entry_idx >= 21:
             entry_momentum_1m = (
-                (df.iloc[entry_idx]['Close'] / df.iloc[entry_idx - 21]['Close'] - 1) * 100
-            )
+                df.iloc[entry_idx]["Close"] / df.iloc[entry_idx - 21]["Close"] - 1
+            ) * 100
             if entry_momentum_1m < 0:
                 continue
 
         pos_size = _compute_position_size(
             config,
             entry_price=entry_price,
-            atr=signal.get('atr'),
+            atr=signal.get("atr"),
         )
 
         # ── Stop and Target ────────────────────────────────────────────────────
@@ -876,7 +959,7 @@ def simulate_trades(
         # stop: if price returns below where it consolidated, the breakout thesis
         # is invalid. This is path-agnostic (applies to both pullback and momentum).
         MIN_STOP_PCT = 0.05  # 5% minimum: hard floor against compressed ATR
-        atr_val = signal.get('atr')
+        atr_val = signal.get("atr")
 
         if is_screen_driven:
             # Model B: momentum/trending stocks are NOT consolidating.
@@ -894,14 +977,20 @@ def simulate_trades(
             # Model A: stock entered after consolidation — structural stop is valid.
             consol_start = max(0, signal_idx - config.consolidation_bars)
             consol_window = df.iloc[consol_start:signal_idx]
-            consol_low = float(consol_window['Low'].min()) if len(consol_window) > 0 else None
+            consol_low = (
+                float(consol_window["Low"].min()) if len(consol_window) > 0 else None
+            )
 
             # 2% buffer below consolidation low — allows for wick through without
             # invalidation, but a close below means the structure has broken
-            structural_stop = (consol_low * 0.98) if (consol_low and consol_low > 0) else None
+            structural_stop = (
+                (consol_low * 0.98) if (consol_low and consol_low > 0) else None
+            )
 
             # ATR stop as secondary reference
-            atr_stop = (entry_price - config.atr_multiplier * atr_val) if atr_val else None
+            atr_stop = (
+                (entry_price - config.atr_multiplier * atr_val) if atr_val else None
+            )
 
             # Use the WIDER stop (lower price) — gives the trade room to breathe
             if structural_stop and atr_stop:
@@ -911,12 +1000,18 @@ def simulate_trades(
             elif atr_stop:
                 base_stop = atr_stop
             else:
-                base_stop = entry_price * (1 - config.stop_loss_pct / 100) if config.stop_loss_pct > 0 else entry_price * 0.93
+                base_stop = (
+                    entry_price * (1 - config.stop_loss_pct / 100)
+                    if config.stop_loss_pct > 0
+                    else entry_price * 0.93
+                )
 
         # Enforce 5% minimum — if consolidation was very tight, base_stop
         # can be only 2-3% away, which is noise on NSE stocks
         min_stop_price = entry_price * (1 - MIN_STOP_PCT)
-        stop_loss_price = min(base_stop, min_stop_price)  # min = lower price = wider stop
+        stop_loss_price = min(
+            base_stop, min_stop_price
+        )  # min = lower price = wider stop
 
         actual_risk = max(entry_price - stop_loss_price, entry_price * 0.02)
         if config.target_pct > 0:
@@ -935,29 +1030,29 @@ def simulate_trades(
         # Exit conditions
         exit_price = None
         exit_date = None
-        exit_reason = 'holding_period'
+        exit_reason = "holding_period"
 
         t1_hit = False
         t1_exit_trade = None
 
         # Walk forward up to config.holding_days
         final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
-        
+
         highest_price_since_entry = entry_price
-        
+
         consecutive_bearish_bars = 0
         invalidation_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
-        
+
         for k in range(entry_idx, final_idx + 1):
-            day_low = df.iloc[k]['Low']
-            day_high = df.iloc[k]['High']
-            day_open = df.iloc[k]['Open']
-            
+            day_low = df.iloc[k]["Low"]
+            day_high = df.iloc[k]["High"]
+            day_open = df.iloc[k]["Open"]
+
             highest_price_since_entry = max(highest_price_since_entry, day_high)
-            
+
             # Signal Invalidation Exit
             if config.use_signal_invalidation_exit:
-                day_close = df.iloc[k]['Close']
+                day_close = df.iloc[k]["Close"]
                 if day_close < invalidation_floor:
                     consecutive_bearish_bars += 1
                 else:
@@ -966,12 +1061,12 @@ def simulate_trades(
                 if consecutive_bearish_bars >= 2:
                     next_k = k + 1
                     if next_k < len(df):
-                        exit_price = df.iloc[next_k]['Open']
+                        exit_price = df.iloc[next_k]["Open"]
                         exit_date = df.index[next_k]
                     else:
-                        exit_price = df.iloc[k]['Close']
+                        exit_price = df.iloc[k]["Close"]
                         exit_date = df.index[k]
-                    exit_reason = 'signal_invalidated'
+                    exit_reason = "signal_invalidated"
                     last_exit_idx = next_k if next_k < len(df) else k
                     break
 
@@ -979,27 +1074,33 @@ def simulate_trades(
             if day_low <= stop_loss_price:
                 exit_price = stop_loss_price
                 exit_date = df.index[k]
-                exit_reason = 'stop_loss'
+                exit_reason = "stop_loss"
                 last_exit_idx = k
                 break
-                
+
             # Partial exit T1
             if not t1_hit and t1_price is not None and day_high >= t1_price:
                 t1_hit = True
                 t1_exit_trade = TradeResult(
                     symbol=symbol,
                     sector=sector,
-                    signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
-                    entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
-                    exit_date=df.index[k].date() if hasattr(df.index[k], 'date') else df.index[k],
-                    exit_reason='target_partial',
-                    signal_score=signal['score'],
+                    signal_date=signal_date.date()
+                    if hasattr(signal_date, "date")
+                    else signal_date,
+                    entry_date=entry_date.date()
+                    if hasattr(entry_date, "date")
+                    else entry_date,
+                    exit_date=df.index[k].date()
+                    if hasattr(df.index[k], "date")
+                    else df.index[k],
+                    exit_reason="target_partial",
+                    signal_score=signal["score"],
                     entry_price=float(entry_price),
                     exit_price=float(t1_price),
                     return_pct=float(((t1_price - entry_price) / entry_price) * 100),
-                    rsi_at_signal=signal['rsi'],
-                    adx_at_signal=signal['adx'],
-                    ema_signal=signal['ema_signal'],
+                    rsi_at_signal=signal["rsi"],
+                    adx_at_signal=signal["adx"],
+                    ema_signal=signal["ema_signal"],
                     position_size_used=pos_size * 0.5,
                 )
                 # Move stop to breakeven for the remainder
@@ -1015,24 +1116,28 @@ def simulate_trades(
             if day_high >= target_price:
                 exit_price = target_price
                 exit_date = df.index[k]
-                exit_reason = 'target'
+                exit_reason = "target"
                 last_exit_idx = k
                 break
 
             # Check Trailing Stop (% based)
             if config.trailing_stop_pct > 0:
-                trailing_stop_price = highest_price_since_entry * (1 - config.trailing_stop_pct / 100)
+                trailing_stop_price = highest_price_since_entry * (
+                    1 - config.trailing_stop_pct / 100
+                )
                 if day_low <= trailing_stop_price:
                     exit_price = min(trailing_stop_price, day_open)
                     exit_date = df.index[k]
-                    exit_reason = 'trailing_stop'
+                    exit_reason = "trailing_stop"
                     last_exit_idx = k
                     break
 
             # ATR Trailing Stop
-            if config.use_atr_trailing_stop and signal.get('atr'):
-                atr_val = signal['atr']
-                activation_threshold = entry_price + (config.atr_trailing_activation * atr_val)
+            if config.use_atr_trailing_stop and signal.get("atr"):
+                atr_val = signal["atr"]
+                activation_threshold = entry_price + (
+                    config.atr_trailing_activation * atr_val
+                )
                 if highest_price_since_entry >= activation_threshold:
                     # Floor at entry_price: trailing stop must never fire below breakeven.
                     # Without this floor, if activation=1.0 and multiplier=1.5,
@@ -1040,48 +1145,56 @@ def simulate_trades(
                     # which causes losses on trailing stop exits.
                     atr_trail_stop = max(
                         entry_price,
-                        highest_price_since_entry - (config.atr_trailing_multiplier * atr_val),
+                        highest_price_since_entry
+                        - (config.atr_trailing_multiplier * atr_val),
                     )
                     if day_low <= atr_trail_stop:
                         exit_price = max(atr_trail_stop, day_open)
                         exit_date = df.index[k]
-                        exit_reason = 'atr_trailing_stop'
+                        exit_reason = "atr_trailing_stop"
                         last_exit_idx = k
                         break
-        
+
         if exit_price is None:
             # Exit on last day's Close
             exit_idx = final_idx
-            exit_price = df.iloc[exit_idx]['Close']
+            exit_price = df.iloc[exit_idx]["Close"]
             exit_date = df.index[exit_idx]
-            exit_reason = 'holding_period'
+            exit_reason = "holding_period"
             last_exit_idx = exit_idx
-            
+
         if t1_exit_trade is not None:
             trades.append(t1_exit_trade)
             # The main TradeResult for the remainder uses half position size
             pos_size = pos_size * 0.5
 
         return_pct = ((exit_price - entry_price) / entry_price) * 100
-        
-        trades.append(TradeResult(
-            symbol=symbol,
-            sector=sector,
-            signal_date=signal_date.date() if hasattr(signal_date, 'date') else signal_date,
-            entry_date=entry_date.date() if hasattr(entry_date, 'date') else entry_date,
-            exit_date=exit_date.date() if hasattr(exit_date, 'date') else exit_date,
-            exit_reason=exit_reason,
-            signal_score=signal['score'],
-            entry_price=float(entry_price),
-            exit_price=float(exit_price),
-            return_pct=float(return_pct),
-            rsi_at_signal=signal['rsi'],
-            adx_at_signal=signal['adx'],
-            ema_signal=signal['ema_signal'],
-            position_size_used=pos_size,
-        ))
-            
+
+        trades.append(
+            TradeResult(
+                symbol=symbol,
+                sector=sector,
+                signal_date=signal_date.date()
+                if hasattr(signal_date, "date")
+                else signal_date,
+                entry_date=entry_date.date()
+                if hasattr(entry_date, "date")
+                else entry_date,
+                exit_date=exit_date.date() if hasattr(exit_date, "date") else exit_date,
+                exit_reason=exit_reason,
+                signal_score=signal["score"],
+                entry_price=float(entry_price),
+                exit_price=float(exit_price),
+                return_pct=float(return_pct),
+                rsi_at_signal=signal["rsi"],
+                adx_at_signal=signal["adx"],
+                ema_signal=signal["ema_signal"],
+                position_size_used=pos_size,
+            )
+        )
+
     return trades
+
 
 def simulate_portfolio(
     all_signals: dict[str, list[dict]],
@@ -1108,8 +1221,8 @@ def simulate_portfolio(
     timeline: list[tuple] = []
     for symbol, signals in all_signals.items():
         for sig in signals:
-            sig_date = sig['date']
-            compare = sig_date.date() if hasattr(sig_date, 'date') else sig_date
+            sig_date = sig["date"]
+            compare = sig_date.date() if hasattr(sig_date, "date") else sig_date
             timeline.append((compare, symbol, sig))
 
     timeline.sort(key=lambda x: x[0])
@@ -1123,7 +1236,7 @@ def simulate_portfolio(
         if symbol in open_positions and open_positions[symbol] > compare_date:
             continue
 
-        sector = stocks_info.get(symbol, 'Unknown')
+        sector = stocks_info.get(symbol, "Unknown")
 
         # Enforce max_concurrent_positions
         if config.max_concurrent_positions > 0:
@@ -1136,7 +1249,8 @@ def simulate_portfolio(
         # Enforce max_sector_positions
         if config.max_sector_positions > 0:
             sector_active = sum(
-                1 for sym, exit_d in open_positions.items()
+                1
+                for sym, exit_d in open_positions.items()
                 if stocks_info.get(sym) == sector and exit_d > compare_date
             )
             if sector_active >= config.max_sector_positions:
@@ -1155,7 +1269,11 @@ def simulate_portfolio(
             regime_dict=regime_dict,
             weekly_state_map=(weekly_state_maps or {}).get(symbol),
             monthly_state_map=(monthly_state_maps or {}).get(symbol),
-            screen_dates=(screen_dates_map.get(symbol, []) if screen_dates_map is not None else None),
+            screen_dates=(
+                screen_dates_map.get(symbol, [])
+                if screen_dates_map is not None
+                else None
+            ),
             is_screen_driven=is_screen_driven,
         )
 
@@ -1166,7 +1284,10 @@ def simulate_portfolio(
 
     return all_trades
 
-def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, config: BacktestConfig):
+
+def compute_metrics(
+    trades: list[TradeResult], benchmark_data: pd.DataFrame, config: BacktestConfig
+):
     """
     Calculates aggregate metrics and equity curve.
     Uses starting_capital and position_size from config.
@@ -1185,90 +1306,111 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             "total_return_pct": 0.0,
             "benchmark_return_pct": 0.0,
             "equity_curve": [],
-            "expectancy":     0.0,
-            "profit_factor":  0.0,
-            "avg_win_pct":    0.0,
-            "avg_loss_pct":   0.0,
+            "expectancy": 0.0,
+            "profit_factor": 0.0,
+            "avg_win_pct": 0.0,
+            "avg_loss_pct": 0.0,
             "gross_return_pct": 0.0,
             "total_cost_drag_pct": 0.0,
-            "exit_breakdown": {"stop_loss": 0, "target": 0, "target_partial": 0, "trailing_stop": 0, "signal_invalidated": 0, "holding_period": 0, "atr_trailing_stop": 0},
+            "exit_breakdown": {
+                "stop_loss": 0,
+                "target": 0,
+                "target_partial": 0,
+                "trailing_stop": 0,
+                "signal_invalidated": 0,
+                "holding_period": 0,
+                "atr_trailing_stop": 0,
+            },
         }
-        
+
     # Apply round-trip transaction costs to every trade's return.
     # This models brokerage, STT, exchange fees, and slippage.
     # At 0.5% per trade, 152 trades = ~7.6% total drag on capital — real and material.
     cost_adjusted_returns = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
 
-    returns = cost_adjusted_returns   # use cost-adjusted throughout
+    returns = cost_adjusted_returns  # use cost-adjusted throughout
     total_trades = len(trades)
     winning_trades = [r for r in returns if r > 0]
     win_rate = len(winning_trades) / total_trades
     losing_returns = [r for r in returns if r <= 0]
-    avg_win_pct    = sum(winning_trades) / len(winning_trades) if winning_trades else 0.0
-    avg_loss_pct   = sum(losing_returns)  / len(losing_returns)  if losing_returns  else 0.0
-    expectancy     = (win_rate * avg_win_pct) + ((1 - win_rate) * avg_loss_pct)
-    profit_factor  = (
+    avg_win_pct = sum(winning_trades) / len(winning_trades) if winning_trades else 0.0
+    avg_loss_pct = sum(losing_returns) / len(losing_returns) if losing_returns else 0.0
+    expectancy = (win_rate * avg_win_pct) + ((1 - win_rate) * avg_loss_pct)
+    profit_factor = (
         (win_rate * avg_win_pct) / ((1 - win_rate) * abs(avg_loss_pct))
-        if losing_returns and avg_loss_pct != 0 else 0.0
+        if losing_returns and avg_loss_pct != 0
+        else 0.0
     )
 
-    reason_counts  = Counter(t.exit_reason for t in trades)
+    reason_counts = Counter(t.exit_reason for t in trades)
     exit_breakdown = {
-        "stop_loss":           reason_counts.get('stop_loss', 0),
-        "target":              reason_counts.get('target', 0),
-        "target_partial":      reason_counts.get('target_partial', 0),
-        "trailing_stop":       reason_counts.get('trailing_stop', 0),
-        "atr_trailing_stop":   reason_counts.get('atr_trailing_stop', 0),
-        "signal_invalidated":  reason_counts.get('signal_invalidated', 0),
-        "holding_period":      reason_counts.get('holding_period', 0),
+        "stop_loss": reason_counts.get("stop_loss", 0),
+        "target": reason_counts.get("target", 0),
+        "target_partial": reason_counts.get("target_partial", 0),
+        "trailing_stop": reason_counts.get("trailing_stop", 0),
+        "atr_trailing_stop": reason_counts.get("atr_trailing_stop", 0),
+        "signal_invalidated": reason_counts.get("signal_invalidated", 0),
+        "holding_period": reason_counts.get("holding_period", 0),
     }
-    
+
     avg_return_pct = sum(returns) / total_trades
     median_return_pct = float(pd.Series(returns).median())
     best_trade_pct = max(returns)
     worst_trade_pct = min(returns)
-    
+
     # Cost-adjusted PnL: cost already baked into cost_adjusted_returns
     total_pnl = sum(
-        (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
+        (t.return_pct - ROUND_TRIP_COST_PCT)
+        / 100.0
+        * (t.position_size_used or config.position_size)
         for t in trades
     )
-    total_return_pct = (total_pnl / config.starting_capital) * 100 if config.starting_capital > 0 else 0.0
-    
+    total_return_pct = (
+        (total_pnl / config.starting_capital) * 100
+        if config.starting_capital > 0
+        else 0.0
+    )
+
     # Benchmark return
     benchmark_return_pct = 0.0
     if benchmark_data is not None and len(benchmark_data) > 1:
-        start_price = benchmark_data.iloc[0]['Close']
-        end_price = benchmark_data.iloc[-1]['Close']
+        start_price = benchmark_data.iloc[0]["Close"]
+        end_price = benchmark_data.iloc[-1]["Close"]
         benchmark_return_pct = ((end_price - start_price) / start_price) * 100
-        
+
     # Equity Curve Construction
     strat_returns_by_date = {}
     for t in trades:
         d = t.exit_date
         # Cost-adjusted P&L
-        pl = (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * (t.position_size_used or config.position_size)
+        pl = (
+            (t.return_pct - ROUND_TRIP_COST_PCT)
+            / 100.0
+            * (t.position_size_used or config.position_size)
+        )
         strat_returns_by_date[d] = strat_returns_by_date.get(d, 0) + pl
-        
+
     equity_curve = []
     cumulative_pl = 0.0
-    
+
     if benchmark_data is not None:
-        first_bench_price = benchmark_data.iloc[0]['Close']
-        
+        first_bench_price = benchmark_data.iloc[0]["Close"]
+
         for date, row in benchmark_data.iterrows():
             d = date.date()
             cumulative_pl += strat_returns_by_date.get(d, 0.0)
-            
+
             # Scaled benchmark: (Price / StartPrice) * config.starting_capital
-            bench_equity = (row['Close'] / first_bench_price) * config.starting_capital
-            
-            equity_curve.append({
-                "date": d.isoformat(),
-                "equity": float(config.starting_capital + cumulative_pl),
-                "benchmark_equity": float(bench_equity)
-            })
-    
+            bench_equity = (row["Close"] / first_bench_price) * config.starting_capital
+
+            equity_curve.append(
+                {
+                    "date": d.isoformat(),
+                    "equity": float(config.starting_capital + cumulative_pl),
+                    "benchmark_equity": float(bench_equity),
+                }
+            )
+
     # Updated Sharpe Ratio using trade returns instead of flat equity curve returns
     sharpe_ratio = 0.0
     if len(returns) > 1:
@@ -1277,16 +1419,18 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             # Annualise assuming average 20 trades/year per symbol universe
             # Use trades per year ratio relative to a 252-day year
             date_range_days = max(
-                (max(t.exit_date for t in trades) - min(t.entry_date for t in trades)).days,
-                1
+                (
+                    max(t.exit_date for t in trades) - min(t.entry_date for t in trades)
+                ).days,
+                1,
             )
             trades_per_year = len(returns) / (date_range_days / 252)
-            sharpe_ratio = (r_series.mean() / r_series.std()) * (trades_per_year ** 0.5)
+            sharpe_ratio = (r_series.mean() / r_series.std()) * (trades_per_year**0.5)
 
     # Max Drawdown from equity curve
     max_drawdown_pct = 0.0
     if equity_curve:
-        equities = [pt['equity'] for pt in equity_curve]
+        equities = [pt["equity"] for pt in equity_curve]
         peak = equities[0]
         for e in equities:
             if e > peak:
@@ -1294,7 +1438,7 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
             dd = (peak - e) / peak * 100 if peak > 0 else 0
             if dd > max_drawdown_pct:
                 max_drawdown_pct = dd
-                
+
     return {
         "total_trades": total_trades,
         "winning_trades": len(winning_trades),
@@ -1307,23 +1451,34 @@ def compute_metrics(trades: list[TradeResult], benchmark_data: pd.DataFrame, con
         "sharpe_ratio": float(sharpe_ratio),
         "total_return_pct": float(total_return_pct),
         "gross_return_pct": float(  # New: pre-cost return
-            sum(t.return_pct / 100.0 * (t.position_size_used or config.position_size) for t in trades)
-            / config.starting_capital * 100
+            sum(
+                t.return_pct / 100.0 * (t.position_size_used or config.position_size)
+                for t in trades
+            )
+            / config.starting_capital
+            * 100
         ),
         "total_cost_drag_pct": float(  # New: explicit cost drag
-            len(trades) * (ROUND_TRIP_COST_PCT / 100.0) *   # pct → decimal
-            (sum(t.position_size_used or config.position_size for t in trades) / len(trades))
-            / config.starting_capital * 100
-            if trades else 0.0
+            len(trades)
+            * (ROUND_TRIP_COST_PCT / 100.0)  # pct → decimal
+            * (
+                sum(t.position_size_used or config.position_size for t in trades)
+                / len(trades)
+            )
+            / config.starting_capital
+            * 100
+            if trades
+            else 0.0
         ),
         "benchmark_return_pct": float(benchmark_return_pct),
         "equity_curve": equity_curve,
-        "expectancy":     float(expectancy),
-        "profit_factor":  float(profit_factor),
-        "avg_win_pct":    float(avg_win_pct),
-        "avg_loss_pct":   float(avg_loss_pct),
+        "expectancy": float(expectancy),
+        "profit_factor": float(profit_factor),
+        "avg_win_pct": float(avg_win_pct),
+        "avg_loss_pct": float(avg_loss_pct),
         "exit_breakdown": exit_breakdown,
     }
+
 
 def run_backtest(db: Session, run_id: str, config: BacktestConfig):
     """
@@ -1339,64 +1494,77 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         try:
             # Update status to running
-            run.status = 'running'
+            run.status = "running"
             db.commit()
 
             # 1. Fetch benchmark data (^NSEI)
             logger.info("Fetching benchmark data (^NSEI)")
-            benchmark_df = _get_cached_ohlcv("^NSEI", period='5y')
+            benchmark_df = _get_cached_ohlcv("^NSEI", period="5y")
 
             regime_dict = {}
             if benchmark_df is not None and not benchmark_df.empty:
                 # pandas-ta extensions need to be available
-                import pandas_ta_classic as ta
                 benchmark_df.ta.ema(length=50, append=True)
                 benchmark_df.ta.ema(length=200, append=True)
                 # Require price above BOTH 50 EMA (short-term trend) and 200 EMA (macro trend).
                 # Nifty above 50 EMA alone allows entries during corrections; the 200 EMA
                 # confirms the macro bull market is intact before taking any long position.
                 valid = benchmark_df[
-                    benchmark_df['EMA_50'].notna() & benchmark_df['EMA_200'].notna()
+                    benchmark_df["EMA_50"].notna() & benchmark_df["EMA_200"].notna()
                 ]
-                regime_dict = dict(zip(
-                    valid.index.date,
-                    (valid['Close'] > valid['EMA_50']) &
-                    (valid['Close'] > valid['EMA_200']) &
-                    (valid['EMA_50'] > valid['EMA_200'])   # Golden cross: 50 EMA above 200 EMA confirms
-                                                        # structural bull market, not just a bounce.
-                                                        # Blocks entries when index recovered above EMAs
-                                                        # but the trend hasn't structurally reversed yet.
-                ))
+                regime_dict = dict(
+                    zip(
+                        valid.index.date,
+                        (valid["Close"] > valid["EMA_50"])
+                        & (valid["Close"] > valid["EMA_200"])
+                        & (
+                            valid["EMA_50"] > valid["EMA_200"]
+                        ),  # Golden cross: 50 EMA above 200 EMA confirms
+                        # structural bull market, not just a bounce.
+                        # Blocks entries when index recovered above EMAs
+                        # but the trend hasn't structurally reversed yet.
+                    )
+                )
 
             # 2. Select symbols
             screen_dates_map: dict[str, list[datetime.date]] = {}
-            is_screen_filtered = bool(config.screen_slug and config.screen_slug != "all")
+            is_screen_filtered = bool(
+                config.screen_slug and config.screen_slug != "all"
+            )
 
             if is_screen_filtered:
                 if config.screen_slug not in SCREEN_REGISTRY:
                     raise ValueError(f"Invalid screen slug: {config.screen_slug}")
 
-                logger.info(f"Filtering symbols using historical screen data: {config.screen_slug}")
+                logger.info(
+                    f"Filtering symbols using historical screen data: {config.screen_slug}"
+                )
                 # Fetch symbols that passed this screen at any point during the backtest window
                 raw_screen_rows = (
                     db.query(ScreenResult.symbol, ScreenResult.computed_at)
                     .filter(
                         ScreenResult.screen_slug == config.screen_slug,
                         ScreenResult.computed_at >= config.date_from,
-                        ScreenResult.computed_at <= config.date_to
+                        ScreenResult.computed_at <= config.date_to,
                     )
                     .all()
                 )
-                
+
                 if not raw_screen_rows:
-                     logger.warning(
-                         "Selected screen '%s' returned no historical data for the period %s to %s.",
-                         config.screen_slug, config.date_from, config.date_to
-                     )
+                    logger.warning(
+                        "Selected screen '%s' returned no historical data for the period %s to %s.",
+                        config.screen_slug,
+                        config.date_from,
+                        config.date_to,
+                    )
 
                 for symbol, computed_at in raw_screen_rows:
                     # computed_at may be datetime.date or datetime.datetime
-                    d = computed_at if isinstance(computed_at, datetime.date) else computed_at.date()
+                    d = (
+                        computed_at
+                        if isinstance(computed_at, datetime.date)
+                        else computed_at.date()
+                    )
                     screen_dates_map.setdefault(symbol, []).append(d)
 
                 # Sort each symbol's screen dates for bisect lookup in simulate_trades
@@ -1414,7 +1582,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 symbols = [row[0] for row in symbol_query]
 
             if config.symbol_limit:
-                symbols = symbols[:config.symbol_limit]
+                symbols = symbols[: config.symbol_limit]
 
             run.symbols_total = len(symbols)
             db.commit()
@@ -1441,12 +1609,12 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             for symbol in symbols:
                 try:
                     # Fetch historical OHLCV via optimized cache
-                    df = _get_cached_ohlcv(symbol, period='5y')
+                    df = _get_cached_ohlcv(symbol, period="5y")
                     if df is None or df.empty:
                         continue
 
                     fund_cache = fund_caches.get(symbol)
-                    
+
                     # ── Signal generation: screen-driven (Model B) vs. score_series (Model A) ──
                     # If screen_signal_mode is True and we have a screen, use screen dates.
                     if config.screen_signal_mode and is_screen_filtered:
@@ -1454,15 +1622,17 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                             symbol, screen_dates_map.get(symbol, []), df, config
                         )
                     else:
-                        scored_dates = score_series(df, symbol=symbol, fund_cache=fund_cache, config=config)
+                        scored_dates = score_series(
+                            df, symbol=symbol, fund_cache=fund_cache, config=config
+                        )
 
                     # Multi-Timeframe Confirmation
                     weekly_state_map = None
                     monthly_state_map = None
                     if config.require_weekly_confirmation:
-                        weekly_state_map = build_mtf_state_map(df, 'W')
+                        weekly_state_map = build_mtf_state_map(df, "W")
                     if config.require_monthly_confirmation:
-                        monthly_state_map = build_mtf_state_map(df, 'M')
+                        monthly_state_map = build_mtf_state_map(df, "M")
 
                     # Run simulation
                     sector = stocks_info.get(symbol, "Unknown")
@@ -1478,14 +1648,21 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     else:
                         # Original per-symbol path (no portfolio limits)
                         trades = simulate_trades(
-                            symbol, sector, df, scored_dates, config, 
+                            symbol,
+                            sector,
+                            df,
+                            scored_dates,
+                            config,
                             regime_dict=regime_dict,
                             weekly_state_map=weekly_state_map,
                             monthly_state_map=monthly_state_map,
-                            screen_dates=screen_dates_map.get(symbol, []) if is_screen_filtered else None,
-                            is_screen_driven=config.screen_signal_mode and is_screen_filtered,
+                            screen_dates=screen_dates_map.get(symbol, [])
+                            if is_screen_filtered
+                            else None,
+                            is_screen_driven=config.screen_signal_mode
+                            and is_screen_filtered,
                         )
-                        
+
                         # Save trades to DB
                         db_trades = []
                         for t in trades:
@@ -1503,7 +1680,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                                 "return_pct": t.return_pct,
                                 "rsi_at_signal": t.rsi_at_signal,
                                 "adx_at_signal": t.adx_at_signal,
-                                "ema_signal": t.ema_signal
+                                "ema_signal": t.ema_signal,
                             }
                             db_trades.append(db_trade)
                             all_trades.append(t)
@@ -1512,11 +1689,11 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                             db.bulk_insert_mappings(BacktestTrade, db_trades)
 
                     symbols_processed += 1
-                    
+
                     # Periodic commits
                     if symbols_processed % 10 == 0:
                         db.commit()
-                    
+
                     if symbols_processed % 5 == 0:
                         run.symbols_done = symbols_processed
                         db.commit()
@@ -1534,10 +1711,17 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     config.max_sector_positions,
                 )
                 all_trades = simulate_portfolio(
-                    all_signals_map, all_dfs_map, stocks_info, config,
+                    all_signals_map,
+                    all_dfs_map,
+                    stocks_info,
+                    config,
                     regime_dict=regime_dict,
-                    weekly_state_maps=weekly_maps if config.require_weekly_confirmation else None,
-                    monthly_state_maps=monthly_maps if config.require_monthly_confirmation else None,
+                    weekly_state_maps=weekly_maps
+                    if config.require_weekly_confirmation
+                    else None,
+                    monthly_state_maps=monthly_maps
+                    if config.require_monthly_confirmation
+                    else None,
                     screen_dates_map=screen_dates_map if is_screen_filtered else None,
                     is_screen_driven=config.screen_signal_mode and is_screen_filtered,
                 )
@@ -1574,35 +1758,35 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 effective_to = config.date_to or datetime.date.today()
 
                 benchmark_df = benchmark_df[
-                  (benchmark_df.index.normalize() >= pd.Timestamp(effective_from)) &
-                  (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
+                    (benchmark_df.index.normalize() >= pd.Timestamp(effective_from))
+                    & (benchmark_df.index.normalize() <= pd.Timestamp(effective_to))
                 ]
 
             metrics = compute_metrics(all_trades, benchmark_df, config)
-            
+
             # Update run with results
-            run.total_trades = metrics['total_trades']
-            run.winning_trades = metrics['winning_trades']
-            run.win_rate = metrics['win_rate']
-            run.avg_return_pct = metrics['avg_return_pct']
-            run.median_return_pct = metrics['median_return_pct']
-            run.best_trade_pct = metrics['best_trade_pct']
-            run.worst_trade_pct = metrics['worst_trade_pct']
-            run.max_drawdown_pct = metrics['max_drawdown_pct']
-            run.sharpe_ratio = metrics['sharpe_ratio']
-            run.total_return_pct = metrics['total_return_pct']
-            run.gross_return_pct = metrics['gross_return_pct']
-            run.total_cost_drag_pct = metrics['total_cost_drag_pct']
-            run.benchmark_return_pct = metrics['benchmark_return_pct']
-            run.expectancy = metrics['expectancy']
-            run.profit_factor = metrics['profit_factor']
-            run.avg_win_pct = metrics['avg_win_pct']
-            run.avg_loss_pct = metrics['avg_loss_pct']
-            run.exit_breakdown_json = json.dumps(metrics['exit_breakdown'])
-            run.equity_curve_json = json.dumps(metrics['equity_curve'])
-            
+            run.total_trades = metrics["total_trades"]
+            run.winning_trades = metrics["winning_trades"]
+            run.win_rate = metrics["win_rate"]
+            run.avg_return_pct = metrics["avg_return_pct"]
+            run.median_return_pct = metrics["median_return_pct"]
+            run.best_trade_pct = metrics["best_trade_pct"]
+            run.worst_trade_pct = metrics["worst_trade_pct"]
+            run.max_drawdown_pct = metrics["max_drawdown_pct"]
+            run.sharpe_ratio = metrics["sharpe_ratio"]
+            run.total_return_pct = metrics["total_return_pct"]
+            run.gross_return_pct = metrics["gross_return_pct"]
+            run.total_cost_drag_pct = metrics["total_cost_drag_pct"]
+            run.benchmark_return_pct = metrics["benchmark_return_pct"]
+            run.expectancy = metrics["expectancy"]
+            run.profit_factor = metrics["profit_factor"]
+            run.avg_win_pct = metrics["avg_win_pct"]
+            run.avg_loss_pct = metrics["avg_loss_pct"]
+            run.exit_breakdown_json = json.dumps(metrics["exit_breakdown"])
+            run.equity_curve_json = json.dumps(metrics["equity_curve"])
+
             run.symbols_done = len(symbols)
-            run.status = 'complete'
+            run.status = "complete"
             db.commit()
             logger.info(f"Backtest {run_id} completed successfully")
 
@@ -1610,7 +1794,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             db.rollback()
             logger.error(f"Backtest {run_id} failed: {e}")
             logger.error(traceback.format_exc())
-            run.status = 'failed'
+            run.status = "failed"
             run.error_message = str(e)
             db.commit()
     finally:

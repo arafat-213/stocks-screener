@@ -4,7 +4,7 @@
 
 **Goal:** Update the pipeline fetcher and orchestrator to support indices, track funnel counts, capture price snapshots, and implement market snapshot logic.
 
-**Architecture:** 
+**Architecture:**
 - Update `fetch_stock_data` in `fetcher.py` to allow symbols without `.NS` suffix.
 - Track survivor counts at each tier in `run_pipeline`.
 - Calculate price and percentage change from historical data for daily signals.
@@ -31,7 +31,7 @@ def test_fetch_stock_data_index(mock_ticker):
     mock_instance = MagicMock()
     mock_ticker.return_value = mock_instance
     mock_instance.history.return_value = MagicMock(empty=False)
-    
+
     fetch_stock_data("^NSEI", append_ns=False)
     mock_ticker.assert_called_with("^NSEI")
 
@@ -89,7 +89,7 @@ Expected: AssertionError
         # ...
         run.tier1_count = len(tier1_survivors)
         db.commit()
-        
+
         # ...
         # 3. Final Filtering & Scoring
         tier2_survivors_count = 0
@@ -98,10 +98,10 @@ Expected: AssertionError
             # Tier 2 Filters
             if not cache.profitability_streak_passed or not cache.de_check_passed:
                 continue
-            
+
             tier2_survivors_count += 1
             # ...
-        
+
         run.tier2_count = tier2_survivors_count
         db.commit()
 ```
@@ -140,7 +140,7 @@ In `backend/tests/unit/test_orchestrator.py`, verify `signal.close_price` and `s
                     close_price = float(working_df['Close'].iloc[-1])
                     prev_close = float(working_df['Close'].iloc[-2])
                     price_change_pct = ((close_price - prev_close) / prev_close) * 100
-                
+
                 # ... when creating/updating signal
                 signal.close_price = close_price
                 signal.price_change_pct = price_change_pct
@@ -177,7 +177,7 @@ Add a test case in `backend/tests/unit/test_orchestrator.py` (or new file) that 
                 idx_close = float(idx_hist['Close'].iloc[-1])
                 idx_prev = float(idx_hist['Close'].iloc[-2])
                 idx_change = ((idx_close - idx_prev) / idx_prev) * 100
-                
+
                 from app.db.models import MarketSnapshot
                 snapshot = MarketSnapshot(
                     date=snap_date,

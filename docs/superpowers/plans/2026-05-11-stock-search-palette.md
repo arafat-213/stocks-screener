@@ -4,7 +4,7 @@
 
 **Goal:** Implement a robust stock search and command palette by creating a new backend search endpoint and upgrading the existing GlobalSearch component with debounced API calls and keyboard navigation.
 
-**Architecture:** 
+**Architecture:**
 - **Backend:** A new `GET /api/stocks/search` endpoint in `stocks.py` using SQLAlchemy `ILIKE` for efficient querying across symbols and names.
 - **Frontend:** Update `GlobalSearch.jsx` to replace pre-loaded filtering with a debounced API-driven search, add keyboard event listeners for selection, and enhance the result list UI.
 
@@ -54,19 +54,19 @@ from sqlalchemy import or_, func
 def search_stocks(q: str = "", db: Session = Depends(get_db)):
     if len(q) < 2:
         return []
-        
+
     query = q.strip()
-    
+
     # Ordering: Exact symbol match, then symbol starts with, then name contains
     # We'll use a CASE statement in SQL for ordering if possible, or do it in Python for simplicity since limit is 15
-    
+
     results = db.query(Stock).filter(
         or_(
             Stock.symbol.ilike(f"%{query}%"),
             Stock.name.ilike(f"%{query}%")
         )
     ).limit(50).all() # Fetch more to sort in Python then slice
-    
+
     # Sort in Python
     query_upper = query.upper()
     def sort_key(s):
@@ -74,12 +74,12 @@ def search_stocks(q: str = "", db: Session = Depends(get_db)):
         if s.symbol.startswith(query_upper): return 1
         if s.name.lower().startswith(query.lower()): return 2
         return 3
-        
+
     sorted_results = sorted(results, key=sort_key)
     final_results = sorted_results[:15]
-    
+
     return [
-        {"symbol": s.symbol, "name": s.name, "sector": s.sector} 
+        {"symbol": s.symbol, "name": s.name, "sector": s.sector}
         for s in final_results
     ]
 ```
@@ -128,7 +128,7 @@ export const GlobalSearch = () => {
   const navigate = useNavigate();
   const inputRef = useRef(null);
   const debounceRef = useRef(null);
-  
+
   // Update keyboard handler
   useEffect(() => {
     const handleKeyDown = (e) => {
@@ -137,7 +137,7 @@ export const GlobalSearch = () => {
         setIsOpen(true);
       }
       if (e.key === 'Escape') setIsOpen(false);
-      
+
       if (isOpen) {
         if (e.key === 'ArrowDown') {
           e.preventDefault();
@@ -162,13 +162,13 @@ export const GlobalSearch = () => {
     setQuery(val);
     setSelectedIndex(-1);
     clearTimeout(debounceRef.current);
-    
+
     if (val.length < 2) {
       setResults([]);
       setLoading(false);
       return;
     }
-    
+
     setLoading(true);
     debounceRef.current = setTimeout(() => {
       searchStocks(val)
@@ -190,9 +190,9 @@ export const GlobalSearch = () => {
     <div className="searching-state">Searching...</div>
   ) : results.length > 0 ? (
     results.map((s, i) => (
-      <div 
-        key={s.symbol} 
-        className={`result-item ${i === selectedIndex ? 'selected' : ''}`} 
+      <div
+        key={s.symbol}
+        className={`result-item ${i === selectedIndex ? 'selected' : ''}`}
         onClick={() => handleSelect(s.symbol)}
         onMouseEnter={() => setSelectedIndex(i)}
       >
@@ -218,8 +218,8 @@ export const GlobalSearch = () => {
 .result-name   { font-size: 0.8rem; margin-left: 8px; }
 .result-main   { display: flex; align-items: baseline; }
 .result-sector { font-size: 0.75rem; }
-.result-item.selected { 
-    background: var(--color-bg-elevated); 
+.result-item.selected {
+    background: var(--color-bg-elevated);
     border-left: 3px solid var(--color-primary);
     padding-left: 9px; /* adjust for border */
 }

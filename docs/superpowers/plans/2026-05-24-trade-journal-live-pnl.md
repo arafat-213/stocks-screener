@@ -4,7 +4,7 @@
 
 **Goal:** Implement Live P&L for open trades, historical trade retrieval, and trade statistics for the Trade Journal.
 
-**Architecture:** 
+**Architecture:**
 - Use `fetch_market_snapshots` from `app.pipeline.fetcher` to get real-time price data for open positions.
 - Add `GET /open`, `GET /closed`, `GET /stats`, and `PATCH /{id}/close` endpoints to `backend/app/routers/journal.py`.
 - Calculate unrealized P&L and return % dynamically for open trades.
@@ -66,18 +66,18 @@ def get_open_trades(db: Session = Depends(get_db)):
     trades = db.query(models.TradeJournal).filter(models.TradeJournal.status == 'open').all()
     if not trades:
         return []
-    
+
     symbols = list(set([t.symbol for t in trades]))
     # yfinance requires .NS for NSE stocks, TradeJournal should already have them
     snapshots = fetch_market_snapshots(symbols)
     price_map = {s['symbol']: s['close'] for s in snapshots}
-    
+
     results = []
     for t in trades:
         current_price = price_map.get(t.symbol, t.entry_price)
         unrealized_pnl = (current_price - t.entry_price) * t.shares
         live_return_pct = ((current_price - t.entry_price) / t.entry_price) * 100
-        
+
         trade_data = {
             "id": t.id,
             "symbol": t.symbol,
@@ -93,7 +93,7 @@ def get_open_trades(db: Session = Depends(get_db)):
             "notes": t.notes
         }
         results.append(trade_data)
-        
+
     return results
 ```
 
@@ -219,23 +219,23 @@ def close_trade(trade_id: int, data: TradeCloseRequest, db: Session = Depends(ge
     trade = db.query(models.TradeJournal).filter(models.TradeJournal.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail="Trade not found")
-    
+
     if trade.status == 'closed':
         raise HTTPException(status_code=400, detail="Trade already closed")
-        
+
     trade.exit_price = data.exit_price
     trade.exit_date = data.exit_date
     trade.exit_reason = data.exit_reason
     trade.status = 'closed'
-    
+
     # Calculations
     trade.pnl = (data.exit_price - trade.entry_price) * trade.shares
     trade.return_pct = ((data.exit_price - trade.entry_price) / trade.entry_price) * 100
-    
+
     if trade.entry_date:
         delta = data.exit_date - trade.entry_date
         trade.holding_days = delta.days
-    
+
     db.commit()
     db.refresh(trade)
     return trade
@@ -266,11 +266,11 @@ git commit -m "feat(journal): implement PATCH /close endpoint"
 def test_get_journal_stats(db_session):
     # Add one winner and one loser
     trade1 = models.TradeJournal(
-        symbol="W1.NS", entry_price=100, shares=10, exit_price=110, 
+        symbol="W1.NS", entry_price=100, shares=10, exit_price=110,
         status='closed', pnl=100, return_pct=10, exit_date=datetime.date.today()
     )
     trade2 = models.TradeJournal(
-        symbol="L1.NS", entry_price=100, shares=10, exit_price=90, 
+        symbol="L1.NS", entry_price=100, shares=10, exit_price=90,
         status='closed', pnl=-100, return_pct=-10, exit_date=datetime.date.today()
     )
     db_session.add_all([trade1, trade2])
@@ -290,7 +290,7 @@ def test_get_journal_stats(db_session):
 @router.get("/stats")
 def get_journal_stats(db: Session = Depends(get_db)):
     closed_trades = db.query(models.TradeJournal).filter(models.TradeJournal.status == 'closed').all()
-    
+
     if not closed_trades:
         return {
             "total_trades": 0,
@@ -298,12 +298,12 @@ def get_journal_stats(db: Session = Depends(get_db)):
             "total_pnl": 0,
             "avg_return": 0
         }
-        
+
     total_trades = len(closed_trades)
     winning_trades = len([t for t in closed_trades if (t.pnl or 0) > 0])
     total_pnl = sum([t.pnl or 0 for t in closed_trades])
     avg_return = sum([t.return_pct or 0 for t in closed_trades]) / total_trades
-    
+
     return {
         "total_trades": total_trades,
         "win_rate": (winning_trades / total_trades) * 100,

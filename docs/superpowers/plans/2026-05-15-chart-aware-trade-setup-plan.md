@@ -66,7 +66,7 @@ class TechnicalSignal(Base):
     resistance_level = Column(Float, nullable=True)
     pct_from_resistance = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
-    
+
     # New Fields Additions
     ema5_level = Column(Float, nullable=True)
     ema13_level = Column(Float, nullable=True)
@@ -127,9 +127,9 @@ def test_calculate_technical_score_returns_ema_levels():
         "ema20": [None, None, None, None, 100.5],
         "ema26": [None, None, None, None, 99.0],
     })
-    
+
     result = calculate_technical_score(df)
-    
+
     assert result["ema5_level"] == 103.5
     assert result["ema13_level"] == 102.0
     assert result["ema20_level"] == 100.5
@@ -151,12 +151,12 @@ import pandas as pd
 def calculate_technical_score(df):
     # Existing calculations...
     latest = df.iloc[-1]
-    
+
     ema5 = latest.get("ema5", None)
     ema13 = latest.get("ema13", None)
     ema20 = latest.get("ema20", None)
     ema26 = latest.get("ema26", None)
-    
+
     # Return dictionary augmentation
     return {
         # Assuming existing fields are mapped here
@@ -204,9 +204,9 @@ def test_process_symbol_maps_ema_levels(mocker):
         "ema20_level": 100.0,
         "ema26_level": 98.0
     })
-    
+
     signal = process_symbol("AAPL", None) # Passing None for DB session mock
-    
+
     assert signal.ema5_level == 104.0
     assert signal.ema13_level == 102.0
     assert signal.ema20_level == 100.0
@@ -230,18 +230,18 @@ def process_symbol(symbol, db_session):
     # Data fetching mock/logic...
     df = None # df fetching logic remains unchanged
     ta_data = calculate_technical_score(df)
-    
+
     signal = TechnicalSignal(
         symbol=symbol,
         close_price=ta_data.get("close_price")
     )
-    
+
     # New Field Assignments
     signal.ema5_level = ta_data.get('ema5_level')
     signal.ema13_level = ta_data.get('ema13_level')
     signal.ema20_level = ta_data.get('ema20_level')
     signal.ema26_level = ta_data.get('ema26_level')
-    
+
     return signal
 
 ```
@@ -282,9 +282,9 @@ def test_compute_trade_setup_pullback():
         resistance_level=105.0,
         pct_from_resistance=-4.7
     )
-    
+
     setup = compute_trade_setup(signal)
-    
+
     assert setup["setup_type"] == "pullback_to_ema20"
     assert setup["entry_zone"]["low"] == 97.02  # 98.0 * 0.99
     assert setup["entry_zone"]["high"] == 98.98 # 98.0 * 1.01
@@ -403,12 +403,12 @@ def test_dashboard_screener_includes_setup():
         atr=5.0,
         ema_signal="bullish_cross"
     )
-    
+
     stocks_map = {"TSLA": {"symbol": "TSLA", "setup": None}}
-    
+
     # Simulating the internal loop of the router
     result_map = build_screener_results([sig], stocks_map)
-    
+
     assert result_map["TSLA"]["setup"] is not None
     assert result_map["TSLA"]["setup"]["setup_type"] == "ema_crossover"
 
@@ -430,7 +430,7 @@ def build_screener_results(all_signals, stocks_map):
     for sig in all_signals:
         if sig.symbol in stocks_map and sig.timeframe == 'D':
             stocks_map[sig.symbol]["setup"] = compute_trade_setup(sig)
-            
+
     return stocks_map
 
 ```
@@ -468,9 +468,9 @@ def test_build_screen_response_includes_setup():
         atr=2.0,
         ema_signal="trend_continuation"
     )
-    
+
     response = _build_screen_response("MSFT", "Microsoft", 1, 95, "Tech", "Large", tech, None)
-    
+
     assert "setup" in response
     assert response["setup"]["setup_type"] == "trend_continuation"
 
@@ -495,7 +495,7 @@ def _build_screen_response(symbol, name, rank, score, sector, market_cap, tech, 
         "score": score,
         "sector": sector,
         "market_cap": market_cap,
-        "setup": compute_trade_setup(tech), 
+        "setup": compute_trade_setup(tech),
     }
 
 ```
@@ -533,12 +533,12 @@ def test_get_stock_detail_includes_setup():
     mock_signal = TechnicalSignal(
         symbol="NVDA", timeframe="D", close_price=500.0, atr=15.0, ema_signal="bullish_cross"
     )
-    
+
     # Chain mock for db.query().filter().order_by().first()
     mock_db.query.return_value.filter.return_value.order_by.return_value.first.return_value = mock_signal
-    
+
     response = get_stock_detail("NVDA", mock_db)
-    
+
     assert "setup" in response
     assert response["setup"]["setup_type"] == "ema_crossover"
 
@@ -624,7 +624,7 @@ class BacktestRequest(BaseModel):
     symbol: str
     stop_loss_pct: float = Field(default=5.0)
     target_pct: float = Field(default=10.0)
-    
+
     # New Fields
     atr_multiplier: float = Field(default=2.0)
     risk_reward_ratio: float = Field(default=2.0)
@@ -664,18 +664,18 @@ def test_simulate_trades_uses_atr_stops():
         atr_multiplier=2.0,
         risk_reward_ratio=2.0
     )
-    
+
     signals = [{
         "date": "2026-05-14",
         "close": 100.0,
         "atr": 5.0,
         "ema_signal": "bullish_cross" # entry trigger
     }]
-    
+
     # Assuming simulate_trades returns trades list
     trades = simulate_trades(signals, config)
     trade = trades[0]
-    
+
     assert trade["stop_loss"] == 90.0   # 100 - (2.0 * 5)
     assert trade["target"] == 120.0     # 100 + (2.0 * 2.0 * 5)
 
@@ -706,7 +706,7 @@ def simulate_trades(signals, config: BacktestConfig):
     for signal in signals:
         if signal.get("ema_signal") in ("bullish_cross", "bullish_pullback"):
             entry_price = signal["close"]
-            
+
             # New Logic Branch
             if config.use_atr_stops and signal.get('atr'):
                 atr = signal['atr']
@@ -715,7 +715,7 @@ def simulate_trades(signals, config: BacktestConfig):
             else:
                 stop_loss_price = entry_price * (1 - config.stop_loss_pct / 100) if config.stop_loss_pct > 0 else 0
                 target_price = entry_price * (1 + config.target_pct / 100) if config.target_pct > 0 else float('inf')
-                
+
             trades.append({
                 "entry_price": entry_price,
                 "stop_loss": stop_loss_price,

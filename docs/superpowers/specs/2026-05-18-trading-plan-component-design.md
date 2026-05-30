@@ -30,7 +30,7 @@ The component expects a `setup` object prop:
 
 ## Design Details
 - **Theme Support:** Uses CSS variables for light/dark mode compatibility.
-- **Visual Hierarchy:** 
+- **Visual Hierarchy:**
   - Header with icon and setup type.
   - Grid layout for Entry and Stop Loss.
   - Pill-style targets for 2R/3R levels.

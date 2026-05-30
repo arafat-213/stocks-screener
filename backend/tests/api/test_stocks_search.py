@@ -1,20 +1,26 @@
-import pytest
 from app.db.models import Stock
+
 
 def test_search_stocks_empty(client):
     response = client.get("/api/stocks/search?q=")
     assert response.status_code == 200
     assert response.json() == []
 
+
 def test_search_stocks_short(client):
     response = client.get("/api/stocks/search?q=R")
     assert response.status_code == 200
     assert response.json() == []
 
+
 def test_search_stocks_basic(client, db):
     # Seed data
     db.add(Stock(symbol="RELIANCE", name="Reliance Industries Ltd", sector="Energy"))
-    db.add(Stock(symbol="RELINFRA", name="Reliance Infrastructure", sector="Infrastructure"))
+    db.add(
+        Stock(
+            symbol="RELINFRA", name="Reliance Infrastructure", sector="Infrastructure"
+        )
+    )
     db.add(Stock(symbol="TCS", name="Tata Consultancy Services", sector="IT"))
     db.commit()
 
@@ -33,6 +39,7 @@ def test_search_stocks_basic(client, db):
     symbols = [r["symbol"] for r in results]
     assert "RELIANCE" in symbols
     assert "RELINFRA" in symbols
+
 
 def test_search_stocks_with_ns_suffix(client, db):
     # Seed data

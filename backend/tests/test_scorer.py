@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-import pytest
+
 from app.pipeline.scorer import calculate_technical_score
 
 
@@ -9,10 +9,10 @@ def _rising_df(n=300, rsi_target=None):
     Build a DataFrame that produces a desired approximate RSI.
     """
     if rsi_target == "high":  # > 68
-        closes = np.linspace(100, 500, n) 
-    elif rsi_target == "mid":   # 50–65
+        closes = np.linspace(100, 500, n)
+    elif rsi_target == "mid":  # 50–65
         # Start at 100, rise to 110 over n-20 bars, then stay around there
-        closes = np.linspace(100, 110, n-20).tolist()
+        closes = np.linspace(100, 110, n - 20).tolist()
         for i in range(20):
             if i % 2 == 0:
                 closes.append(closes[-1] * 1.002)
@@ -21,12 +21,12 @@ def _rising_df(n=300, rsi_target=None):
         closes = np.array(closes)
     else:
         closes = np.linspace(100, 160, n)
-        
+
     return pd.DataFrame(
         {
             "Open": closes * 0.99,
             "High": closes * 1.02,
-            "Low":  closes * 0.98,
+            "Low": closes * 0.98,
             "Close": closes,
             "Volume": np.full(n, 2_000_000.0),
         },
@@ -57,8 +57,8 @@ def test_rsi_65_to_68_earns_2_points_signal():
     # A small steady rise at the end
     last_close = df.iloc[-1, df.columns.get_loc("Close")]
     for i in range(1, 6):
-        df.iloc[-i, df.columns.get_loc("Close")] = last_close * (1 + 0.005 * (6-i))
-    
+        df.iloc[-i, df.columns.get_loc("Close")] = last_close * (1 + 0.005 * (6 - i))
+
     result = calculate_technical_score(df, timeframe="D")
     # print(f"RSI 65-68 test: {result['rsi']}")
     # If it falls in 65-68 range, verify signal

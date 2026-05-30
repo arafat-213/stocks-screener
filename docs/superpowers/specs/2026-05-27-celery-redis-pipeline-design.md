@@ -1,7 +1,7 @@
 # Design Specification: Celery + Redis Task Queue for Pipeline
 
 ## Overview
-The current implementation of the backend runs a 40-minute IO/CPU-heavy data pipeline within the FastAPI process using `apscheduler.BackgroundScheduler`. This blocks thread pool resources and makes the pipeline vulnerable to premature termination if the web worker restarts (e.g., due to OOM, crashes, or deployments). 
+The current implementation of the backend runs a 40-minute IO/CPU-heavy data pipeline within the FastAPI process using `apscheduler.BackgroundScheduler`. This blocks thread pool resources and makes the pipeline vulnerable to premature termination if the web worker restarts (e.g., due to OOM, crashes, or deployments).
 
 To resolve this and gain hands-on experience with Redis, we will decouple the pipeline execution from the web server by implementing a distributed task queue using Celery as the worker manager and Redis as the message broker.
 

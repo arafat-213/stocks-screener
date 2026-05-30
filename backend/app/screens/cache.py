@@ -3,6 +3,7 @@ from app.core.cache import ResponseCache
 # We use a dedicated ResponseCache instance for screens
 _screen_cache_store = ResponseCache()
 
+
 class ScreenCache:
     def get(self, key: str) -> list[dict] | None:
         val, hit = _screen_cache_store.get(key)
@@ -20,5 +21,6 @@ class ScreenCache:
 
     def stats(self) -> dict:
         return _screen_cache_store.stats()
+
 
 screen_cache = ScreenCache()

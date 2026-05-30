@@ -1,7 +1,7 @@
 # Screener AI — Robustness Improvements Spec
 
-**Version:** 1.0  
-**Scope:** Backend pipeline reliability, screen result caching, API performance, and frontend resilience  
+**Version:** 1.0
+**Scope:** Backend pipeline reliability, screen result caching, API performance, and frontend resilience
 **Purpose:** Provide a complete, implementation-ready specification for an AI coding agent to produce a detailed implementation plan
 
 ---
@@ -122,7 +122,7 @@ If the pipeline crashes at symbol #800 of 2000, the next run starts from scratch
 class PipelineCheckpoint(Base):
     __tablename__ = "pipeline_checkpoints"
     run_id      = Column(String, ForeignKey('pipeline_runs.run_id'), primary_key=True)
-    phase       = Column(String, primary_key=True)  
+    phase       = Column(String, primary_key=True)
                  # 'tier1', 'tier2_refresh', 'scoring', 'rs_ranks', 'snapshots', 'report', 'screens'
     completed_symbols = Column(Text)  # JSON array of symbols that finished this phase
     started_at  = Column(DateTime)
@@ -172,9 +172,9 @@ class PipelineError(Base):
     id          = Column(Integer, primary_key=True, autoincrement=True)
     run_id      = Column(String, ForeignKey('pipeline_runs.run_id'), nullable=False)
     symbol      = Column(String, nullable=True)   # null for pipeline-level errors
-    phase       = Column(String, nullable=False)  
+    phase       = Column(String, nullable=False)
                  # 'fetch', 'tier1', 'tier2', 'scoring', 'rs_ranks', 'snapshot', 'report'
-    error_type  = Column(String, nullable=False)  
+    error_type  = Column(String, nullable=False)
                  # 'rate_limit', 'empty_data', 'db_write', 'timeout', 'unknown'
     message     = Column(Text, nullable=False)
     traceback   = Column(Text, nullable=True)
@@ -223,13 +223,13 @@ This has two issues:
 **Add fields to `FundamentalCache`:**
 
 ```python
-retry_after     = Column(DateTime, nullable=True)   
+retry_after     = Column(DateTime, nullable=True)
                   # set to utcnow() + 24h when yfinance returns empty/corrupt data
-fetch_attempts  = Column(Integer, default=0)         
+fetch_attempts  = Column(Integer, default=0)
                   # incremented each attempt; reset to 0 on success
-last_error      = Column(String, nullable=True)      
+last_error      = Column(String, nullable=True)
                   # short error string from last failed attempt
-force_refresh   = Column(Boolean, default=False)     
+force_refresh   = Column(Boolean, default=False)
                   # set to True via API; cleared after next successful fetch
 ```
 
@@ -265,7 +265,7 @@ POST /api/stocks/{symbol}/refresh-cache
     Effect: sets FundamentalCache.force_refresh = True for that symbol
     Returns: { "queued": true }
 
-GET /api/stocks/{symbol}/cache-status  
+GET /api/stocks/{symbol}/cache-status
     Returns: {
         "symbol": "RELIANCE",
         "last_updated": "...",
@@ -303,22 +303,22 @@ from typing import Any
 
 class ResponseCache:
     """Thread-safe in-process TTL cache. No external dependencies."""
-    
+
     def __init__(self):
         self._store: dict[str, tuple[Any, float]] = {}  # key -> (value, expires_at)
         self._hits = 0
         self._misses = 0
-    
+
     def get(self, key: str) -> tuple[Any, bool]:
         """Returns (value, is_hit). is_hit=False means expired or absent."""
         ...
-    
+
     def set(self, key: str, value: Any, ttl: int) -> None: ...
-    
+
     def invalidate(self, key: str | None = None) -> None:
         """key=None clears everything."""
         ...
-    
+
     def stats(self) -> dict:
         return {"hits": self._hits, "misses": self._misses, "keys": len(self._store)}
 
@@ -411,12 +411,12 @@ def compute_rs_ranks(db: Session, signal_date: datetime.date, benchmark_symbol: 
     """
     Standalone RS rank computation. Returns summary dict.
     Can be called independently via API or from orchestrator.
-    
+
     Args:
         db: SQLAlchemy session
         signal_date: date to compute ranks for
         benchmark_symbol: override benchmark (default: auto-detect from RS_BENCHMARK_CANDIDATES)
-    
+
     Returns:
         {
             "benchmark_used": "^CRSLDX",

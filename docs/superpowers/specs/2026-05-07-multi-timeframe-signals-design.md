@@ -39,7 +39,7 @@ The `DailyScore` table will be renamed to `technical_signals` with the following
 - **Confluence Rule:** A stock is ranked by the number of `is_bullish` timeframes (0-3) for a given date.
 - **Ranking Query (Conceptual):**
   ```sql
-  SELECT 
+  SELECT
       symbol,
       SUM(CASE WHEN is_bullish THEN 1 ELSE 0 END) as confluence_count,
       MAX(CASE WHEN timeframe = 'D' THEN score ELSE 0 END) as daily_score

@@ -13,7 +13,7 @@ The application is experiencing intermittent crashes due to unsafe property acce
 ### 1. Dependency Selection
 - **Library**: `lodash` (Standard version, as `lodash-es` lacks `fp` support).
 - **Style**: `lodash/fp` (functional programming style).
-- **Why**: `lodash/fp` provides auto-curried, iteratee-first, data-last functions that are perfect for safe data processing. 
+- **Why**: `lodash/fp` provides auto-curried, iteratee-first, data-last functions that are perfect for safe data processing.
 
 ### 2. Transformation Patterns
 

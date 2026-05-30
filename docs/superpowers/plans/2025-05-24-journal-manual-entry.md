@@ -18,12 +18,12 @@
 - [ ] **Step 1: Add `Plus` to Lucide imports and `createJournalEntry` to API imports**
 
 ```jsx
-import { 
-  TrendingUp, 
-  TrendingDown, 
-  History, 
-  Briefcase, 
-  ChevronRight, 
+import {
+  TrendingUp,
+  TrendingDown,
+  History,
+  Briefcase,
+  ChevronRight,
   X,
   AlertCircle,
   BarChart2,
@@ -32,10 +32,10 @@ import {
   ArrowDownRight,
   Plus // Add this
 } from 'lucide-react';
-import { 
-  getJournalOpen, 
-  getJournalClosed, 
-  getJournalStats, 
+import {
+  getJournalOpen,
+  getJournalClosed,
+  getJournalStats,
   closeJournalEntry,
   createJournalEntry // Add this
 } from '../api/client';
@@ -74,14 +74,14 @@ git commit -m "feat(journal): add state for manual entry modal"
 ```jsx
         <div className="flex gap-2">
           {/* New Button */}
-          <button 
+          <button
             onClick={() => setCreateModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 bg-primary hover:bg-primary-dark text-white rounded-xl shadow-lg shadow-primary/20 transition-all font-black text-sm"
           >
             <Plus size={18} />
             MANUAL ENTRY
           </button>
-          
+
           <div className="px-4 py-2 bg-bg-secondary border border-border rounded-xl shadow-sm">
             <div className="text-[10px] font-black uppercase tracking-widest text-text-muted mb-1">Last Updated</div>
             <div className="text-xs font-bold text-text">{new Date().toLocaleDateString()}</div>
@@ -147,20 +147,20 @@ git commit -m "feat(journal): implement manual entry submission handler"
           <div className="bg-bg-secondary border border-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center p-6 border-b border-border sticky top-0 bg-bg-secondary z-10">
               <h3 className="text-xl font-black text-text uppercase tracking-tight">New Trade Entry</h3>
-              <button 
+              <button
                 onClick={() => setCreateModalOpen(false)}
                 className="p-2 hover:bg-bg-elevated rounded-full transition-colors"
               >
                 <X size={20} />
               </button>
             </div>
-            
+
             <form onSubmit={handleCreateSubmit} className="p-6 flex flex-col gap-5">
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Symbol</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     required
                     value={newTrade.symbol}
                     onChange={(e) => setNewTrade({...newTrade, symbol: e.target.value})}
@@ -170,8 +170,8 @@ git commit -m "feat(journal): implement manual entry submission handler"
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Entry Date</label>
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     required
                     value={newTrade.entry_date}
                     onChange={(e) => setNewTrade({...newTrade, entry_date: e.target.value})}
@@ -183,8 +183,8 @@ git commit -m "feat(journal): implement manual entry submission handler"
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Entry Price (₹)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     required
                     value={newTrade.entry_price}
@@ -195,8 +195,8 @@ git commit -m "feat(journal): implement manual entry submission handler"
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Shares</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     required
                     min="1"
                     value={newTrade.shares}
@@ -210,8 +210,8 @@ git commit -m "feat(journal): implement manual entry submission handler"
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Stop Loss (₹)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     value={newTrade.stop_loss}
                     onChange={(e) => setNewTrade({...newTrade, stop_loss: e.target.value})}
@@ -221,8 +221,8 @@ git commit -m "feat(journal): implement manual entry submission handler"
                 </div>
                 <div className="flex flex-col gap-2">
                   <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Target (₹)</label>
-                  <input 
-                    type="number" 
+                  <input
+                    type="number"
                     step="0.01"
                     value={newTrade.target}
                     onChange={(e) => setNewTrade({...newTrade, target: e.target.value})}
@@ -234,7 +234,7 @@ git commit -m "feat(journal): implement manual entry submission handler"
 
               <div className="flex flex-col gap-2">
                 <label className="text-[10px] font-black uppercase tracking-widest text-text-muted ml-1">Notes</label>
-                <textarea 
+                <textarea
                   value={newTrade.notes}
                   onChange={(e) => setNewTrade({...newTrade, notes: e.target.value})}
                   className="w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50 min-h-[80px]"
@@ -242,7 +242,7 @@ git commit -m "feat(journal): implement manual entry submission handler"
                 />
               </div>
 
-              <button 
+              <button
                 type="submit"
                 disabled={creating}
                 className="w-full bg-primary hover:bg-primary-dark disabled:opacity-50 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 mt-2"

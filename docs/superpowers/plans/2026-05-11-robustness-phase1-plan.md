@@ -30,24 +30,24 @@ def test_response_cache_basic_operations():
     val, hit = cache.get("test_key")
     assert hit is False
     assert val is None
-    
+
     # Set and get
     cache.set("test_key", {"data": 123}, 1) # 1 second TTL
     val, hit = cache.get("test_key")
     assert hit is True
     assert val == {"data": 123}
-    
+
     # Expiration
     time.sleep(1.1)
     val, hit = cache.get("test_key")
     assert hit is False
-    
+
     # Invalidation
     cache.set("key2", 456, 10)
     cache.invalidate("key2")
     _, hit = cache.get("key2")
     assert hit is False
-    
+
     # Stats
     cache.set("key3", 789, 10)
     stats = cache.stats()
@@ -73,37 +73,37 @@ from typing import Any
 
 class ResponseCache:
     """Thread-safe in-process TTL cache. No external dependencies."""
-    
+
     def __init__(self):
         self._store: dict[str, tuple[Any, float]] = {}  # key -> (value, expires_at)
         self._hits = 0
         self._misses = 0
-    
+
     def get(self, key: str) -> tuple[Any, bool]:
         """Returns (value, is_hit). is_hit=False means expired or absent."""
         if key not in self._store:
             self._misses += 1
             return None, False
-            
+
         value, expires_at = self._store[key]
         if time.time() > expires_at:
             del self._store[key]
             self._misses += 1
             return None, False
-            
+
         self._hits += 1
         return value, True
-    
+
     def set(self, key: str, value: Any, ttl: int) -> None:
         self._store[key] = (value, time.time() + ttl)
-    
+
     def invalidate(self, key: str | None = None) -> None:
         """key=None clears everything."""
         if key is None:
             self._store.clear()
         elif key in self._store:
             del self._store[key]
-    
+
     def stats(self) -> dict:
         return {"hits": self._hits, "misses": self._misses, "keys": len(self._store)}
 
@@ -140,14 +140,14 @@ from app.screens.cache import ScreenCache
 def test_screen_cache():
     cache = ScreenCache()
     cache.invalidate() # clean start
-    
+
     val = cache.get("screen:momentum:False")
     assert val is None
-    
+
     cache.set("screen:momentum:False", [{"symbol": "RELIANCE"}], 300)
     val = cache.get("screen:momentum:False")
     assert val == [{"symbol": "RELIANCE"}]
-    
+
     cache.invalidate()
     assert cache.get("screen:momentum:False") is None
 ```
@@ -234,30 +234,30 @@ def clear_screen_cache():
 # Modify get_screen_results
 @router.get("/{slug}")
 def get_screen_results(
-    slug: str, 
+    slug: str,
     response: Response,
     live: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     if slug not in SCREEN_REGISTRY:
         raise HTTPException(status_code=404, detail="Screen not found")
-        
+
     cache_key = f"screen:{slug}:{live}"
     cached_val = screen_cache.get(cache_key)
     if cached_val is not None:
         response.headers["X-Cache"] = "HIT"
         # X-Cache-Age omitted for simplicity in basic implementation
         return cached_val
-        
+
     response.headers["X-Cache"] = "MISS"
-    
+
     # ... KEEP ALL EXISTING DB AND LIVE EXECUTION LOGIC HERE ...
     # Assume results variable contains the final list
     # ...
-    
+
     ttl = 60 if live else 900
     screen_cache.set(cache_key, results, ttl)
-    return results 
+    return results
 ```
 IMPORTANT: The `results` list must be populated via the existing logic before the cache
 write. Place `screen_cache.set(cache_key, results, ttl)` as the LAST statement before
@@ -396,14 +396,14 @@ def get_pipeline_status(db: Session = Depends(get_db)):
     run = db.query(PipelineRun).order_by(PipelineRun.timestamp.desc()).first()
     if not run:
         return {"status": "never_run", "market_context": []}
-        
+
     market = db.query(MarketSnapshot).filter(MarketSnapshot.date == run.timestamp.date()).all()
-    
+
     # Calculate age
     age_delta = datetime.datetime.utcnow() - run.timestamp
     data_age_hours = age_delta.total_seconds() / 3600.0
     is_stale = data_age_hours > 26
-    
+
     result = {
         "status": run.status,
         "scored_at": run.timestamp,
@@ -414,7 +414,7 @@ def get_pipeline_status(db: Session = Depends(get_db)):
         "tier2_count": run.tier2_count,
         "stocks_scored": run.stocks_scored,
         "market_context": [
-            {"symbol": m.symbol, "close": m.close, "change_pct": m.change_pct} 
+            {"symbol": m.symbol, "close": m.close, "change_pct": m.change_pct}
             for m in market
         ]
     }
@@ -431,14 +431,14 @@ import './StaleBanner.css';
 
 export default function StaleBanner({ lastUpdated, dataAgeHours, onRunPipeline }) {
     if (!lastUpdated) return null;
-    
+
     const dateStr = new Date(lastUpdated).toLocaleString();
-    
+
     return (
         <div className="stale-banner">
             <span className="stale-icon">⚠️</span>
             <div className="stale-content">
-                <strong>Data is {dataAgeHours} hours old.</strong> Last pipeline run: {dateStr}. 
+                <strong>Data is {dataAgeHours} hours old.</strong> Last pipeline run: {dateStr}.
             </div>
             {onRunPipeline && (
                 <button className="stale-run-btn" onClick={onRunPipeline}>

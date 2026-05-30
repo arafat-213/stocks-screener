@@ -20,7 +20,7 @@ if config.screen_slug and config.screen_slug != "all":
     from app.screens.registry import SCREEN_REGISTRY
     if config.screen_slug not in SCREEN_REGISTRY:
         raise ValueError(f"Invalid screen slug: {config.screen_slug}")
-    
+
     screen_fn = SCREEN_REGISTRY[config.screen_slug]['fn']
     # Execute screen function (returns list of (symbol, score) tuples)
     screen_results = screen_fn(db)

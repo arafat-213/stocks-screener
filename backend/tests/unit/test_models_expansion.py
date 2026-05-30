@@ -1,7 +1,9 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.db.models import Base, TechnicalSignal, FundamentalCache, ScreenResult
+
+from app.db.models import FundamentalCache, ScreenResult, TechnicalSignal
+
 
 @pytest.fixture
 def db_session():
@@ -11,6 +13,7 @@ def db_session():
     session = Session()
     yield session
     session.close()
+
 
 def test_technical_signal_new_fields():
     # This should fail if columns are missing or ScreenResult is not defined
@@ -29,10 +32,11 @@ def test_technical_signal_new_fields():
         week52_low=100.0,
         resistance_level=145.0,
         pct_from_resistance=-2.0,
-        volume_breakout=True
+        volume_breakout=True,
     )
     assert sig.momentum_1m == 10.5
     assert sig.volume_breakout is True
+
 
 def test_fundamental_cache_new_fields():
     cache = FundamentalCache(
@@ -44,10 +48,11 @@ def test_fundamental_cache_new_fields():
         earnings_growth_3y=15.0,
         fcf_positive=True,
         dividend_consistency=True,
-        market_cap_category="Large Cap"
+        market_cap_category="Large Cap",
     )
     assert cache.roce == 18.5
     assert cache.market_cap_category == "Large Cap"
+
 
 def test_screen_result_model():
     res = ScreenResult(
@@ -55,7 +60,7 @@ def test_screen_result_model():
         symbol="RELIANCE.NS",
         timeframe="D",
         rank=1,
-        score_used=92.5
+        score_used=92.5,
     )
     assert res.screen_slug == "growth-momentum"
     assert res.rank == 1

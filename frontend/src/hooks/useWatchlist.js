@@ -13,7 +13,7 @@ export const useWatchlist = () => {
   });
 
   const toggle = useCallback((symbol) => {
-    setWatchlist(prev => {
+    setWatchlist((prev) => {
       const next = new Set(prev);
       if (next.has(symbol)) {
         next.delete(symbol);

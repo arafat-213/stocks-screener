@@ -1,7 +1,7 @@
 # Technical Specification: Scoring & Pipeline Fixes
 
-**Version:** 1.0  
-**Status:** Draft  
+**Version:** 1.0
+**Status:** Draft
 **Scope:** `app/backtest/engine.py`, `app/pipeline/scorer.py`, `app/pipeline/orchestrator.py`
 
 ---
@@ -14,8 +14,8 @@ Backtesting over 2023–2025 revealed structural issues in the signal scoring an
 
 ## Specification 1 — Minimum Bar Requirement for Signal Generation
 
-**ID:** SPEC-001  
-**Priority:** Critical  
+**ID:** SPEC-001
+**Priority:** Critical
 **Affected component:** `engine.py → score_series()`
 
 ### Problem
@@ -38,8 +38,8 @@ The minimum bar count before signal generation begins is currently 60. The 200-p
 
 ## Specification 2 — MACD Component Scoring Rebalance
 
-**ID:** SPEC-002  
-**Priority:** High  
+**ID:** SPEC-002
+**Priority:** High
 **Affected component:** `scorer.py → calculate_technical_score()`
 
 ### Problem
@@ -69,8 +69,8 @@ The point allocation for the MACD sub-component must reflect trend confirmation 
 
 ## Specification 3 — RSI Sub-Component Score Cap
 
-**ID:** SPEC-003  
-**Priority:** High  
+**ID:** SPEC-003
+**Priority:** High
 **Affected component:** `scorer.py → calculate_technical_score()`
 
 ### Problem
@@ -102,8 +102,8 @@ When both an RSI recovery condition and a fresh EMA cross are simultaneously pre
 
 ## Specification 4 — ADX Trend Strength Gate
 
-**ID:** SPEC-004  
-**Priority:** High  
+**ID:** SPEC-004
+**Priority:** High
 **Affected component:** `engine.py → simulate_trades()`
 
 ### Problem
@@ -129,8 +129,8 @@ ADX is computed and stored on every signal but is never used as a filter during 
 
 ## Specification 5 — Score Threshold Calibration
 
-**ID:** SPEC-005  
-**Priority:** High  
+**ID:** SPEC-005
+**Priority:** High
 **Affected component:** `engine.py → BacktestConfig`, `routers/backtest.py → BacktestRequest`
 
 ### Problem
@@ -160,8 +160,8 @@ At 55, a signal requires meaningful multi-indicator alignment. The minimum path 
 
 ## Specification 6 — `require_volume_breakout` Default
 
-**ID:** SPEC-006  
-**Priority:** Medium  
+**ID:** SPEC-006
+**Priority:** Medium
 **Affected component:** `engine.py → BacktestConfig`, `routers/backtest.py → BacktestRequest`
 
 ### Problem
@@ -183,8 +183,8 @@ At 55, a signal requires meaningful multi-indicator alignment. The minimum path 
 
 ## Specification 7 — Null Safety on `above_200ema` Filter in `simulate_trades`
 
-**ID:** SPEC-007  
-**Priority:** Medium  
+**ID:** SPEC-007
+**Priority:** Medium
 **Affected component:** `engine.py → simulate_trades()`
 
 ### Problem

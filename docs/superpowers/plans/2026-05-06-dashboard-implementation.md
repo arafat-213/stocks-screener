@@ -29,7 +29,7 @@
   --accent-color: #16a34a; /* Green */
   --danger-color: #dc2626; /* Red */
   --warning-color: #d97706; /* Yellow/Orange */
-  
+
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 ```
@@ -106,7 +106,7 @@ function App() {
           <Activity className="icon-accent" />
           <h1>Stock AI</h1>
         </div>
-        
+
         <div className="status-module">
           <div className="status-indicator">
             <span className={`dot ${status.status}`}></span>
@@ -115,9 +115,9 @@ function App() {
           <p className="last-run">Scored: {status.scored || 0}</p>
         </div>
 
-        <button 
-          className="run-button" 
-          onClick={handleRun} 
+        <button
+          className="run-button"
+          onClick={handleRun}
           disabled={status.status === 'running'}
         >
           <Play size={16} />
@@ -129,7 +129,7 @@ function App() {
         <header className="content-header">
           <h2>Top Scored Stocks</h2>
         </header>
-        
+
         <div className="stock-grid">
           {stocks.map(s => <ScoreCard key={s.symbol} stock={s} />)}
         </div>

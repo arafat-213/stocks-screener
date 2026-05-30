@@ -1,7 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 export const useFetch = (apiFn, options = {}) => {
-  const { deps = [], autoFetch = true, refreshInterval = null, onSuccess } = options;
+  const {
+    deps = [],
+    autoFetch = true,
+    refreshInterval = null,
+    onSuccess,
+  } = options;
   const [data, setData] = useState(undefined);
   const [loading, setLoading] = useState(autoFetch);
   const [error, setError] = useState(null);
@@ -9,25 +14,31 @@ export const useFetch = (apiFn, options = {}) => {
 
   // Prevent onSuccess infinite loop
   const onSuccessRef = useRef(onSuccess);
-  useEffect(() => { onSuccessRef.current = onSuccess; }, [onSuccess]);
+  useEffect(() => {
+    onSuccessRef.current = onSuccess;
+  }, [onSuccess]);
 
-  const fetchData = useCallback(async (...args) => {
-    try {
-      setLoading(true);
-      const res = await apiFn(...args);
-      if (isMounted.current) {
-        // Handle both axios response and direct data
-        const extractedData = res && typeof res === 'object' && 'data' in res ? res.data : res;
-        setData(extractedData);
-        setError(null);
-        if (onSuccessRef.current) onSuccessRef.current(extractedData);
+  const fetchData = useCallback(
+    async (...args) => {
+      try {
+        setLoading(true);
+        const res = await apiFn(...args);
+        if (isMounted.current) {
+          // Handle both axios response and direct data
+          const extractedData =
+            res && typeof res === 'object' && 'data' in res ? res.data : res;
+          setData(extractedData);
+          setError(null);
+          if (onSuccessRef.current) onSuccessRef.current(extractedData);
+        }
+      } catch (err) {
+        if (isMounted.current) setError(err.message || 'An error occurred');
+      } finally {
+        if (isMounted.current) setLoading(false);
       }
-    } catch (err) {
-      if (isMounted.current) setError(err.message || 'An error occurred');
-    } finally {
-      if (isMounted.current) setLoading(false);
-    }
-  }, [apiFn]);
+    },
+    [apiFn]
+  );
 
   useEffect(() => {
     if (autoFetch) {
@@ -39,7 +50,10 @@ export const useFetch = (apiFn, options = {}) => {
   // Handle polling directly via setInterval or external trigger
   useEffect(() => {
     if (!refreshInterval) return;
-    const interval = typeof refreshInterval === 'function' ? refreshInterval(data) : refreshInterval;
+    const interval =
+      typeof refreshInterval === 'function'
+        ? refreshInterval(data)
+        : refreshInterval;
     if (!interval) return;
 
     const id = setInterval(fetchData, interval);
@@ -48,7 +62,9 @@ export const useFetch = (apiFn, options = {}) => {
 
   useEffect(() => {
     isMounted.current = true;
-    return () => { isMounted.current = false; };
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
   return { data, loading, error, refetch: fetchData, setData };

@@ -34,7 +34,7 @@ Update the result processing loop in `backend/app/screens/materializer.py` to ha
                         symbol = getattr(item, 'symbol', None)
                         score = getattr(item, 'entry_score', 0.0)
                         timeframe = getattr(item, 'timeframe', 'D')
-                    
+
                     if not symbol:
                         continue
 ```

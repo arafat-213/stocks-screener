@@ -4,8 +4,8 @@
 
 **Goal:** Optimize dashboard performance by implementing server-side pagination (50 items per batch) and frontend infinite scrolling, while moving sorting/filtering to the database.
 
-**Architecture:** 
-1. **Backend:** Refactor SQLAlchemy query in `dashboard.py` to use SQL-level `ORDER BY`, `WHERE`, `LIMIT`, and `OFFSET`. 
+**Architecture:**
+1. **Backend:** Refactor SQLAlchemy query in `dashboard.py` to use SQL-level `ORDER BY`, `WHERE`, `LIMIT`, and `OFFSET`.
 2. **Frontend:** Update `Dashboard.jsx` to use an `IntersectionObserver` for incremental loading and handle filter resets.
 3. **Watchlist:** Add a specific "Fetch by Symbols" capability to the API to support the client-side local-storage watchlist without needing the full universe.
 

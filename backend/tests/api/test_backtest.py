@@ -1,19 +1,21 @@
-from fastapi.testclient import TestClient
-from app.main import app
-from app.db.session import get_db
-from app.routers.backtest import BacktestRequest
-from app.backtest.engine import BacktestConfig
-import pytest
 from unittest.mock import patch
 
+from fastapi.testclient import TestClient
+
+from app.backtest.engine import BacktestConfig
+from app.main import app
+from app.routers.backtest import BacktestRequest
+
 client = TestClient(app)
+
 
 def test_list_backtest_runs():
     response = client.get("/api/backtest/runs")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-@patch('app.routers.backtest.run_backtest')
+
+@patch("app.routers.backtest.run_backtest")
 def test_start_backtest(mock_run):
     payload = {
         "score_threshold": 70,
@@ -21,7 +23,7 @@ def test_start_backtest(mock_run):
         "stop_loss_pct": 5,
         "target_pct": 15,
         "include_fundamentals": False,
-        "symbol_limit": 5
+        "symbol_limit": 5,
     }
     response = client.post("/api/backtest/run", json=payload)
     assert response.status_code == 200
@@ -29,9 +31,11 @@ def test_start_backtest(mock_run):
     assert "run_id" in data
     assert data["status"] == "pending"
 
+
 def test_get_backtest_details_not_found():
     response = client.get("/api/backtest/non-existent-id")
     assert response.status_code == 404
+
 
 def test_backtest_request_accepts_new_fields():
     payload = {
@@ -41,12 +45,13 @@ def test_backtest_request_accepts_new_fields():
         "target_pct": 20.0,
         "atr_multiplier": 2.5,
         "risk_reward_ratio": 3.0,
-        "use_atr_stops": True
+        "use_atr_stops": True,
     }
     request = BacktestRequest(**payload)
     assert request.atr_multiplier == 2.5
     assert request.risk_reward_ratio == 3.0
     assert request.use_atr_stops is True
+
 
 def test_backtest_request_default_values():
     request = BacktestRequest()
@@ -55,15 +60,15 @@ def test_backtest_request_default_values():
     assert request.risk_reward_ratio == 1.5
     assert request.use_atr_stops is True
 
+
 def test_backtest_config_dataclass():
     config = BacktestConfig(
-        atr_multiplier=3.5,
-        risk_reward_ratio=2.5,
-        use_atr_stops=True
+        atr_multiplier=3.5, risk_reward_ratio=2.5, use_atr_stops=True
     )
     assert config.atr_multiplier == 3.5
     assert config.risk_reward_ratio == 2.5
     assert config.use_atr_stops is True
+
 
 def test_backtest_config_defaults():
     config = BacktestConfig()
