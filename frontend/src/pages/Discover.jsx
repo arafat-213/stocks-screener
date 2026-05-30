@@ -22,7 +22,7 @@ const Discover = () => {
       params.capital = capital;
       params.risk_pct = riskPct;
     }
-    return getScreenBySlug(selectedSlug, params).then((res) => res.data);
+    return getScreenBySlug(selectedSlug, params);
   }, [selectedSlug, liveMode, capital, riskPct]);
 
   const { data: strategyResults = [], loading: loadingStrategyResults } =
