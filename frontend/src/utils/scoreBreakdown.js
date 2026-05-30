@@ -74,23 +74,45 @@ export function inferScoreBreakdown(dailySignal, fundamentals) {
 
   // ROE: max 5 pts (roe from fundamentals, stored as decimal e.g. 0.15)
   const roe = fundamentals?.roe;
-  const roeEarned = roe == null ? 0 : roe > 0.15 ? 5 : roe > 0.1 ? 2 : 0;
+  const normalizedRoe = roe > 1 ? roe / 100 : roe;
+  const roeEarned =
+    normalizedRoe == null
+      ? 0
+      : normalizedRoe > 0.15
+        ? 5
+        : normalizedRoe > 0.1
+          ? 2
+          : 0;
   breakdown.push({
     label: 'ROE',
     earned: roeEarned,
     max: 5,
-    signal: roe ? `${(roe * 100).toFixed(1)}%` : 'no data',
+    signal:
+      normalizedRoe != null
+        ? `${(normalizedRoe * 100).toFixed(1)}%`
+        : 'no data',
     category: 'fundamental',
   });
 
   // ROCE: max 5 pts (roce stored as decimal e.g. 0.15)
   const roce = fundamentals?.roce;
-  const roceEarned = roce == null ? 0 : roce > 0.15 ? 5 : roce > 0.1 ? 2 : 0;
+  const normalizedRoce = roce > 1 ? roce / 100 : roce;
+  const roceEarned =
+    normalizedRoce == null
+      ? 0
+      : normalizedRoce > 0.15
+        ? 5
+        : normalizedRoce > 0.1
+          ? 2
+          : 0;
   breakdown.push({
     label: 'ROCE',
     earned: roceEarned,
     max: 5,
-    signal: roce ? `${(roce * 100).toFixed(1)}%` : 'no data',
+    signal:
+      normalizedRoce != null
+        ? `${(normalizedRoce * 100).toFixed(1)}%`
+        : 'no data',
     category: 'fundamental',
   });
 
