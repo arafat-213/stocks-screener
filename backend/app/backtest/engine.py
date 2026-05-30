@@ -7,6 +7,7 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Optional
 
+import numpy as np
 import pandas as pd
 import pandas_ta_classic  # noqa
 from sqlalchemy.orm import Session
@@ -23,6 +24,24 @@ from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.scorer import calculate_technical_score
 from app.pipeline.utils import resample_ohlcv
 
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (np.float64, np.float32, np.float16)):
+            return float(obj)
+        if isinstance(obj, (np.int64, np.int32, np.int16)):
+            return int(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super().default(obj)
+
+
+def _clean(val):
+    if hasattr(val, "item"):
+        return val.item()
+    return val
+
+
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
 
@@ -34,6 +53,10 @@ _TA_METADATA = {}  # {symbol: latest_date}
 
 # Cache for raw OHLCV data to avoid redundant Parquet reads during sequential runs.
 _OHLCV_CACHE = {}  # {symbol: DataFrame}
+
+ROUND_TRIP_COST_PCT = (
+    0.25  # 0.25% per trade: reflects actual flat-fee brokerage reality
+)
 
 ROUND_TRIP_COST_PCT = (
     0.25  # 0.25% per trade: reflects actual flat-fee brokerage reality
@@ -853,7 +876,19 @@ def compute_metrics(
     trades: list[TradeResult], benchmark_data: pd.DataFrame, config: BacktestConfig
 ):
     if not trades:
-        return {"total_trades": 0, "win_rate": 0.0, "total_return_pct": 0.0}
+        return {
+            "total_trades": 0,
+            "winning_trades": 0,
+            "win_rate": 0.0,
+            "avg_return_pct": 0.0,
+            "total_return_pct": 0.0,
+            "gross_return_pct": 0.0,
+            "total_cost_drag_pct": 0.0,
+            "expectancy": 0.0,
+            "profit_factor": 0.0,
+            "equity_curve": [],
+            "exit_breakdown": {},
+        }
 
     rets = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
     psizes = [t.position_size_used or config.position_size for t in trades]
@@ -1026,17 +1061,19 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         metrics = compute_metrics(all_trades, bench_df, config)
 
         # Map metrics to DB columns
-        run.total_trades = metrics["total_trades"]
-        run.winning_trades = metrics["winning_trades"]
-        run.win_rate = metrics["win_rate"]
-        run.avg_return_pct = metrics["avg_return_pct"]
-        run.total_return_pct = metrics["total_return_pct"]
-        run.gross_return_pct = metrics["gross_return_pct"]
-        run.total_cost_drag_pct = metrics["total_cost_drag_pct"]
-        run.expectancy = metrics["expectancy"]
-        run.profit_factor = metrics["profit_factor"]
-        run.exit_breakdown_json = json.dumps(metrics["exit_breakdown"])
-        run.equity_curve_json = json.dumps(metrics["equity_curve"])
+        run.total_trades = int(_clean(metrics["total_trades"]))
+        run.winning_trades = int(_clean(metrics["winning_trades"]))
+        run.win_rate = float(_clean(metrics["win_rate"]))
+        run.avg_return_pct = float(_clean(metrics["avg_return_pct"]))
+        run.total_return_pct = float(_clean(metrics["total_return_pct"]))
+        run.gross_return_pct = float(_clean(metrics["gross_return_pct"]))
+        run.total_cost_drag_pct = float(_clean(metrics["total_cost_drag_pct"]))
+        run.expectancy = float(_clean(metrics["expectancy"]))
+        run.profit_factor = float(_clean(metrics["profit_factor"]))
+        run.exit_breakdown_json = json.dumps(
+            metrics["exit_breakdown"], cls=NumpyEncoder
+        )
+        run.equity_curve_json = json.dumps(metrics["equity_curve"], cls=NumpyEncoder)
 
         # Save individual trades
         db_trades = []
@@ -1050,12 +1087,24 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     "entry_date": t.entry_date,
                     "exit_date": t.exit_date,
                     "exit_reason": t.exit_reason,
-                    "signal_score": t.signal_score,
-                    "entry_price": t.entry_price,
-                    "exit_price": t.exit_price,
-                    "return_pct": t.return_pct,
-                    "rsi_at_signal": t.rsi_at_signal,
-                    "adx_at_signal": t.adx_at_signal,
+                    "signal_score": float(_clean(t.signal_score))
+                    if t.signal_score is not None
+                    else None,
+                    "entry_price": float(_clean(t.entry_price))
+                    if t.entry_price is not None
+                    else None,
+                    "exit_price": float(_clean(t.exit_price))
+                    if t.exit_price is not None
+                    else None,
+                    "return_pct": float(_clean(t.return_pct))
+                    if t.return_pct is not None
+                    else None,
+                    "rsi_at_signal": float(_clean(t.rsi_at_signal))
+                    if t.rsi_at_signal is not None
+                    else None,
+                    "adx_at_signal": float(_clean(t.adx_at_signal))
+                    if t.adx_at_signal is not None
+                    else None,
                     "ema_signal": t.ema_signal,
                 }
             )
