@@ -1,4 +1,19 @@
+import logging
+import random
+import time
+
 import pandas as pd
+from sqlalchemy.orm import Session
+
+from app.db.models import Stock
+from app.db.session import SessionLocal
+from app.pipeline.ohlcv_cache import OHLCVCache
+
+# Setup basic logging
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
 
 
 def has_5y_data(path):
@@ -23,23 +38,6 @@ def has_5y_data(path):
         return False
 
 
-import logging
-import random
-import time
-
-from sqlalchemy.orm import Session
-
-from app.db.models import Stock
-from app.db.session import SessionLocal
-from app.pipeline.ohlcv_cache import OHLCVCache
-
-# Setup basic logging
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
-logger = logging.getLogger(__name__)
-
-
 def warm_cache():
     """
     Iterates through all stocks in the database and fetches 5-year OHLCV data
@@ -49,50 +47,36 @@ def warm_cache():
     cache = OHLCVCache()
 
     try:
-        # Get all symbols
-        stocks = db.query(Stock.symbol).all()
-        symbols = [s[0] for s in stocks]
-        total_symbols = len(symbols)
-
-        logger.info(f"Starting cache warming for {total_symbols} symbols.")
+        stocks = db.query(Stock).all()
+        logger.info(f"Found {len(stocks)} stocks to check.")
 
         success_count = 0
         fail_count = 0
         skip_count = 0
 
-        for i, symbol in enumerate(symbols, 1):
-            path = cache._file_path(symbol)
-            if path.exists():
-                if has_5y_data(path):
-                    logger.info(
-                        f"[{i}/{total_symbols}] Skipping {symbol} (already has 5y data)"
-                    )
-                    skip_count += 1
-                    continue
-                else:
-                    logger.info(
-                        f"[{i}/{total_symbols}] Data for {symbol} is less than 5y, forcing refresh..."
-                    )
-                    path.unlink(missing_ok=True)
+        for i, stock in enumerate(stocks):
+            symbol = stock.symbol
+            # Check if we already have sufficient data
+            path = cache._get_path(symbol)
+            if cache.exists(symbol) and has_5y_data(path):
+                skip_count += 1
+                continue
 
-            logger.info(f"[{i}/{total_symbols}] Fetching 5y data for {symbol}...")
-
+            logger.info(
+                f"[{i + 1}/{len(stocks)}] Fetching 5y data for {symbol} (Reason: Missing or incomplete)"
+            )
             try:
-                # Force 5y period
-                df = cache.get(symbol, period="5y")
-
-                if df is not None and not df.empty:
+                # Fetching 5y ensures we have enough for 200 EMA + 52w highs
+                df = cache.fetch_and_save(symbol, period="5y")
+                if not df.empty:
                     success_count += 1
                 else:
-                    logger.warning(f"No data returned for {symbol}")
                     fail_count += 1
-
             except Exception as e:
-                logger.error(f"Error fetching {symbol}: {e}")
+                logger.error(f"Failed to fetch {symbol}: {e}")
                 fail_count += 1
 
-            # Rate limiting logic
-            # Average delay ~1.5 seconds per symbol
+            # Dynamic sleep to respect yfinance/Yahoo Finance limits
             # For ~1700 missing symbols, this adds ~42 minutes of pure sleep time,
             # bringing total execution to roughly 1-1.5 hours.
             sleep_time = random.uniform(1.0, 2.0)

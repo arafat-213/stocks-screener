@@ -76,23 +76,3 @@ def downgrade() -> None:
 
     # 4. Rename back
     op.rename_table("technical_signals", "daily_scores")
-
-
-def downgrade() -> None:
-    # 1. Drop new constraints
-    op.drop_constraint("uq_symbol_date_tf", "technical_signals", type_="unique")
-    op.drop_constraint("pk_technical_signals", "technical_signals", type_="primary")
-
-    # 2. Restore old PK
-    op.create_primary_key("daily_scores_pkey", "technical_signals", ["date", "symbol"])
-
-    # 3. Drop new columns
-    with op.batch_alter_table("technical_signals") as batch_op:
-        batch_op.drop_column("scored_at")
-        batch_op.drop_column("rsi_signal")
-        batch_op.drop_column("is_bullish")
-        batch_op.drop_column("timeframe")
-        batch_op.drop_column("id")
-
-    # 4. Rename back
-    op.rename_table("technical_signals", "daily_scores")

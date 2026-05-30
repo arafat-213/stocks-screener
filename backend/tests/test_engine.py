@@ -1,4 +1,5 @@
 import datetime
+import time
 
 import numpy as np
 import pandas as pd
@@ -16,6 +17,7 @@ from app.backtest.engine import (
     simulate_portfolio,
     simulate_trades,
 )
+from tests.conftest import make_signal, make_trending_df
 
 
 def test_tier1_requires_cross_or_pullback_plus_volume_plus_adx():
@@ -76,11 +78,6 @@ def test_generic_bullish_signal_is_not_entered():
 
     trades = simulate_trades("TEST", "Tech", df, [signal], config)
     assert len(trades) == 0
-
-
-import time
-
-from tests.conftest import make_signal, make_trending_df
 
 
 class TestEffectiveScoreThreshold:
@@ -542,7 +539,6 @@ def test_atr_trailing_stop_locks_in_profit():
 
     from app.backtest.engine import BacktestConfig, simulate_trades
 
-    entry_price = 100.0
     atr = 5.0
     n = 30
     closes = np.array(
@@ -606,7 +602,6 @@ def test_partial_exit_produces_two_trade_records():
     With use_partial_exits=True, a trade that hits T1 then T2 should produce
     two TradeResult objects: one at T1 and one at T2 (or stop/period).
     """
-    entry_price = 100.0
     atr = 4.0
     # T1 = entry + 1.5 * 2.0 * atr = 100 + 12 = 112
     # T2 = entry + 2.5 * 2.0 * atr = 100 + 20 = 120

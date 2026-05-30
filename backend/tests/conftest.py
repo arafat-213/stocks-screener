@@ -1,3 +1,5 @@
+import numpy as np
+import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
@@ -71,10 +73,6 @@ def client(db):
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()
-
-
-import numpy as np
-import pandas as pd
 
 
 def make_trending_df(
