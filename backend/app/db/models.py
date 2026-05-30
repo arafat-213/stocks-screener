@@ -326,6 +326,7 @@ class PaperPosition(Base):
 
     opened_at = Column(DateTime, default=datetime.datetime.utcnow)
     closed_at = Column(DateTime, nullable=True)
+    exit_price = Column(Float, nullable=True)
     exit_reason = Column(String, nullable=True)
 
     __table_args__ = (
