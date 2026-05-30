@@ -1,3 +1,4 @@
+import datetime
 import logging
 import os
 from contextlib import asynccontextmanager
@@ -8,6 +9,7 @@ from sqlalchemy import text
 
 from app.core.cache import response_cache
 from app.db import session as db_session
+from app.db.models import PipelineRun
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.orchestrator import cleanup_zombie_runs
 from app.routers import (
@@ -22,9 +24,7 @@ from app.routers import (
 )
 
 _ohlcv_cache = OHLCVCache()
-import datetime
 
-from app.db.models import PipelineRun
 
 # Configure Logging
 log_dir = "logs"
