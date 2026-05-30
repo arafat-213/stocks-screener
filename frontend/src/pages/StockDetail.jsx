@@ -61,6 +61,7 @@ const StockDetail = () => {
   const score_history = data?.score_history || [];
   const name = data?.name || '';
   const sector = data?.sector || '';
+  const industry = data?.industry || '';
   const fundamentals = data?.fundamentals || {};
   const setup = data?.setup;
 
@@ -68,6 +69,15 @@ const StockDetail = () => {
   const breakdown = inferScoreBreakdown(dailyScore, fundamentals);
 
   const latestOhlc = ohlcv.length > 0 ? ohlcv[ohlcv.length - 1] : { close: 0 };
+
+  // Task 4: Dynamic 52W Range Indicator
+  const week52Low = dailyScore?.week52_low || 0;
+  const week52High = dailyScore?.week52_high || 0;
+  const range52W = week52High - week52Low;
+  const currentPos =
+    range52W > 0 ? ((latestOhlc.close - week52Low) / range52W) * 100 : 0;
+  const boundedPos = Math.max(0, Math.min(100, currentPos));
+
   const prevOhlc = ohlcv.length > 1 ? ohlcv[ohlcv.length - 2] : latestOhlc;
   const priceChange = latestOhlc.close - (prevOhlc?.close || 0);
   const priceChangePct =
@@ -167,12 +177,31 @@ const StockDetail = () => {
             <h1 className='text-3xl sm:text-5xl m-0 text-text font-black tracking-tighter'>
               {symbol.replace('.NS', '')}
             </h1>
-            <span className='bg-blue-500 text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20'>
-              {sector}
-            </span>
+            <div className='flex items-center gap-2 flex-wrap'>
+              <span className='bg-blue-500 text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-blue-500/20'>
+                {sector}
+              </span>
+              {industry && (
+                <span className='bg-slate-500 text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-slate-500/20'>
+                  {industry}
+                </span>
+              )}
+              {dailyScore?.is_consolidating && (
+                <span className='bg-amber-500 text-white px-2.5 py-1 rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-widest shadow-lg shadow-amber-500/20'>
+                  Consolidating
+                </span>
+              )}
+            </div>
           </div>
-          <div className='text-lg sm:text-xl text-slate-500 dark:text-slate-400 font-medium'>
+          <div className='text-lg sm:text-xl text-slate-500 dark:text-slate-400 font-medium flex items-center gap-3 flex-wrap'>
             {name}
+            {dailyScore?.above_200ema !== undefined && (
+              <span
+                className={`text-[11px] font-black uppercase tracking-widest px-2 py-0.5 rounded ${dailyScore.above_200ema ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}
+              >
+                {dailyScore.above_200ema ? 'Above 200 EMA' : 'Below 200 EMA'}
+              </span>
+            )}
           </div>
         </div>
         <div className='text-left sm:text-right flex flex-col gap-1.5 sm:gap-2 w-full sm:w-auto'>
@@ -338,20 +367,20 @@ const StockDetail = () => {
                     52W High/Low Range
                   </span>
                   <div className='flex items-center justify-between font-mono font-black'>
-                    <span className='text-green-500 text-sm'>
-                      H: ₹
-                      {dailyScore?.week52_high?.toLocaleString('en-IN') ||
-                        'N/A'}
+                    <span className='text-red-500 text-sm'>
+                      L: ₹
+                      {dailyScore?.week52_low?.toLocaleString('en-IN') || 'N/A'}
                     </span>
                     <div className='flex-1 mx-4 h-1 bg-slate-200 dark:bg-slate-800 rounded-full relative'>
                       <div
                         className='absolute top-1/2 -translate-y-1/2 w-2 h-2 bg-blue-500 rounded-full shadow-lg shadow-blue-500/50'
-                        style={{ left: '60%' }}
+                        style={{ left: `${boundedPos}%` }}
                       ></div>
                     </div>
-                    <span className='text-red-500 text-sm'>
-                      L: ₹
-                      {dailyScore?.week52_low?.toLocaleString('en-IN') || 'N/A'}
+                    <span className='text-green-500 text-sm'>
+                      H: ₹
+                      {dailyScore?.week52_high?.toLocaleString('en-IN') ||
+                        'N/A'}
                     </span>
                   </div>
                 </div>

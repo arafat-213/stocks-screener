@@ -1,29 +1,29 @@
 # Stock AI — Indian Market Research Tool
 
-A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs a daily pipeline after market close to screen and score stocks.
+A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs a daily pipeline after market close to screen, score, and rank stocks. Includes backtesting, paper trading, and a trade journal.
 
 ## Project Overview
 
-- **Purpose:** Daily automated screening of NSE stocks using fundamental filters and technical analysis scoring.
+- **Purpose:** Daily automated screening of NSE stocks using fundamental filters and technical momentum scoring.
 - **Data Sources:** `yfinance` (EOD OHLCV + Fundamentals), `nsepython` (NSE universe).
-- **Processing:** Two-stage engine (Fundamental Screener -> Technical Scorer).
+- **Processing:** Multi-stage distributed engine (Fundamental Screener -> Technical Scorer -> RS Ranking -> Signal Digest).
 - **Architecture:**
     - **Backend:** `FastAPI` (Python) with distributed task queue via `Celery` and `Redis`.
-    - **Database:** `PostgreSQL` (Managed via Neon/Supabase or local Docker).
-    - **Frontend:** `React` (Vite) dashboard with `Recharts` and `lightweight-charts`.
+    - **Database:** `PostgreSQL` (Managed via Alembic migrations).
+    - **Frontend:** `React` (Vite) dashboard with `TailwindCSS`, `Recharts`, and `lightweight-charts`.
 
 ## Tech Stack
 
 - **Backend:** Python, FastAPI, PostgreSQL (SQLAlchemy), Celery, Redis, pandas-ta.
 - **Migrations:** Alembic.
-- **Frontend:** React (Vite), Recharts, lightweight-charts.
-- **Testing:** pytest, pytest-cov, httpx.
-- **Data:** yfinance, nsepython.
+- **Frontend:** React (Vite), TailwindCSS, Recharts, lightweight-charts.
+- **Testing:** pytest (Backend), vitest (Frontend).
+- **Data:** yfinance (with request caching), nsepython.
 
 ## Building and Running
 
 ### Local Development (Docker)
-1. Run `docker-compose up -d` to spin up PostgreSQL and Redis instances.
+1. Run `docker-compose up -d` to spin up PostgreSQL (port 5434) and Redis (port 6380) instances.
 
 ### Backend
 1. Navigate to `backend/` directory.
@@ -39,17 +39,25 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 3. Start the dev server: `npm run dev`
 
 ### Testing
-- Run tests: `pytest`
+- Backend: `pytest`
+- Frontend: `npm test`
 
 ## Development Conventions
 
-- **Stock Symbols:** Always use the `.NS` suffix for NSE-listed stocks (e.g., `RELIANCE.NS`) when fetching data via `yfinance`.
-- **Database:** PostgreSQL for persistence. Schema changes must be handled via **Alembic migrations**.
-- **Architecture:** FastAPI service for the web layer. Background tasks (scrapers) are handled by Celery workers, with scheduling managed by Celery Beat.
+- **Stock Symbols:** Always use the `.NS` suffix for NSE-listed stocks (e.g., `RELIANCE.NS`).
+- **Timeframes:** Data is processed daily ('D'), weekly ('W'), and monthly ('M').
+- **Database:** PostgreSQL for persistence. Schema changes **must** be handled via **Alembic migrations**.
+- **Pipelines:** Long-running tasks (scrapers, backtests) must be handled by Celery workers.
+- **Timezones:** Internal processing uses `Asia/Kolkata`.
 
 ## Key Files
 
-- [PRD.md](./PRD.md): Detailed Product Requirements Document and Architecture Design.
-- `backend/app/main.py`: FastAPI entry point (Planned).
-- `backend/app/pipeline/`: Core logic for fetching, screening, and scoring (Planned).
-- `frontend/src/pages/Dashboard.jsx`: Main dashboard view (Planned).
+- [PRD.md](./PRD.md): Detailed Product Requirements and Architecture.
+- `backend/app/main.py`: FastAPI entry point and health checks.
+- `backend/app/pipeline/orchestrator.py`: Core logic for the daily research pipeline.
+- `backend/app/db/models.py`: SQLAlchemy models for signals, backtests, and paper trading.
+- `frontend/src/App.jsx`: Main routing for Dashboard, Backtest, Portfolio, and Intelligence.
+
+## Frontend rules
+- Use map, filter, sort, size, length, forEach, reduce, slice, trim from lodash/fp instead of array native helpers.
+- Use ui-ux-pro-max skill while designing frontend components and pages
