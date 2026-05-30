@@ -75,9 +75,9 @@ def build_signal_email(
     def tier_badge(t):
         colors = {"A": "#16a34a", "B": "#d97706", "C": "#6b7280"}
         labels = {"A": "Quality A", "B": "Quality B", "C": "Quality C"}
-        c = colors.get(t, "#6b7280")
-        l = labels.get(t, "Unknown")
-        return f'<span style="background:{c};color:white;padding:2px 7px;border-radius:4px;font-size:11px;">{l}</span>'
+        color_code = colors.get(t, "#6b7280")
+        label_name = labels.get(t, "Unknown")
+        return f'<span style="background:{color_code};color:white;padding:2px 7px;border-radius:4px;font-size:11px;">{label_name}</span>'
 
     def entry_badge(status):
         if status == "in_zone":
