@@ -103,7 +103,7 @@ def health_check():
         try:
             run = db_query_pipeline_run(db)
             if run:
-                age_delta = datetime.datetime.utcnow() - run.timestamp
+                age_delta = datetime.datetime.now(datetime.timezone.utc) - run.timestamp
                 data_age_hours = round(age_delta.total_seconds() / 3600.0, 1)
                 pipeline_info = {
                     "last_status": run.status,

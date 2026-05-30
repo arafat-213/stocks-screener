@@ -491,7 +491,7 @@ def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
     # Calculate age
     import datetime
 
-    age_delta = datetime.datetime.utcnow() - run.timestamp
+    age_delta = datetime.datetime.now(datetime.timezone.utc) - run.timestamp
     data_age_hours = round(age_delta.total_seconds() / 3600.0, 1)
     is_stale = data_age_hours > 26
 

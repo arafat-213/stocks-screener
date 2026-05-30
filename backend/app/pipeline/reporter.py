@@ -16,7 +16,7 @@ def generate_daily_report(db: Session):
     Saves the report as a Markdown file in the 'backend/reports' directory.
     """
     try:
-        today = datetime.datetime.utcnow().date()
+        today = datetime.datetime.now(datetime.timezone.utc).date()
 
         # Query top 20 stocks by confluence and score for today
         results = (
@@ -53,7 +53,7 @@ def generate_daily_report(db: Session):
         # Prepare Report Content
         report_lines = [
             f"# Daily Stock Scan Report - {today}",
-            f"Generated at: {datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')} UTC",
+            f"Generated at: {datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S')} UTC",
             "",
             "| Symbol | Name | Confluence | Daily Score | RSI |",
             "| :--- | :--- | :--- | :--- | :--- |",

@@ -105,11 +105,13 @@ def _save_checkpoint(db: Session, run_id: str, phase: str, symbols: set):
     )
     if not checkpoint:
         checkpoint = PipelineCheckpoint(
-            run_id=run_id, phase=phase, started_at=datetime.datetime.utcnow()
+            run_id=run_id,
+            phase=phase,
+            started_at=datetime.datetime.now(datetime.timezone.utc),
         )
         db.add(checkpoint)
     checkpoint.completed_symbols = json.dumps(list(symbols))
-    checkpoint.completed_at = datetime.datetime.utcnow()
+    checkpoint.completed_at = datetime.datetime.now(datetime.timezone.utc)
     db.commit()
 
 
@@ -151,7 +153,7 @@ def process_symbol(
             return []
 
     if scored_at is None:
-        scored_at = datetime.datetime.utcnow()
+        scored_at = datetime.datetime.now(datetime.timezone.utc)
 
     signals = []
     # Multi-timeframe loop
@@ -420,7 +422,9 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
         # 2. Tier 2 Screening & Caching
         to_refresh = []
-        seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+        seven_days_ago = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(days=7)
 
         completed_t2 = _get_completed_symbols(db, run.run_id, "tier2")
 
@@ -463,7 +467,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
         # 3. Final Filtering & Scoring
         logger.info("Applying Tier 2 filters and scoring")
-        scored_at = datetime.datetime.utcnow()
+        scored_at = datetime.datetime.now(datetime.timezone.utc)
         tier2_survivors_count = 0
         scored_count = run.stocks_scored
         completed_scoring = _get_completed_symbols(db, run.run_id, "scoring")

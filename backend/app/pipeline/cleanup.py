@@ -25,7 +25,7 @@ def run_cleanup(db: Session) -> dict:
     Safe to run daily after pipeline completion.
     Returns counts of deleted rows per table.
     """
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     today = datetime.date.today()
     summary = {}
 

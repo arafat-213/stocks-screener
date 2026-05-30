@@ -17,6 +17,7 @@ import CandlestickChart from '../components/CandlestickChart';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import TradingPlan from '../components/TradingPlan';
 import { inferScoreBreakdown } from '../utils/scoreBreakdown';
+import { formatDisplayDate } from '../utils/dateUtils';
 import { useCallback } from 'react';
 
 const StockDetail = () => {
@@ -264,13 +265,7 @@ const StockDetail = () => {
                     tickLine={false}
                     axisLine={false}
                     dy={10}
-                    tickFormatter={(str) => {
-                      const date = new Date(str);
-                      return date.toLocaleDateString([], {
-                        month: 'short',
-                        day: 'numeric',
-                      });
-                    }}
+                    tickFormatter={(str) => formatDisplayDate(str)}
                   />
                   <YAxis
                     stroke='#64748B'

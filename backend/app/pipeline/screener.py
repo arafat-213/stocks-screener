@@ -36,7 +36,7 @@ def needs_cache_refresh(cache, seven_days_ago: datetime.datetime) -> bool:
 
     # Backoff check (Takes precedence over age)
     retry_after = getattr(cache, "retry_after", None)
-    if retry_after and datetime.datetime.utcnow() < retry_after:
+    if retry_after and datetime.datetime.now(datetime.timezone.utc) < retry_after:
         return False
 
     # Age check
@@ -191,7 +191,7 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                     cache_entry.fetch_attempts = (cache_entry.fetch_attempts or 0) + 1
 
                     # Backoff logic
-                    now = datetime.datetime.utcnow()
+                    now = datetime.datetime.now(datetime.timezone.utc)
                     if error_type == "rate_limit":
                         cache_entry.retry_after = now + datetime.timedelta(hours=6)
                     elif error_type == "empty_data" and cache_entry.fetch_attempts >= 3:
@@ -213,7 +213,7 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
 
             try:
                 # Update FundamentalCache (even if failed, to mark as attempted)
-                cache_entry.last_updated = datetime.datetime.utcnow()
+                cache_entry.last_updated = datetime.datetime.now(datetime.timezone.utc)
                 cache_entry.cache_version = cache_version
 
                 if not success:
@@ -265,7 +265,7 @@ def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
                 cache_entry.fcf_positive = (fcf > 0) if fcf is not None else None
 
                 # Update FundamentalData (latest snapshot)
-                today = datetime.datetime.utcnow().replace(
+                today = datetime.datetime.now(datetime.timezone.utc).replace(
                     hour=0, minute=0, second=0, microsecond=0
                 )
                 fund_data = (

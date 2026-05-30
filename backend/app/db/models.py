@@ -32,7 +32,7 @@ class Stock(Base):
 class TechnicalSignal(Base):
     __tablename__ = "technical_signals"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    date = Column(DateTime, nullable=False)
+    date = Column(DateTime(timezone=True), nullable=False)
     symbol = Column(String, nullable=False)
     timeframe = Column(String(1), nullable=False)  # 'D', 'W', 'M'
     is_bullish = Column(Boolean, nullable=False, default=False)
@@ -78,7 +78,10 @@ class TechnicalSignal(Base):
     # Consolidation
     is_consolidating = Column(Boolean, nullable=True, default=None)
 
-    scored_at = Column(DateTime, default=datetime.datetime.utcnow)
+    scored_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     __table_args__ = (
         UniqueConstraint("symbol", "date", "timeframe"),
         # Covers every screen query: WHERE timeframe='D' AND date(date)=X
@@ -103,7 +106,10 @@ class TechnicalSignal(Base):
 
 class FundamentalData(Base):
     __tablename__ = "fundamental_data"
-    date = Column(DateTime, default=datetime.datetime.utcnow)
+    date = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     symbol = Column(String)
     pe = Column(Float, nullable=True)
     pb = Column(Float, nullable=True)
@@ -137,19 +143,25 @@ class FundamentalCache(Base):
     dividend_consistency = Column(Boolean, nullable=True)
     market_cap_category = Column(String(20), nullable=True)
 
-    retry_after = Column(DateTime, nullable=True)
+    retry_after = Column(DateTime(timezone=True), nullable=True)
     fetch_attempts = Column(Integer, default=0)
     last_error = Column(String, nullable=True)
     force_refresh = Column(Boolean, default=False)
 
-    last_updated = Column(DateTime, default=datetime.datetime.utcnow)
+    last_updated = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     cache_version = Column(Integer, default=1)
 
 
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
     run_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow)
+    timestamp = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     status = Column(String)
     stocks_fetched = Column(Integer)
     stocks_scored = Column(Integer)
@@ -165,8 +177,8 @@ class PipelineCheckpoint(Base):
     run_id = Column(String, ForeignKey("pipeline_runs.run_id"), primary_key=True)
     phase = Column(String, primary_key=True)
     completed_symbols = Column(Text)  # JSON array of symbols
-    started_at = Column(DateTime)
-    completed_at = Column(DateTime, nullable=True)
+    started_at = Column(DateTime(timezone=True))
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class PipelineError(Base):
@@ -178,7 +190,10 @@ class PipelineError(Base):
     error_type = Column(String, nullable=False)
     message = Column(Text, nullable=False)
     traceback = Column(Text, nullable=True)
-    occurred_at = Column(DateTime, default=datetime.datetime.utcnow)
+    occurred_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
 
     __table_args__ = (Index("ix_pe_run_id", "run_id"),)
 
@@ -207,7 +222,10 @@ class BacktestRun(Base):
     __tablename__ = "backtest_runs"
 
     run_id = Column(String, primary_key=True, default=lambda: str(uuid.uuid4()))
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     status = Column(
         String, nullable=False
     )  # 'pending', 'running', 'complete', 'failed'
@@ -281,7 +299,10 @@ class SectorSnapshot(Base):
 class PaperPortfolio(Base):
     __tablename__ = "paper_portfolio"
     id = Column(Integer, primary_key=True, autoincrement=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     name = Column(String, nullable=False, default="default")
     starting_capital = Column(Float, nullable=False, default=1000000.0)
     is_active = Column(Boolean, default=True)
@@ -327,8 +348,11 @@ class PaperPosition(Base):
     highest_price = Column(Float, nullable=True)  # updated daily for trailing stop
     atr_trail_active = Column(Boolean, default=False)
 
-    opened_at = Column(DateTime, default=datetime.datetime.utcnow)
-    closed_at = Column(DateTime, nullable=True)
+    opened_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+    closed_at = Column(DateTime(timezone=True), nullable=True)
     exit_price = Column(Float, nullable=True)
     exit_reason = Column(String, nullable=True)
 
@@ -359,7 +383,10 @@ class PaperTrade(Base):
     signal_score = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
     holding_days = Column(Integer, nullable=False)
-    closed_at = Column(DateTime, default=datetime.datetime.utcnow)
+    closed_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
 
     __table_args__ = (Index("ix_pt_portfolio_id", "portfolio_id"),)
 
@@ -374,7 +401,10 @@ class AlertLog(Base):
     )  # 'tier1_entry', 'tier2_entry', 'regime_change'
     quality_tier = Column(String(1), nullable=True)  # 'A', 'B', 'C'
     entry_score = Column(Float, nullable=True)
-    sent_at = Column(DateTime, default=datetime.datetime.utcnow)
+    sent_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
     email_id = Column(String, nullable=True)  # Resend message ID for debugging
 
     __table_args__ = (
@@ -441,7 +471,10 @@ class TradeJournal(Base):
     notes = Column(Text, nullable=True)
     source = Column(String, nullable=False, default="manual")  # 'manual' | 'paper'
     external_id = Column(Integer, nullable=True)  # Links to PaperPosition.id
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
 
     __table_args__ = (
         Index("ix_tj_status", "status"),

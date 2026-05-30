@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, memo } from 'react';
+import { getISTDateString, formatDisplayDate } from '../utils/dateUtils';
 import {
   Play,
   History,
@@ -343,13 +344,7 @@ const BacktestResults = memo(
                     tickLine={false}
                     axisLine={false}
                     dy={10}
-                    tickFormatter={(str) => {
-                      const date = new Date(str);
-                      return date.toLocaleDateString([], {
-                        month: 'short',
-                        year: '2-digit',
-                      });
-                    }}
+                    tickFormatter={(str) => formatDisplayDate(str)}
                   />
                   <YAxis
                     stroke='#64748B'
@@ -485,10 +480,12 @@ const Backtest = () => {
     max_sector_positions: 0,
     include_fundamentals: false,
     symbol_limit: 350,
-    date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
-      .toISOString()
-      .split('T')[0],
-    date_to: new Date().toISOString().split('T')[0],
+    date_from: (() => {
+      const d = new Date();
+      d.setFullYear(d.getFullYear() - 1);
+      return getISTDateString(d);
+    })(),
+    date_to: getISTDateString(),
   }));
 
   const [activeRunId, setActiveRunId] = useState(null);
@@ -581,10 +578,12 @@ const Backtest = () => {
       require_monthly_confirmation: false,
       include_fundamentals: false,
       symbol_limit: 350,
-      date_from: new Date(new Date().setFullYear(new Date().getFullYear() - 1))
-        .toISOString()
-        .split('T')[0],
-      date_to: new Date().toISOString().split('T')[0],
+      date_from: (() => {
+        const d = new Date();
+        d.setFullYear(d.getFullYear() - 1);
+        return getISTDateString(d);
+      })(),
+      date_to: getISTDateString(),
       starting_capital: 1000000,
       position_size: 10000,
       use_volatility_sizing: true,
@@ -621,7 +620,7 @@ const Backtest = () => {
         render: (val) =>
           val ? (
             <span className='font-bold text-slate-500 dark:text-slate-400'>
-              {new Date(val).toLocaleDateString()}
+              {formatDisplayDate(val)}
             </span>
           ) : (
             '-'
@@ -734,12 +733,7 @@ const Backtest = () => {
                     <span
                       className={`text-[13px] font-black tracking-tight ${activeRunId === run.run_id ? 'text-blue-600 dark:text-blue-400' : 'text-text'}`}
                     >
-                      {new Date(run.created_at).toLocaleString([], {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatDisplayDate(run.created_at)}
                     </span>
                     <span
                       className={`text-[9px] px-2 py-0.5 rounded-lg uppercase font-black tracking-widest shadow-sm

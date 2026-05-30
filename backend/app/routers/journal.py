@@ -2,7 +2,7 @@ import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.db import models
@@ -19,7 +19,7 @@ class TradeEntryCreate(BaseModel):
     stop_loss: Optional[float] = None
     target: Optional[float] = None
     signal_date: Optional[datetime.date] = None
-    entry_date: Optional[datetime.date] = datetime.date.today()
+    entry_date: Optional[datetime.date] = Field(default_factory=datetime.date.today)
     watchlist_id: Optional[int] = None
     notes: Optional[str] = None
 

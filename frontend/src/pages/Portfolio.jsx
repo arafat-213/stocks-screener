@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { getISTDateString, formatDisplayDate } from '../utils/dateUtils';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { get, getOr, size, isEmpty, map, filter } from 'lodash/fp';
 import {
@@ -43,7 +44,7 @@ const Portfolio = () => {
     shares: '1',
     stop_loss: '',
     target: '',
-    entry_date: new Date().toISOString().split('T')[0],
+    entry_date: getISTDateString(),
     notes: '',
     watchlist_id: null,
   });
@@ -123,7 +124,7 @@ const Portfolio = () => {
     try {
       await closeJournalEntry(tradeId, {
         exit_price: parseFloat(exitPrice),
-        exit_date: new Date().toISOString().split('T')[0],
+        exit_date: getISTDateString(),
         exit_reason: exitReason,
       });
       setModalOpen(false);
@@ -157,7 +158,7 @@ const Portfolio = () => {
         shares: '1',
         stop_loss: '',
         target: '',
-        entry_date: new Date().toISOString().split('T')[0],
+        entry_date: getISTDateString(),
         notes: '',
         watchlist_id: null,
       });
@@ -644,7 +645,7 @@ const OpenPositionsTable = ({ positions, onCloseTrade }) => {
                     <SourceBadge source={get('source')(pos)} />
                   </td>
                   <td className='p-4 text-text-muted font-medium'>
-                    {new Date(get('entry_date')(pos)).toLocaleDateString()}
+                    {formatDisplayDate(get('entry_date')(pos))}
                   </td>
                   <td className='p-4 text-right font-mono font-bold text-text-muted'>
                     {isPending && (
@@ -761,15 +762,8 @@ const TradeHistoryTable = ({ trades }) => {
                   </td>
                   <td className='p-4'>
                     <div className='text-[10px] font-bold text-text-muted uppercase tracking-tighter'>
-                      {new Date(get('entry_date')(t)).toLocaleDateString(
-                        undefined,
-                        { month: 'short', day: 'numeric' }
-                      )}{' '}
-                      →{' '}
-                      {new Date(get('exit_date')(t)).toLocaleDateString(
-                        undefined,
-                        { month: 'short', day: 'numeric' }
-                      )}
+                      {formatDisplayDate(get('entry_date')(t))} →{' '}
+                      {formatDisplayDate(get('exit_date')(t))}
                     </div>
                   </td>
                   <td className='p-4 text-right font-mono text-xs text-text-muted'>

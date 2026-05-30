@@ -225,7 +225,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             pos.status = "expired"
             pos.exit_reason = "invalidated"
             pos.is_invalidated = True
-            pos.closed_at = datetime.datetime.utcnow()
+            pos.closed_at = datetime.datetime.now(datetime.timezone.utc)
             sync_paper_to_journal(db, pos)
             results["invalidated"] += 1
             logger.info(
@@ -263,7 +263,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             else:
                 pos.status = "expired"
                 pos.exit_reason = "no_pullback"
-                pos.closed_at = datetime.datetime.utcnow()
+                pos.closed_at = datetime.datetime.now(datetime.timezone.utc)
                 sync_paper_to_journal(db, pos)
                 results["expired"] += 1
                 logger.info(
@@ -328,7 +328,7 @@ def _convert_to_open(
         PAPER_CONFIG, entry_price=entry_price, atr=atr_val
     )
     pos.shares = pos.position_size / entry_price
-    pos.opened_at = datetime.datetime.utcnow()
+    pos.opened_at = datetime.datetime.now(datetime.timezone.utc)
 
     logger.info(
         "paper_trading: OPEN %s via %s at %.2f (stop=%.2f target=%.2f)",
@@ -442,7 +442,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
             pos.status = "closed"
             pos.exit_price = exit_price
             pos.exit_reason = exit_reason
-            pos.closed_at = datetime.datetime.utcnow()
+            pos.closed_at = datetime.datetime.now(datetime.timezone.utc)
             exit_counts[exit_reason] += 1
             logger.info(
                 "paper_trading: CLOSE %s exit=%.2f return=%.2f%% reason=%s",
