@@ -30,7 +30,7 @@ class BacktestRequest(BaseModel):
         ),
     )
     holding_days: int = Field(
-        default=30,  # was 20 — EMA cross momentum needs time to develop
+        default=35,  # was 30; 5 extra days for 1.5R targets
         ge=1,
         le=252,
     )
@@ -68,28 +68,38 @@ class BacktestRequest(BaseModel):
         default=1.5,
         ge=0.5,
         le=10.0,
-        description="Target profit as a multiple of risk. With atr_multiplier=2.0, "
-        "a ratio of 1.5 places the target at 3 ATR from entry.",
+        description="1.5R target is reachable within 35 days on NSE momentum setups. "
+        "2.0R requires 12-16% move in 30 days — only top 20% of trades qualify.",
     )
-    use_atr_stops: bool = True
+    use_atr_stops: bool = Field(
+        default=True, description="Use ATR-based stop loss instead of fixed percentage."
+    )
     use_atr_trailing_stop: bool = Field(
         default=True,
-        description="ATR-based trailing stop. Activates after atr_trailing_activation × ATR gain. Always floors at breakeven.",
+        description="Re-enabled. Activates at 1R gain, trails 1 ATR below peak.",
     )
     atr_trailing_multiplier: float = Field(
-        default=1.5,
+        default=1.0,  # was 1.5 — tighter trail locks in more profit
         ge=0.5,
         le=5.0,
-        description="Trail this many ATR below the peak. With activation=2.5, profit floor when first activated = 2.5-1.5 = 1.0 ATR.",
+        description=(
+            "Trail 1.0 ATR below the peak. With activation=2.5, first-fire floor = +1.5 ATR. "
+            "Keep < activation to ensure positive profit on every trail exit."
+        ),
     )
     atr_trailing_activation: float = Field(
         default=2.5,
         ge=0.5,
         le=5.0,
-        description="Activate trailing stop after this many ATR of profit. At 2.5, the trade is 83% toward the 3.0 ATR target before the trail engages.",
+        description=(
+            "Activate after 2.5 ATR gain. With atr_multiplier=2.0 and risk_reward=1.5, "
+            "target is at 3.0 ATR — trail activates at 83% of target distance. "
+            "Floor = activation - multiplier = 1.5 ATR profit when first fired."
+        ),
     )
     use_partial_exits: bool = Field(
-        default=False, description="Split exit: 50% at 1.5x RR, 50% at 2.5x RR."
+        default=False,
+        description="Disabled. Doubles cost drag per setup; ATR trailing stop is superior.",
     )
     use_signal_invalidation_exit: bool = Field(
         default=False,
@@ -191,16 +201,16 @@ class BacktestRequest(BaseModel):
         ),
     )
     risk_per_trade_pct: float = Field(
-        default=1.0,
+        default=0.5,
         ge=0.1,
         le=5.0,
-        description="% of starting_capital to risk per trade when use_volatility_sizing=True.",
+        description="0.5% risk per trade. At 333 trades/5y, reduces turnover to sustainable levels.",
     )
     max_position_pct: float = Field(
-        default=10.0,
+        default=5.0,
         ge=1.0,
         le=50.0,
-        description="Maximum position size as % of starting_capital (volatility sizing cap).",
+        description="Cap at 5% of capital. With 333 trades/5y, 10% cap created 16.6% cost drag.",
     )
     max_concurrent_positions: int = Field(
         default=0,

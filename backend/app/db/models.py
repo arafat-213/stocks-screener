@@ -79,7 +79,6 @@ class TechnicalSignal(Base):
     is_consolidating = Column(Boolean, nullable=True, default=None)
 
     scored_at = Column(DateTime, default=datetime.datetime.utcnow)
-
     __table_args__ = (
         UniqueConstraint("symbol", "date", "timeframe"),
         # Covers every screen query: WHERE timeframe='D' AND date(date)=X
@@ -95,6 +94,10 @@ class TechnicalSignal(Base):
             "is_bullish",
             "is_consolidating",
         ),
+        # Momentum/RS screens (from feature branch)
+        Index("ix_ts_rs_score", "rs_score"),
+        # Regime-dependent screens (from feature branch)
+        Index("ix_ts_above_200ema", "above_200ema"),
     )
 
 

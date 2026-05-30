@@ -4,9 +4,11 @@ import logging
 from sqlalchemy.orm import Session
 
 from app.db.models import TechnicalSignal
-from app.pipeline.fetcher import fetch_stock_data
+from app.pipeline.ohlcv_cache import OHLCVCache
 
 logger = logging.getLogger(__name__)
+
+_ohlcv_cache = OHLCVCache()
 
 
 def compute_rs_ranks(db: Session, signal_date: datetime.date):
@@ -20,7 +22,7 @@ def compute_rs_ranks(db: Session, signal_date: datetime.date):
 
     logger.info("Resolving RS benchmark candidate...")
     for candidate in RS_BENCHMARK_CANDIDATES:
-        hist, _ = fetch_stock_data(candidate, append_ns=False, period="2y")
+        hist = _ohlcv_cache.get(candidate, append_ns=False, period="2y")
         if hist is not None and len(hist) >= 252:
             benchmark_symbol = candidate
             # 12-month return: (price_now / price_252_bars_ago - 1) * 100

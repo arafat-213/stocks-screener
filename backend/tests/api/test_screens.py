@@ -81,3 +81,10 @@ def test_get_screen_results_with_setup(client, db):
     assert len(data) > 0, f"Response should have data for {symbol}"
     assert data[0]["symbol"] == symbol
     assert "setup" in data[0]
+
+
+def test_get_sector_rotation(client, db):
+    # This endpoint was crashing due to missing table
+    response = client.get("/api/screens/data/sector-rotation")
+    assert response.status_code == 200
+    assert isinstance(response.json(), list)

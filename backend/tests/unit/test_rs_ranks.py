@@ -10,7 +10,7 @@ from app.pipeline.rs_ranks import compute_rs_ranks
 
 def test_compute_rs_ranks_no_benchmark():
     db = MagicMock()
-    with patch("app.pipeline.rs_ranks.fetch_stock_data", return_value=(None, None)):
+    with patch("app.pipeline.rs_ranks._ohlcv_cache.get", return_value=None):
         compute_rs_ranks(db, datetime.date.today())
     db.query.assert_not_called()
 
@@ -32,7 +32,7 @@ def test_compute_rs_ranks_success():
     # That is ONE filter call.
     db.query.return_value.filter.return_value.all.return_value = [s1, s2, s3]
 
-    with patch("app.pipeline.rs_ranks.fetch_stock_data", return_value=(hist, {})):
+    with patch("app.pipeline.rs_ranks._ohlcv_cache.get", return_value=hist):
         compute_rs_ranks(db, signal_date)
 
     db.bulk_update_mappings.assert_called_once()
@@ -54,7 +54,7 @@ def test_compute_rs_ranks_no_signals():
 
     db.query.return_value.filter.return_value.all.return_value = []
 
-    with patch("app.pipeline.rs_ranks.fetch_stock_data", return_value=(hist, {})):
+    with patch("app.pipeline.rs_ranks._ohlcv_cache.get", return_value=hist):
         compute_rs_ranks(db, signal_date)
 
     db.bulk_update_mappings.assert_not_called()
@@ -70,7 +70,7 @@ def test_compute_rs_ranks_no_valid_signals():
     s1 = TechnicalSignal(id=1, symbol="S1", momentum_12m=None)
     db.query.return_value.filter.return_value.all.return_value = [s1]
 
-    with patch("app.pipeline.rs_ranks.fetch_stock_data", return_value=(hist, {})):
+    with patch("app.pipeline.rs_ranks._ohlcv_cache.get", return_value=hist):
         compute_rs_ranks(db, signal_date)
 
     db.bulk_update_mappings.assert_not_called()
