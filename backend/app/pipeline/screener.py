@@ -1,11 +1,13 @@
 import datetime
 import logging
+import random
 import time
 
 import yfinance as yf
 from sqlalchemy.orm import Session
 
 from app.db.models import FundamentalCache, FundamentalData
+from app.pipeline.errors import classify_error
 from app.pipeline.utils import get_financial_row, to_float
 
 logger = logging.getLogger(__name__)
@@ -66,11 +68,6 @@ def check_profitability_streak(financials) -> bool:
         return True
     except Exception:
         return False
-
-
-import random
-
-from app.pipeline.errors import classify_error
 
 
 def fetch_and_cache_deep_fundamentals(symbols: list[str], db_session: Session):
