@@ -55,10 +55,12 @@ def create_entry(data: TradeEntryCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/open")
-def get_open_trades(db: Session = Depends(get_db)):
-    trades = (
-        db.query(models.TradeJournal).filter(models.TradeJournal.status == "open").all()
-    )
+def get_open_trades(source: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(models.TradeJournal).filter(models.TradeJournal.status == "open")
+    if source:
+        query = query.filter(models.TradeJournal.source == source)
+    trades = query.all()
+
     if not trades:
         return []
 
@@ -116,13 +118,11 @@ def get_open_trades(db: Session = Depends(get_db)):
 
 
 @router.get("/closed")
-def get_closed_trades(db: Session = Depends(get_db)):
-    trades = (
-        db.query(models.TradeJournal)
-        .filter(models.TradeJournal.status == "closed")
-        .order_by(models.TradeJournal.exit_date.desc())
-        .all()
-    )
+def get_closed_trades(source: Optional[str] = None, db: Session = Depends(get_db)):
+    query = db.query(models.TradeJournal).filter(models.TradeJournal.status == "closed")
+    if source:
+        query = query.filter(models.TradeJournal.source == source)
+    trades = query.order_by(models.TradeJournal.exit_date.desc()).all()
     return trades
 
 
@@ -161,15 +161,20 @@ def close_trade(trade_id: int, data: TradeCloseRequest, db: Session = Depends(ge
 
 
 @router.get("/stats")
-def get_journal_stats(db: Session = Depends(get_db)):
-    closed_trades = (
-        db.query(models.TradeJournal)
-        .filter(models.TradeJournal.status == "closed")
-        .all()
+def get_journal_stats(source: Optional[str] = None, db: Session = Depends(get_db)):
+    closed_query = db.query(models.TradeJournal).filter(
+        models.TradeJournal.status == "closed"
     )
-    open_trades = (
-        db.query(models.TradeJournal).filter(models.TradeJournal.status == "open").all()
+    open_query = db.query(models.TradeJournal).filter(
+        models.TradeJournal.status == "open"
     )
+
+    if source:
+        closed_query = closed_query.filter(models.TradeJournal.source == source)
+        open_query = open_query.filter(models.TradeJournal.source == source)
+
+    closed_trades = closed_query.all()
+    open_trades = open_query.all()
 
     total_trades = len(closed_trades)
     winning_trades = len([t for t in closed_trades if (t.pnl or 0) > 0])
