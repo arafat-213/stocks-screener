@@ -1,6 +1,8 @@
 import bisect
 import datetime
+import json
 import logging
+import traceback
 from collections import Counter
 from dataclasses import dataclass
 from typing import Optional
@@ -12,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.logging_manager import logging_manager
 from app.db.models import (
     BacktestRun,
+    BacktestTrade,
     FundamentalCache,
     ScreenResult,
     Stock,
@@ -925,7 +928,13 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         run.status = "running"
         db.commit()
 
-        bench_df = _get_cached_ohlcv("^NSEI")
+        # Dynamic period to ensure warm indicators
+        lookback_period = "5y"
+        if config.date_from:
+            years_diff = (datetime.date.today() - config.date_from).days / 365
+            lookback_period = f"{int(years_diff + 2)}y"
+
+        bench_df = _get_cached_ohlcv("^NSEI", period=lookback_period)
         regime_dict = {}
         if bench_df is not None:
             bench_df.ta.ema(length=50, append=True)
@@ -963,22 +972,47 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 for s in db.query(Stock).filter(Stock.is_active).limit(500).all()
             ]
 
+        if config.symbol_limit:
+            symbols = symbols[: config.symbol_limit]
+
+        run.symbols_total = len(symbols)
+        db.commit()
+
         all_trades = []
         all_signals, all_dfs = {}, {}
-        for sym in symbols:
-            df = _get_cached_ohlcv(sym)
-            if df is None:
-                continue
-            all_dfs[sym] = df
-            if config.screen_signal_mode and is_filtered:
-                sigs = _build_screen_driven_signals(
-                    sym, screen_dates_map.get(sym, []), df, config
-                )
-            else:
-                sigs = score_series(df, symbol=sym, config=config)
-            all_signals[sym] = sigs
+        symbols_processed = 0
 
         stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
+        fund_caches = {}
+        if config.include_fundamentals:
+            fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
+
+        for sym in symbols:
+            try:
+                df = _get_cached_ohlcv(sym, period=lookback_period)
+                if df is None or df.empty:
+                    continue
+                all_dfs[sym] = df
+                if config.screen_signal_mode and is_filtered:
+                    sigs = _build_screen_driven_signals(
+                        sym, screen_dates_map.get(sym, []), df, config
+                    )
+                else:
+                    sigs = score_series(
+                        df,
+                        symbol=sym,
+                        fund_cache=fund_caches.get(sym),
+                        config=config,
+                    )
+                all_signals[sym] = sigs
+                symbols_processed += 1
+                if symbols_processed % 10 == 0:
+                    run.symbols_done = symbols_processed
+                    db.commit()
+            except Exception as e:
+                logger.error(f"Error processing {sym}: {e}")
+                continue
+
         all_trades = simulate_portfolio(
             all_signals,
             all_dfs,
@@ -986,15 +1020,55 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             config,
             regime_dict,
             screen_dates_map=screen_dates_map,
-            is_screen_driven=is_filtered,
+            is_screen_driven=config.screen_signal_mode,
         )
 
         metrics = compute_metrics(all_trades, bench_df, config)
-        run.status, run.results_json = "completed", metrics
+
+        # Map metrics to DB columns
+        run.total_trades = metrics["total_trades"]
+        run.winning_trades = metrics["winning_trades"]
+        run.win_rate = metrics["win_rate"]
+        run.avg_return_pct = metrics["avg_return_pct"]
         run.total_return_pct = metrics["total_return_pct"]
+        run.gross_return_pct = metrics["gross_return_pct"]
+        run.total_cost_drag_pct = metrics["total_cost_drag_pct"]
+        run.expectancy = metrics["expectancy"]
+        run.profit_factor = metrics["profit_factor"]
+        run.exit_breakdown_json = json.dumps(metrics["exit_breakdown"])
+        run.equity_curve_json = json.dumps(metrics["equity_curve"])
+
+        # Save individual trades
+        db_trades = []
+        for t in all_trades:
+            db_trades.append(
+                {
+                    "run_id": run_id,
+                    "symbol": t.symbol,
+                    "sector": t.sector,
+                    "signal_date": t.signal_date,
+                    "entry_date": t.entry_date,
+                    "exit_date": t.exit_date,
+                    "exit_reason": t.exit_reason,
+                    "signal_score": t.signal_score,
+                    "entry_price": t.entry_price,
+                    "exit_price": t.exit_price,
+                    "return_pct": t.return_pct,
+                    "rsi_at_signal": t.rsi_at_signal,
+                    "adx_at_signal": t.adx_at_signal,
+                    "ema_signal": t.ema_signal,
+                }
+            )
+        if db_trades:
+            db.bulk_insert_mappings(BacktestTrade, db_trades)
+
+        run.symbols_done = len(symbols)
+        run.status = "complete"
         db.commit()
 
     except Exception as e:
         logger.error(f"Backtest failed: {e}")
-        run.status, run.error_msg = "failed", str(e)
+        logger.error(traceback.format_exc())
+        run.status = "failed"
+        run.error_message = str(e)
         db.commit()
