@@ -58,10 +58,6 @@ ROUND_TRIP_COST_PCT = (
     0.25  # 0.25% per trade: reflects actual flat-fee brokerage reality
 )
 
-ROUND_TRIP_COST_PCT = (
-    0.25  # 0.25% per trade: reflects actual flat-fee brokerage reality
-)
-
 
 @dataclass
 class BacktestConfig:
@@ -881,11 +877,19 @@ def compute_metrics(
             "winning_trades": 0,
             "win_rate": 0.0,
             "avg_return_pct": 0.0,
+            "median_return_pct": 0.0,
+            "best_trade_pct": 0.0,
+            "worst_trade_pct": 0.0,
             "total_return_pct": 0.0,
             "gross_return_pct": 0.0,
             "total_cost_drag_pct": 0.0,
             "expectancy": 0.0,
             "profit_factor": 0.0,
+            "max_drawdown_pct": 0.0,
+            "sharpe_ratio": 0.0,
+            "benchmark_return_pct": 0.0,
+            "avg_win_pct": 0.0,
+            "avg_loss_pct": 0.0,
             "equity_curve": [],
             "exit_breakdown": {},
         }
@@ -918,30 +922,60 @@ def compute_metrics(
     )
 
     equity_curve = []
+    max_dd = 0.0
+    sharpe = 0.0
+    bench_ret = 0.0
+
     if benchmark_data is not None and not benchmark_data.empty:
         strat_by_date = {}
         for t, p in zip(trades, psizes):
             strat_by_date[t.exit_date] = strat_by_date.get(t.exit_date, 0.0) + (
                 (t.return_pct - ROUND_TRIP_COST_PCT) / 100.0 * p
             )
+
         cum_pl, first_p = 0.0, benchmark_data.iloc[0]["Close"]
+        max_equity = config.starting_capital
+        daily_returns = []
+        prev_equity = config.starting_capital
+
         for d, row in benchmark_data.iterrows():
             date_only = d.date() if hasattr(d, "date") else d
             cum_pl += strat_by_date.get(date_only, 0.0)
+            current_equity = config.starting_capital + cum_pl
+
+            # Stats
+            max_equity = max(max_equity, current_equity)
+            dd = (max_equity - current_equity) / max_equity * 100
+            max_dd = max(max_dd, dd)
+
+            if prev_equity > 0:
+                daily_returns.append(current_equity / prev_equity - 1)
+            prev_equity = current_equity
+
             equity_curve.append(
                 {
                     "date": date_only.isoformat(),
-                    "equity": config.starting_capital + cum_pl,
+                    "equity": current_equity,
                     "benchmark_equity": (row["Close"] / first_p)
                     * config.starting_capital,
                 }
             )
+
+        if len(daily_returns) > 1:
+            std_ret = np.std(daily_returns)
+            if std_ret > 0:
+                sharpe = np.mean(daily_returns) / std_ret * np.sqrt(252)
+
+        bench_ret = (benchmark_data.iloc[-1]["Close"] / first_p - 1) * 100
 
     return {
         "total_trades": len(trades),
         "winning_trades": sum(win_mask),
         "win_rate": win_rate * 100,
         "avg_return_pct": sum(rets) / len(rets),
+        "median_return_pct": float(np.median(rets)),
+        "best_trade_pct": float(max(rets)),
+        "worst_trade_pct": float(min(rets)),
         "total_return_pct": total_ret,
         "gross_return_pct": gross_ret,
         "total_cost_drag_pct": gross_ret - total_ret,
@@ -949,6 +983,11 @@ def compute_metrics(
         "profit_factor": (win_weight * avg_win) / (abs(loss_weight * avg_loss))
         if loss_weight and avg_loss != 0
         else 0.0,
+        "max_drawdown_pct": max_dd,
+        "sharpe_ratio": sharpe,
+        "benchmark_return_pct": bench_ret,
+        "avg_win_pct": avg_win,
+        "avg_loss_pct": avg_loss,
         "equity_curve": equity_curve,
         "exit_breakdown": dict(Counter(t.exit_reason for t in trades)),
     }
@@ -1065,11 +1104,19 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         run.winning_trades = int(_clean(metrics["winning_trades"]))
         run.win_rate = float(_clean(metrics["win_rate"]))
         run.avg_return_pct = float(_clean(metrics["avg_return_pct"]))
+        run.median_return_pct = float(_clean(metrics["median_return_pct"]))
+        run.best_trade_pct = float(_clean(metrics["best_trade_pct"]))
+        run.worst_trade_pct = float(_clean(metrics["worst_trade_pct"]))
         run.total_return_pct = float(_clean(metrics["total_return_pct"]))
         run.gross_return_pct = float(_clean(metrics["gross_return_pct"]))
         run.total_cost_drag_pct = float(_clean(metrics["total_cost_drag_pct"]))
         run.expectancy = float(_clean(metrics["expectancy"]))
         run.profit_factor = float(_clean(metrics["profit_factor"]))
+        run.max_drawdown_pct = float(_clean(metrics["max_drawdown_pct"]))
+        run.sharpe_ratio = float(_clean(metrics["sharpe_ratio"]))
+        run.benchmark_return_pct = float(_clean(metrics["benchmark_return_pct"]))
+        run.avg_win_pct = float(_clean(metrics["avg_win_pct"]))
+        run.avg_loss_pct = float(_clean(metrics["avg_loss_pct"]))
         run.exit_breakdown_json = json.dumps(
             metrics["exit_breakdown"], cls=NumpyEncoder
         )
