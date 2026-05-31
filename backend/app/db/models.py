@@ -2,6 +2,7 @@ import datetime
 import uuid
 
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     Date,
@@ -15,6 +16,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
 )
+from sqlalchemy.ext.mutable import MutableList
 from sqlalchemy.orm import declarative_base
 
 Base = declarative_base()
@@ -319,6 +321,7 @@ class PaperPosition(Base):
     portfolio_id = Column(Integer, ForeignKey("paper_portfolio.id"), nullable=False)
     symbol = Column(String, nullable=False)
     sector = Column(String, nullable=True)
+    strategy_tags = Column(MutableList.as_mutable(JSON), default=[])
 
     # Discovery state
     signal_date = Column(Date, nullable=False)
@@ -383,6 +386,7 @@ class PaperTrade(Base):
     signal_score = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
     holding_days = Column(Integer, nullable=False)
+    strategy_tags = Column(MutableList.as_mutable(JSON), default=[])
     closed_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
@@ -471,11 +475,14 @@ class TradeJournal(Base):
     notes = Column(Text, nullable=True)
     source = Column(String, nullable=False, default="manual")  # 'manual' | 'paper'
     external_id = Column(Integer, nullable=True)  # Links to PaperPosition.id
+    # Strategy context
+    strategy_tags = Column(MutableList.as_mutable(JSON), default=[])
+
+    # Time tracking
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
-
     __table_args__ = (
         Index("ix_tj_status", "status"),
         Index("ix_tj_symbol", "symbol"),

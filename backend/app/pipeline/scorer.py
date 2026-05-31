@@ -367,7 +367,7 @@ def calculate_technical_score(df: pd.DataFrame, timeframe: str = "D") -> dict:
                 and pd.notna(signal_line)
                 and macd_line > signal_line
                 and pd.notna(rsi)
-                and rsi > 45
+                and rsi > 35
             )
 
         elif timeframe == "W":

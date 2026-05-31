@@ -13,6 +13,7 @@ import pandas_ta_classic  # noqa
 from sqlalchemy.orm import Session
 
 from app.core.logging_manager import logging_manager
+from app.core.trading_config import UnifiedTradingConfig as BacktestConfig
 from app.db.models import (
     BacktestRun,
     BacktestTrade,
@@ -60,67 +61,6 @@ _OHLCV_CACHE = {}  # {symbol: DataFrame}
 ROUND_TRIP_COST_PCT = (
     0.25  # 0.25% per trade: reflects actual flat-fee brokerage reality
 )
-
-
-@dataclass
-class BacktestConfig:
-    score_threshold: float = 60.0
-    holding_days: int = 50
-    stop_loss_pct: float = 7.0
-    target_pct: float = 0.0
-    trailing_stop_pct: float = 0.0
-    require_volume_breakout: bool = False
-    use_regime_filter: bool = True
-    require_weekly_confirmation: bool = False
-    require_monthly_confirmation: bool = False
-    atr_multiplier: float = 2.0
-    risk_reward_ratio: float = 1.5
-    use_atr_stops: bool = True
-    min_adx: float = 0.0
-    include_fundamentals: bool = False
-    timeframe: str = "D"
-    date_from: datetime.date = None
-    date_to: datetime.date = None
-    symbol_limit: int = None
-    screen_slug: Optional[str] = None
-    starting_capital: float = 1000000.0
-    position_size: float = 10000.0
-    use_volatility_sizing: bool = True
-    risk_per_trade_pct: float = 3.0
-    max_position_pct: float = 20.0
-    max_concurrent_positions: int = 0
-    max_sector_positions: int = 0
-    use_atr_trailing_stop: bool = True
-    atr_trailing_multiplier: float = 1.0
-    atr_trailing_activation: float = 2.5
-    use_partial_exits: bool = False
-    use_signal_invalidation_exit: bool = False
-    invalidation_threshold_pct: float = 3.0
-    screen_signal_mode: bool = False  # When True, screen dates drive signals (Model B)
-    screen_membership_window_days: int = (
-        7  # Model A only: how far back to look for screen membership
-    )
-    screen_reentry_gap_days: int = (
-        60  # Model B only: min days between signals for same symbol
-    )
-    screen_driven_rsi_max: float = (
-        75.0  # Model B only: max RSI allowed at qualification date
-    )
-
-    # ── New fields ────────────────────────────────────────────────────────────
-    min_signal_tier: int = 2
-    require_consolidation: bool = True  # only enter after a consolidation period
-    consolidation_bars: int = 15  # look-back window for consolidation check
-    consolidation_max_range_pct: float = 12.0  # max High-Low range to qualify
-    use_pullback_entry: bool = True  # wait for pullback to EMA20 after cross
-    pullback_max_wait_bars: int = 8  # allow setup to develop
-    pullback_tolerance_pct: float = 3.0  # NSE mid/smallcap needs room
-
-    @property
-    def effective_score_threshold(self) -> float:
-        if not self.include_fundamentals:
-            return self.score_threshold * 0.70
-        return self.score_threshold
 
 
 @dataclass
@@ -333,7 +273,7 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     above_200ema = bool(pd.notna(ema200) and price > ema200)
 
     # Hard Filters
-    if rsi is not None and rsi > 70:
+    if rsi is not None and rsi > 80:
         score = 0
     if not above_200ema:
         score = 0
@@ -360,29 +300,32 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     }
 
 
-def _compute_signal_tier(signal: dict) -> int:
-    ema_sig = signal.get("ema_signal", "neutral")
-    rsi_val = signal.get("rsi") or 0.0
-    adx_val = signal.get("adx") or 0.0
-    vol_brk = signal.get("volume_breakout", False)
+def _compute_signal_tier(signal: dict, config: Optional[BacktestConfig] = None) -> int:
+    ema = signal.get("ema_signal")
+    vol = signal.get("volume_breakout", False)
+    adx = signal.get("adx") or 0.0
+    rsi = signal.get("rsi") or 0.0
 
-    # RSI exhaustion: even strong signals are low tier if overextended
-    if rsi_val > 68:
-        return 3
+    # Use config values or fall back to sensible defaults
+    rsi_min = config.rsi_min if config else 40.0
+    rsi_max = config.rsi_max if config else 65.0
+    min_adx = config.min_adx if config else 25.0
 
-    # Primary setups: Crosses and Pullbacks
-    if ema_sig in ["bullish_cross", "bullish_pullback"]:
-        if vol_brk and adx_val >= 25:
-            return 1
-        if vol_brk or adx_val >= 25:
-            return 2
-        return 3
-
-    # Secondary setups: Just trending
-    if ema_sig == "bullish":
+    is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
+    if not is_core_ema:
         return 4
 
-    return 5
+    if rsi > rsi_max:
+        return 3
+    if rsi < rsi_min:
+        return 3
+
+    if vol and adx >= min_adx:
+        return 1
+    if vol or adx >= min_adx:
+        return 2
+
+    return 3
 
 
 def _lookup_mtf_state(state_map: dict, date: datetime.date) -> bool:
@@ -609,9 +552,9 @@ def simulate_trades(
                 if adx_val is None or adx_val < config.min_adx:
                     continue
 
-            if _compute_signal_tier(signal) > config.min_signal_tier:
+            if _compute_signal_tier(signal, config) > config.min_signal_tier:
                 continue
-            if (signal.get("rsi") or 0.0) > 65.0:
+            if (signal.get("rsi") or 0.0) > config.rsi_max:
                 continue
             if signal["score"] < config.effective_score_threshold:
                 continue
@@ -1229,35 +1172,3 @@ def _is_consolidating(
 
     range_pct = (period_high - period_low) / period_low * 100
     return range_pct <= max_range_pct
-
-
-def _compute_signal_tier(signal: dict) -> int:
-    """
-    Computes the signal quality tier (1-4).
-    Tier 1/2 are considered high-quality and allowed to enter trades.
-    Tier 3/4 are filtered out.
-    """
-    ema = signal.get("ema_signal")
-    vol = signal.get("volume_breakout", False)
-    adx = signal.get("adx") or 0.0
-    rsi = signal.get("rsi") or 0.0
-
-    is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
-
-    if not is_core_ema:
-        return 4
-
-    if rsi > 65.0:
-        return 3
-
-    # Tier 1 & 2 require 40 <= RSI <= 65
-    if rsi < 40.0:
-        return 3
-
-    if vol and adx >= 25.0:
-        return 1
-
-    if vol or adx >= 25.0:
-        return 2
-
-    return 3  # missing both volume breakout and strong ADX

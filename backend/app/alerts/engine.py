@@ -12,9 +12,11 @@ from app.alerts.email import (
     send_alert_email,
 )
 from app.backtest.engine import _compute_signal_tier
+from app.core.trading_config import TREND_INITIATION, UnifiedTradingConfig
 from app.db.models import (
     AlertLog,
     FundamentalCache,
+    ScreenResult,
     Stock,
     TechnicalSignal,
     TradeJournal,
@@ -81,43 +83,70 @@ def _log_alert(
         db.rollback()
 
 
-def run_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> dict:
+def run_alert_cycle(
+    db: Session,
+    signal_date: datetime.date | None = None,
+    config: UnifiedTradingConfig = None,
+) -> dict:
     """
     Main entry point. Called after pipeline completes.
     Finds new actionable signals, deduplicates, and fires email.
     Returns summary dict for logging.
     """
+    if config is None:
+        config = TREND_INITIATION
+
     if signal_date is None:
         from app.screens.base import get_latest_signal_date
 
         signal_date = get_latest_signal_date(db, "D")
 
-    logger.info("alert_cycle: scanning signals for %s", signal_date)
+    logger.info(
+        "alert_cycle: scanning signals for %s using strategy '%s'",
+        signal_date,
+        config.strategy_id,
+    )
     regime_bullish = get_market_regime(db, signal_date)
 
-    # Query all EMA crossover signals for the day that pass base gates
-    candidates = (
+    # Define signals to match based on config
+    ema_signals = ["bullish_cross", "bullish_pullback"]
+
+    query = (
         db.query(TechnicalSignal, Stock, FundamentalCache)
         .join(Stock, TechnicalSignal.symbol == Stock.symbol)
         .outerjoin(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
-        .filter(
-            and_(
-                func.date(TechnicalSignal.date) == signal_date,
-                TechnicalSignal.timeframe == "D",
-                TechnicalSignal.ema_signal == "bullish_cross",
-                TechnicalSignal.above_200ema,
-                TechnicalSignal.rsi >= 35,
-                TechnicalSignal.rsi <= 65,
-                TechnicalSignal.momentum_12m > 0,
-                TechnicalSignal.is_consolidating,
-                or_(
-                    TechnicalSignal.volume_breakout,
-                    TechnicalSignal.adx >= 25,
-                ),
-            )
-        )
-        .all()
     )
+
+    if config.screen_signal_mode and config.screen_slug:
+        query = query.join(
+            ScreenResult,
+            and_(
+                TechnicalSignal.symbol == ScreenResult.symbol,
+                func.date(TechnicalSignal.date) == ScreenResult.computed_at,
+                ScreenResult.screen_slug == config.screen_slug,
+            ),
+        )
+
+    query = query.filter(
+        and_(
+            func.date(TechnicalSignal.date) == signal_date,
+            TechnicalSignal.timeframe == "D",
+            TechnicalSignal.ema_signal.in_(ema_signals),
+            TechnicalSignal.above_200ema,
+            TechnicalSignal.rsi >= config.rsi_min,
+            TechnicalSignal.rsi <= config.rsi_max,
+            TechnicalSignal.momentum_12m > 0,
+            or_(
+                TechnicalSignal.volume_breakout,
+                TechnicalSignal.adx >= config.min_adx,
+            ),
+        )
+    )
+
+    if config.require_consolidation:
+        query = query.filter(TechnicalSignal.is_consolidating)
+
+    candidates = query.all()
 
     if not candidates:
         logger.info("alert_cycle: no candidates on %s", signal_date)
@@ -135,13 +164,13 @@ def run_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> di
             "rsi": tech.rsi or 0.0,
         }
 
-        tier = _compute_signal_tier(signal_dict)
+        tier = _compute_signal_tier(signal_dict, config)
 
-        # FIX 3: Leak protection — exclude Tier 3 and 4 (RSI 35-40 or missing confirmation)
-        if tier > 2:
+        # FIX 3: Leak protection — exclude Tiers below min_signal_tier
+        if tier > config.min_signal_tier:
             continue
 
-        alert_type = f"tier{tier}_entry"
+        alert_type = f"{config.strategy_id}_tier{tier}"
 
         # Deduplicate: skip if we already sent this alert today
         if _already_alerted(db, tech.symbol, signal_date, alert_type):
@@ -222,7 +251,7 @@ def run_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> di
 
     # Build and send single batched email
     subject = (
-        f"📊 {len(signals_to_alert)} Stock Signal{'s' if len(signals_to_alert) > 1 else ''} "
+        f"📊 [{config.strategy_id.upper()}] {len(signals_to_alert)} Stock Signal{'s' if len(signals_to_alert) > 1 else ''} "
         f"— {signal_date.strftime('%d %b %Y')}"
     )
     html = build_signal_email(signals_to_alert, str(signal_date), regime_bullish)

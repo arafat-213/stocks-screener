@@ -6,12 +6,16 @@ from sqlalchemy.orm import Session
 
 from app.backtest.engine import (
     ROUND_TRIP_COST_PCT,
-    BacktestConfig,
     _compute_position_size,
     _compute_signal_tier,
     _is_consolidating,
 )
 from app.backtest.sync_service import sync_paper_to_journal
+from app.core.trading_config import (
+    TREND_CONTINUATION,
+    TREND_INITIATION,
+    UnifiedTradingConfig,
+)
 from app.db.models import (
     PaperPortfolio,
     PaperPosition,
@@ -25,37 +29,15 @@ from app.pipeline.utils import get_market_regime
 logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
 
-# Configuration mirrored from backtest
-PAPER_CONFIG = BacktestConfig(
-    score_threshold=60.0,
-    holding_days=50,
-    stop_loss_pct=7.0,
-    atr_multiplier=2.0,
-    risk_reward_ratio=1.5,
-    use_atr_trailing_stop=True,
-    atr_trailing_multiplier=1.0,
-    atr_trailing_activation=2.5,
-    min_signal_tier=2,
-    require_consolidation=True,
-    use_pullback_entry=True,
-    pullback_max_wait_bars=8,
-    pullback_tolerance_pct=3.0,
-    consolidation_bars=15,
-    consolidation_max_range_pct=12.0,
-    use_regime_filter=True,
-    risk_per_trade_pct=3.0,
-    max_position_pct=20.0,
-    use_volatility_sizing=True,
-    starting_capital=1_000_000.0,
-)
 
-
-def _get_or_create_portfolio(db: Session) -> PaperPortfolio:
+def _get_or_create_portfolio(
+    db: Session, config: UnifiedTradingConfig
+) -> PaperPortfolio:
     portfolio = db.query(PaperPortfolio).filter_by(is_active=True).first()
     if not portfolio:
         portfolio = PaperPortfolio(
             name="default",
-            starting_capital=PAPER_CONFIG.starting_capital,
+            starting_capital=config.starting_capital,
             is_active=True,
         )
         db.add(portfolio)
@@ -67,98 +49,142 @@ def _get_or_create_portfolio(db: Session) -> PaperPortfolio:
 
 def scan_for_new_signals(db: Session, today: datetime.date) -> int:
     """
-    Scans for new technical signals and creates 'pending' paper positions.
+    Scans for new technical signals across multiple strategy configs and creates 'pending' paper positions.
+    If a symbol qualifies for multiple strategies, they are merged into one position with multiple tags.
     """
-    portfolio = _get_or_create_portfolio(db)
+    configs = [TREND_INITIATION, TREND_CONTINUATION]
+    # Use the first config's portfolio settings
+    portfolio = _get_or_create_portfolio(db, configs[0])
 
-    # Regime Filter
+    # Regime Filter (common check)
     if not get_market_regime(db, today):
         logger.info("paper_trading: regime bearish on %s, skipping new signals", today)
         return 0
 
     # Avoid duplicate pending/open signals for same symbol
-    existing_symbols = {
-        p.symbol
-        for p in db.query(PaperPosition.symbol)
+    active_positions = {
+        p.symbol: p
+        for p in db.query(PaperPosition)
         .filter(
             PaperPosition.portfolio_id == portfolio.id,
             PaperPosition.status.in_(["pending", "open"]),
         )
         .all()
     }
+    existing_symbols = set(active_positions.keys())
 
-    # Query signals from today's pipeline run
-    signals = (
-        db.query(TechnicalSignal, Stock.sector)
-        .join(Stock, TechnicalSignal.symbol == Stock.symbol)
-        .filter(
+    qualified_signals = {}  # symbol -> {"sig": sig, "sector": sector, "tags": [tag], "config": config}
+
+    from sqlalchemy import func
+
+    from app.db.models import ScreenResult
+
+    for config in configs:
+        logger.info("paper_trading: scanning for strategy '%s'", config.strategy_id)
+
+        # Query signals from today's pipeline run that pass this config's thresholds
+        query = db.query(TechnicalSignal, Stock.sector).join(
+            Stock, TechnicalSignal.symbol == Stock.symbol
+        )
+
+        if config.screen_signal_mode and config.screen_slug:
+            query = query.join(
+                ScreenResult,
+                and_(
+                    TechnicalSignal.symbol == ScreenResult.symbol,
+                    func.date(TechnicalSignal.date) == ScreenResult.computed_at,
+                    ScreenResult.screen_slug == config.screen_slug,
+                ),
+            )
+
+        signals = query.filter(
             and_(
-                TechnicalSignal.date
-                >= datetime.datetime.combine(
-                    today, datetime.time.min, tzinfo=datetime.timezone.utc
-                ),
-                TechnicalSignal.date
-                < datetime.datetime.combine(
-                    today + datetime.timedelta(days=1),
-                    datetime.time.min,
-                    tzinfo=datetime.timezone.utc,
-                ),
+                func.date(TechnicalSignal.date) == today,
                 TechnicalSignal.timeframe == "D",
                 TechnicalSignal.above_200ema,
-                TechnicalSignal.entry_score >= PAPER_CONFIG.effective_score_threshold,
+                TechnicalSignal.rsi >= config.rsi_min,
+                TechnicalSignal.rsi <= config.rsi_max,
+                TechnicalSignal.entry_score >= config.effective_score_threshold,
                 TechnicalSignal.ema_signal.in_(["bullish_cross", "bullish_pullback"]),
             )
-        )
-        .all()
-    )
+        ).all()
+
+        for sig, sector in signals:
+            if sig.symbol in existing_symbols:
+                # If already active, just append the tag if missing
+                pos = active_positions[sig.symbol]
+                if config.strategy_id not in (pos.strategy_tags or []):
+                    if pos.strategy_tags is None:
+                        pos.strategy_tags = []
+                    pos.strategy_tags.append(config.strategy_id)
+                    logger.info(
+                        "paper_trading: adding tag '%s' to active position %s",
+                        config.strategy_id,
+                        sig.symbol,
+                    )
+                    sync_paper_to_journal(db, pos)
+                continue
+
+            # Reconstruct signal dict for tier and consolidation logic
+            signal_dict = {
+                "ema_signal": sig.ema_signal,
+                "volume_breakout": sig.volume_breakout or False,
+                "adx": sig.adx or 0.0,
+                "rsi": sig.rsi or 0.0,
+                "momentum_12m": sig.momentum_12m,
+                "atr": sig.atr,
+                "score": sig.entry_score,
+            }
+
+            # Tier Gate
+            tier = _compute_signal_tier(signal_dict, config)
+            if tier > config.min_signal_tier:
+                continue
+
+            # Consolidation Gate
+            if config.require_consolidation:
+                df = _ohlcv_cache.get(sig.symbol, period="5y")
+                if df is None or df.empty:
+                    continue
+                if df.index.tz is not None:
+                    df.index = df.index.tz_localize(None)
+
+                # Find signal bar index
+                matching = df.index[df.index.date <= today]
+                if matching.empty:
+                    continue
+                signal_idx = len(matching) - 1
+
+                if not _is_consolidating(
+                    df,
+                    signal_idx,
+                    lookback=config.consolidation_bars,
+                    max_range_pct=config.consolidation_max_range_pct,
+                ):
+                    continue
+
+            # If we reach here, it qualifies for this strategy
+            if sig.symbol in qualified_signals:
+                if config.strategy_id not in qualified_signals[sig.symbol]["tags"]:
+                    qualified_signals[sig.symbol]["tags"].append(config.strategy_id)
+            else:
+                qualified_signals[sig.symbol] = {
+                    "sig": sig,
+                    "sector": sector,
+                    "tags": [config.strategy_id],
+                    "config": config,  # Store the first config that qualified it
+                }
 
     new_pending = 0
-    for sig, sector in signals:
-        if sig.symbol in existing_symbols:
-            continue
-
-        # Reconstruct signal dict for tier and consolidation logic
-        signal_dict = {
-            "ema_signal": sig.ema_signal,
-            "volume_breakout": sig.volume_breakout or False,
-            "adx": sig.adx or 0.0,
-            "rsi": sig.rsi or 0.0,
-            "momentum_12m": sig.momentum_12m,
-            "atr": sig.atr,
-            "score": sig.entry_score,
-        }
-
-        # Tier Gate
-        tier = _compute_signal_tier(signal_dict)
-        if tier > PAPER_CONFIG.min_signal_tier:
-            continue
-
-        # Consolidation Gate
-        df = _ohlcv_cache.get(sig.symbol, period="5y")
-        if df is None or df.empty:
-            continue
-        if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
-
-        # Find signal bar index
-        matching = df.index[df.index.date <= today]
-        if matching.empty:
-            continue
-        signal_idx = len(matching) - 1
-
-        if PAPER_CONFIG.require_consolidation:
-            if not _is_consolidating(
-                df,
-                signal_idx,
-                lookback=PAPER_CONFIG.consolidation_bars,
-                max_range_pct=PAPER_CONFIG.consolidation_max_range_pct,
-            ):
-                continue
+    for symbol, data in qualified_signals.items():
+        sig = data["sig"]
+        sector = data["sector"]
+        tags = data["tags"]
 
         # Create Pending Position
         pending = PaperPosition(
             portfolio_id=portfolio.id,
-            symbol=sig.symbol,
+            symbol=symbol,
             sector=sector,
             signal_date=today,
             signal_score=sig.entry_score,
@@ -167,27 +193,36 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
             ema20_at_signal=sig.ema20_level,
             status="pending",
             wait_days_elapsed=0,
+            strategy_tags=tags,
         )
         db.add(pending)
         db.flush()  # To get the ID for syncing
         sync_paper_to_journal(db, pending)
         new_pending += 1
         logger.info(
-            "paper_trading: NEW PENDING %s on %s (score=%.1f)",
-            sig.symbol,
+            "paper_trading: NEW PENDING %s on %s (score=%.1f) tags=%s",
+            symbol,
             today,
             sig.entry_score,
+            tags,
         )
 
     db.commit()
     return new_pending
 
 
+def _get_config_for_position(pos: PaperPosition) -> UnifiedTradingConfig:
+    """Returns the config associated with this position's tags. Defaults to INITIATION."""
+    if pos.strategy_tags and "continuation" in pos.strategy_tags:
+        return TREND_CONTINUATION
+    return TREND_INITIATION
+
+
 def process_pending_orders(db: Session, today: datetime.date) -> dict:
     """
     Processes 'pending' orders: checks if pullback or momentum entry criteria are met.
     """
-    portfolio = _get_or_create_portfolio(db)
+    portfolio = _get_or_create_portfolio(db, TREND_INITIATION)
     pending_orders = (
         db.query(PaperPosition)
         .filter_by(portfolio_id=portfolio.id, status="pending")
@@ -197,6 +232,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
     results = {"opened": 0, "expired": 0, "invalidated": 0, "waiting": 0}
 
     for pos in pending_orders:
+        config = _get_config_for_position(pos)
         df = _ohlcv_cache.get(pos.symbol, period="5y")
         if df is None or df.empty:
             continue
@@ -209,7 +245,6 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             continue
         row = rows.iloc[0]
 
-        float(row["High"])
         day_low = float(row["Low"])
         day_close = float(row["Close"])
         day_open = float(row["Open"])
@@ -238,7 +273,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             continue
 
         # Path A: Pullback Entry (Price touched EMA20 and closed above)
-        tol = PAPER_CONFIG.pullback_tolerance_pct / 100.0
+        tol = config.pullback_tolerance_pct / 100.0
         # Check if Low touched EMA20 area (within tolerance) or High/Low bracketed it
         touched_ema = (day_low <= ema20 * (1 + tol)) and (day_close > ema20)
 
@@ -255,7 +290,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
             continue
 
         # Path B: Momentum continuation (Wait window expired, but price stayed above EMA20)
-        if pos.wait_days_elapsed >= PAPER_CONFIG.pullback_max_wait_bars:
+        if pos.wait_days_elapsed >= config.pullback_max_wait_bars:
             if (
                 pos.pending_highest_closeness_pct <= 8.0
             ):  # Within 8% of EMA20 at some point
@@ -289,6 +324,7 @@ def _convert_to_open(
     today: datetime.date,
 ):
     """Transition a pending position to open."""
+    config = _get_config_for_position(pos)
     pos.status = "open"
     pos.entry_date = today
     pos.entry_price = entry_price
@@ -304,14 +340,12 @@ def _convert_to_open(
     matching = df.index[df.index.date <= today]
     idx = len(matching) - 1
 
-    consol_start = max(0, idx - PAPER_CONFIG.consolidation_bars)
+    consol_start = max(0, idx - config.consolidation_bars)
     consol_low = float(df.iloc[consol_start:idx]["Low"].min())
     structural_stop = consol_low * 0.98 if consol_low > 0 else None
 
     atr_val = pos.atr_at_signal
-    atr_stop = (
-        (entry_price - PAPER_CONFIG.atr_multiplier * atr_val) if atr_val else None
-    )
+    atr_stop = (entry_price - config.atr_multiplier * atr_val) if atr_val else None
 
     if structural_stop and atr_stop:
         base_stop = min(structural_stop, atr_stop)
@@ -320,16 +354,17 @@ def _convert_to_open(
     elif atr_stop:
         base_stop = atr_stop
     else:
-        base_stop = entry_price * (1 - PAPER_CONFIG.stop_loss_pct / 100)
+        base_stop = entry_price * (1 - config.stop_loss_pct / 100)
 
     pos.stop_loss_price = min(base_stop, entry_price * 0.95)
 
     actual_risk = max(entry_price - pos.stop_loss_price, entry_price * 0.02)
-    pos.target_price = entry_price + PAPER_CONFIG.risk_reward_ratio * actual_risk
+    pos.target_price = entry_price + config.risk_reward_ratio * actual_risk
 
     # Position Sizing
+    # Note: _compute_position_size needs to be aliased to the right class if it changed
     pos.position_size = _compute_position_size(
-        PAPER_CONFIG, entry_price=entry_price, atr=atr_val
+        config, entry_price=entry_price, atr=atr_val
     )
     pos.shares = pos.position_size / entry_price
     pos.opened_at = datetime.datetime.now(datetime.timezone.utc)
@@ -349,7 +384,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
     """
     Checks exit conditions for open positions.
     """
-    portfolio = _get_or_create_portfolio(db)
+    portfolio = _get_or_create_portfolio(db, TREND_INITIATION)
     open_positions = (
         db.query(PaperPosition)
         .filter_by(portfolio_id=portfolio.id, status="open")
@@ -364,6 +399,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
     }
 
     for pos in open_positions:
+        config = _get_config_for_position(pos)
         df = _ohlcv_cache.get(pos.symbol, period="5y")
         if df is None or df.empty:
             continue
@@ -399,23 +435,23 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
             exit_reason = "target"
 
         # 3. ATR trailing stop
-        elif PAPER_CONFIG.use_atr_trailing_stop and pos.atr_at_signal:
+        elif config.use_atr_trailing_stop and pos.atr_at_signal:
             activation = pos.entry_price + (
-                PAPER_CONFIG.atr_trailing_activation * pos.atr_at_signal
+                config.atr_trailing_activation * pos.atr_at_signal
             )
             if pos.highest_price >= activation:
                 pos.atr_trail_active = True
                 trail_stop = max(
                     pos.entry_price,
                     pos.highest_price
-                    - (PAPER_CONFIG.atr_trailing_multiplier * pos.atr_at_signal),
+                    - (config.atr_trailing_multiplier * pos.atr_at_signal),
                 )
                 if day_low <= trail_stop:
                     exit_price = max(trail_stop, day_open)
                     exit_reason = "atr_trailing_stop"
 
         # 4. Holding period
-        elif holding_days >= PAPER_CONFIG.holding_days:
+        elif holding_days >= config.holding_days:
             exit_price = day_close
             exit_reason = "holding_period"
 
@@ -441,6 +477,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
                 signal_score=pos.signal_score,
                 ema_signal=pos.ema_signal,
                 holding_days=holding_days,
+                strategy_tags=pos.strategy_tags,
             )
             db.add(trade)
             pos.status = "closed"

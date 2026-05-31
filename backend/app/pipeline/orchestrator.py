@@ -627,10 +627,18 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         # 8. Alert cycle — fires email for new actionable signals
         try:
             from app.alerts.engine import run_alert_cycle, run_exit_alert_cycle
+            from app.core.trading_config import TREND_CONTINUATION, TREND_INITIATION
+
+            configs = [TREND_INITIATION, TREND_CONTINUATION]
 
             # Entry alerts — new signals
-            alert_result = run_alert_cycle(db, signal_date=final_signal_date)
-            logger.info("Entry alert cycle: %s", alert_result)
+            for config in configs:
+                alert_result = run_alert_cycle(
+                    db, signal_date=final_signal_date, config=config
+                )
+                logger.info(
+                    "Entry alert cycle (%s): %s", config.strategy_id, alert_result
+                )
 
             # Exit alerts — open positions
             exit_result = run_exit_alert_cycle(db, signal_date=final_signal_date)

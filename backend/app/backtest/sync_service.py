@@ -20,7 +20,7 @@ def sync_paper_to_journal(db: Session, paper_pos: models.PaperPosition):
             signal_score=paper_pos.signal_score,
             status="pending" if paper_pos.status == "pending" else "open",
             entry_price=0.0,
-            shares=0,
+            strategy_tags=paper_pos.strategy_tags,
             position_value=0.0,
         )
         db.add(journal)

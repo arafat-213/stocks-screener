@@ -749,7 +749,7 @@ def test_default_config_has_updated_values():
     assert cfg.score_threshold == 60.0
     assert cfg.require_volume_breakout is False
     assert cfg.use_atr_stops is True
-    assert cfg.min_adx == 0.0
+    assert cfg.min_adx == 25.0
     assert cfg.use_volatility_sizing is True
     assert cfg.max_concurrent_positions == 0
     assert cfg.max_sector_positions == 0
