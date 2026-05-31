@@ -16,7 +16,7 @@ def materialize_all_screens(db: Session, target_date: datetime.date = None):
     persisting the results for fast API retrieval.
     """
     logger.info("Starting screen materialization")
-    start_time = datetime.datetime.now()
+    start_time = datetime.datetime.now(datetime.timezone.utc)
     today = target_date if target_date else datetime.date.today()
 
     try:
@@ -72,7 +72,9 @@ def materialize_all_screens(db: Session, target_date: datetime.date = None):
                 logger.error(f"Failed to materialize screen {slug}: {e}")
                 db.rollback()
 
-        duration = (datetime.datetime.now() - start_time).total_seconds()
+        duration = (
+            datetime.datetime.now(datetime.timezone.utc) - start_time
+        ).total_seconds()
         logger.info(
             f"Screen materialization complete. Total rows: {total_results}. Duration: {duration:.2f}s"
         )
