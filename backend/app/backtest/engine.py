@@ -24,6 +24,7 @@ from app.db.models import (
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.scorer import (
     calculate_fundamental_score,
+    calculate_technical_indicators,
     calculate_technical_score,
 )
 from app.pipeline.utils import resample_ohlcv
@@ -146,25 +147,7 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
         if _TA_METADATA.get(symbol) == latest_date:
             return _TA_CACHE[symbol]
 
-    df = df.copy()
-    # Import pandas_ta_classic locally if not global to ensure extensions are ready
-    df.ta.ema(length=5, append=True)
-    df.ta.ema(length=13, append=True)
-    df.ta.ema(length=20, append=True)
-    df.ta.ema(length=26, append=True)
-    df.ta.ema(length=200, append=True)
-    df.ta.macd(fast=12, slow=26, signal=9, append=True)
-    df.ta.rsi(length=14, append=True)
-    df.ta.atr(length=14, append=True)
-    df.ta.adx(length=14, append=True)
-    if "Volume" in df.columns:
-        df["VOL_SMA_20"] = df["Volume"].rolling(window=20).mean()
-    else:
-        df["VOL_SMA_20"] = pd.Series(dtype="float64")
-
-    ema20_col = "EMA_20"
-    if ema20_col in df.columns:
-        df["EMA_SLOPE_20"] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
+    df = calculate_technical_indicators(df)
 
     if symbol:
         _TA_CACHE[symbol] = df
@@ -174,130 +157,17 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
 
 
 def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
-    latest = df_ind.iloc[i]
-    prev = df_ind.iloc[i - 1] if i > 0 else latest
+    """
+    Wrapper for calculate_technical_score using pre-computed indicators.
+    Maps results to the format expected by the backtest engine.
+    """
+    res = calculate_technical_score(df_ind, timeframe="D", i=i, skip_ta=True)
 
-    ema5 = latest.get("EMA_5")
-    ema13 = latest.get("EMA_13")
-    ema20 = latest.get("EMA_20")
-    ema200 = latest.get("EMA_200")
-    price = latest.get("Close")
-    macd_line = latest.get("MACD_12_26_9")
-    signal_line = latest.get("MACDs_12_26_9")
-    rsi = latest.get("RSI_14")
-    prev_rsi = prev.get("RSI_14")
-    atr = latest.get("ATRr_14")
-    adx = latest.get("ADX_14")
-    volume = latest.get("Volume")
-    sma20_vol = latest.get("VOL_SMA_20")
-    ema_slope_20 = latest.get("EMA_SLOPE_20")
+    # Add backtest-specific keys for compatibility
+    res["date"] = df_ind.index[i]
+    res["close"] = float(df_ind["Close"].iloc[i])
 
-    prev_ema5 = prev.get("EMA_5")
-    prev_ema13 = prev.get("EMA_13")
-    prev_macd = prev.get("MACD_12_26_9")
-    prev_sig = prev.get("MACDs_12_26_9")
-
-    score = 0.0
-    ema_signal = "neutral"
-    volume_signal = "neutral"
-    rsi_signal = "neutral"
-    volume_breakout = False
-
-    # 1. EMA Cross / Pullback logic
-    if pd.notna(ema5) and pd.notna(ema13):
-        fresh_ema_cross = (
-            pd.notna(prev_ema5)
-            and pd.notna(prev_ema13)
-            and ema5 > ema13
-            and prev_ema5 <= prev_ema13
-        )
-        if fresh_ema_cross:
-            score += 20
-            ema_signal = "bullish_cross"
-        elif ema5 > ema13:
-            # Bullish alignment but not a fresh cross
-            if price > ema20 and price < ema20 * 1.02:
-                score += 15
-                ema_signal = "bullish_pullback"
-            else:
-                score += 8
-                ema_signal = "bullish"
-
-    # 2. MACD
-    if pd.notna(macd_line) and pd.notna(signal_line):
-        fresh_macd_cross = (
-            pd.notna(prev_macd)
-            and pd.notna(prev_sig)
-            and macd_line > signal_line
-            and prev_macd <= prev_sig
-        )
-        if fresh_macd_cross:
-            score += 15
-        elif macd_line > signal_line:
-            score += 10
-
-    # 3. RSI
-    if pd.notna(rsi) and pd.notna(prev_rsi):
-        if prev_rsi <= 50 and rsi > 50:
-            score += 10
-            rsi_signal = "bullish_crossing"
-        elif 50 < rsi <= 65:
-            score += 5
-            rsi_signal = "bullish_strong"
-        elif 65 < rsi <= 68:
-            rsi_signal = "bullish_extended"
-
-    # 4. Volume
-    if pd.notna(volume) and pd.notna(sma20_vol) and sma20_vol > 0:
-        if volume > sma20_vol * 1.5 and price > latest.get("Open", price):
-            volume_breakout = True
-
-    if volume_breakout:
-        score += 15
-        volume_signal = "bullish"
-
-    # 5. Momentum
-    momentum_1m = (
-        float((price / df_ind["Close"].iloc[i - 21] - 1) * 100) if i >= 21 else None
-    )
-    momentum_3m = (
-        float((price / df_ind["Close"].iloc[i - 63] - 1) * 100) if i >= 63 else None
-    )
-    momentum_6m = (
-        float((price / df_ind["Close"].iloc[i - 126] - 1) * 100) if i >= 126 else None
-    )
-    momentum_12m = (
-        float((price / df_ind["Close"].iloc[i - 252] - 1) * 100) if i >= 252 else None
-    )
-
-    above_200ema = bool(pd.notna(ema200) and price > ema200)
-
-    # Hard Filters
-    if rsi is not None and rsi > 80:
-        score = 0
-    if not above_200ema:
-        score = 0
-
-    return {
-        "date": df_ind.index[i],
-        "score": float(score),
-        "is_bullish": score >= 40,
-        "Close": float(price),
-        "rsi": float(rsi) if pd.notna(rsi) else None,
-        "adx": float(adx) if pd.notna(adx) else None,
-        "atr": float(atr) if pd.notna(atr) else None,
-        "ema_signal": ema_signal,
-        "volume_signal": volume_signal,
-        "rsi_signal": rsi_signal,
-        "volume_breakout": volume_breakout,
-        "above_200ema": above_200ema,
-        "ema_slope_20": float(ema_slope_20) if pd.notna(ema_slope_20) else None,
-        "momentum_1m": momentum_1m,
-        "momentum_3m": momentum_3m,
-        "momentum_6m": momentum_6m,
-        "momentum_12m": momentum_12m,
-        "ema20": float(ema20) if pd.notna(ema20) else None,
-    }
+    return res
 
 
 def _compute_signal_tier(signal: dict, config: Optional[BacktestConfig] = None) -> int:
@@ -428,7 +298,7 @@ def _build_screen_driven_signals(
                 "above_200ema": True,
                 "momentum_12m": bar["momentum_12m"],
                 "momentum_3m": bar["momentum_3m"],
-                "ema20": bar["ema20"],
+                "ema20_level": bar["ema20_level"],
                 "is_consolidating": True,
             }
         )
@@ -565,7 +435,7 @@ def simulate_trades(
 
         # Entry Logic
         ema_signal_type = signal.get("ema_signal", "")
-        signal_ema20 = signal.get("ema20")
+        signal_ema20 = signal.get("ema20_level")
 
         entry_idx = None
         entry_price = None
