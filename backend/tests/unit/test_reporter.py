@@ -8,7 +8,7 @@ from app.pipeline.reporter import generate_daily_report
 def test_generate_daily_report(tmp_path):
     # Setup mocks
     mock_db = MagicMock()
-    today = datetime.datetime.utcnow().date()
+    today = datetime.datetime.now(datetime.timezone.utc).date()
 
     # Mock return value for the aggregate query
     # (symbol, name, confluence, score, rsi)

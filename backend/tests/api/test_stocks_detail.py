@@ -33,7 +33,7 @@ def test_get_stock_detail_success(mock_fetch, db, client):
 
     # Daily signal
     sig_d = TechnicalSignal(
-        date=datetime.datetime.utcnow(),
+        date=datetime.datetime.now(datetime.timezone.utc),
         symbol="TEST_RELIANCE",
         timeframe="D",
         is_bullish=True,
@@ -47,7 +47,7 @@ def test_get_stock_detail_success(mock_fetch, db, client):
 
     # Weekly signal
     sig_w = TechnicalSignal(
-        date=datetime.datetime.utcnow(),
+        date=datetime.datetime.now(datetime.timezone.utc),
         symbol="TEST_RELIANCE",
         timeframe="W",
         is_bullish=True,
@@ -61,7 +61,7 @@ def test_get_stock_detail_success(mock_fetch, db, client):
 
     # Monthly signal
     sig_m = TechnicalSignal(
-        date=datetime.datetime.utcnow(),
+        date=datetime.datetime.now(datetime.timezone.utc),
         symbol="TEST_RELIANCE",
         timeframe="M",
         is_bullish=False,
@@ -75,7 +75,7 @@ def test_get_stock_detail_success(mock_fetch, db, client):
 
     # Fundamental Data
     fund_data = FundamentalData(
-        date=datetime.datetime.utcnow(),
+        date=datetime.datetime.now(datetime.timezone.utc),
         symbol="TEST_RELIANCE",
         pe=20.0,
         roe=15.0,
@@ -130,7 +130,7 @@ def test_get_stock_detail_includes_setup(mock_fetch, db, client):
 
     # Daily signal with ATR and close price
     sig_d = TechnicalSignal(
-        date=datetime.datetime.utcnow(),
+        date=datetime.datetime.now(datetime.timezone.utc),
         symbol=symbol,
         timeframe="D",
         close_price=100.0,

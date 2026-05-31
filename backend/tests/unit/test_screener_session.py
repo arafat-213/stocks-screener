@@ -20,7 +20,7 @@ def test_screener_uses_resilient_session(mock_ticker):
     mock_db_session = MagicMock()
     mock_cache = MagicMock()
     # Mocking properties to prevent TypeError during comparisons
-    mock_cache.last_updated = datetime.datetime.utcnow()
+    mock_cache.last_updated = datetime.datetime.now(datetime.timezone.utc)
     mock_cache.cache_version = CURRENT_SCREENER_VERSION
     mock_db_session.query.return_value.filter.return_value.first.return_value = (
         mock_cache

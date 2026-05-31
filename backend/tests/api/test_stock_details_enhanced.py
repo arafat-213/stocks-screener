@@ -36,7 +36,8 @@ def test_get_stock_detail_enhanced(mock_fetch, db, client):
     # Technical signals
     for i in range(300):
         sig = TechnicalSignal(
-            date=datetime.datetime(2024, 1, 1) + datetime.timedelta(days=i),
+            date=datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
+            + datetime.timedelta(days=i),
             symbol=symbol,
             timeframe="D",
             is_bullish=True,
@@ -53,7 +54,7 @@ def test_get_stock_detail_enhanced(mock_fetch, db, client):
 
     # Fundamental Data
     fund_data = FundamentalData(
-        date=datetime.datetime.utcnow(),
+        date=datetime.datetime.now(datetime.timezone.utc),
         symbol=symbol,
         pe=25.0,
         pb=5.0,

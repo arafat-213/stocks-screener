@@ -20,13 +20,21 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        "trade_journal",
-        sa.Column("source", sa.String(), nullable=False, server_default="manual"),
-    )
-    op.add_column(
-        "trade_journal", sa.Column("external_id", sa.Integer(), nullable=True)
-    )
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    columns = [col["name"] for col in inspector.get_columns("trade_journal")]
+
+    if "source" not in columns:
+        op.add_column(
+            "trade_journal",
+            sa.Column("source", sa.String(), nullable=False, server_default="manual"),
+        )
+    if "external_id" not in columns:
+        op.add_column(
+            "trade_journal", sa.Column("external_id", sa.Integer(), nullable=True)
+        )
+
     op.alter_column(
         "trade_journal",
         "stop_loss",
@@ -55,5 +63,11 @@ def downgrade() -> None:
         existing_type=sa.DOUBLE_PRECISION(precision=53),
         nullable=False,
     )
-    op.drop_column("trade_journal", "external_id")
-    op.drop_column("trade_journal", "source")
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    columns = [col["name"] for col in inspector.get_columns("trade_journal")]
+    if "external_id" in columns:
+        op.drop_column("trade_journal", "external_id")
+    if "source" in columns:
+        op.drop_column("trade_journal", "source")

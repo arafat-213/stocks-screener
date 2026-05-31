@@ -113,13 +113,17 @@ def test_scan_calls_sync(mock_sync, mock_regime, db: Session):
     # Create a signal
     today = datetime.date(2024, 1, 1)
     sig = models.TechnicalSignal(
-        date=datetime.datetime.combine(today, datetime.time(10, 0)),
+        date=datetime.datetime.combine(
+            today, datetime.time(10, 0), tzinfo=datetime.timezone.utc
+        ),
         symbol="TEST.NS",
         timeframe="D",
         above_200ema=True,
         entry_score=80.0,
         ema_signal="bullish_cross",
         ema20_level=100.0,
+        rsi=50.0,
+        volume_breakout=True,
         atr=5.0,
     )
     db.add(sig)

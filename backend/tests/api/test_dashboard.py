@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.core.cache import response_cache
 from app.db.models import FundamentalCache, Stock, TechnicalSignal
@@ -18,7 +18,7 @@ def test_get_screener_results_includes_setup(client, db):
     response_cache.invalidate()
 
     # Seed data
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     stock = Stock(symbol="TEST.NS", name="Test Stock", sector="IT", market_cap=100000)
     db.add(stock)
 

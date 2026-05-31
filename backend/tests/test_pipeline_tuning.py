@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import Response
 from sqlalchemy.orm import Session
@@ -14,7 +14,7 @@ def test_dashboard_fundamental_filter_param(db: Session):
     db.add_all([s1, s2])
     db.commit()
 
-    now = datetime.utcnow().replace(microsecond=0)
+    now = datetime.now(timezone.utc).replace(microsecond=0)
     sig1 = TechnicalSignal(
         symbol="PASS.NS",
         date=now,
@@ -72,7 +72,7 @@ def test_dashboard_fundamental_filter_param(db: Session):
 def test_momentum_rsi_bound_lowered(db: Session):
     from app.screens.momentum import screen_actionable_entries
 
-    now = datetime.utcnow().date()
+    now = datetime.now(timezone.utc).date()
     # Stock with RSI 37 (passes new bound, fails old 40 bound)
     s = Stock(symbol="RSI37.NS", name="RSI 37", sector="Tech")
     db.add(s)

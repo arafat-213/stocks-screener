@@ -3,6 +3,7 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -21,6 +22,50 @@ from app.tasks import execute_pipeline_task
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
 logger = logging.getLogger(__name__)
+
+
+def clean_stock_symbol(symbol: str) -> str:
+    """Standardize symbol by converting to upper case and stripping .NS suffix."""
+    s = symbol.strip().upper()
+    if s.endswith(".NS"):
+        return s[:-3]
+    return s
+
+
+@router.get("/search")
+def search_stocks(q: str = "", db: Session = Depends(get_db)):
+    if len(q) < 2:
+        return []
+
+    # Strip .NS (case-insensitive) for searching
+    query = clean_stock_symbol(q)
+
+    # Ordering: Exact symbol match, then symbol starts with, then name contains
+    results = (
+        db.query(Stock)
+        .filter(or_(Stock.symbol.ilike(f"%{query}%"), Stock.name.ilike(f"%{query}%")))
+        .limit(50)
+        .all()
+    )
+
+    # Sort in Python for smart ordering
+    query_upper = query.upper()
+
+    def sort_key(s):
+        if s.symbol == query_upper:
+            return 0
+        if s.symbol.startswith(query_upper):
+            return 1
+        if s.name.lower().startswith(query.lower()):
+            return 2
+        return 3
+
+    sorted_results = sorted(results, key=sort_key)
+    final_results = sorted_results[:15]
+
+    return [
+        {"symbol": s.symbol, "name": s.name, "sector": s.sector} for s in final_results
+    ]
 
 
 @router.get("/")
@@ -262,22 +307,55 @@ def get_cache_status(symbol: str, db: Session = Depends(get_db)):
 
     clean_symbol = symbol_upper
 
+    # Get Fundamental Cache status
+    fund_cache = (
+        db.query(FundamentalCache)
+        .filter(FundamentalCache.symbol == clean_symbol)
+        .first()
+    )
+    fund_info = {
+        "force_refresh": fund_cache.force_refresh if fund_cache else False,
+        "last_updated": fund_cache.last_updated.isoformat()
+        if fund_cache and fund_cache.last_updated
+        else None,
+    }
+
     cache = OHLCVCache()
     try:
         exists = cache.exists(clean_symbol)
         if not exists:
-            return {"exists": False}
+            return {"exists": False, "symbol": clean_symbol, **fund_info}
 
         df = cache.get(clean_symbol)
         return {
             "exists": True,
+            "symbol": clean_symbol,
             "rows": len(df),
             "start": df.index[0].isoformat(),
             "end": df.index[-1].isoformat(),
             "last_modified": cache.get_modified_time(clean_symbol),
+            **fund_info,
         }
     except Exception as e:
-        return {"exists": False, "error": str(e)}
+        return {"exists": False, "symbol": clean_symbol, "error": str(e)}
+
+
+@router.post("/{symbol}/refresh-cache")
+def refresh_stock_cache(symbol: str, db: Session = Depends(get_db)):
+    clean_symbol = clean_stock_symbol(symbol)
+    cache = (
+        db.query(FundamentalCache)
+        .filter(FundamentalCache.symbol == clean_symbol)
+        .first()
+    )
+    if not cache:
+        cache = FundamentalCache(symbol=clean_symbol)
+        db.add(cache)
+
+    cache.force_refresh = True
+    cache.retry_after = None
+    db.commit()
+    return {"message": f"Force refresh scheduled for {clean_symbol}"}
 
 
 @router.get("/fundamentals/{symbol}")

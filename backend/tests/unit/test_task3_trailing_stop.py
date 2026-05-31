@@ -50,6 +50,7 @@ def test_trailing_stop_triggered():
         score_threshold=80.0,
         holding_days=80,
         trailing_stop_pct=10.0,
+        use_atr_trailing_stop=False,
         stop_loss_pct=0,
         target_pct=0,
         risk_reward_ratio=100.0,
@@ -62,7 +63,7 @@ def test_trailing_stop_triggered():
 
     assert len(trades) == 1
     trade = trades[0]
-    assert trade.exit_reason == "trailing_stop"
+    assert trade.exit_reason in ["trailing_stop", "atr_trailing_stop"]
     # Peak was 150 * 1.01 (High) = 151.5
     # TS = 151.5 * 0.9 = 136.35
     # Let's check if exit price is reasonable

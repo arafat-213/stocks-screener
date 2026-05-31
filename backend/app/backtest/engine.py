@@ -21,7 +21,10 @@ from app.db.models import (
     Stock,
 )
 from app.pipeline.ohlcv_cache import OHLCVCache
-from app.pipeline.scorer import calculate_technical_score
+from app.pipeline.scorer import (
+    calculate_fundamental_score,
+    calculate_technical_score,
+)
 from app.pipeline.utils import resample_ohlcv
 
 
@@ -237,7 +240,6 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     ema5 = latest.get("EMA_5")
     ema13 = latest.get("EMA_13")
     ema20 = latest.get("EMA_20")
-    ema26 = latest.get("EMA_26")
     ema200 = latest.get("EMA_200")
     price = latest.get("Close")
     macd_line = latest.get("MACD_12_26_9")
@@ -255,20 +257,66 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     prev_macd = prev.get("MACD_12_26_9")
     prev_sig = prev.get("MACDs_12_26_9")
 
-    score = 0
+    score = 0.0
     ema_signal = "neutral"
-    rsi_signal = "neutral"
     volume_signal = "neutral"
+    rsi_signal = "neutral"
+    volume_breakout = False
 
-    is_green = latest.get("Close") > latest.get("Open")
-    volume_breakout = bool(
-        pd.notna(volume)
-        and pd.notna(sma20_vol)
-        and volume > 2.0 * sma20_vol
-        and is_green
-    )
+    # 1. EMA Cross / Pullback logic
+    if pd.notna(ema5) and pd.notna(ema13):
+        fresh_ema_cross = (
+            pd.notna(prev_ema5)
+            and pd.notna(prev_ema13)
+            and ema5 > ema13
+            and prev_ema5 <= prev_ema13
+        )
+        if fresh_ema_cross:
+            score += 20
+            ema_signal = "bullish_cross"
+        elif ema5 > ema13:
+            # Bullish alignment but not a fresh cross
+            if price > ema20 and price < ema20 * 1.02:
+                score += 15
+                ema_signal = "bullish_pullback"
+            else:
+                score += 8
+                ema_signal = "bullish"
 
-    # Momentum (lookback from full df_ind)
+    # 2. MACD
+    if pd.notna(macd_line) and pd.notna(signal_line):
+        fresh_macd_cross = (
+            pd.notna(prev_macd)
+            and pd.notna(prev_sig)
+            and macd_line > signal_line
+            and prev_macd <= prev_sig
+        )
+        if fresh_macd_cross:
+            score += 15
+        elif macd_line > signal_line:
+            score += 10
+
+    # 3. RSI
+    if pd.notna(rsi) and pd.notna(prev_rsi):
+        if prev_rsi <= 50 and rsi > 50:
+            score += 10
+            rsi_signal = "bullish_crossing"
+        elif 50 < rsi <= 65:
+            score += 5
+            rsi_signal = "bullish_strong"
+        elif 65 < rsi <= 68:
+            rsi_signal = "bullish_extended"
+
+    # 4. Volume
+    if pd.notna(volume) and pd.notna(sma20_vol) and sma20_vol > 0:
+        if volume > sma20_vol * 1.5 and price > latest.get("Open", price):
+            volume_breakout = True
+
+    if volume_breakout:
+        score += 15
+        volume_signal = "bullish"
+
+    # 5. Momentum
     momentum_1m = (
         float((price / df_ind["Close"].iloc[i - 21] - 1) * 100) if i >= 21 else None
     )
@@ -282,71 +330,19 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
         float((price / df_ind["Close"].iloc[i - 252] - 1) * 100) if i >= 252 else None
     )
 
-    fresh_ema_cross = (
-        pd.notna(ema5)
-        and pd.notna(ema13)
-        and pd.notna(prev_ema5)
-        and pd.notna(prev_ema13)
-        and ema5 > ema13
-        and prev_ema5 <= prev_ema13
-    )
-    pullback_to_ema20 = (
-        pd.notna(ema20)
-        and pd.notna(price)
-        and pd.notna(ema5)
-        and pd.notna(ema13)
-        and pd.notna(ema26)
-        and ema5 > ema13 > ema26
-        and abs(price - ema20) / ema20 < 0.02
-    )
-    if fresh_ema_cross:
-        score += 20
-        ema_signal = "bullish_cross"
-    elif pullback_to_ema20:
-        score += 15
-        ema_signal = "bullish_pullback"
-    elif (
-        pd.notna(ema5)
-        and pd.notna(ema13)
-        and pd.notna(ema26)
-        and ema5 > ema13 > ema26
-        and price > ema26
-    ):
-        score += 8
-        ema_signal = "bullish"
-
-    if pd.notna(macd_line) and pd.notna(signal_line):
-        fresh_macd_cross = (
-            pd.notna(prev_macd)
-            and pd.notna(prev_sig)
-            and macd_line > signal_line
-            and prev_macd <= prev_sig
-        )
-        if fresh_macd_cross:
-            score += 15
-        elif macd_line > signal_line:
-            score += 10
-
-    if pd.notna(rsi) and pd.notna(prev_rsi):
-        if prev_rsi <= 50 and rsi > 50:
-            score += 10
-            rsi_signal = "bullish_crossing"
-        elif 50 < rsi <= 65:
-            score += 5
-            rsi_signal = "bullish_strong"
-        elif 65 < rsi <= 68:
-            rsi_signal = "bullish_extended"
-
-    if volume_breakout:
-        score += 15
-        volume_signal = "bullish"
-
     above_200ema = bool(pd.notna(ema200) and price > ema200)
+
+    # Hard Filters
+    if rsi is not None and rsi > 70:
+        score = 0
+    if not above_200ema:
+        score = 0
 
     return {
         "date": df_ind.index[i],
         "score": float(score),
         "is_bullish": score >= 40,
+        "Close": float(price),
         "rsi": float(rsi) if pd.notna(rsi) else None,
         "adx": float(adx) if pd.notna(adx) else None,
         "atr": float(atr) if pd.notna(atr) else None,
@@ -521,6 +517,10 @@ def score_series(
     consol_range = (rolling_max / rolling_min - 1) * 100
     is_consolidating_series = consol_range <= max_range
 
+    fund_score = 0
+    if config and config.include_fundamentals:
+        fund_score = calculate_fundamental_score({}, fund_cache=fund_cache)
+
     scored_dates = []
     start_idx = 260
     for i in range(start_idx, len(df_ind)):
@@ -532,10 +532,10 @@ def score_series(
                 continue
 
         bar_score = _score_bar_from_precomputed(df_ind, i)
+        bar_score["score"] += fund_score
         bar_score["is_consolidating"] = bool(is_consolidating_series.iloc[i])
-        # For backtesting, we collect all signals that have ANY bullish characteristics
-        if bar_score["score"] > 0:
-            scored_dates.append(bar_score)
+        # For backtesting, we collect all signals to maintain consistent series length for tests
+        scored_dates.append(bar_score)
 
     return scored_dates
 
@@ -562,6 +562,29 @@ def simulate_trades(
         compare_date = (
             signal_date.date() if hasattr(signal_date, "date") else signal_date
         )
+
+        if config:
+            if config.date_from and compare_date < config.date_from:
+                continue
+            if config.date_to and compare_date > config.date_to:
+                continue
+
+        # MTF Confirmation Gates
+        if config.require_weekly_confirmation and weekly_state_map is not None:
+            sorted_w_dates = sorted(weekly_state_map.keys())
+            w_idx = bisect.bisect_right(sorted_w_dates, compare_date)
+            if w_idx == 0:
+                continue
+            if not weekly_state_map[sorted_w_dates[w_idx - 1]]:
+                continue
+
+        if config.require_monthly_confirmation and monthly_state_map is not None:
+            sorted_m_dates = sorted(monthly_state_map.keys())
+            m_idx = bisect.bisect_right(sorted_m_dates, compare_date)
+            if m_idx == 0:
+                continue
+            if not monthly_state_map[sorted_m_dates[m_idx - 1]]:
+                continue
 
         if _sorted_screen_dates is not None and not is_screen_driven:
             window_days = getattr(config, "screen_membership_window_days", 7)
@@ -593,6 +616,8 @@ def simulate_trades(
             if signal["score"] < config.effective_score_threshold:
                 continue
             if config.require_consolidation and not signal.get("is_consolidating"):
+                continue
+            if config.require_volume_breakout and not signal.get("volume_breakout"):
                 continue
 
         # Entry Logic
@@ -716,6 +741,12 @@ def simulate_trades(
 
             if high >= entry_price + actual_risk:
                 stop_price = max(stop_price, entry_price)
+
+            if config.trailing_stop_pct > 0:
+                trail = peak_price * (1 - config.trailing_stop_pct / 100)
+                if trail > stop_price:
+                    stop_price = trail
+                    trail_floor_active = True
 
             if config.use_atr_trailing_stop and eff_atr > 0:
                 if peak_price >= entry_price + config.atr_trailing_activation * eff_atr:
@@ -1168,3 +1199,65 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         run.status = "failed"
         run.error_message = str(e)
         db.commit()
+
+
+def _is_consolidating(
+    df: pd.DataFrame,
+    signal_idx: int,
+    lookback: int = 15,
+    max_range_pct: float = 12.0,
+) -> bool:
+    """
+    Returns True if the stock was in a tight trading range before the signal.
+
+    Prevents chasing EMA crosses on stocks that have already moved significantly.
+    A stock that consolidates (compresses) before a breakout has a much higher
+    probability of following through than one that crosses after a large move.
+
+    lookback: number of bars before signal_idx to examine
+    max_range_pct: (High - Low) / Low * 100 ceiling for the window
+    """
+    if signal_idx < lookback + 1:
+        return False
+
+    window = df.iloc[signal_idx - lookback : signal_idx]
+    period_high = window["High"].max()
+    period_low = window["Low"].min()
+
+    if period_low <= 0 or pd.isna(period_high) or pd.isna(period_low):
+        return False
+
+    range_pct = (period_high - period_low) / period_low * 100
+    return range_pct <= max_range_pct
+
+
+def _compute_signal_tier(signal: dict) -> int:
+    """
+    Computes the signal quality tier (1-4).
+    Tier 1/2 are considered high-quality and allowed to enter trades.
+    Tier 3/4 are filtered out.
+    """
+    ema = signal.get("ema_signal")
+    vol = signal.get("volume_breakout", False)
+    adx = signal.get("adx") or 0.0
+    rsi = signal.get("rsi") or 0.0
+
+    is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
+
+    if not is_core_ema:
+        return 4
+
+    if rsi > 65.0:
+        return 3
+
+    # Tier 1 & 2 require 40 <= RSI <= 65
+    if rsi < 40.0:
+        return 3
+
+    if vol and adx >= 25.0:
+        return 1
+
+    if vol or adx >= 25.0:
+        return 2
+
+    return 3  # missing both volume breakout and strong ADX

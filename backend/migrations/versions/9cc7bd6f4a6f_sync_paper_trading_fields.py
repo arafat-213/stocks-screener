@@ -20,10 +20,22 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    # Add missing columns to paper_positions
-    op.add_column("paper_positions", sa.Column("exit_price", sa.Float(), nullable=True))
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    columns = [col["name"] for col in inspector.get_columns("paper_positions")]
+    if "exit_price" not in columns:
+        # Add missing columns to paper_positions
+        op.add_column(
+            "paper_positions", sa.Column("exit_price", sa.Float(), nullable=True)
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column("paper_positions", "exit_price")
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    columns = [col["name"] for col in inspector.get_columns("paper_positions")]
+    if "exit_price" in columns:
+        op.drop_column("paper_positions", "exit_price")

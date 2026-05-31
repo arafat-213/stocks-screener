@@ -5,7 +5,9 @@ from app.pipeline.screener import needs_cache_refresh
 
 
 def test_needs_cache_refresh():
-    seven_days_ago = datetime.datetime.utcnow() - datetime.timedelta(days=7)
+    seven_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+        days=7
+    )
 
     # Case 1: No cache
     assert needs_cache_refresh(None, seven_days_ago)
@@ -23,7 +25,8 @@ def test_needs_cache_refresh():
     # Case 4: Recent cache, no backoff
     cache = FundamentalCache(
         symbol="TEST",
-        last_updated=datetime.datetime.utcnow() - datetime.timedelta(days=1),
+        last_updated=datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(days=1),
         cache_version=1,
     )
     # Ensure cache_version matches CURRENT_SCREENER_VERSION in screener.py (which is 1)
@@ -32,9 +35,9 @@ def test_needs_cache_refresh():
     # Case 5: Recent cache, but in backoff
     cache = FundamentalCache(
         symbol="TEST",
-        last_updated=datetime.datetime.utcnow()
+        last_updated=datetime.datetime.now(datetime.timezone.utc)
         - datetime.timedelta(days=8),  # Age says YES
-        retry_after=datetime.datetime.utcnow()
+        retry_after=datetime.datetime.now(datetime.timezone.utc)
         + datetime.timedelta(hours=1),  # Backoff says NO
         cache_version=1,
     )
@@ -44,7 +47,8 @@ def test_needs_cache_refresh():
     cache = FundamentalCache(
         symbol="TEST",
         last_updated=seven_days_ago - datetime.timedelta(days=1),
-        retry_after=datetime.datetime.utcnow() - datetime.timedelta(hours=1),
+        retry_after=datetime.datetime.now(datetime.timezone.utc)
+        - datetime.timedelta(hours=1),
     )
     assert needs_cache_refresh(cache, seven_days_ago)
 

@@ -5,7 +5,7 @@ from app.db import models
 
 
 def setup_pagination_data(db):
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     test_date = datetime.datetime(now.year, now.month, now.day)
 
     # Create multiple stocks across different sectors

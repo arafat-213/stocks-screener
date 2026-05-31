@@ -32,9 +32,13 @@ def db_session():
 
 
 def test_screen_mtf_confluence(db_session):
-    date_d = datetime.datetime(2023, 10, 1)
-    date_w = datetime.datetime(2023, 9, 25)
-    date_m = datetime.datetime(2023, 9, 1)
+    date_d = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
+    date_w = datetime.datetime(2023, 9, 25, tzinfo=datetime.timezone.utc)
+    date_m = datetime.datetime(2023, 9, 1, tzinfo=datetime.timezone.utc)
+
+    # Add stocks
+    db_session.add(Stock(symbol="RELIANCE", name="Reliance", sector="Energy"))
+    db_session.add(Stock(symbol="TCS", name="TCS", sector="Tech"))
 
     # Setup mock signals
     # RELIANCE: Bullish on all three timeframes
@@ -78,7 +82,7 @@ def test_screen_mtf_confluence(db_session):
 
 
 def test_screen_sector_leaders(db_session):
-    date = datetime.datetime(2023, 10, 1)
+    date = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
     # Stocks in Tech sector
     db_session.add(Stock(symbol="TCS", sector="Tech"))
@@ -141,7 +145,11 @@ def test_screen_sector_leaders(db_session):
 
 
 def test_screen_fresh_52w_breakout(db_session):
-    date = datetime.datetime(2023, 10, 1)
+    date = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
+
+    # Add stocks
+    db_session.add(Stock(symbol="RELIANCE", name="Reliance", sector="Energy"))
+    db_session.add(Stock(symbol="TCS", name="TCS", sector="Tech"))
 
     # Breakout stock
     db_session.add(
@@ -181,7 +189,7 @@ def test_screen_fresh_52w_breakout(db_session):
 
 
 def test_screen_qarp(db_session):
-    date = datetime.datetime(2023, 10, 1)
+    date = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
     db_session.add(Stock(symbol="RELIANCE", sector="Energy"))
     db_session.add(
@@ -241,7 +249,7 @@ def test_screen_qarp(db_session):
 
 
 def test_sector_rotation_computation(db_session):
-    date_val = datetime.datetime(2023, 10, 1)
+    date_val = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
     db_session.add(Stock(symbol="TCS", sector="Tech"))
     db_session.add(Stock(symbol="INFY", sector="Tech"))
@@ -295,7 +303,7 @@ def test_sector_rotation_computation(db_session):
 
 
 def test_screen_hot_sectors(db_session):
-    date_val = datetime.datetime(2023, 10, 1)
+    date_val = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
     # Setup hot sector
     db_session.add(SectorSnapshot(date=date_val.date(), sector="Tech", avg_rs=90.0))

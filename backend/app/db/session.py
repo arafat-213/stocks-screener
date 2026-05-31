@@ -15,7 +15,7 @@ engine = create_engine(
     max_overflow=20,  # Extra connections under burst load (backtest + pipeline concurrent)
     pool_pre_ping=True,  # CRITICAL: validates connection before use; prevents "server closed connection" errors
     pool_recycle=3600,  # Recycle connections every hour to avoid stale TCP state
-    connect_args={"connect_timeout": 10},
+    connect_args={"connect_timeout": 10, "options": "-c timezone=utc"},
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

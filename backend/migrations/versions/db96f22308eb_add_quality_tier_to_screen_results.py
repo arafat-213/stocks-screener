@@ -20,11 +20,24 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.add_column(
-        "screen_results", sa.Column("quality_tier", sa.String(length=1), nullable=True)
-    )
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    if "quality_tier" not in [
+        col["name"] for col in inspector.get_columns("screen_results")
+    ]:
+        op.add_column(
+            "screen_results",
+            sa.Column("quality_tier", sa.String(length=1), nullable=True),
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_column("screen_results", "quality_tier")
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    if "quality_tier" in [
+        col["name"] for col in inspector.get_columns("screen_results")
+    ]:
+        op.drop_column("screen_results", "quality_tier")

@@ -269,9 +269,8 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
         if run.exit_breakdown_json:
             result["metrics"]["exit_breakdown"] = json.loads(run.exit_breakdown_json)
 
-        # Temporarily commented out as requested
-        # if include_curve and run.equity_curve_json:
-        #     result["equity_curve"] = json.loads(run.equity_curve_json)
+        if include_curve and run.equity_curve_json:
+            result["equity_curve"] = json.loads(run.equity_curve_json)
     return result
 
 

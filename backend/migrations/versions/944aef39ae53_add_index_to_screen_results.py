@@ -19,14 +19,26 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_index(
-        "ix_sr_slug_date",
-        "screen_results",
-        ["screen_slug", "computed_at"],
-        unique=False,
-    )
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    if "ix_sr_slug_date" not in [
+        idx["name"] for idx in inspector.get_indexes("screen_results")
+    ]:
+        op.create_index(
+            "ix_sr_slug_date",
+            "screen_results",
+            ["screen_slug", "computed_at"],
+            unique=False,
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index("ix_sr_slug_date", table_name="screen_results")
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    if "ix_sr_slug_date" in [
+        idx["name"] for idx in inspector.get_indexes("screen_results")
+    ]:
+        op.drop_index("ix_sr_slug_date", table_name="screen_results")

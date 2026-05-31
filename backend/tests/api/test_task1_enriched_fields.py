@@ -4,7 +4,7 @@ from app.db import models
 
 
 def setup_test_data(db):
-    now = datetime.datetime.utcnow()
+    now = datetime.datetime.now(datetime.timezone.utc)
     # Use a fixed date to avoid any timezone/midnight issues
     test_date = datetime.datetime(now.year, now.month, now.day)
 

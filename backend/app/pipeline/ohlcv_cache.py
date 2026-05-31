@@ -278,6 +278,15 @@ class OHLCVCache:
     # Internal helpers                                                      #
     # ------------------------------------------------------------------ #
 
+    def exists(self, symbol: str) -> bool:
+        return self._file_path(symbol).exists()
+
+    def get_modified_time(self, symbol: str) -> float:
+        path = self._file_path(symbol)
+        if path.exists():
+            return path.stat().st_mtime
+        return 0.0
+
     def _file_path(self, symbol: str) -> Path:
         safe = (
             symbol.replace("^", "_")

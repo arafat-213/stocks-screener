@@ -49,7 +49,7 @@ def test_get_screen_results_with_setup(client, db):
     db.add(sr)
 
     # Technical signal for setup calculation
-    now = datetime.datetime.utcnow().replace(microsecond=0)
+    now = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
     tech = models.TechnicalSignal(
         symbol=symbol,
         date=now,

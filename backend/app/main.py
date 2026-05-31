@@ -18,6 +18,7 @@ from app.routers import (
     journal,
     paper_trading,
     reports,
+    screener,
     screens,
     stocks,
     watchlist,
@@ -72,6 +73,7 @@ app.add_middleware(
 )
 
 app.include_router(dashboard.router, prefix="/api")
+app.include_router(screener.router)
 app.include_router(screens.router, prefix="/api")
 app.include_router(backtest.router, prefix="/api")
 app.include_router(paper_trading.router, prefix="/api")

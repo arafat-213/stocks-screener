@@ -20,23 +20,33 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     """Upgrade schema."""
-    op.create_table(
-        "alert_logs",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("symbol", sa.String(), nullable=False),
-        sa.Column("signal_date", sa.Date(), nullable=False),
-        sa.Column("alert_type", sa.String(), nullable=False),
-        sa.Column("quality_tier", sa.String(length=1), nullable=True),
-        sa.Column("entry_score", sa.Float(), nullable=True),
-        sa.Column("sent_at", sa.DateTime(), nullable=True),
-        sa.Column("email_id", sa.String(), nullable=True),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("symbol", "signal_date", "alert_type"),
-    )
-    op.create_index("ix_alert_logs_sent_at", "alert_logs", ["sent_at"], unique=False)
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    if "alert_logs" not in inspector.get_table_names():
+        op.create_table(
+            "alert_logs",
+            sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
+            sa.Column("symbol", sa.String(), nullable=False),
+            sa.Column("signal_date", sa.Date(), nullable=False),
+            sa.Column("alert_type", sa.String(), nullable=False),
+            sa.Column("quality_tier", sa.String(length=1), nullable=True),
+            sa.Column("entry_score", sa.Float(), nullable=True),
+            sa.Column("sent_at", sa.DateTime(), nullable=True),
+            sa.Column("email_id", sa.String(), nullable=True),
+            sa.PrimaryKeyConstraint("id"),
+            sa.UniqueConstraint("symbol", "signal_date", "alert_type"),
+        )
+        op.create_index(
+            "ix_alert_logs_sent_at", "alert_logs", ["sent_at"], unique=False
+        )
 
 
 def downgrade() -> None:
     """Downgrade schema."""
-    op.drop_index("ix_alert_logs_sent_at", table_name="alert_logs")
-    op.drop_table("alert_logs")
+    from sqlalchemy import inspect
+
+    inspector = inspect(op.get_bind())
+    if "alert_logs" in inspector.get_table_names():
+        op.drop_index("ix_alert_logs_sent_at", table_name="alert_logs")
+        op.drop_table("alert_logs")

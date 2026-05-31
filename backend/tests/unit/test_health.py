@@ -23,7 +23,9 @@ def test_health_check_enhanced_ok():
         # Mock PipelineRun
         mock_run = MagicMock()
         mock_run.status = "complete"
-        mock_run.timestamp = datetime.datetime.utcnow() - datetime.timedelta(hours=2)
+        mock_run.timestamp = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(hours=2)
 
         with patch("app.main.response_cache") as mock_cache:
             mock_cache.stats.return_value = {"hits": 10, "misses": 2, "keys": 5}
@@ -69,7 +71,9 @@ def test_health_check_stale_data():
         # Mock PipelineRun with old timestamp
         mock_run = MagicMock()
         mock_run.status = "complete"
-        mock_run.timestamp = datetime.datetime.utcnow() - datetime.timedelta(hours=30)
+        mock_run.timestamp = datetime.datetime.now(
+            datetime.timezone.utc
+        ) - datetime.timedelta(hours=30)
 
         with patch("app.main.response_cache") as mock_cache:
             mock_cache.stats.return_value = {"hits": 10, "misses": 2, "keys": 5}

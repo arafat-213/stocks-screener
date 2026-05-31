@@ -94,10 +94,14 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
         .filter(
             and_(
                 TechnicalSignal.date
-                >= datetime.datetime.combine(today, datetime.time.min),
+                >= datetime.datetime.combine(
+                    today, datetime.time.min, tzinfo=datetime.timezone.utc
+                ),
                 TechnicalSignal.date
                 < datetime.datetime.combine(
-                    today + datetime.timedelta(days=1), datetime.time.min
+                    today + datetime.timedelta(days=1),
+                    datetime.time.min,
+                    tzinfo=datetime.timezone.utc,
                 ),
                 TechnicalSignal.timeframe == "D",
                 TechnicalSignal.above_200ema,
