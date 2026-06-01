@@ -52,25 +52,6 @@ const COLUMN_META = {
       </span>
     ),
   },
-  quality_tier: {
-    label: 'Quality',
-    fmt: (v) => {
-      const colors = {
-        A: 'bg-green-600 text-white border-green-700',
-        B: 'bg-blue-600 text-white border-blue-700',
-        C: 'bg-slate-200 text-slate-700 border-slate-300 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
-      };
-      return v ? (
-        <span
-          className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${colors[v] || colors['C']}`}
-        >
-          {v}
-        </span>
-      ) : (
-        '—'
-      );
-    },
-  },
   score: {
     label: 'Score',
     fmt: (v) => (
@@ -112,35 +93,6 @@ const COLUMN_META = {
   adx: {
     label: 'ADX',
     fmt: (v) => <span className='font-bold'>{v?.toFixed(1) ?? '—'}</span>,
-  },
-  peg_ratio: {
-    label: 'PEG',
-    fmt: (v) => (
-      <span className={`font-bold ${v < 1 ? 'text-green-500' : ''}`}>
-        {v?.toFixed(2) ?? '—'}
-      </span>
-    ),
-  },
-  ev_to_ebitda: { label: 'EV/EBITDA', fmt: (v) => v?.toFixed(1) ?? '—' },
-  dividend_yield: {
-    label: 'Div Yield',
-    fmt: (v) => (v != null ? `${(v * 100).toFixed(2)}%` : '—'),
-  },
-  roce: {
-    label: 'ROCE %',
-    fmt: (v) => (
-      <span className={`font-bold ${v > 0.2 ? 'text-green-500' : ''}`}>
-        {v != null ? `${(v * 100).toFixed(1)}%` : '—'}
-      </span>
-    ),
-  },
-  de_ratio: {
-    label: 'D/E',
-    fmt: (v) => (
-      <span className={v > 1.5 ? 'text-red-500 font-bold' : ''}>
-        {v?.toFixed(2) ?? '—'}
-      </span>
-    ),
   },
   pct_from_52w_high: {
     label: '% from High',
@@ -188,16 +140,6 @@ const COLUMN_META = {
       ) : (
         '—'
       ),
-  },
-  fcf_positive: {
-    label: 'FCF+',
-    fmt: (v) =>
-      v ? <span className='text-green-500 font-black'>✓</span> : '—',
-  },
-  dividend_consistency: {
-    label: 'Div 3Y',
-    fmt: (v) =>
-      v ? <span className='text-green-500 font-black'>✓</span> : '—',
   },
   above_200ema: {
     label: '>200 EMA',

@@ -11,8 +11,6 @@ const FilterBottomSheet = ({
   toggleSector,
   resetFilters,
   watchlistCount,
-  fundamentalFilter,
-  setFundamentalFilter,
 }) => {
   if (!isOpen) return null;
 
@@ -65,26 +63,6 @@ const FilterBottomSheet = ({
                 ),
                 ['all', 'watchlist', '3', '2+']
               )}
-            </div>
-          </section>
-
-          <section>
-            <h4 className='text-[10px] font-black text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-[0.2em]'>
-              Quality Filter
-            </h4>
-            <div className='flex gap-2.5 flex-wrap'>
-              <button
-                className={`border-2 px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest cursor-pointer transition-all flex items-center gap-2 shadow-sm ${fundamentalFilter ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200'}`}
-                onClick={() => setFundamentalFilter(true)}
-              >
-                Strict
-              </button>
-              <button
-                className={`border-2 px-5 py-3 rounded-2xl text-xs font-black uppercase tracking-widest cursor-pointer transition-all flex items-center gap-2 shadow-sm ${!fundamentalFilter ? 'bg-amber-600 text-white border-amber-600 shadow-amber-500/30' : 'bg-slate-50 dark:bg-slate-900/50 text-slate-500 border-transparent hover:border-slate-200'}`}
-                onClick={() => setFundamentalFilter(false)}
-              >
-                Show All
-              </button>
             </div>
           </section>
 
