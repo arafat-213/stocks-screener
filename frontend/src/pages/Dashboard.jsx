@@ -70,9 +70,7 @@ const Dashboard = () => {
         await addToWatchlist({
           symbol: symbol,
           signal_date: row.date || new Date().toISOString().split('T')[0],
-          quality_tier:
-            row.quality_tier ||
-            (row.fundamental_quality?.profitability_ok ? 'A' : 'B'),
+          quality_tier: row.quality_tier || 'A',
           signal_score: row.timeframes?.D?.score || row.score,
         });
       }
