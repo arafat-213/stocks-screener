@@ -60,7 +60,7 @@ def build_signal_email(
 ) -> str:
     """
     Builds the HTML email body for a batch of signals.
-    signals: list of dicts with keys: symbol, name, sector, score, quality_tier, signal_tier, ema_signal, rsi, adx, volume_breakout, entry_price, stop_loss, target_price, entry_status, pct_above_ema20, momentum_12m
+    signals: list of dicts with keys: symbol, name, sector, score, signal_tier, ema_signal, rsi, adx, volume_breakout, entry_price, stop_loss, target_price, entry_status, pct_above_ema20, momentum_12m
     """
     regime_badge = (
         '<span style="color:#16a34a;font-weight:bold;">BULLISH ✓</span>'
@@ -68,16 +68,8 @@ def build_signal_email(
         else '<span style="color:#dc2626;font-weight:bold;">BEARISH ✗</span>'
     )
 
-    # FIX 1: Group by signal_tier (Technical) instead of quality_tier (Fundamental)
     tier1 = [s for s in signals if s.get("signal_tier") == 1]
     tier2 = [s for s in signals if s.get("signal_tier") == 2]
-
-    def tier_badge(t):
-        colors = {"A": "#16a34a", "B": "#d97706", "C": "#6b7280"}
-        labels = {"A": "Quality A", "B": "Quality B", "C": "Quality C"}
-        color_code = colors.get(t, "#6b7280")
-        label_name = labels.get(t, "Unknown")
-        return f'<span style="background:{color_code};color:white;padding:2px 7px;border-radius:4px;font-size:11px;">{label_name}</span>'
 
     def entry_badge(status):
         if status == "in_zone":
@@ -88,16 +80,14 @@ def build_signal_email(
 
     def signal_rows(signal_list):
         if not signal_list:
-            return "<tr><td colspan='8' style='color:#6b7280;padding:12px;'>None today</td></tr>"
+            return "<tr><td colspan='7' style='color:#6b7280;padding:12px;'>None today</td></tr>"
 
         rows = ""
         for s in signal_list:
-            # FIX 2: Added 'or 0.0' fallbacks to prevent None formatting crashes
             rows += f"""
             <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:10px 8px;font-weight:600;">{s["symbol"]}</td>
                 <td style="padding:10px 8px;color:#475569;font-size:12px;">{s.get("sector", "—")}</td>
-                <td style="padding:10px 8px;">{tier_badge(s.get("quality_tier"))}</td>
                 <td style="padding:10px 8px;">{entry_badge(s.get("entry_status", "unknown"))}</td>
                 <td style="padding:10px 8px;font-family:monospace;">{(s.get("score") or 0.0):.1f}</td>
                 <td style="padding:10px 8px;font-family:monospace;">
@@ -136,7 +126,6 @@ def build_signal_email(
                 <tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;">
                     <th style="padding:8px;text-align:left;">Symbol</th>
                     <th style="padding:8px;text-align:left;">Sector</th>
-                    <th style="padding:8px;text-align:left;">Quality</th>
                     <th style="padding:8px;text-align:left;">Entry</th>
                     <th style="padding:8px;text-align:left;">Score</th>
                     <th style="padding:8px;text-align:left;">Indicators</th>
@@ -155,7 +144,6 @@ def build_signal_email(
                 <tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;">
                     <th style="padding:8px;text-align:left;">Symbol</th>
                     <th style="padding:8px;text-align:left;">Sector</th>
-                    <th style="padding:8px;text-align:left;">Quality</th>
                     <th style="padding:8px;text-align:left;">Entry</th>
                     <th style="padding:8px;text-align:left;">Score</th>
                     <th style="padding:8px;text-align:left;">Indicators</th>

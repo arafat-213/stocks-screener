@@ -11,11 +11,9 @@ from app.alerts.email import (
     build_signal_email,
     send_alert_email,
 )
-from app.backtest.engine import _compute_signal_tier
 from app.core.trading_config import TREND_INITIATION, UnifiedTradingConfig
 from app.db.models import (
     AlertLog,
-    FundamentalCache,
     ScreenResult,
     Stock,
     TechnicalSignal,
@@ -111,10 +109,8 @@ def run_alert_cycle(
     # Define signals to match based on config
     ema_signals = ["bullish_cross", "bullish_pullback"]
 
-    query = (
-        db.query(TechnicalSignal, Stock, FundamentalCache)
-        .join(Stock, TechnicalSignal.symbol == Stock.symbol)
-        .outerjoin(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
+    query = db.query(TechnicalSignal, Stock).join(
+        Stock, TechnicalSignal.symbol == Stock.symbol
     )
 
     if config.screen_signal_mode and config.screen_slug:
@@ -155,29 +151,13 @@ def run_alert_cycle(
     signals_to_alert = []
     skipped = 0
 
-    for tech, stock, fund in candidates:
-        # Compute signal tier using the same logic as the backtest engine
-        signal_dict = {
-            "ema_signal": tech.ema_signal,
-            "volume_breakout": tech.volume_breakout or False,
-            "adx": tech.adx or 0.0,
-            "rsi": tech.rsi or 0.0,
-        }
+    for tech, stock in candidates:
+        alert_type = f"{config.strategy_id}_signal"
 
-        tier = _compute_signal_tier(signal_dict, config)
-
-        # FIX 3: Leak protection — exclude Tiers below min_signal_tier
-        if tier > config.min_signal_tier:
-            continue
-
-        alert_type = f"{config.strategy_id}_tier{tier}"
-
-        # Deduplicate: skip if we already sent this alert today
         if _already_alerted(db, tech.symbol, signal_date, alert_type):
             skipped += 1
             continue
 
-        # FIX 5: Explicit guard for None close_price or ema20_level
         if not tech.close_price or not tech.ema20_level:
             logger.warning(
                 "alert_cycle: skipping %s — missing close_price or ema20_level",
@@ -185,29 +165,20 @@ def run_alert_cycle(
             )
             continue
 
-        # Derive quality tier from fundamentals
-        if (
-            fund
-            and fund.profitability_streak_passed
-            and fund.de_check_passed
-            and fund.fcf_positive
-        ):
-            quality_tier = "A"
-        elif fund and (fund.profitability_streak_passed or fund.de_check_passed):
-            quality_tier = "B"
+        # Compute signal_tier from technical indicators only
+        if tech.volume_breakout and (tech.adx or 0.0) >= config.min_adx:
+            tier = 1
+        elif tech.volume_breakout or (tech.adx or 0.0) >= config.min_adx:
+            tier = 2
         else:
-            quality_tier = "C"
+            tier = 2
 
-        # Entry zone status
         entry_status, pct_above_ema20 = _compute_entry_status(
             tech.close_price, tech.ema20_level
         )
 
-        # Trade levels from existing setup calculator
         setup = compute_trade_setup(tech)
         stop_loss = setup["stop_loss"] if setup else None
-
-        # FIX 4: Safety for target price extraction
         target_price = (
             setup["targets"][-1]["level"] if setup and setup.get("targets") else None
         )
@@ -218,7 +189,6 @@ def run_alert_cycle(
                 "name": stock.name,
                 "sector": stock.sector or "Unknown",
                 "score": tech.entry_score,
-                "quality_tier": quality_tier,
                 "signal_tier": tier,
                 "alert_type": alert_type,
                 "ema_signal": tech.ema_signal,
@@ -264,7 +234,7 @@ def run_alert_cycle(
             symbol=sig["symbol"],
             signal_date=signal_date,
             alert_type=sig["alert_type"],
-            quality_tier=sig["quality_tier"],
+            quality_tier=None,
             entry_score=sig["score"],
             email_id=email_id,
         )
