@@ -22,9 +22,8 @@ class BacktestRequest(BaseModel):
         le=100,
         description=(
             "Signal quality bar on a 0–100 intention scale. "
-            "Automatically normalised: when include_fundamentals=False the "
-            "max possible score is 70, so a threshold of 60 becomes an effective "
-            "35 (50% of 70). With fundamentals enabled the threshold applies directly. "
+            "Automatically normalised: the max possible score is 70, so a threshold of 60 becomes an effective "
+            "35 (50% of 70). "
             "Note: the MACD same-day cap (8 pts) means a fresh EMA+MACD cross without "
             "volume scores ~38, which requires this threshold to be ≤54 to pass."
         ),
@@ -106,15 +105,6 @@ class BacktestRequest(BaseModel):
         description="Exit if close drops >3% below entry for 2 consecutive bars.",
     )
     invalidation_threshold_pct: float = Field(default=3.0, ge=1.0, le=10.0)
-    min_signal_tier: int = Field(
-        default=2,  # was 1 — Run 5 showed Tier 2 is safe and slightly better
-        ge=1,
-        le=2,
-        description=(
-            "Signal quality tier required: 1 = both volume breakout AND ADX≥25 required "
-            "(strict, default). 2 = either volume OR ADX≥25 (more signals, lower quality)."
-        ),
-    )
     require_consolidation: bool = Field(
         default=True,
         description=(
@@ -178,12 +168,11 @@ class BacktestRequest(BaseModel):
     )
     consolidation_max_range_pct: float = Field(default=12.0, ge=5.0, le=25.0)
     min_adx: float = Field(
-        default=0.0,  # was 25.0 — tier gate (min_signal_tier) handles ADX filtering
+        default=25.0,
         ge=0,
         le=50,
-        description="Minimum ADX required to enter a trade. 0 disables the filter. Tier gate already handles ADX filtering.",
+        description="Minimum ADX required to enter a trade. 0 disables the filter.",
     )
-    include_fundamentals: bool = False
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
     screen_slug: Optional[str] = Field(
         default=None, description="Slug of the screen to filter symbols by."
@@ -345,7 +334,6 @@ def start_backtest(
         use_signal_invalidation_exit=request.use_signal_invalidation_exit,
         invalidation_threshold_pct=request.invalidation_threshold_pct,
         min_adx=request.min_adx,
-        include_fundamentals=request.include_fundamentals,
         symbol_limit=request.symbol_limit,
         screen_slug=request.screen_slug,
         date_from=date_from,
@@ -357,7 +345,6 @@ def start_backtest(
         max_position_pct=request.max_position_pct,
         max_concurrent_positions=request.max_concurrent_positions,
         max_sector_positions=request.max_sector_positions,
-        min_signal_tier=request.min_signal_tier,
         require_consolidation=request.require_consolidation,
         use_pullback_entry=request.use_pullback_entry,
         pullback_max_wait_bars=request.pullback_max_wait_bars,

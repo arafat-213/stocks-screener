@@ -21,7 +21,6 @@ class UnifiedTradingConfig:
     risk_reward_ratio: float = 1.5
     use_atr_stops: bool = True
     min_adx: float = 25.0
-    include_fundamentals: bool = False
     timeframe: str = "D"
     date_from: datetime.date = None
     date_to: datetime.date = None
@@ -44,7 +43,6 @@ class UnifiedTradingConfig:
     screen_membership_window_days: int = 7
     screen_reentry_gap_days: int = 60
     screen_driven_rsi_max: float = 75.0
-    min_signal_tier: int = 2
     require_consolidation: bool = True
     consolidation_bars: int = 15
     consolidation_max_range_pct: float = 12.0
@@ -54,8 +52,6 @@ class UnifiedTradingConfig:
 
     @property
     def effective_score_threshold(self) -> float:
-        if not self.include_fundamentals:
-            return self.score_threshold * 0.70
         return self.score_threshold
 
 
@@ -66,7 +62,6 @@ TREND_INITIATION = UnifiedTradingConfig(
     rsi_max=65.0,
     require_consolidation=True,
     use_pullback_entry=True,
-    min_signal_tier=2,
     holding_days=45,
     atr_multiplier=2.0,
     risk_reward_ratio=1.5,
@@ -78,7 +73,6 @@ TREND_CONTINUATION = UnifiedTradingConfig(
     rsi_max=78.0,
     require_consolidation=False,
     use_pullback_entry=False,
-    min_signal_tier=3,
     holding_days=30,
     atr_multiplier=2.5,
     risk_reward_ratio=2.0,

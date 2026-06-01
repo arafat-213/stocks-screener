@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 from app.backtest.engine import (
     ROUND_TRIP_COST_PCT,
     _compute_position_size,
-    _compute_signal_tier,
     _is_consolidating,
 )
 from app.backtest.sync_service import sync_paper_to_journal
@@ -43,7 +42,7 @@ def _get_or_create_portfolio(
         db.add(portfolio)
         db.commit()
         db.refresh(portfolio)
-        logger.info("Created new paper portfolio id=%d", portfolio.id)
+        logger.info("Created new paper portfolio id=%s", portfolio.id)
     return portfolio
 
 
@@ -123,22 +122,6 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
                         sig.symbol,
                     )
                     sync_paper_to_journal(db, pos)
-                continue
-
-            # Reconstruct signal dict for tier and consolidation logic
-            signal_dict = {
-                "ema_signal": sig.ema_signal,
-                "volume_breakout": sig.volume_breakout or False,
-                "adx": sig.adx or 0.0,
-                "rsi": sig.rsi or 0.0,
-                "momentum_12m": sig.momentum_12m,
-                "atr": sig.atr,
-                "score": sig.entry_score,
-            }
-
-            # Tier Gate
-            tier = _compute_signal_tier(signal_dict, config)
-            if tier > config.min_signal_tier:
                 continue
 
             # Consolidation Gate

@@ -17,13 +17,11 @@ from app.core.trading_config import UnifiedTradingConfig as BacktestConfig
 from app.db.models import (
     BacktestRun,
     BacktestTrade,
-    FundamentalCache,
     ScreenResult,
     Stock,
 )
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.scorer import (
-    calculate_fundamental_score,
     calculate_technical_indicators,
     calculate_technical_score,
 )
@@ -170,35 +168,7 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     return res
 
 
-def _compute_signal_tier(signal: dict, config: Optional[BacktestConfig] = None) -> int:
-    ema = signal.get("ema_signal")
-    vol = signal.get("volume_breakout", False)
-    adx = signal.get("adx") or 0.0
-    rsi = signal.get("rsi") or 0.0
-
-    # Use config values or fall back to sensible defaults
-    rsi_min = config.rsi_min if config else 40.0
-    rsi_max = config.rsi_max if config else 65.0
-    min_adx = config.min_adx if config else 25.0
-
-    is_core_ema = ema in ["bullish_cross", "bullish_pullback"]
-    if not is_core_ema:
-        return 4
-
-    if rsi > rsi_max:
-        return 3
-    if rsi < rsi_min:
-        return 3
-
-    if vol and adx >= min_adx:
-        return 1
-    if vol or adx >= min_adx:
-        return 2
-
-    return 3
-
-
-def _lookup_mtf_state(state_map: dict, date: datetime.date) -> bool:
+def _check_mtf_confirmation(date: datetime.date, state_map: dict) -> bool:
     if not state_map:
         return True
     if date in state_map:
@@ -310,7 +280,6 @@ def _build_screen_driven_signals(
 def score_series(
     df: pd.DataFrame,
     symbol: str = None,
-    fund_cache: FundamentalCache = None,
     config: BacktestConfig = None,
 ) -> list[dict]:
     if df is None or df.empty:
@@ -330,10 +299,6 @@ def score_series(
     consol_range = (rolling_max / rolling_min - 1) * 100
     is_consolidating_series = consol_range <= max_range
 
-    fund_score = 0
-    if config and config.include_fundamentals:
-        fund_score = calculate_fundamental_score({}, fund_cache=fund_cache)
-
     scored_dates = []
     start_idx = 260
     for i in range(start_idx, len(df_ind)):
@@ -345,7 +310,6 @@ def score_series(
                 continue
 
         bar_score = _score_bar_from_precomputed(df_ind, i)
-        bar_score["score"] += fund_score
         bar_score["is_consolidating"] = bool(is_consolidating_series.iloc[i])
         # For backtesting, we collect all signals to maintain consistent series length for tests
         scored_dates.append(bar_score)
@@ -422,8 +386,6 @@ def simulate_trades(
                 if adx_val is None or adx_val < config.min_adx:
                     continue
 
-            if _compute_signal_tier(signal, config) > config.min_signal_tier:
-                continue
             if (signal.get("rsi") or 0.0) > config.rsi_max:
                 continue
             if signal["score"] < config.effective_score_threshold:
@@ -884,10 +846,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 )
             symbols = list(screen_dates_map.keys())
         else:
-            symbols = [
-                s.symbol
-                for s in db.query(Stock).filter(Stock.is_active).limit(500).all()
-            ]
+            symbols = [s.symbol for s in db.query(Stock).limit(500).all()]
 
         if config.symbol_limit:
             symbols = symbols[: config.symbol_limit]
@@ -900,9 +859,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         symbols_processed = 0
 
         stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
-        fund_caches = {}
-        if config.include_fundamentals:
-            fund_caches = {c.symbol: c for c in db.query(FundamentalCache).all()}
 
         for sym in symbols:
             try:
@@ -918,7 +874,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     sigs = score_series(
                         df,
                         symbol=sym,
-                        fund_cache=fund_caches.get(sym),
                         config=config,
                     )
                 all_signals[sym] = sigs
