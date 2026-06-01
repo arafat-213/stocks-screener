@@ -1,7 +1,7 @@
 from typing import Optional
 
 import pandas as pd
-import pandas_ta  # noqa: F401
+import pandas_ta_classic  # noqa: F401
 
 
 def to_float(val) -> Optional[float]:
@@ -131,7 +131,7 @@ def calculate_technical_score(
     df: pd.DataFrame, timeframe: str = "D", i: int = -1, skip_ta: bool = False
 ) -> dict:
     """
-    Calculates technical sub-score (Max 70 pts)
+    Calculates technical sub-score (Max 100 pts)
     - i: index of the bar to score (default -1 for latest)
     - skip_ta: if True, assumes indicators are already present in df
     """
@@ -267,10 +267,10 @@ def calculate_technical_score(
             )
 
             if fresh_ema_cross:
-                score += 20
+                score += 28.5
                 ema_signal = "bullish_cross"
             elif pullback_to_ema20:
-                score += 15
+                score += 21.5
                 ema_signal = "bullish_pullback"
             elif (
                 pd.notna(ema5)
@@ -279,7 +279,7 @@ def calculate_technical_score(
                 and ema5 > ema13 > ema26
                 and price > ema26
             ):
-                score += 8
+                score += 11.5
                 ema_signal = "bullish"
             elif (
                 pd.notna(ema5)
@@ -289,7 +289,7 @@ def calculate_technical_score(
             ):
                 ema_signal = "bearish"
 
-            # 2. MACD (15 pts — decoupled from EMA cross)
+            # 2. MACD (21.5 pts — decoupled from EMA cross)
             prev_macd = prev.get("MACD_12_26_9")
             prev_signal_line = prev.get("MACDs_12_26_9")
 
@@ -302,15 +302,15 @@ def calculate_technical_score(
                 )
                 if fresh_macd_cross and fresh_ema_cross:
                     # Correlated same-day event: award partial credit only
-                    score += 8
+                    score += 11.5
                 elif fresh_macd_cross:
-                    score += 15
+                    score += 21.5
                 elif macd_line > signal_line and macd_line > 0:
-                    score += 10
+                    score += 14.5
                 elif macd_line > signal_line and macd_line < 0:
-                    score += 5
+                    score += 7.0
 
-            # 3. RSI 14 (15 pts)
+            # 3. RSI 14 (21.5 pts)
             if pd.notna(rsi) and pd.notna(prev_rsi):
                 # Check for recovery in last 5 days
                 recent_rsi = df["RSI_14"].iloc[max(0, i - 4) : i + 1]
@@ -322,40 +322,40 @@ def calculate_technical_score(
                 crossing_50 = prev_rsi <= 50 and rsi > 50
 
                 if recovering and fresh_ema_cross:
-                    score += 15
+                    score += 21.5
                     rsi_signal = "bullish_recovery_confirmed"
                 elif recovering:
-                    score += 15
+                    score += 21.5
                     rsi_signal = "bullish_recovery"
                 elif crossing_50:
-                    score += 10
+                    score += 14.5
                     rsi_signal = "bullish_crossing"
                 elif 50 < rsi <= 65:
-                    score += 5
+                    score += 7.0
                     rsi_signal = "bullish_strong"
                 elif 65 < rsi <= 68:
                     rsi_signal = "bullish_extended"
 
-            # 4. Volume (15 pts)
+            # 4. Volume (21.5 pts)
             if volume_breakout:
-                score += 15
+                score += 21.5
                 volume_signal = "bullish"
 
-            # 5. Trend Quality: ADX + 3-Month Momentum (max 5 pts)
+            # 5. Trend Quality: ADX + 3-Month Momentum (max 7 pts)
             trend_pts = 0
             if pd.notna(adx):
                 if adx >= 35:
-                    trend_pts += 3
+                    trend_pts += 4.5
                 elif adx >= 25:
-                    trend_pts += 2
+                    trend_pts += 3.0
                 elif adx >= 20:
-                    trend_pts += 1
+                    trend_pts += 1.5
             if momentum_3m is not None:
                 if momentum_3m > 15:
-                    trend_pts += 2
+                    trend_pts += 3.0
                 elif momentum_3m > 5:
-                    trend_pts += 1
-            score += min(trend_pts, 5)
+                    trend_pts += 1.5
+            score += min(trend_pts, 7.0)
 
             # Define is_bullish for D
             is_bullish = (
@@ -387,7 +387,7 @@ def calculate_technical_score(
             is_bullish = (
                 pd.notna(rsi) and rsi > 50 and pd.notna(ema26) and price > ema26
             )
-            score = 70.0 if is_bullish else 0.0
+            score = 100.0 if is_bullish else 0.0
             ema_signal = "bullish" if is_bullish else "neutral"
 
         elif timeframe == "M":
@@ -399,7 +399,7 @@ def calculate_technical_score(
                     or (pd.notna(ema26) and price > ema26)
                 )
             )
-            score = 70.0 if is_bullish else 0.0
+            score = 100.0 if is_bullish else 0.0
             ema_signal = "bullish" if is_bullish else "neutral"
 
     return {
@@ -442,14 +442,15 @@ def calculate_combined_score(
     df: pd.DataFrame, info: dict, timeframe: str = "D", fund_cache=None
 ) -> dict:
     """
-    Combines Technical and Fundamental scores.
+    Returns Pure Technical Score (Max 100 pts).
+    Fundamental data is ignored in the score but can be used for secondary display.
     Final Score range: 0-100.
     """
     ta_data = calculate_technical_score(df, timeframe=timeframe)
 
     fund_score = 0.0
     if timeframe == "D":
-        fund_score = calculate_fundamental_score(info, fund_cache=fund_cache)
+        fund_score = 0.0  # Strip fundamentals for pure technical validation
 
     combined_score = ta_data["score"] + fund_score
 

@@ -27,10 +27,6 @@ from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.reporter import generate_daily_report
 from app.pipeline.rs_ranks import compute_rs_ranks
 from app.pipeline.scorer import calculate_combined_score
-from app.pipeline.screener import (
-    fetch_and_cache_deep_fundamentals,
-    needs_cache_refresh,
-)
 from app.pipeline.utils import resample_ohlcv
 from app.screens.cache import screen_cache
 
@@ -384,8 +380,8 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     )
                     price = fi.get("lastPrice") or 0
 
-                    # Liquidity Filter: Mcap > 200 Cr, Value > 2 Cr
-                    if mcap > 200_000_000 and (avg_vol * price > 2_000_000):
+                    # Liquidity Filter: Mcap > 500 Cr, Value > 2 Cr
+                    if mcap > 5_000_000_000 and (avg_vol * price > 20_000_000):
                         # Metadata Update (requires .info)
                         info = ticker.info
                         stock = db.query(Stock).filter_by(symbol=symbol).first()
@@ -421,52 +417,11 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             db.commit()
 
         # 2. Tier 2 Screening & Caching
-        to_refresh = []
-        seven_days_ago = datetime.datetime.now(
-            datetime.timezone.utc
-        ) - datetime.timedelta(days=7)
-
-        completed_t2 = _get_completed_symbols(db, run.run_id, "tier2")
-
-        for symbol in final_survivors:
-            if symbol in completed_t2:
-                continue
-
-            if _is_stop_requested(db, run.run_id):
-                logger.info("Pipeline stop signal received during Tier 2 check.")
-                run.status = "stopped"
-                run.errors = "Manually stopped during Tier 2"
-                db.commit()
-                return
-
-            current_symbol = f"{symbol} (Tier 2 Check)"
-            cache = (
-                db.query(FundamentalCache)
-                .filter(FundamentalCache.symbol == symbol)
-                .first()
-            )
-
-            if needs_cache_refresh(cache, seven_days_ago):
-                to_refresh.append(symbol)
-            else:
-                completed_t2.add(symbol)
-
-        if to_refresh:
-            current_symbol = "BATCH_REFRESH"
-            logger.info(f"Refreshing Tier 2 data for {len(to_refresh)} symbols")
-            # We refresh in smaller batches to allow resumption if it fails deep in Tier 2
-            t2_batch_size = 50
-            for i in range(0, len(to_refresh), t2_batch_size):
-                batch = to_refresh[i : i + t2_batch_size]
-                if _is_stop_requested(db, run.run_id):
-                    break
-                fetch_and_cache_deep_fundamentals(batch, db)
-                for s in batch:
-                    completed_t2.add(s)
-                _save_checkpoint(db, run.run_id, "tier2", completed_t2)
+        # Tier 2 (Fundamental caching) has been removed for pure technical validation.
+        # Stocks pass directly from Tier 1.5 to Scoring.
 
         # 3. Final Filtering & Scoring
-        logger.info("Applying Tier 2 filters and scoring")
+        logger.info("Applying Scoring to survivors")
         scored_at = datetime.datetime.now(datetime.timezone.utc)
         tier2_survivors_count = 0
         scored_count = run.stocks_scored
@@ -475,9 +430,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         for symbol in final_survivors:
             if symbol in completed_scoring:
                 scored_count += 1
-                tier2_survivors_count += (
-                    1  # We assume completed means they were survivors
-                )
+                tier2_survivors_count += 1
                 continue
 
             if _is_stop_requested(db, run.run_id):
@@ -489,18 +442,27 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
             current_symbol = f"{symbol} (Scoring)"
             try:
-                cache = (
-                    db.query(FundamentalCache)
-                    .filter(FundamentalCache.symbol == symbol)
+                # Pledging Exclusion Filter (Binary Killer)
+                from app.db.models import FundamentalData
+
+                fund_data = (
+                    db.query(FundamentalData)
+                    .filter(FundamentalData.symbol == symbol)
+                    .order_by(FundamentalData.date.desc())
                     .first()
                 )
+                if (
+                    fund_data
+                    and fund_data.pledged_percent is not None
+                    and fund_data.pledged_percent > 30.0
+                ):
+                    logger.info(
+                        f"Skipping {symbol}: Pledging percentage ({fund_data.pledged_percent}%) exceeds 30% threshold."
+                    )
+                    completed_scoring.add(symbol)
+                    continue
 
-                # Even if cache fetch failed (version -1) or missing, we still score technically.
-                # Pass cache=None to process_symbol so fund_score defaults to 0.
                 tier2_survivors_count += 1
-                scoring_cache = None
-                if cache and cache.cache_version != -1:
-                    scoring_cache = cache
 
                 # Score using persistent OHLCV cache
                 hist = _ohlcv_cache.get(symbol, append_ns=True, period="3y")
@@ -508,13 +470,12 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     completed_scoring.add(symbol)
                     continue
 
-                info = None  # Info is handled via FundamentalCache now
                 process_symbol(
                     symbol,
                     db,
                     hist=hist,
-                    info=info,
-                    cache=scoring_cache,
+                    info=None,
+                    cache=None,
                     scored_at=scored_at,
                 )
 
