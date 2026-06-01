@@ -527,7 +527,7 @@ def simulate_trades(
         # Use base_stop directly to allow for volatility-based stops (e.g. 10%+ for midcaps)
         # Cap at 99% of entry to ensure it's always a sell-below stop.
         stop_price = min(base_stop, entry_price * 0.99)
-        actual_risk = max(entry_price - stop_price, entry_price * 0.02)
+        actual_risk = max(entry_price - stop_price, entry_price * 0.01)
         target_price = (
             entry_price * (1 + config.target_pct / 100)
             if config.target_pct > 0
