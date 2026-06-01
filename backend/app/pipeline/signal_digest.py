@@ -6,7 +6,7 @@ from pathlib import Path
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
-from app.backtest.engine import _compute_signal_tier, _is_consolidating
+from app.backtest.engine import _is_consolidating
 from app.core.trading_config import (
     TREND_CONTINUATION,
     TREND_INITIATION,
@@ -71,20 +71,6 @@ def generate_signal_digest(
         )
 
         for sig, sector, name in signals:
-            signal_dict = {
-                "ema_signal": sig.ema_signal,
-                "volume_breakout": sig.volume_breakout or False,
-                "adx": sig.adx or 0.0,
-                "rsi": sig.rsi or 0.0,
-                "momentum_12m": sig.momentum_12m,
-                "atr": sig.atr,
-                "score": sig.entry_score,
-            }
-
-            tier = _compute_signal_tier(signal_dict, config)
-            if tier > config.min_signal_tier:
-                continue
-
             # Consolidation check
             passes_consolidation = True
             if config.require_consolidation:
@@ -119,6 +105,11 @@ def generate_signal_digest(
                         config.strategy_id
                     )
             else:
+                tier = (
+                    1
+                    if (sig.volume_breakout and (sig.adx or 0.0) >= config.min_adx)
+                    else 2
+                )
                 qualified_signals[sig.symbol] = {
                     "symbol": sig.symbol,
                     "name": name,

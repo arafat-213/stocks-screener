@@ -10,7 +10,6 @@ from sqlalchemy.orm import Session
 from app.core.cache import response_cache
 from app.core.logging_manager import logging_manager
 from app.db.models import (
-    FundamentalCache,
     PipelineCheckpoint,
     PipelineError,
     PipelineRun,
@@ -23,16 +22,17 @@ from app.pipeline.fetcher import (
     get_nse_symbols,
     slice_bulk_df,
 )
+from app.pipeline.momentum_scorer import MomentumScorer
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.reporter import generate_daily_report
 from app.pipeline.rs_ranks import compute_rs_ranks
-from app.pipeline.scorer import calculate_combined_score
 from app.pipeline.utils import resample_ohlcv
 from app.screens.cache import screen_cache
 
 logger = logging.getLogger(__name__)
 
 _ohlcv_cache = OHLCVCache()
+_scorer = MomentumScorer()
 
 
 def request_pipeline_stop(db: Session):
@@ -132,7 +132,6 @@ def process_symbol(
     db: Session,
     hist: pd.DataFrame = None,
     info: dict = None,
-    cache: FundamentalCache = None,
     scored_at: datetime.datetime = None,
 ):
     """
@@ -159,9 +158,7 @@ def process_symbol(
             continue
 
         signal_date = working_df.index[-1].date()
-        ta_data = calculate_combined_score(
-            working_df, info, timeframe=tf, fund_cache=cache
-        )
+        ta_data = _scorer.calculate_score(working_df, timeframe=tf)
 
         # Explicit Upsert into TechnicalSignal
         signal = (
@@ -319,10 +316,10 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
                         if hist is not None and not hist.empty:
                             # Technical-only scoring (passing None for info triggers tech-only)
-                            # Tier 1 is a wide net: any technically bullish stock OR score > 40/70 (57%) passes.
+                            # Tier 1 is a wide net: any technically bullish stock OR score > 60 passes.
                             # We intentionally cast wide here to avoid missing good setups due to a single weak indicator.
-                            scores = calculate_combined_score(hist, None)
-                            if scores["is_bullish"] or scores["combined_score"] > 40:
+                            scores = _scorer.calculate_score(hist)
+                            if scores["is_bullish"] or scores["score"] > 60:
                                 tier1_survivors.append(symbol)
 
                         completed_t1.add(symbol)
@@ -416,21 +413,15 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             run.tier1_count = len(final_survivors)
             db.commit()
 
-        # 2. Tier 2 Screening & Caching
-        # Tier 2 (Fundamental caching) has been removed for pure technical validation.
-        # Stocks pass directly from Tier 1.5 to Scoring.
-
         # 3. Final Filtering & Scoring
         logger.info("Applying Scoring to survivors")
         scored_at = datetime.datetime.now(datetime.timezone.utc)
-        tier2_survivors_count = 0
         scored_count = run.stocks_scored
         completed_scoring = _get_completed_symbols(db, run.run_id, "scoring")
 
         for symbol in final_survivors:
             if symbol in completed_scoring:
                 scored_count += 1
-                tier2_survivors_count += 1
                 continue
 
             if _is_stop_requested(db, run.run_id):
@@ -442,28 +433,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
             current_symbol = f"{symbol} (Scoring)"
             try:
-                # Pledging Exclusion Filter (Binary Killer)
-                from app.db.models import FundamentalData
-
-                fund_data = (
-                    db.query(FundamentalData)
-                    .filter(FundamentalData.symbol == symbol)
-                    .order_by(FundamentalData.date.desc())
-                    .first()
-                )
-                if (
-                    fund_data
-                    and fund_data.pledged_percent is not None
-                    and fund_data.pledged_percent > 30.0
-                ):
-                    logger.info(
-                        f"Skipping {symbol}: Pledging percentage ({fund_data.pledged_percent}%) exceeds 30% threshold."
-                    )
-                    completed_scoring.add(symbol)
-                    continue
-
-                tier2_survivors_count += 1
-
                 # Score using persistent OHLCV cache
                 hist = _ohlcv_cache.get(symbol, append_ns=True, period="3y")
                 if hist is None:
@@ -475,7 +444,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     db,
                     hist=hist,
                     info=None,
-                    cache=None,
                     scored_at=scored_at,
                 )
 
@@ -490,7 +458,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 completed_scoring.add(symbol)
 
         run.stocks_scored = scored_count
-        run.tier2_count = tier2_survivors_count
         _save_checkpoint(db, run.run_id, "scoring", completed_scoring)
         db.commit()  # Ensure all signals are committed before RS computation
 
@@ -505,7 +472,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                         db,
                         hist=index_hist,
                         info=None,
-                        cache=None,
                         scored_at=scored_at,
                     )
             except Exception as e:

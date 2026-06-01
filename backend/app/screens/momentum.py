@@ -30,8 +30,11 @@ def screen_momentum_monsters(db: Session, timeframe: str = "D", target_date=None
 
     return results
 
+
+def screen_garp_monsters(db: Session, timeframe: str = "D", target_date=None):
     """
-    PEG < 2.0, recent 1-month momentum >= 5%, rising EMA20, above 200 EMA.
+    [STALE/LEGACY] PEG < 2.0, recent 1-month momentum >= 5%, rising EMA20, above 200 EMA.
+    NOTE: Relies on FundamentalCache which is currently not being refreshed by the pipeline.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
     results = (
