@@ -356,7 +356,8 @@ def _convert_to_open(
     else:
         base_stop = entry_price * (1 - config.stop_loss_pct / 100)
 
-    pos.stop_loss_price = min(base_stop, entry_price * 0.95)
+    # Allow for tighter stops if ATR/Structure permits, but ensure below entry
+    pos.stop_loss_price = min(base_stop, entry_price * 0.99)
 
     actual_risk = max(entry_price - pos.stop_loss_price, entry_price * 0.02)
     pos.target_price = entry_price + config.risk_reward_ratio * actual_risk

@@ -503,7 +503,6 @@ def simulate_trades(
         eff_atr = max(raw_atr, entry_price * 0.015)
         pos_size = _compute_position_size(config, entry_price, atr=eff_atr)
 
-        MIN_STOP, MAX_STOP = 0.05, 0.08
         atr_val = signal.get("atr")
         if is_screen_driven:
             base_stop = (
@@ -525,9 +524,9 @@ def simulate_trades(
                 else (struct_stop or atr_stop or entry_price * 0.93)
             )
 
-        stop_price = max(
-            min(base_stop, entry_price * (1 - MIN_STOP)), entry_price * (1 - MAX_STOP)
-        )
+        # Use base_stop directly to allow for volatility-based stops (e.g. 10%+ for midcaps)
+        # Cap at 99% of entry to ensure it's always a sell-below stop.
+        stop_price = min(base_stop, entry_price * 0.99)
         actual_risk = max(entry_price - stop_price, entry_price * 0.02)
         target_price = (
             entry_price * (1 + config.target_pct / 100)

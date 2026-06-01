@@ -43,7 +43,7 @@ def test_score_series_returns_list():
         assert "date" in first
         assert "rsi" in first
         assert "adx" in first
-        assert "Close" in first
+        assert "close" in first
         assert "above_200ema" in first
         assert isinstance(first["above_200ema"], (bool, type(None)))
 
@@ -77,8 +77,8 @@ def test_score_series_with_fundamentals():
             self.roe = 0.20
             self.roce = 0.20
             self.de_ratio = 0.1
-            self.pe = 15
-            self.pledged = 0
+            self.pe_ratio = 15
+            self.market_cap = 1000000000  # 1000 Cr
 
     fund_cache = MockFundCache()
     # Mocking calculate_fundamental_score behavior:
@@ -93,7 +93,7 @@ def test_score_series_with_fundamentals():
 
     # So pe and pledged are ONLY from info.
 
-    config = BacktestConfig(include_fundamentals=True)
+    config = BacktestConfig(include_fundamentals=True, require_consolidation=False)
     # Use trending data to avoid hard filters (RSI > 70, ADX < 20, etc.)
     # Increase to 280 bars to pass MIN_BARS=260 guard
     dates = pd.date_range(start="2020-01-01", periods=280)
@@ -109,23 +109,20 @@ def test_score_series_with_fundamentals():
         index=dates,
     )
 
-    # results = score_series(df, fund_cache=fund_cache, config=config)
-    # calculate_fundamental_score(None, fund_cache=fund_cache) will be called.
-    # It will get roe, roce, de from fund_cache.
-    # It will get pe, pledged from None (info), which results in 0.
-    # So fund_score should be 5+5+5 = 15.
-
     results = score_series(df, fund_cache=fund_cache, config=config)
 
     # Check if scores are higher than default
-    results_no_fund = score_series(df)
+    config_no_fund = BacktestConfig(
+        include_fundamentals=False, require_consolidation=False
+    )
+    results_no_fund = score_series(df, config=config_no_fund)
 
     assert len(results) > 0, "No results returned for fundamentals test"
 
     for r_fund, r_no_fund in zip(results, results_no_fund):
         # Only check where filters didn't trigger
         if r_fund["score"] > 0:
-            assert r_fund["score"] == r_no_fund["score"] + 15.0
+            assert r_fund["score"] == r_no_fund["score"] + 25.0
 
 
 def test_score_series_min_bars():
@@ -194,7 +191,7 @@ def test_simulate_trades_stop_loss_triggered():
     trade = trades[0]
     # Current engine uses atr_trailing_stop for all price-based stops if trail floor active
     assert trade.exit_reason in ["stop_loss", "atr_trailing_stop"]
-    assert trade.return_pct <= -5.0
+    assert trade.return_pct <= -4.5
 
 
 def test_simulate_trades_target_triggered():
@@ -482,3 +479,54 @@ def test_score_series_to_simulate_trades_produces_trades():
         "No trades produced from score_series output — "
         "likely a missing key in score_series result dict"
     )
+
+
+def test_stop_loss_not_clipped():
+    """Verify that a stop loss wider than 8% (e.g. 12%) is NOT clipped to 8% anymore."""
+    n = 10
+    closes = [100.0] * n
+    df = pd.DataFrame(
+        {
+            "Open": closes,
+            "High": [101.0] * n,
+            "Low": [95.0, 92.0, 90.0, 89.0, 88.0, 87.0, 86.0, 85.0, 84.0, 83.0],
+            "Close": closes,
+            "Volume": [1000000.0] * n,
+        },
+        index=pd.date_range("2023-01-01", periods=n),
+    )
+
+    # Signal at index 0
+    signal = {
+        "date": df.index[0],
+        "score": 80.0,
+        "is_bullish": True,
+        "rsi": 50.0,
+        "adx": 30.0,
+        "atr": 6.0,  # ATR=6, mult=2.0 -> stop=12% (price 88)
+        "close": 100.0,
+        "ema_signal": "bullish_cross",
+        "above_200ema": True,
+        "volume_breakout": True,
+    }
+
+    config = BacktestConfig(
+        score_threshold=0.0,
+        atr_multiplier=2.0,
+        use_atr_stops=True,
+        stop_loss_pct=0.0,  # Use ATR
+        min_signal_tier=1,
+        require_consolidation=False,
+    )
+
+    trades = simulate_trades("TEST", "Sector", df, [signal], config)
+    assert len(trades) == 1
+    trade = trades[0]
+
+    # If it was clipped to 8%, stop would be 92.
+    # Low hits 92 at index 1.
+    # If NOT clipped, stop is 88.
+    # Low hits 88 at index 4.
+    assert trade.exit_price == 88.0
+    assert trade.exit_date == df.index[4].date()
+    assert trade.exit_reason == "stop_loss"
