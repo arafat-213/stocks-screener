@@ -125,6 +125,12 @@ class FundamentalData(Base):
 
 
 class FundamentalCache(Base):
+    """
+    [STALE/LEGACY] Cache for advanced fundamental metrics.
+    NOTE: This table is currently NOT being refreshed by the pipeline.
+    Data is preserved for legacy screens but may be out of date.
+    """
+
     __tablename__ = "fundamental_cache"
     symbol = Column(String, primary_key=True)
     profitability_streak_passed = Column(Boolean)
