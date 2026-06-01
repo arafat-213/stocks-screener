@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import response_cache
 from app.db.models import (
-    FundamentalData,
+    FundamentalCache,
     MarketSnapshot,
     PipelineRun,
     Stock,
@@ -207,10 +207,9 @@ def get_dashboard_results(
     confluence: str = None,
     symbols: str = None,
     sort_by: str = "confluence",
-    fundamental_filter: bool = False,
 ):
     # Create a cache key that includes parameters
-    params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}:ff:{fundamental_filter}"
+    params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}"
     cache_key = f"dashboard:screener_results:{params_str}"
 
     cached, hit = response_cache.get(cache_key)
@@ -250,15 +249,15 @@ def get_dashboard_results(
     )
 
     # 3. Base Query for filtering and counting
-    query = db.query(Stock, confluence_sub.c.confluence_count).join(
-        confluence_sub, Stock.symbol == confluence_sub.c.symbol
+    query = (
+        db.query(
+            Stock,
+            FundamentalCache.market_cap_category,
+            confluence_sub.c.confluence_count,
+        )
+        .join(confluence_sub, Stock.symbol == confluence_sub.c.symbol)
+        .outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol)
     )
-
-    # Fundamental filter disabled for pure technical validation
-    # if fundamental_filter:
-    #     query = query.filter(FundamentalCache.profitability_streak_passed).filter(
-    #         FundamentalCache.de_check_passed
-    #     )
 
     # Apply filters
     if sector:
@@ -300,25 +299,6 @@ def get_dashboard_results(
         query = query.order_by(func.coalesce(daily_signal.c.entry_score, 0).desc())
     elif sort_by == "rsi":
         query = query.order_by(func.coalesce(daily_signal.c.rsi, 0).desc())
-    elif sort_by == "pe":
-        # Join FundamentalData for latest date
-        latest_fund_sub = (
-            db.query(
-                FundamentalData.symbol, func.max(FundamentalData.date).label("max_date")
-            )
-            .group_by(FundamentalData.symbol)
-            .subquery()
-        )
-
-        query = query.outerjoin(
-            latest_fund_sub, Stock.symbol == latest_fund_sub.c.symbol
-        )
-        query = query.outerjoin(
-            FundamentalData,
-            (FundamentalData.symbol == latest_fund_sub.c.symbol)
-            & (FundamentalData.date == latest_fund_sub.c.max_date),
-        )
-        query = query.order_by(FundamentalData.pe.asc().nullslast())
     else:  # confluence (default)
         query = query.order_by(
             confluence_sub.c.confluence_count.desc(),
@@ -330,7 +310,7 @@ def get_dashboard_results(
     paged_stocks = query.offset(offset).limit(limit).all()
 
     # 6. Fetch full data for the paged symbols
-    paged_symbols = [stock.symbol for stock, cache, count in paged_stocks]
+    paged_symbols = [stock.symbol for stock, market_cap_cat, count in paged_stocks]
 
     if not paged_symbols:
         result = {
@@ -342,16 +322,6 @@ def get_dashboard_results(
         }
         response_cache.set(cache_key, result, 600)
         return result
-
-    # Latest Fundamental Subquery (Max date per symbol)
-    latest_fund = (
-        db.query(
-            FundamentalData.symbol, func.max(FundamentalData.date).label("max_date")
-        )
-        .filter(FundamentalData.symbol.in_(paged_symbols))
-        .group_by(FundamentalData.symbol)
-        .subquery()
-    )
 
     # Fetch all signals for these symbols
     all_signals = (
@@ -370,18 +340,6 @@ def get_dashboard_results(
         .all()
     )
 
-    # Fetch fundamental data
-    all_funds = (
-        db.query(FundamentalData)
-        .join(
-            latest_fund,
-            (FundamentalData.symbol == latest_fund.c.symbol)
-            & (FundamentalData.date == latest_fund.c.max_date),
-        )
-        .filter(FundamentalData.symbol.in_(paged_symbols))
-        .all()
-    )
-
     # 7. Reconstruct into the same enriched data structure
     stocks_map = {
         stock.symbol: {
@@ -391,30 +349,13 @@ def get_dashboard_results(
             "confluence_count": count,
             "close_price": None,
             "price_change_pct": None,
-            "fundamental_quality": {
-                "profitability_ok": bool(cache.profitability_streak_passed)
-                if cache
-                else False,
-                "debt_ok": bool(cache.de_check_passed) if cache else False,
-                "has_fundamentals": cache is not None,
-                "data_quality": "partial"
-                if (cache and cache.cache_version == -1)
-                else ("ok" if cache else "missing"),
-            },
             "timeframes": {},
             "fundamentals": {
-                "pe": None,
-                "pb": None,
-                "roe": cache.roe if cache else None,
-                "roce": cache.roce if cache else None,
-                "peg": cache.peg_ratio if cache else None,
-                "yield": cache.dividend_yield if cache else None,
-                "debt_equity": cache.de_ratio if cache else None,
                 "market_cap": stock.market_cap,
-                "market_cap_category": cache.market_cap_category if cache else None,
+                "market_cap_category": market_cap_cat,
             },
         }
-        for stock, cache, count in paged_stocks
+        for stock, market_cap_cat, count in paged_stocks
     }
 
     for sig in all_signals:
@@ -437,17 +378,6 @@ def get_dashboard_results(
                 stocks_map[sig.symbol]["close_price"] = sig.close_price
                 stocks_map[sig.symbol]["price_change_pct"] = sig.price_change_pct
                 stocks_map[sig.symbol]["setup"] = compute_trade_setup(sig)
-
-    for fund in all_funds:
-        if fund.symbol in stocks_map:
-            f_map = stocks_map[fund.symbol]["fundamentals"]
-            f_map["pe"] = fund.pe
-            f_map["pb"] = fund.pb
-            if f_map["roe"] is None:
-                f_map["roe"] = fund.roe
-            if f_map["debt_equity"] is None:
-                f_map["debt_equity"] = fund.debt_equity
-            f_map["market_cap"] = fund.market_cap
 
     # Maintain original order from paged_stocks
     items = [stocks_map[symbol] for symbol in paged_symbols]

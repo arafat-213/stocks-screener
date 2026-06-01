@@ -113,7 +113,8 @@ def test_screens_enriched_fields(db, client):
     assert result["pct_from_resistance"] == -1.0
     assert result["volume_breakout"] is True
     assert result["above_200ema"] is True
-    assert result["peg_ratio"] == 1.2
+    # Peg ratio removed as legacy ghost
+    assert "peg_ratio" not in result
 
 
 def test_dashboard_enriched_fields(db, client):
@@ -135,4 +136,7 @@ def test_dashboard_enriched_fields(db, client):
         (item for item in data["items"] if item["symbol"] == "TEST.NS"), None
     )
     assert test_stock is not None
-    assert test_stock["fundamentals"]["roe"] == 16.0
+    # ROE removed as legacy ghost
+    assert "roe" not in test_stock["fundamentals"]
+    assert test_stock["fundamentals"]["market_cap"] == 1000.0
+    assert test_stock["fundamentals"]["market_cap_category"] == "Small"
