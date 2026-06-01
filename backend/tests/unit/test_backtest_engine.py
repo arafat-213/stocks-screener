@@ -71,60 +71,6 @@ def test_score_series_no_future_leak():
     assert abs(expected_score_at_test - actual_score_at_test) <= 12.0
 
 
-def test_score_series_with_fundamentals():
-    class MockFundCache:
-        def __init__(self):
-            self.roe = 0.20
-            self.roce = 0.20
-            self.de_ratio = 0.1
-            self.pe_ratio = 15
-            self.market_cap = 1000000000  # 1000 Cr
-
-    fund_cache = MockFundCache()
-    # Mocking calculate_fundamental_score behavior:
-    # ROE > 15% -> 5pts
-    # ROCE > 15% -> 5pts
-    # DE < 0.5 -> 5pts
-    # (PE and Pledged need to be in an info dict or handled by cache)
-
-    # Wait, looking at scorer.py:
-    # pe = to_float(info.get('forwardPE') or info.get('trailingPE'))
-    # pledged = to_float(info.get('pledgedPercent'))
-
-    # So pe and pledged are ONLY from info.
-
-    config = BacktestConfig(include_fundamentals=True, require_consolidation=False)
-    # Use trending data to avoid hard filters (RSI > 70, ADX < 20, etc.)
-    # Increase to 280 bars to pass MIN_BARS=260 guard
-    dates = pd.date_range(start="2020-01-01", periods=280)
-    close = np.linspace(100, 200, 280)
-    df = pd.DataFrame(
-        {
-            "Open": close * 0.99,
-            "High": close * 1.01,
-            "Low": close * 0.98,
-            "Close": close,
-            "Volume": [5000] * 280,
-        },
-        index=dates,
-    )
-
-    results = score_series(df, fund_cache=fund_cache, config=config)
-
-    # Check if scores are higher than default
-    config_no_fund = BacktestConfig(
-        include_fundamentals=False, require_consolidation=False
-    )
-    results_no_fund = score_series(df, config=config_no_fund)
-
-    assert len(results) > 0, "No results returned for fundamentals test"
-
-    for r_fund, r_no_fund in zip(results, results_no_fund):
-        # Only check where filters didn't trigger
-        if r_fund["score"] > 0:
-            assert r_fund["score"] == r_no_fund["score"] + 25.0
-
-
 def test_score_series_min_bars():
     df = create_dummy_df(250)
     results = score_series(df)
@@ -515,7 +461,6 @@ def test_stop_loss_not_clipped():
         atr_multiplier=2.0,
         use_atr_stops=True,
         stop_loss_pct=0.0,  # Use ATR
-        min_signal_tier=1,
         require_consolidation=False,
     )
 

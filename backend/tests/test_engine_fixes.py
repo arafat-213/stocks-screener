@@ -26,7 +26,7 @@ class TestMinBars:
         """score_series must return an empty list when df has fewer than 210 rows."""
         df = _make_ohlcv(209)
         config = BacktestConfig()
-        results = score_series(df, fund_cache=None, config=config)
+        results = score_series(df, config=config)
         assert results == [], (
             f"Expected no signals for a 209-bar DataFrame, got {len(results)}"
         )
@@ -35,7 +35,7 @@ class TestMinBars:
         """score_series may return signals when df has exactly 210 rows."""
         df = _make_ohlcv(210)
         config = BacktestConfig()
-        results = score_series(df, fund_cache=None, config=config)
+        results = score_series(df, config=config)
         # We only assert it doesn't crash and returns a list; signal generation depends on data.
         assert isinstance(results, list)
 
@@ -43,7 +43,7 @@ class TestMinBars:
         """Regression: 60 bars (old MIN_BARS) must now produce zero signals."""
         df = _make_ohlcv(60)
         config = BacktestConfig()
-        results = score_series(df, fund_cache=None, config=config)
+        results = score_series(df, config=config)
         assert results == [], (
             "60-bar DataFrame should produce no signals after MIN_BARS fix."
         )
@@ -58,7 +58,6 @@ class TestAbove200EMAGate:
             holding_days=5,
             use_regime_filter=False,
             require_volume_breakout=False,
-            min_signal_tier=2,
             require_consolidation=False,
             use_pullback_entry=False,
         )
@@ -109,7 +108,6 @@ class TestADXGate:
             use_regime_filter=False,
             require_volume_breakout=False,
             min_adx=min_adx,
-            min_signal_tier=2,
             require_consolidation=False,
             use_pullback_entry=False,
         )
@@ -156,10 +154,10 @@ class TestADXGate:
         trades = simulate_trades("TEST", "Tech", df, [signal], self._config(min_adx=0))
         assert len(trades) == 1, "min_adx=0 should disable ADX gate"
 
-    def test_backtest_config_default_min_adx_is_20(self):
-        """BacktestConfig default min_adx must be 0.0 (disabled)."""
+    def test_backtest_config_default_min_adx_is_25(self):
+        """BacktestConfig default min_adx must be 25.0 (enabled)."""
         config = BacktestConfig()
-        assert config.min_adx == 0.0
+        assert config.min_adx == 25.0
 
 
 class TestConfigDefaults:

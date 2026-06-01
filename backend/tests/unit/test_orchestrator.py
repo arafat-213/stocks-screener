@@ -14,6 +14,7 @@ def setup_robust_db_mock(mock_db, profitability_streak=True):
         cache_version=1,
         profitability_streak_passed=profitability_streak,
         de_check_passed=True,
+        pledged_percent=0.0,
         last_updated=datetime.datetime.now(),
         run_id="TEST_RUN",
         timestamp=datetime.datetime.now(),  # For market snapshot filter
@@ -29,7 +30,9 @@ def setup_robust_db_mock(mock_db, profitability_streak=True):
             return None  # Concurrency check
         return mock_combined
 
+    # Setup the chain to always return something that has .first() with side_effect
     mock_db.query.return_value.filter.return_value.first.side_effect = first_side_effect
+    mock_db.query.return_value.filter.return_value.order_by.return_value.first.side_effect = first_side_effect
     mock_db.query.return_value.filter_by.return_value.first.return_value = (
         None  # For upserts
     )
@@ -44,7 +47,6 @@ def get_mock_ta_data(score=80, bullish=True):
     return {
         "score": score,
         "is_bullish": bullish,
-        "combined_score": score,
         "rsi": 60,
         "macd": 1.0,
         "ema_signal": "bullish",
@@ -72,10 +74,8 @@ def get_mock_ta_data(score=80, bullish=True):
 @patch("app.pipeline.orchestrator.yf.download")
 @patch("app.pipeline.orchestrator.slice_bulk_df")
 @patch("app.pipeline.orchestrator.yf.Ticker")
-@patch("app.pipeline.orchestrator.fetch_stock_data")
-@patch("app.pipeline.orchestrator.passes_tier1_fast_filters")
-@patch("app.pipeline.orchestrator.calculate_combined_score")
-@patch("app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals")
+@patch("app.pipeline.fetcher.fetch_stock_data")
+@patch("app.pipeline.orchestrator._scorer.calculate_score")
 @patch("app.pipeline.orchestrator.resample_ohlcv")
 @patch("app.pipeline.orchestrator.fetch_market_snapshots")
 @patch("app.pipeline.orchestrator.generate_daily_report")
@@ -89,9 +89,7 @@ def test_run_pipeline_tiered_flow(
     mock_report,
     mock_market,
     mock_resample,
-    mock_fetch_cache,
     mock_calc_score,
-    mock_t1_filter,
     mock_fetch_data,
     mock_ticker,
     mock_slice,
@@ -147,10 +145,8 @@ def test_run_pipeline_tiered_flow(
 @patch("app.pipeline.orchestrator.yf.download")
 @patch("app.pipeline.orchestrator.slice_bulk_df")
 @patch("app.pipeline.orchestrator.yf.Ticker")
-@patch("app.pipeline.orchestrator.fetch_stock_data")
-@patch("app.pipeline.orchestrator.passes_tier1_fast_filters")
-@patch("app.pipeline.orchestrator.calculate_combined_score")
-@patch("app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals")
+@patch("app.pipeline.fetcher.fetch_stock_data")
+@patch("app.pipeline.orchestrator._scorer.calculate_score")
 @patch("app.pipeline.orchestrator.resample_ohlcv")
 @patch("app.pipeline.orchestrator.fetch_market_snapshots")
 @patch("app.pipeline.orchestrator.generate_daily_report")
@@ -164,9 +160,7 @@ def test_run_pipeline_decoupled_scoring(
     mock_report,
     mock_market,
     mock_resample,
-    mock_fetch_cache,
     mock_calc_score,
-    mock_t1_filter,
     mock_fetch_data,
     mock_ticker,
     mock_slice,
@@ -200,7 +194,7 @@ def test_run_pipeline_decoupled_scoring(
 
     mock_ticker_inst = MagicMock()
     mock_ticker_inst.fast_info = {
-        "marketCap": 3000000000,
+        "marketCap": 6000000000,
         "threeMonthAverageVolume": 1000000,
         "lastPrice": 100,
     }
@@ -223,10 +217,8 @@ def test_run_pipeline_decoupled_scoring(
 @patch("app.pipeline.orchestrator.yf.download")
 @patch("app.pipeline.orchestrator.slice_bulk_df")
 @patch("app.pipeline.orchestrator.yf.Ticker")
-@patch("app.pipeline.orchestrator.fetch_stock_data")
-@patch("app.pipeline.orchestrator.passes_tier1_fast_filters")
-@patch("app.pipeline.orchestrator.calculate_combined_score")
-@patch("app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals")
+@patch("app.pipeline.fetcher.fetch_stock_data")
+@patch("app.pipeline.orchestrator._scorer.calculate_score")
 @patch("app.pipeline.orchestrator.resample_ohlcv")
 @patch("app.pipeline.orchestrator.fetch_market_snapshots")
 @patch("app.pipeline.orchestrator.generate_daily_report")
@@ -240,9 +232,7 @@ def test_run_pipeline_lazy_loading(
     mock_report,
     mock_market,
     mock_resample,
-    mock_fetch_cache,
     mock_calc_score,
-    mock_t1_filter,
     mock_fetch_data,
     mock_ticker,
     mock_slice,
@@ -277,7 +267,7 @@ def test_run_pipeline_lazy_loading(
 
     mock_ticker_inst = MagicMock()
     mock_ticker_inst.fast_info = {
-        "marketCap": 3000000000,
+        "marketCap": 6000000000,
         "threeMonthAverageVolume": 1000000,
         "lastPrice": 100,
     }

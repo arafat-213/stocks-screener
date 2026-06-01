@@ -146,7 +146,6 @@ class TestMTFGates:
             require_weekly_confirmation=False,
             require_monthly_confirmation=False,
             use_regime_filter=False,
-            min_signal_tier=4,
             require_consolidation=False,
             use_pullback_entry=False,
         )

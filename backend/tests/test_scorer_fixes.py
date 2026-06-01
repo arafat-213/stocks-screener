@@ -2,7 +2,9 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.pipeline.scorer import calculate_technical_score
+from app.pipeline.momentum_scorer import MomentumScorer
+
+scorer = MomentumScorer()
 
 
 def _make_ohlcv(n: int, trend: str = "up") -> pd.DataFrame:
@@ -79,7 +81,7 @@ class TestMACDScoring:
     def test_macd_positive_territory_scores_12(self):
         """MACD > signal AND MACD > 0 (no fresh cross) must score exactly 12 pts on MACD component."""
         df = _make_macd_positive_territory_df()
-        result = calculate_technical_score(df, timeframe="D")
+        result = scorer.calculate_score(df, timeframe="D")
 
         check = df.copy()
         check.ta.macd(fast=12, slow=26, signal=9, append=True)
@@ -108,7 +110,7 @@ class TestMACDScoring:
         # The MACD component contribution is not directly exposed, so we assert
         # that the score is HIGHER than the equivalent negative-territory setup.
         df_neg = _make_macd_negative_territory_df()
-        result_neg = calculate_technical_score(df_neg, timeframe="D")
+        result_neg = scorer.calculate_score(df_neg, timeframe="D")
         assert result["score"] >= result_neg["score"], (
             "Positive-territory MACD should score >= negative-territory MACD "
             f"(got {result['score']} vs {result_neg['score']})"
@@ -118,8 +120,8 @@ class TestMACDScoring:
         """MACD > signal AND MACD < 0 must produce a lower score than MACD > signal AND MACD > 0."""
         df_pos = _make_macd_positive_territory_df()
         df_neg = _make_macd_negative_territory_df()
-        res_pos = calculate_technical_score(df_pos, timeframe="D")
-        res_neg = calculate_technical_score(df_neg, timeframe="D")
+        res_pos = scorer.calculate_score(df_pos, timeframe="D")
+        res_neg = scorer.calculate_score(df_neg, timeframe="D")
 
         # Ensure we actually got the states we wanted to test
         if not (res_pos["macd"] > 0 and res_neg["macd"] < 0):
@@ -162,7 +164,7 @@ class TestRSIScoring:
             index=pd.date_range("2021-01-01", periods=n, freq="B"),
         )
 
-        result = calculate_technical_score(df, timeframe="D")
+        result = scorer.calculate_score(df, timeframe="D")
         assert result["score"] <= 70.0, (
             f"Technical score {result['score']} exceeds the 70-point maximum. "
             "RSI component must be capped at 15 pts."
@@ -190,6 +192,6 @@ class TestRSIScoring:
             },
             index=pd.date_range("2021-01-01", periods=n, freq="B"),
         )
-        result = calculate_technical_score(df, timeframe="D")
+        result = scorer.calculate_score(df, timeframe="D")
         # Primary assertion: score must respect 70-pt ceiling
         assert result["score"] <= 70.0

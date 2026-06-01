@@ -6,7 +6,6 @@ from app.pipeline.orchestrator import process_symbol
 
 
 def test_process_symbol_maps_ema_levels():
-    # Mocking calculate_combined_score to return our new EMA levels
     ta_data = {
         "score": 50.0,
         "is_bullish": True,
@@ -27,10 +26,10 @@ def test_process_symbol_maps_ema_levels():
 
     with (
         patch(
-            "app.pipeline.orchestrator.calculate_combined_score", return_value=ta_data
+            "app.pipeline.orchestrator._scorer.calculate_score", return_value=ta_data
         ),
         patch(
-            "app.pipeline.orchestrator.fetch_stock_data",
+            "app.pipeline.fetcher.fetch_stock_data",
             return_value=(df, {"longName": "Apple Inc."}),
         ),
         patch("app.pipeline.orchestrator.resample_ohlcv", return_value=pd.DataFrame()),

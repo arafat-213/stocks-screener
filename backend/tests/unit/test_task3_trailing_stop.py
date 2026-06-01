@@ -54,7 +54,6 @@ def test_trailing_stop_triggered():
         stop_loss_pct=0,
         target_pct=0,
         risk_reward_ratio=100.0,
-        min_signal_tier=4,
         require_consolidation=False,
         use_pullback_entry=False,
     )
@@ -93,7 +92,6 @@ def test_regime_filter_blocks_trade():
 
     config = BacktestConfig(
         use_regime_filter=True,
-        min_signal_tier=4,
         require_consolidation=False,
         use_pullback_entry=False,
     )
@@ -126,7 +124,6 @@ def test_regime_filter_allows_trade():
 
     config = BacktestConfig(
         use_regime_filter=True,
-        min_signal_tier=4,
         require_consolidation=False,
         use_pullback_entry=False,
     )
@@ -157,7 +154,6 @@ def test_volume_breakout_filter():
 
     config = BacktestConfig(
         require_volume_breakout=True,
-        min_signal_tier=4,
         require_consolidation=False,
         use_pullback_entry=False,
     )

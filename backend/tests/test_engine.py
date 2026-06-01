@@ -10,7 +10,6 @@ from app.backtest.engine import (
     TradeResult,
     _compute_all_indicators,
     _compute_position_size,
-    _compute_signal_tier,
     _score_bar_from_precomputed,
     compute_metrics,
     score_series,
@@ -20,85 +19,20 @@ from app.backtest.engine import (
 from tests.conftest import make_signal, make_trending_df
 
 
-def test_tier1_requires_cross_or_pullback_plus_volume_plus_adx():
-    signal = {
-        "ema_signal": "bullish_cross",
-        "volume_breakout": True,
-        "adx": 28.0,
-        "rsi": 58.0,
-    }
-    assert _compute_signal_tier(signal) == 1
-
-
-def test_tier2_cross_with_adx_no_volume():
-    signal = {
-        "ema_signal": "bullish_pullback",
-        "volume_breakout": False,
-        "adx": 26.0,
-        "rsi": 62.0,
-    }
-    assert _compute_signal_tier(signal) == 2
-
-
-def test_tier3_when_rsi_above_68():
-    signal = {
-        "ema_signal": "bullish_cross",
-        "volume_breakout": True,
-        "adx": 30.0,
-        "rsi": 72.0,
-    }
-    assert _compute_signal_tier(signal) == 3
-
-
-def test_tier4_generic_bullish():
-    signal = {
-        "ema_signal": "bullish",
-        "volume_breakout": True,
-        "adx": 30.0,
-        "rsi": 55.0,
-    }
-    assert _compute_signal_tier(signal) == 4
-
-
-def test_generic_bullish_signal_is_not_entered():
-    """Verify simulate_trades blocks a Tier 4 signal even if score is high."""
-    df = make_trending_df(n=300)
-    config = BacktestConfig(
-        score_threshold=50.0,
-        require_volume_breakout=False,
-        use_regime_filter=False,
-        require_weekly_confirmation=False,
-        min_adx=0.0,
-    )
-    # Generic 'bullish' is Tier 4
-    signal = make_signal(df, idx=260, score=80.0)
-    signal["ema_signal"] = "bullish"
-    signal["rsi"] = 55.0
-    signal["adx"] = 30.0
-
-    trades = simulate_trades("TEST", "Tech", df, [signal], config)
-    assert len(trades) == 0
-
-
 class TestEffectiveScoreThreshold:
-    def test_scales_to_70_pct_when_technical_only(self):
-        config = BacktestConfig(score_threshold=60.0, include_fundamentals=False)
-        assert config.effective_score_threshold == pytest.approx(42.0)
-
-    def test_unchanged_when_fundamentals_included(self):
-        config = BacktestConfig(score_threshold=60.0, include_fundamentals=True)
+    def test_threshold_always_matches_score_threshold(self):
+        config = BacktestConfig(score_threshold=60.0)
         assert config.effective_score_threshold == pytest.approx(60.0)
 
     def test_zero_threshold_always_zero(self):
-        config = BacktestConfig(score_threshold=0.0, include_fundamentals=False)
+        config = BacktestConfig(score_threshold=0.0)
         assert config.effective_score_threshold == pytest.approx(0.0)
 
     def test_signal_above_effective_threshold_produces_trade(self):
-        """score=50 > effective(42) should fire; raw 60 would block it."""
+        """score=65 > effective(60) should fire; raw 60 would block it."""
         df = make_trending_df(n=300)
         config = BacktestConfig(
             score_threshold=60.0,
-            include_fundamentals=False,
             require_volume_breakout=False,
             use_regime_filter=False,
             require_weekly_confirmation=False,
@@ -106,20 +40,18 @@ class TestEffectiveScoreThreshold:
             target_pct=0.0,
             holding_days=20,
             min_adx=0.0,
-            min_signal_tier=2,
             require_consolidation=False,
             use_pullback_entry=False,
         )
-        signal = make_signal(df, idx=260, score=50.0)
+        signal = make_signal(df, idx=260, score=65.0)
         trades = simulate_trades("TEST", "Technology", df, [signal], config)
         assert len(trades) == 1
 
     def test_signal_below_effective_threshold_no_trade(self):
-        """score=30 < effective(42) should NOT fire."""
+        """score=30 < effective(60) should NOT fire."""
         df = make_trending_df(n=300)
         config = BacktestConfig(
             score_threshold=60.0,
-            include_fundamentals=False,
             require_volume_breakout=False,
             use_regime_filter=False,
             require_weekly_confirmation=False,
@@ -127,7 +59,6 @@ class TestEffectiveScoreThreshold:
             target_pct=0.0,
             holding_days=20,
             min_adx=0.0,
-            min_signal_tier=2,
             require_consolidation=False,
             use_pullback_entry=False,
         )
@@ -140,7 +71,6 @@ class TestPositionSizing:
     def _base_config(self, **kwargs) -> BacktestConfig:
         defaults = dict(
             score_threshold=60.0,
-            include_fundamentals=False,
             require_volume_breakout=False,
             use_regime_filter=False,
             require_weekly_confirmation=False,
@@ -151,7 +81,6 @@ class TestPositionSizing:
             starting_capital=1_000_000.0,
             position_size=10_000.0,
             atr_multiplier=2.0,
-            min_signal_tier=2,
             require_consolidation=False,
             use_pullback_entry=False,
         )
@@ -206,7 +135,7 @@ class TestPositionSizing:
             risk_per_trade_pct=1.0,
             max_position_pct=5.0,
         )
-        signal = make_signal(df, idx=260, score=50.0)
+        signal = make_signal(df, idx=260, score=65.0)
         trades = simulate_trades("TEST", "Technology", df, [signal], config)
         assert len(trades) == 1
         assert trades[0].position_size_used > 0
@@ -268,7 +197,9 @@ class TestScoreSeriesPerformance:
         We compare score_series output against a single calculate_technical_score call
         on the same slice, for a spot-check bar.
         """
-        from app.pipeline.scorer import calculate_technical_score
+        from app.pipeline.momentum_scorer import MomentumScorer
+
+        scorer = MomentumScorer()
 
         df = make_trending_df(n=300)
         results = score_series(df)
@@ -277,7 +208,7 @@ class TestScoreSeriesPerformance:
         last = results[-1]
         check_idx = len(df) - 1
         bar_df = df.iloc[: check_idx + 1]
-        direct = calculate_technical_score(bar_df, timeframe="D")
+        direct = scorer.calculate_score(bar_df, timeframe="D")
         # Scores may differ slightly if ADX changed due to vectorization, but
         # the is_bullish classification must agree.
         assert last["is_bullish"] == direct["is_bullish"], (
@@ -291,7 +222,6 @@ class TestPortfolioSimulation:
     ) -> BacktestConfig:
         return BacktestConfig(
             score_threshold=60.0,
-            include_fundamentals=False,
             require_volume_breakout=False,
             use_regime_filter=False,
             require_weekly_confirmation=False,
@@ -303,7 +233,6 @@ class TestPortfolioSimulation:
             position_size=10_000.0,
             max_concurrent_positions=max_concurrent,
             max_sector_positions=max_sector,
-            min_signal_tier=2,
             require_consolidation=False,
             use_pullback_entry=False,
         )
@@ -313,7 +242,7 @@ class TestPortfolioSimulation:
         df: pd.DataFrame,
         symbols: list[str],
         sectors: list[str],
-        score: float = 50.0,
+        score: float = 65.0,
     ) -> tuple[dict, dict]:
         """Returns all_signals and all_dfs where all symbols fire on the same day."""
         all_signals = {}
@@ -363,8 +292,8 @@ class TestPortfolioSimulation:
         df = make_trending_df(n=400)
         stocks_info = {"A": "Tech", "B": "Tech"}
         # Signal A fires on bar 260, signal B fires on bar 290 (after A's 20-day hold)
-        sig_a = make_signal(df, idx=260, score=50.0)
-        sig_b = make_signal(df, idx=290, score=50.0)
+        sig_a = make_signal(df, idx=260, score=65.0)
+        sig_b = make_signal(df, idx=290, score=65.0)
         all_signals = {"A": [sig_a], "B": [sig_b]}
         all_dfs = {"A": df.copy(), "B": df.copy()}
         config = self._make_config(max_concurrent=0, max_sector=1)
@@ -425,10 +354,12 @@ class TestMomentumCalculation:
 
     def test_scorer_lookbacks_are_consistent(self):
         """Verify scorer.py uses correct negative indices for all 4 momentum timeframes."""
-        from app.pipeline.scorer import calculate_technical_score
+        from app.pipeline.momentum_scorer import MomentumScorer
+
+        scorer = MomentumScorer()
 
         df = self._make_df(300)
-        res = calculate_technical_score(df)
+        res = scorer.calculate_score(df)
 
         price_now = df["Close"].iloc[-1]
 
@@ -586,7 +517,6 @@ def test_atr_trailing_stop_locks_in_profit():
         min_adx=0.0,
         stop_loss_pct=0.0,
         target_pct=0.0,
-        min_signal_tier=2,
         require_consolidation=False,
         use_pullback_entry=False,
     )
@@ -650,7 +580,6 @@ def test_partial_exit_produces_two_trade_records():
         target_pct=0.0,
         position_size=10000.0,
         use_volatility_sizing=False,
-        min_signal_tier=2,
         require_consolidation=False,
         use_pullback_entry=False,
     )
@@ -724,7 +653,6 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
         use_regime_filter=False,
         min_adx=0.0,
         target_pct=20.0,
-        min_signal_tier=2,
         invalidation_threshold_pct=3.0,
         require_consolidation=False,
         use_pullback_entry=False,

@@ -12,12 +12,10 @@ ORCHESTRATOR_PATCHES = [
     patch("app.pipeline.orchestrator.yf.download"),
     patch("app.pipeline.orchestrator.slice_bulk_df"),
     patch("app.pipeline.orchestrator.yf.Ticker"),
-    patch("app.pipeline.orchestrator.fetch_stock_data"),
-    patch("app.pipeline.orchestrator.passes_tier1_fast_filters"),
-    patch("app.pipeline.orchestrator.calculate_combined_score"),
-    patch("app.pipeline.orchestrator.fetch_and_cache_deep_fundamentals"),
+    patch("app.pipeline.fetcher.fetch_stock_data"),
+    patch("app.pipeline.orchestrator._scorer.calculate_score"),
     patch("app.pipeline.orchestrator.resample_ohlcv"),
-    patch("app.pipeline.orchestrator.fetch_market_snapshots"),
+    patch("app.pipeline.fetcher.fetch_market_snapshots"),
     patch("app.pipeline.orchestrator.generate_daily_report"),
     patch("app.screens.materializer.materialize_all_screens"),
     patch("app.pipeline.orchestrator.compute_rs_ranks"),
@@ -34,7 +32,6 @@ def get_mock_ta_data(score=80, bullish=True):
     return {
         "score": score,
         "is_bullish": bullish,
-        "combined_score": score,
         "rsi": 60,
         "macd": 1.0,
         "ema_signal": "bullish",
@@ -51,9 +48,7 @@ def test_run_pipeline_resumes_from_checkpoint(
     mock_slice,
     mock_ticker,
     mock_fetch_data,
-    mock_t1_filter,
     mock_calc_score,
-    mock_fetch_cache,
     mock_resample,
     mock_market,
     mock_report,
@@ -92,11 +87,7 @@ def test_run_pipeline_resumes_from_checkpoint(
     )
 
     # query().filter().first() side effect
-    call_idx = [0]
-
-    def first_side_effect():
-        call_idx[0]
-        call_idx[0] += 1
+    def first_side_effect(*args, **kwargs):
         return mock_run
 
     mock_db.query.return_value.filter.return_value.first.side_effect = first_side_effect
