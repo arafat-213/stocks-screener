@@ -152,36 +152,10 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     ]
 
     # 3. Get latest fundamentals
-    fund = (
-        db.query(FundamentalCache)
-        .filter(FundamentalCache.symbol == clean_symbol)
-        .first()
-    )
-    fundamentals = {}
-    if fund:
-        fundamentals = {
-            "pe": None,
-            "pb": None,
-            "roe": fund.roe,
-            "roce": fund.roce,
-            "debt_equity": fund.de_ratio,
-            "market_cap": stock.market_cap,
-            "pledged_percent": None,
-        }
-        from app.db.models import FundamentalData
-
-        latest_fund_data = (
-            db.query(FundamentalData)
-            .filter(FundamentalData.symbol == clean_symbol)
-            .order_by(FundamentalData.date.desc())
-            .first()
-        )
-        if latest_fund_data:
-            fundamentals["pe"] = latest_fund_data.pe
-            fundamentals["pb"] = latest_fund_data.pb
-            fundamentals["pledged_percent"] = latest_fund_data.pledged_percent
-            if fundamentals["roe"] is None:
-                fundamentals["roe"] = latest_fund_data.roe
+    # Stripped for pure technical validation
+    fundamentals = {
+        "market_cap": stock.market_cap,
+    }
 
     # 4. Get OHLCV Chart Data
     ohlcv = []

@@ -1,5 +1,4 @@
 from sqlalchemy import and_, func, or_
-from sqlalchemy import case as sa_case
 from sqlalchemy.orm import Session
 
 from app.db.models import FundamentalCache, Stock, TechnicalSignal
@@ -31,8 +30,6 @@ def screen_momentum_monsters(db: Session, timeframe: str = "D", target_date=None
 
     return results
 
-
-def screen_value_with_momentum(db: Session, timeframe: str = "D", target_date=None):
     """
     PEG < 2.0, recent 1-month momentum >= 5%, rising EMA20, above 200 EMA.
     """
@@ -156,23 +153,8 @@ def screen_actionable_entries(db: Session, timeframe: str = "D", target_date=Non
         db.query(
             TechnicalSignal.symbol,
             TechnicalSignal.entry_score,
-            sa_case(
-                (
-                    (FundamentalCache.profitability_streak_passed)
-                    & (FundamentalCache.de_check_passed)
-                    & (FundamentalCache.fcf_positive),
-                    "A",
-                ),
-                (
-                    (FundamentalCache.profitability_streak_passed)
-                    | (FundamentalCache.de_check_passed),
-                    "B",
-                ),
-                else_="C",
-            ).label("quality_tier"),
         )
         .join(Stock, TechnicalSignal.symbol == Stock.symbol)
-        .outerjoin(FundamentalCache, TechnicalSignal.symbol == FundamentalCache.symbol)
         .filter(
             and_(
                 func.date(TechnicalSignal.date) == date,
@@ -192,4 +174,4 @@ def screen_actionable_entries(db: Session, timeframe: str = "D", target_date=Non
         .order_by(TechnicalSignal.entry_score.desc())
         .all()
     )
-    return [(r.symbol, r.entry_score, r.quality_tier) for r in results]
+    return [(r.symbol, r.entry_score, None) for r in results]

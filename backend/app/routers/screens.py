@@ -51,14 +51,6 @@ def _build_screen_response(
         "pct_from_resistance": tech.pct_from_resistance if tech else None,
         "volume_breakout": tech.volume_breakout if tech else None,
         "above_200ema": tech.above_200ema if tech else None,
-        "peg_ratio": fund.peg_ratio if fund else None,
-        "ev_to_ebitda": fund.ev_to_ebitda if fund else None,
-        "dividend_yield": fund.dividend_yield if fund else None,
-        "roce": fund.roce if fund else None,
-        "de_ratio": fund.de_ratio if fund else None,
-        "fcf_positive": fund.fcf_positive if fund else None,
-        "dividend_consistency": fund.dividend_consistency if fund else None,
-        "market_cap_category": fund.market_cap_category if fund else None,
         "price": tech.close_price if tech else None,
         "change_pct": tech.price_change_pct if tech else None,
         "rsi": tech.rsi if tech else None,
@@ -67,10 +59,6 @@ def _build_screen_response(
         "is_bullish": tech.is_bullish if tech else None,
         "setup": setup,
         "indicators": {
-            "fundamental": {
-                "pe": None,
-                "roe": fund.roe if fund else None,
-            },
             "technical": {
                 "rsi": tech.rsi if tech else None,
                 "is_bullish": tech.is_bullish if tech else None,

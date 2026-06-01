@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import response_cache
 from app.db.models import (
-    FundamentalCache,
     FundamentalData,
     MarketSnapshot,
     PipelineRun,
@@ -208,7 +207,7 @@ def get_dashboard_results(
     confluence: str = None,
     symbols: str = None,
     sort_by: str = "confluence",
-    fundamental_filter: bool = True,
+    fundamental_filter: bool = False,
 ):
     # Create a cache key that includes parameters
     params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}:ff:{fundamental_filter}"
@@ -251,16 +250,15 @@ def get_dashboard_results(
     )
 
     # 3. Base Query for filtering and counting
-    query = (
-        db.query(Stock, FundamentalCache, confluence_sub.c.confluence_count)
-        .join(confluence_sub, Stock.symbol == confluence_sub.c.symbol)
-        .outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol)
+    query = db.query(Stock, confluence_sub.c.confluence_count).join(
+        confluence_sub, Stock.symbol == confluence_sub.c.symbol
     )
 
-    if fundamental_filter:
-        query = query.filter(FundamentalCache.profitability_streak_passed).filter(
-            FundamentalCache.de_check_passed
-        )
+    # Fundamental filter disabled for pure technical validation
+    # if fundamental_filter:
+    #     query = query.filter(FundamentalCache.profitability_streak_passed).filter(
+    #         FundamentalCache.de_check_passed
+    #     )
 
     # Apply filters
     if sector:

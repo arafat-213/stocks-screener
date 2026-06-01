@@ -8,7 +8,6 @@ from app.screens.momentum import (
     screen_ema_crossover_signals,
     screen_momentum_monsters,
     screen_rsi_recovery,
-    screen_value_with_momentum,
     screen_volume_surge,
 )
 from app.screens.price_action import (
@@ -17,13 +16,6 @@ from app.screens.price_action import (
     screen_near_breakout,
 )
 from app.screens.sector_rotation import screen_hot_sectors
-from app.screens.value import (
-    screen_dividend_growth,
-    screen_low_debt_midcap,
-    screen_qarp,
-    screen_steady_compounders,
-    screen_undervalued_fundamentals,
-)
 
 SCREEN_REGISTRY = {
     # ── Actionable Entries ───────────────────────────────────────────────────
@@ -94,12 +86,6 @@ SCREEN_REGISTRY = {
         "description": "Top RS percentile stocks with strong ADX and 3-month momentum.",
         "category": "Momentum",
     },
-    "value-with-momentum": {
-        "fn": screen_value_with_momentum,
-        "label": "Value with Momentum",
-        "description": "Reasonable PEG with recent price strength and rising EMA slope.",
-        "category": "Momentum",
-    },
     "sector-leaders": {
         "fn": screen_sector_leaders,
         "label": "Sector Leaders",
@@ -111,36 +97,5 @@ SCREEN_REGISTRY = {
         "label": "Hot Sector Stocks",
         "description": "Best stocks from the top 3 sectors by average RS. Combines macro and micro.",
         "category": "Momentum",
-    },
-    # ── Value / Quality ───────────────────────────────────────────────────────
-    "low-debt-midcap": {
-        "fn": screen_low_debt_midcap,
-        "label": "Quality Midcaps",
-        "description": "Midcap stocks (5k–20k Cr) with low debt, positive FCF, and sustained profits.",
-        "category": "Value",
-    },
-    "undervalued-fundamentals": {
-        "fn": screen_undervalued_fundamentals,
-        "label": "Undervalued Growth",
-        "description": "Low PEG (<1.5), high ROE (>15%), dividend yield, EV/EBITDA < 20.",
-        "category": "Value",
-    },
-    "steady-compounders": {
-        "fn": screen_steady_compounders,
-        "label": "Steady Compounders",
-        "description": "High ROCE (>15%) with consistent dividend history above 200 EMA.",
-        "category": "Value",
-    },
-    "qarp": {
-        "fn": screen_qarp,
-        "label": "Quality at Reasonable Price",
-        "description": "High ROCE + ROE + FCF positive + low debt + PEG < 2.5.",
-        "category": "Value",
-    },
-    "dividend-growth": {
-        "fn": screen_dividend_growth,
-        "label": "Dividend Growth",
-        "description": "Consistent dividend payers with positive FCF and price above 200 EMA.",
-        "category": "Value",
     },
 }
