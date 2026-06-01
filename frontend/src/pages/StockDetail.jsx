@@ -67,7 +67,7 @@ const StockDetail = () => {
   const setup = data?.setup;
 
   const dailyScore = latest_scores?.['D'];
-  const breakdown = inferScoreBreakdown(dailyScore, fundamentals);
+  const breakdown = inferScoreBreakdown(dailyScore);
 
   const latestOhlc = ohlcv.length > 0 ? ohlcv[ohlcv.length - 1] : { close: 0 };
 
@@ -392,40 +392,10 @@ const StockDetail = () => {
 
             <div className='bg-bg-secondary rounded-2xl p-6 border-2 border-border shadow-sm'>
               <h3 className='text-[11px] text-slate-500 dark:text-slate-400 mb-6 uppercase tracking-[0.2em] font-black'>
-                Fundamental Health
+                Liquidity & Size
               </h3>
               <div className='grid grid-cols-2 gap-4'>
-                <div className='bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-border'>
-                  <span className='block text-[10px] text-slate-500 dark:text-slate-400 mb-1 uppercase font-black'>
-                    P/E Ratio
-                  </span>
-                  <span className='text-lg font-black text-text'>
-                    {fundamentals.pe?.toFixed(1) || 'N/A'}
-                  </span>
-                </div>
-                <div className='bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-border'>
-                  <span className='block text-[10px] text-slate-500 dark:text-slate-400 mb-1 uppercase font-black'>
-                    ROE %
-                  </span>
-                  <span
-                    className={`text-lg font-black ${fundamentals.roe > 0.15 ? 'text-green-500' : 'text-text'}`}
-                  >
-                    {fundamentals.roe
-                      ? `${(fundamentals.roe * 100).toFixed(1)}%`
-                      : 'N/A'}
-                  </span>
-                </div>
-                <div className='bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-border'>
-                  <span className='block text-[10px] text-slate-500 dark:text-slate-400 mb-1 uppercase font-black'>
-                    D/E Ratio
-                  </span>
-                  <span
-                    className={`text-lg font-black ${fundamentals.debt_equity > 1.5 ? 'text-red-500' : 'text-text'}`}
-                  >
-                    {fundamentals.debt_equity?.toFixed(2) || 'N/A'}
-                  </span>
-                </div>
-                <div className='bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-border'>
+                <div className='bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-border col-span-2'>
                   <span className='block text-[10px] text-slate-500 dark:text-slate-400 mb-1 uppercase font-black'>
                     Market Cap
                   </span>

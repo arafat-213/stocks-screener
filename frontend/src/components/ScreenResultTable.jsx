@@ -7,7 +7,6 @@ const SCREEN_COLUMNS = {
   'actionable-entries': [
     'symbol',
     'name',
-    'quality_tier',
     'price',
     'change_pct',
     'rsi',
@@ -24,14 +23,6 @@ const SCREEN_COLUMNS = {
     'adx',
     'score',
   ],
-  'value-with-momentum': [
-    'symbol',
-    'name',
-    'peg_ratio',
-    'momentum_1m',
-    'ema_slope',
-    'score',
-  ],
   'near-breakout': [
     'symbol',
     'name',
@@ -41,30 +32,6 @@ const SCREEN_COLUMNS = {
   ],
   '52w-high': ['symbol', 'name', 'pct_from_52w_high', 'week52_high', 'score'],
   '52w-low': ['symbol', 'name', 'pct_from_52w_low', 'week52_low', 'score'],
-  'low-debt-midcap': [
-    'symbol',
-    'name',
-    'market_cap_category',
-    'de_ratio',
-    'fcf_positive',
-    'score',
-  ],
-  'undervalued-fundamentals': [
-    'symbol',
-    'name',
-    'peg_ratio',
-    'ev_to_ebitda',
-    'dividend_yield',
-    'score',
-  ],
-  'steady-compounders': [
-    'symbol',
-    'name',
-    'roce',
-    'dividend_consistency',
-    'above_200ema',
-    'score',
-  ],
   _default: ['symbol', 'name', 'score', 'rsi', 'confluence_count'],
 };
 
