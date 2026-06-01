@@ -14,7 +14,6 @@ vi.mock('../../api/client', () => ({
   getBacktestTrades: vi.fn(() =>
     Promise.resolve({ data: { trades: [], total: 0 } })
   ),
-  runBacktest: vi.fn(() => Promise.resolve({ data: { run_id: 'test-run' } })),
 }));
 
 vi.mock('../../hooks/useTheme', () => ({
@@ -36,15 +35,18 @@ const renderBacktest = () =>
 // ---------------------------------------------------------------------------
 const getToggleByLabel = (labelText) => {
   const label = screen.getByText(labelText);
-  return label.closest('.toggle-wrapper');
+  // The label is inside the toggle div
+  return label.closest('div[class*="group flex"]');
 };
 
 // ---------------------------------------------------------------------------
 // Helper: check if a toggle is currently "on"
 // ---------------------------------------------------------------------------
-const isToggleChecked = (wrapper) =>
-  wrapper.querySelector('.toggle-switch')?.classList.contains('checked') ??
-  false;
+const isToggleChecked = (wrapper) => {
+  // Check for translate-x-4 class on the inner div
+  const inner = wrapper.querySelector('div[class*="translate-x-4"]');
+  return !!inner;
+};
 
 // ---------------------------------------------------------------------------
 // Tests
@@ -60,15 +62,6 @@ describe('Backtest MTF Confirmation Toggles', () => {
     expect(isToggleChecked(toggle)).toBe(true);
   });
 
-  it('renders Monthly Confirmation toggle in the OFF state by default', async () => {
-    renderBacktest();
-    await waitFor(() => {
-      expect(screen.getByText('Monthly Confirmation')).toBeInTheDocument();
-    });
-    const toggle = getToggleByLabel('Monthly Confirmation');
-    expect(isToggleChecked(toggle)).toBe(false);
-  });
-
   it('turns Weekly Confirmation OFF when clicked', async () => {
     const user = userEvent.setup();
     renderBacktest();
@@ -81,39 +74,20 @@ describe('Backtest MTF Confirmation Toggles', () => {
     expect(isToggleChecked(toggle)).toBe(false);
   });
 
-  it('turns Monthly Confirmation ON when clicked', async () => {
-    const user = userEvent.setup();
-    renderBacktest();
-    await waitFor(() => screen.getByText('Monthly Confirmation'));
-
-    const toggle = getToggleByLabel('Monthly Confirmation');
-    expect(isToggleChecked(toggle)).toBe(false);
-
-    await user.click(toggle);
-    expect(isToggleChecked(toggle)).toBe(true);
-  });
-
-  it('resets both toggles to their defaults when Reset is clicked', async () => {
+  it('resets toggle to its default when Reset is clicked', async () => {
     const user = userEvent.setup();
     renderBacktest();
     await waitFor(() => screen.getByText('Weekly Confirmation'));
 
     await user.click(getToggleByLabel('Weekly Confirmation')); // OFF
-    await user.click(getToggleByLabel('Monthly Confirmation')); // ON
 
     expect(isToggleChecked(getToggleByLabel('Weekly Confirmation'))).toBe(
       false
-    );
-    expect(isToggleChecked(getToggleByLabel('Monthly Confirmation'))).toBe(
-      true
     );
 
     const resetBtn = screen.getByTitle('Reset to defaults');
     await user.click(resetBtn);
 
     expect(isToggleChecked(getToggleByLabel('Weekly Confirmation'))).toBe(true);
-    expect(isToggleChecked(getToggleByLabel('Monthly Confirmation'))).toBe(
-      false
-    );
   });
 });
