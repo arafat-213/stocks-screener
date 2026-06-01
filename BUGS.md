@@ -37,28 +37,14 @@ You must list explicit origins when using credentials.
 
 ## Logic Errors
 
-**5. RS score ignores the benchmark**
-`_compute_rs_ranks` fetches the benchmark's 12-month return but never uses it. It just percentile-ranks stocks by raw `momentum_12m`. True Relative Strength should measure outperformance:
+**5. (FIXED) RS score ignores the benchmark**
+`_compute_rs_ranks` in `rs_ranks.py` now correctly calculates excess return against a benchmark (Nifty 50 or Nifty 500) before percentile ranking.
 
-```python
-# Correct RS: stock return vs. benchmark
-rs_score = stock.momentum_12m - benchmark_return
-# then percentile-rank those deltas
-```
+**6. (FIXED) W/M timeframe scores cap at 70, D caps at 100**
+Scores across all timeframes are now normalized to 100 in `MomentumScorer`.
 
-**6. W/M timeframe scores cap at 70, D caps at 100**
-For `'W'` and `'M'`, `calculate_technical_score` hardcodes `score = 70.0` or `0.0`, and `calculate_combined_score` only adds fundamental score for `'D'`. So weekly/monthly scores max out at 70, making cross-timeframe score comparisons misleading. Either normalize all timeframes to 100 or document/handle this in the UI.
-
-**7. `dividend_consistency` check is hardcoded to 2023/2024/2025**
-```python
-if 2023 in years and 2024 in years and 2025 in years:
-```
-In 2026 this is already one year stale. Make it dynamic:
-```python
-current_year = datetime.date.today().year
-required_years = {current_year - 1, current_year - 2, current_year - 3}
-if required_years.issubset(set(years)):
-```
+**7. (FIXED) `dividend_consistency` check is hardcoded to 2023/2024/2025**
+Obsolete fundamental quality checks have been removed in favor of a pure technical model.
 
 **8. `reporter.py` date filter uses `scored_at`, not `date`**
 ```python
@@ -114,8 +100,8 @@ app = FastAPI(lifespan=lifespan)
 ## Scoring Model Concerns
 
 
-**16. Fundamental score only uses P/E and pledge (30 pts)**
-`calculate_fundamental_score` ignores ROE, ROCE, debt/equity, FCF, and PEG — all of which you compute and store in `FundamentalCache`. That rich data is wasted in the main score. The screener filters on it, but it never contributes to ranking.
+**16. (FIXED) Fundamental score only uses P/E and pledge (30 pts)**
+The system has moved to a 100% technical scoring model. Fundamental data is now used solely as a binary liquidity gate (Mcap/Value) and displayed for context only.
 
 **17. Volume signal threshold is inconsistent**
 For the 70-pt technical score (point 4), you require `volume > 1.5×SMA`. For `volume_breakout`, you require `volume > 2.0×SMA`. Both are used in different places; consider unifying behind a named constant.

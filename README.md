@@ -5,8 +5,8 @@ A personal AI-powered stock research tool for Indian markets (NSE/BSE) that runs
 ## 🚀 Overview
 
 - **Daily Pipeline:** Automatically fetches EOD data for the NSE universe.
-- **Screening:** Filters stocks using fundamental metrics (P/E, Market Cap, etc.).
-- **Scoring:** Ranks stocks using technical analysis (RSI, Moving Averages, Volume).
+- **Liquidity Filter:** Screens for institutional-grade liquidity (Mcap > 500 Cr).
+- **Technical Scoring:** 100% technical-driven ranking (RSI, EMA, Volume, RS Score).
 - **Dashboard:** Interactive React-based UI to visualize top-scored stocks and charts.
 
 ---

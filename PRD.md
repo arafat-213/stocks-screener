@@ -62,10 +62,10 @@ The system uses a **Distributed Task Architecture** to handle heavy data process
 ### 1. Multi-Stage Research Pipeline
 Runs daily at 4:05 PM IST.
 - **Data Acquisition:** Batch fetching from `yfinance` with intelligent caching and SQLite-backed request persistence.
-- **Fundamental Screener:** Filters 2000+ stocks down to a quality shortlist (ROE, Debt/Equity, Profitability streaks).
-- **Technical Scorer:** Multi-timeframe (Daily, Weekly, Monthly) scoring (0-100) using EMA stacks, MACD, RSI, and Volume Breakouts.
-- **Relative Strength (RS) Ranking:** Compares stock performance against the broader market to find leadership.
-- **Signal Digest:** Consolidates technical signals into actionable tiers (Tier 1: Strong Momentum, Tier 2: Pullback).
+- **Liquidity Gate:** The system's only fundamental filter, rejecting stocks with Market Cap < 500 Cr or Daily Transaction Value < 2 Cr to ensure exit liquidity.
+- **Technical Scorer:** Pure technical scoring model (0-100) using EMA stacks, MACD, RSI, and Volume Breakouts across Daily, Weekly, and Monthly timeframes.
+- **Relative Strength (RS) Ranking:** Compares stock performance against the broader market benchmark to identify true market leadership.
+- **Signal Digest:** Consolidates technical signals into actionable tiers (Tier 1: High-conviction breakouts, Tier 2: Pullbacks to support).
 
 ### 2. Backtesting Engine
 - High-performance historical simulation using cached OHLCV data.
