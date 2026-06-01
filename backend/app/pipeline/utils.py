@@ -32,27 +32,6 @@ def get_market_regime(db: Session, date: datetime.date) -> bool:
     return bool(signal.is_bullish)
 
 
-FIELD_KEYWORDS = {
-    "net_income": [
-        "net income",
-        "net earnings",
-        "profit after tax",
-        "pat",
-        "net income from continuing operations",
-    ],
-    "revenue": ["total revenue", "revenue", "total operating revenue", "net sales"],
-    "ebit": ["ebit", "operating income", "operating profit"],
-    "total_assets": ["total assets"],
-    "current_liab": ["current liabilities", "total current liabilities"],
-    "op_cashflow": [
-        "operating cash flow",
-        "cash from operations",
-        "net cash from operating",
-    ],
-    "capex": ["capital expenditure", "purchase of fixed assets", "capex"],
-}
-
-
 def to_float(val, default=None):
     """Safely converts a value to float."""
     if val is None:
@@ -61,34 +40,6 @@ def to_float(val, default=None):
         return float(val)
     except (ValueError, TypeError):
         return default
-
-
-def get_financial_row(df: pd.DataFrame, field_key: str) -> pd.Series | None:
-    """
-    Extracts a row from a yfinance financial DataFrame using ordered keyword matching.
-    Looks up keywords for field_key, checks each keyword (case-insensitive) against index.
-    Returns the first matching row as a Series, or None if no match.
-    """
-    if df is None or df.empty or field_key not in FIELD_KEYWORDS:
-        return None
-
-    keywords = FIELD_KEYWORDS[field_key]
-    # Clean index labels: strip whitespace and lower case
-    cleaned_index = [str(idx).strip().lower() for idx in df.index]
-
-    for kw in keywords:
-        kw_lower = kw.lower().strip()
-        for i, idx_val in enumerate(cleaned_index):
-            if kw_lower == idx_val or kw_lower in idx_val:
-                logger.debug(
-                    f"Matched financial row: '{df.index[i]}' for key '{field_key}' using keyword '{kw}'"
-                )
-                return df.iloc[i]
-
-    logger.warning(
-        f"Failed to find financial row for key '{field_key}'. Available index: {list(df.index)}"
-    )
-    return None
 
 
 def resample_ohlcv(
