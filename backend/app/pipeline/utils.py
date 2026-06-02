@@ -42,6 +42,26 @@ def to_float(val, default=None):
         return default
 
 
+def to_int(val, default=None):
+    """Safely converts a value to int."""
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def to_bool(val, default=False):
+    """Safely converts a value to bool."""
+    if val is None:
+        return default
+    try:
+        return bool(val)
+    except (ValueError, TypeError):
+        return default
+
+
 def resample_ohlcv(
     df: pd.DataFrame, freq: str, drop_incomplete: bool = True
 ) -> pd.DataFrame:

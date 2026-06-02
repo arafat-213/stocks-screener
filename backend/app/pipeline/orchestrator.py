@@ -27,7 +27,7 @@ from app.pipeline.fetcher import (
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.reporter import generate_daily_report
 from app.pipeline.rs_ranks import compute_rs_ranks
-from app.pipeline.utils import resample_ohlcv
+from app.pipeline.utils import resample_ohlcv, to_bool, to_float
 from app.screens.cache import screen_cache
 
 logger = logging.getLogger(__name__)
@@ -168,36 +168,36 @@ def process_symbol(
             signal = TechnicalSignal(symbol=symbol, date=signal_date, timeframe=tf)
             db.add(signal)
 
-        signal.entry_score = ta_data["score"]
-        signal.is_bullish = ta_data["is_bullish"]
-        signal.rsi = ta_data["rsi"]
-        signal.macd = ta_data["macd"]
+        signal.entry_score = to_float(ta_data["score"])
+        signal.is_bullish = to_bool(ta_data["is_bullish"])
+        signal.rsi = to_float(ta_data.get("rsi"))
+        signal.macd = to_float(ta_data.get("macd"))
         signal.ema_signal = ta_data["ema_signal"]
         signal.volume_signal = ta_data.get("volume_signal", "neutral")
         signal.rsi_signal = ta_data.get("rsi_signal", "neutral")
-        signal.atr = ta_data.get("atr")
+        signal.atr = to_float(ta_data.get("atr"))
 
         # EMA Levels
-        signal.ema5_level = ta_data.get("ema5_level")
-        signal.ema13_level = ta_data.get("ema13_level")
-        signal.ema20_level = ta_data.get("ema20_level")
-        signal.ema26_level = ta_data.get("ema26_level")
+        signal.ema5_level = to_float(ta_data.get("ema5_level"))
+        signal.ema13_level = to_float(ta_data.get("ema13_level"))
+        signal.ema20_level = to_float(ta_data.get("ema20_level"))
+        signal.ema26_level = to_float(ta_data.get("ema26_level"))
 
         # Momentum and New Technical Fields
-        signal.momentum_1m = ta_data.get("momentum_1m")
-        signal.momentum_3m = ta_data.get("momentum_3m")
-        signal.momentum_6m = ta_data.get("momentum_6m")
-        signal.momentum_12m = ta_data.get("momentum_12m")
-        signal.adx = ta_data.get("adx")
-        signal.above_200ema = ta_data.get("above_200ema")
-        signal.ema_slope_20 = ta_data.get("ema_slope_20")
-        signal.week52_high = ta_data.get("week52_high")
-        signal.week52_low = ta_data.get("week52_low")
-        signal.pct_from_52w_high = ta_data.get("pct_from_52w_high")
-        signal.pct_from_52w_low = ta_data.get("pct_from_52w_low")
-        signal.resistance_level = ta_data.get("resistance_level")
-        signal.pct_from_resistance = ta_data.get("pct_from_resistance")
-        signal.volume_breakout = ta_data.get("volume_breakout", False)
+        signal.momentum_1m = to_float(ta_data.get("momentum_1m"))
+        signal.momentum_3m = to_float(ta_data.get("momentum_3m"))
+        signal.momentum_6m = to_float(ta_data.get("momentum_6m"))
+        signal.momentum_12m = to_float(ta_data.get("momentum_12m"))
+        signal.adx = to_float(ta_data.get("adx"))
+        signal.above_200ema = to_bool(ta_data.get("above_200ema"))
+        signal.ema_slope_20 = to_float(ta_data.get("ema_slope_20"))
+        signal.week52_high = to_float(ta_data.get("week52_high"))
+        signal.week52_low = to_float(ta_data.get("week52_low"))
+        signal.pct_from_52w_high = to_float(ta_data.get("pct_from_52w_high"))
+        signal.pct_from_52w_low = to_float(ta_data.get("pct_from_52w_low"))
+        signal.resistance_level = to_float(ta_data.get("resistance_level"))
+        signal.pct_from_resistance = to_float(ta_data.get("pct_from_resistance"))
+        signal.volume_breakout = to_bool(ta_data.get("volume_breakout", False))
 
         # Consolidation check (requiresRaw OHLCV)
         if tf == "D" and len(working_df) >= 17:  # lookback(15) + buffer
