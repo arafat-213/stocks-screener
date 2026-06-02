@@ -67,18 +67,12 @@ def generate_daily_report(db: Session):
 
         report_content = "\n".join(report_lines)
 
-        # Ensure reports directory exists (project-root/backend/reports)
-        # Use Path for more robust path handling
-        reports_dir = Path.cwd() / "reports"
-        if not reports_dir.exists():
-            # If run from backend/ directory
-            reports_dir = Path.cwd().parent / "reports"
-            if not reports_dir.exists():
-                # Fallback to absolute relative to this file
-                reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
+        # Ensure reports directory exists (backend/reports)
+        # Use absolute path relative to this file to be robust across execution environments
+        pipeline_dir = Path(__file__).resolve().parent
+        reports_dir = pipeline_dir.parent.parent / "reports"
 
         reports_dir.mkdir(parents=True, exist_ok=True)
-
         report_filename = f"report_{today}.md"
         report_path = reports_dir / report_filename
 
