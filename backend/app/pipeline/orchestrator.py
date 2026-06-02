@@ -131,7 +131,6 @@ def process_symbol(
     symbol: str,
     db: Session,
     hist: pd.DataFrame = None,
-    info: dict = None,
     scored_at: datetime.datetime = None,
 ):
     """
@@ -141,9 +140,7 @@ def process_symbol(
     if hist is None:
         from app.pipeline.fetcher import fetch_stock_data
 
-        hist, fetched_info = fetch_stock_data(symbol, period="3y")
-        if info is None:
-            info = fetched_info
+        hist, _ = fetch_stock_data(symbol, period="3y", fetch_info=False)
         if hist is None or hist.empty:
             return []
 
@@ -296,7 +293,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 return
 
             batch = remaining_symbols[i : i + batch_size]
-            batch_ns = [s + ".NS" for s in batch]
+            batch_ns = [s if s.endswith(".NS") else s + ".NS" for s in batch]
 
             logger.info(
                 f"Downloading Tier 1 batch {i // batch_size + 1}: {len(batch)} symbols"
@@ -307,6 +304,9 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 bulk_data = yf.download(
                     batch_ns, period="3y", progress=False, timeout=30, auto_adjust=False
                 )
+
+                if not bulk_data.empty and bulk_data.index.tz is not None:
+                    bulk_data.index = bulk_data.index.tz_localize(None)
 
                 for symbol in batch:
                     try:
@@ -367,7 +367,8 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
                 try:
                     current_symbol = f"{symbol} (Tier 1.5)"
-                    ticker = yf.Ticker(symbol + ".NS")
+                    ticker_symbol = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
+                    ticker = yf.Ticker(ticker_symbol)
                     fi = ticker.fast_info
 
                     # fast_info can return None for some fields on certain stocks
@@ -379,16 +380,18 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
                     # Liquidity Filter: Mcap > 500 Cr, Value > 2 Cr
                     if mcap > 5_000_000_000 and (avg_vol * price > 20_000_000):
-                        # Metadata Update (requires .info)
-                        info = ticker.info
                         stock = db.query(Stock).filter_by(symbol=symbol).first()
                         if not stock:
-                            stock = Stock(symbol=symbol)
+                            # Only fetch expensive .info for BRAND NEW stocks
+                            info = ticker.info
+                            stock = Stock(
+                                symbol=symbol,
+                                name=info.get("longName") or info.get("shortName"),
+                                sector=info.get("sector"),
+                                industry=info.get("industry"),
+                            )
                             db.add(stock)
 
-                        stock.name = info.get("longName") or info.get("shortName")
-                        stock.sector = info.get("sector")
-                        stock.industry = info.get("industry")
                         stock.market_cap = mcap
                         final_survivors.append(symbol)
 
@@ -443,7 +446,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                     symbol,
                     db,
                     hist=hist,
-                    info=None,
                     scored_at=scored_at,
                 )
 
@@ -471,7 +473,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                         index_sym,
                         db,
                         hist=index_hist,
-                        info=None,
                         scored_at=scored_at,
                     )
             except Exception as e:

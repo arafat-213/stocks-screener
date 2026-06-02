@@ -4,17 +4,16 @@ This document outlines the recommended sequence for implementing improvements an
 
 ---
 
-## Phase 1: Foundational Stability (Immediate Priority)
+## Phase 1: Foundational Stability (Immediate Priority) [STATUS: RESOLVED]
 **Goal:** Fix critical data integrity issues and prevent system crashes.
 
-1.  **Enforce the NSE Suffix (#1):**
+1.  **Enforce the NSE Suffix (#1):** [STATUS: RESOLVED]
     *   Update `get_nse_symbols` to return `.NS` symbols.
     *   Ensure all database lookups and writes use the `.NS` suffix.
     *   Scrub the current database of raw symbols to avoid fragmented records.
-2.  **Fix Timezone Fragility (#2):**
+2.  **Fix Timezone Fragility (#2):** [STATUS: RESOLVED]
     *   Add `df.index = df.index.tz_localize(None)` immediately after data retrieval in the fetcher/orchestrator.
     *   Ensure all internal comparisons use naive timestamps to prevent `TypeError`.
-
 ---
 
 ## Phase 2: Structural Cleanup (Clearing the Path)

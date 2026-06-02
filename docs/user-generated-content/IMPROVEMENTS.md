@@ -122,7 +122,7 @@
 
 Here is the brutally honest audit of your current state:
 
-#1.   1. Law of the Land Violation: The NSE Suffix (Critical) [STATUS: UNRESOLVED]
+#1.   1. Law of the Land Violation: The NSE Suffix (Critical) [STATUS: RESOLVED]
   Your GEMINI.md explicitly states: "All Indian stock symbols MUST have the .NS suffix. Never
   use raw symbols in database queries or API logic."
 
@@ -152,7 +152,7 @@ Here is the brutally honest audit of your current state:
      95.0) to assign pledging values.
    * Status: The file update_pledging.py is no longer in the codebase, and random pledging filters appear to have been removed from the main pipeline.
 
-#2.   4. Known Crash Vector: Timezone Fragility (Major) [STATUS: UNRESOLVED]
+#2.   4. Known Crash Vector: Timezone Fragility (Major) [STATUS: RESOLVED]
   Your MEMORY.md warns that yfinance timezone-aware data causes TypeError in comparisons and
   mandates using .tz_localize(None).
    * The Violation: Your orchestrator (orchestrator.py:161) calls signal_date =
@@ -170,13 +170,13 @@ Here is the brutally honest audit of your current state:
   ---
 
   Action Plan to Reach "Ready" State:
-#1.1   1. Enforce the Suffix: Update get_nse_symbols to return .NS symbols or ensure every DB
+#1.1   1. Enforce the Suffix: [STATUS: RESOLVED] Update get_nse_symbols to return .NS symbols or ensure every DB
       entry is transformed immediately. Scrub your DB and start fresh with .NS keys.
 #3.1   2. Sync Tests to Reality: Rewrite test_scorer_fixes.py to assert the 100-point scale. Add
       edge-case tests for your new tiers (EMA cross, MACD decoupling, RSI recovery).
 #11.1   3. Kill the Randomness: Either implement a real fetcher for pledging data or disable the
       filter. Mock data in a "production-ready" pipeline is a liability.
-#2.1   4. Localize Timezones: Add df.index = df.index.tz_localize(None) to your fetcher or
+#2.1   4. Localize Timezones: [STATUS: RESOLVED] Add df.index = df.index.tz_localize(None) to your fetcher or
       orchestrator immediately after data retrieval.
 
   Don't run the pipeline yet. You're just generating high-quality garbage.

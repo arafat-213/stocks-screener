@@ -138,6 +138,11 @@ class OHLCVCache:
         )
         if df is None or df.empty:
             return None
+
+        # Fix Timezone Fragility
+        if df.index.tz is not None:
+            df.index = df.index.tz_localize(None)
+
         self._write_atomic(df, path)
         return df
 

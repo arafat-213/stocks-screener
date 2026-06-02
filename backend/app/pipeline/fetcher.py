@@ -66,15 +66,19 @@ def get_nse_symbols(limit: int = None) -> list[str]:
         if limit:
             symbols = symbols[:limit]
 
+        # Enforce .NS suffix for all symbols
+        symbols = [f"{s}.NS" if not s.endswith(".NS") else s for s in symbols]
+
         logger.info(f"Successfully fetched {len(symbols)} symbols from NSE")
         return symbols
     except Exception as e:
         logger.error(f"Failed to fetch NSE universe: {e}")
-        return ["RELIANCE", "TCS", "HDFCBANK", "INFY", "HINDUNILVR"]
+        # Fallback with .NS suffix
+        return ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS"]
 
 
 def fetch_stock_data(
-    symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = True
+    symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = False
 ):
     try:
         ticker_symbol = symbol
@@ -92,6 +96,10 @@ def fetch_stock_data(
         if hist.empty:
             return None, None
 
+        # Fix Timezone Fragility: ensure index is naive as per project standards
+        if hist.index.tz is not None:
+            hist.index = hist.index.tz_localize(None)
+
         return hist, info
     except Exception as e:
         logger.error(f"Error fetching data for {symbol}: {e}")
@@ -105,21 +113,39 @@ def fetch_market_snapshots(
     Dedicated function to fetch market snapshots efficiently using yf.download.
     """
     try:
+        # Standardize symbols for Yahoo Finance
+        target_symbols = []
+        for s in symbols:
+            s = s.upper().strip()
+            if not s.endswith(".NS") and not s.startswith("^") and s.isalpha():
+                target_symbols.append(f"{s}.NS")
+            else:
+                target_symbols.append(s)
+
         # yf.download is much faster and less prone to rate limits for pure price data
         # No session injection for yfinance 0.2.66+
         data = yf.download(
-            symbols, period=period, progress=False, threads=False, auto_adjust=False
+            target_symbols,
+            period=period,
+            progress=False,
+            threads=False,
+            auto_adjust=False,
         )
 
         if data.empty:
             return []
+
+        # Fix Timezone Fragility
+        if data.index.tz is not None:
+            data.index = data.index.tz_localize(None)
+
         snapshots = []
-        for symbol in symbols:
+        for orig_symbol, target_symbol in zip(symbols, target_symbols):
             try:
                 # When downloading multiple tickers, yf returns a MultiIndex column DataFrame
                 # If only one ticker is requested, it's a single index DataFrame
-                if len(symbols) > 1:
-                    close_series = data["Close"][symbol].dropna()
+                if len(target_symbols) > 1:
+                    close_series = data["Close"][target_symbol].dropna()
                 else:
                     close_series = data["Close"].dropna()
 
@@ -130,14 +156,14 @@ def fetch_market_snapshots(
 
                     snapshots.append(
                         {
-                            "symbol": symbol,
+                            "symbol": orig_symbol,  # Return original symbol for UI mapping
                             "close": current_close,
                             "change_pct": change_pct,
                         }
                     )
             except KeyError:
                 logger.warning(
-                    f"Could not extract data for {symbol} from bulk download."
+                    f"Could not extract data for {target_symbol} from bulk download."
                 )
                 continue
 
@@ -150,7 +176,7 @@ def fetch_market_snapshots(
 def slice_bulk_df(bulk_df: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
     """Extracts OHLCV for a symbol from a MultiIndex or flat DataFrame."""
     try:
-        suffix_symbol = f"{symbol}.NS"
+        suffix_symbol = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
         if isinstance(bulk_df.columns, pd.MultiIndex):
             df = bulk_df.xs(suffix_symbol, axis=1, level=1).copy()
         else:
