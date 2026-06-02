@@ -89,9 +89,9 @@ const Portfolio = () => {
         getJournalOpen(),
         getJournalClosed(),
       ]);
-      setStats(get('data')(statsRes) || null);
-      setOpenPositions(get('data')(openRes) || []);
-      setTradeHistory(get('data')(closedRes) || []);
+      setStats(statsRes || null);
+      setOpenPositions(openRes || []);
+      setTradeHistory(closedRes || []);
     } catch (error) {
       console.error('Error loading portfolio data:', error);
     } finally {
