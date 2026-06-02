@@ -114,9 +114,9 @@ class TestDecoupling:
 
         result = strategy.evaluate(df, timeframe="D", skip_ta=True)
 
-        # Expected: EMA(28.5) + MACD correlated(11.5) + RSI strong(7.0) = 47.0
+        # Expected: EMA(28.5) + MACD correlated(11.5) + RSI strong(7.0) + EMA200(7.0) = 54.0
         assert result["ema_signal"] == "bullish_cross"
-        assert result["score"] == pytest.approx(47.0)
+        assert result["score"] == pytest.approx(54.0)
 
 
 class TestRSIScoring:
@@ -129,12 +129,14 @@ class TestRSIScoring:
         df["RSI_14"] = 60.0  # Bullish strong (7.0 pts)
 
         result = strategy.evaluate(df, timeframe="D", skip_ta=True)
-        # Without other signals, score should be 7.0
-        assert result["score"] == pytest.approx(7.0)
+        # 7.0 (RSI) + 7.0 (EMA200) = 14.0
+        assert result["score"] == pytest.approx(14.0)
 
-        df["RSI_14"] = 85.0  # Overbought killer
+        df["RSI_14"] = 85.0  # Overbought state
         result = strategy.evaluate(df, timeframe="D", skip_ta=True)
-        assert result["score"] == 0.0
+        # Score is no longer zeroed, but is_overextended is True
+        assert result["is_overextended"] is True
+        assert result["score"] > 0.0
 
     def test_rsi_recovery_confirmed_by_ema_cross(self):
         """RSI recovery + EMA cross scores full RSI weight."""
@@ -154,7 +156,7 @@ class TestRSIScoring:
         df.loc[df.index[-3], "RSI_14"] = 25.0
 
         result = strategy.evaluate(df, timeframe="D", skip_ta=True)
-        # EMA Cross (28.5) + RSI Recovery (21.5) = 50.0
+        # EMA Cross (28.5) + RSI Recovery (21.5) + EMA200 (7.0) = 57.0
         assert result["ema_signal"] == "bullish_cross"
         assert result["rsi_signal"] == "bullish_recovery_confirmed"
-        assert result["score"] == pytest.approx(50.0)
+        assert result["score"] == pytest.approx(57.0)

@@ -123,6 +123,7 @@ class TechnicalStrategy:
         w_rsi = self.config.rsi_weight
         w_volume = self.config.volume_weight
         w_trend = self.config.trend_weight
+        w_ema200 = self.config.ema200_weight
 
         # Momentum (lookback from full df)
         momentum_1m = (
@@ -140,6 +141,8 @@ class TechnicalStrategy:
 
         # Above 200 EMA
         above_200ema = (price > ema200) if pd.notna(ema200) else None
+        if above_200ema:
+            score += w_ema200
 
         # 52-Week High/Low and Resistance
         week52_high = None
@@ -310,12 +313,10 @@ class TechnicalStrategy:
                     and rsi > self.config.rsi_min
                 )
 
-                # Hard Filters applied directly to score and is_bullish
-                if not above_200ema:
-                    score = 0
-                    is_bullish = False
-                if pd.notna(rsi) and rsi > 80:
-                    score = 0
+                # State Engine: Flag overextended state instead of zeroing score
+                is_overextended = False
+                if pd.notna(rsi) and rsi > self.config.rsi_overbought_threshold:
+                    is_overextended = True
 
             elif timeframe == "W":
                 is_bullish = (
@@ -323,6 +324,7 @@ class TechnicalStrategy:
                 )
                 score = 100.0 if is_bullish else 0.0
                 ema_signal = "bullish" if is_bullish else "neutral"
+                is_overextended = False
 
             elif timeframe == "M":
                 is_bullish = (
@@ -335,16 +337,14 @@ class TechnicalStrategy:
                 )
                 score = 100.0 if is_bullish else 0.0
                 ema_signal = "bullish" if is_bullish else "neutral"
-
-        # Hard Filter: RSI must not be overbought (> 80)
-        if rsi is not None and rsi > 80:
-            score = 0.0
+                is_overextended = False
 
         # Ensure final score is in range 0-100
         score = max(0.0, min(100.0, score))
 
         return {
             "score": float(score),
+            "is_overextended": bool(is_overextended),
             "rsi": float(rsi) if pd.notna(rsi) else 0.0,
             "macd": float(macd_line) if pd.notna(macd_line) else 0.0,
             "ema_signal": ema_signal,
