@@ -2,196 +2,159 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from app.pipeline.momentum_scorer import MomentumScorer
+from app.core.strategy import TechnicalStrategy
 
-scorer = MomentumScorer()
+# Use TechnicalStrategy directly for tests
+strategy = TechnicalStrategy()
 
 
-def _make_ohlcv(n: int, trend: str = "up") -> pd.DataFrame:
-    """
-    Builds a minimal OHLCV DataFrame of length n with a DatetimeIndex.
-    trend='up'  → steadily rising close prices (bullish EMA alignment likely)
-    trend='flat' → flat prices (neutral)
-    """
-    np.random.seed(42)
-    if trend == "up":
-        closes = np.linspace(100, 160, n) + np.random.normal(0, 0.5, n)
-    else:
-        closes = np.full(n, 100.0) + np.random.normal(0, 0.3, n)
-
+def _make_base_df(n: int = 300) -> pd.DataFrame:
     df = pd.DataFrame(
         {
-            "Open": closes * 0.995,
-            "High": closes * 1.01,
-            "Low": closes * 0.99,
-            "Close": closes,
-            "Volume": np.random.randint(1_000_000, 5_000_000, n).astype(float),
+            "Open": np.full(n, 100.0),
+            "High": np.full(n, 105.0),
+            "Low": np.full(n, 95.0),
+            "Close": np.full(n, 100.0),
+            "Volume": np.full(n, 1_000_000.0),
         },
         index=pd.date_range("2022-01-01", periods=n, freq="B"),
     )
     return df
 
 
-def _make_macd_positive_territory_df() -> pd.DataFrame:
-    """
-    Constructs OHLCV so that MACD > signal, MACD > 0, and NOT a fresh cross.
-    """
-    n = 300
-    # Steady uptrend for 290 days, then slightly slower uptrend to ensure MACD > signal stays true but not fresh
-    closes = np.concatenate([np.linspace(100, 200, 280), np.linspace(200, 205, 20)])
-    df = pd.DataFrame(
-        {
-            "Open": closes * 0.998,
-            "High": closes * 1.015,
-            "Low": closes * 0.985,
-            "Close": closes,
-            "Volume": np.full(n, 2_000_000.0),
-        },
-        index=pd.date_range("2021-01-01", periods=n, freq="B"),
-    )
-    return df
-
-
-def _make_macd_negative_territory_df() -> pd.DataFrame:
-    """
-    Constructs OHLCV so that MACD > signal, MACD < 0, and NOT a fresh cross.
-    """
-    n = 300
-    # Long downtrend, then very slow recovery to keep MACD negative but above signal
-    closes = np.concatenate(
-        [
-            np.linspace(200, 100, 250),  # downtrend
-            np.linspace(100, 102, 50),  # very slow recovery
-        ]
-    )
-    df = pd.DataFrame(
-        {
-            "Open": closes * 0.998,
-            "High": closes * 1.01,
-            "Low": closes * 0.99,
-            "Close": closes,
-            "Volume": np.full(n, 2_000_000.0),
-        },
-        index=pd.date_range("2021-01-01", periods=n, freq="B"),
-    )
-    return df
-
-
 class TestMACDScoring:
-    def test_macd_positive_territory_scores_12(self):
-        """MACD > signal AND MACD > 0 (no fresh cross) must score exactly 12 pts on MACD component."""
-        df = _make_macd_positive_territory_df()
-        result = scorer.calculate_score(df, timeframe="D")
+    def test_macd_positive_territory_scores_well(self):
+        """MACD > signal AND MACD > 0 (no fresh cross) should score 14.5 pts."""
+        df = _make_base_df()
+        # Add necessary columns for evaluate(skip_ta=True)
+        df["EMA_200"] = 50.0  # Above 200 EMA
+        df["MACD_12_26_9"] = 2.0
+        df["MACDs_12_26_9"] = 1.0
+        df["RSI_14"] = 55.0
 
-        check = df.copy()
-        check.ta.macd(fast=12, slow=26, signal=9, append=True)
-        latest = check.iloc[-1]
-        prev = check.iloc[-2]
-        macd_line = latest["MACD_12_26_9"]
-        signal_line = latest["MACDs_12_26_9"]
-        prev_macd = prev["MACD_12_26_9"]
-        prev_sig = prev["MACDs_12_26_9"]
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
 
-        print(
-            f"\nPOS: macd={macd_line}, signal={signal_line}, prev_macd={prev_macd}, prev_sig={prev_sig}"
-        )
-
-        # Guard: only run assertion if the data actually produced the condition we want
-        fresh_cross = (macd_line > signal_line) and (prev_macd <= prev_sig)
-        if fresh_cross:
-            print("SKIPPING: Fresh cross detected")
-            pytest.skip("Fresh cross detected")
-        if not (macd_line > signal_line and macd_line > 0):
-            print(
-                f"SKIPPING: Not in positive territory: macd={macd_line}, signal={signal_line}"
-            )
-            pytest.skip("Not in positive territory")
-
-        # The MACD component contribution is not directly exposed, so we assert
-        # that the score is HIGHER than the equivalent negative-territory setup.
-        df_neg = _make_macd_negative_territory_df()
-        result_neg = scorer.calculate_score(df_neg, timeframe="D")
-        assert result["score"] >= result_neg["score"], (
-            "Positive-territory MACD should score >= negative-territory MACD "
-            f"(got {result['score']} vs {result_neg['score']})"
-        )
+        # 14.5 pts for MACD + some trend pts
+        assert result["macd"] == 2.0
+        assert result["score"] >= 14.5
 
     def test_macd_negative_territory_scores_lower_than_positive(self):
-        """MACD > signal AND MACD < 0 must produce a lower score than MACD > signal AND MACD > 0."""
-        df_pos = _make_macd_positive_territory_df()
-        df_neg = _make_macd_negative_territory_df()
-        res_pos = scorer.calculate_score(df_pos, timeframe="D")
-        res_neg = scorer.calculate_score(df_neg, timeframe="D")
+        """MACD > signal AND MACD < 0 must produce 7.0 pts."""
+        df_pos = _make_base_df()
+        df_pos["EMA_200"] = 50.0
+        df_pos["MACD_12_26_9"] = 2.0
+        df_pos["MACDs_12_26_9"] = 1.0
+        df_pos["RSI_14"] = 55.0
 
-        # Ensure we actually got the states we wanted to test
-        if not (res_pos["macd"] > 0 and res_neg["macd"] < 0):
-            pytest.skip(
-                f"Data did not produce required MACD territories: pos={res_pos['macd']}, neg={res_neg['macd']}"
-            )
+        df_neg = _make_base_df()
+        df_neg["EMA_200"] = 50.0
+        df_neg["MACD_12_26_9"] = -1.0
+        df_neg["MACDs_12_26_9"] = -2.0
+        df_neg["RSI_14"] = 55.0
 
-        score_pos = res_pos["score"]
-        score_neg = res_neg["score"]
-        # Net effect: positive territory must not be penalised vs negative territory
-        assert score_pos >= score_neg, (
-            f"Expected positive-territory score ({score_pos}) >= negative-territory score ({score_neg})"
-        )
+        res_pos = strategy.evaluate(df_pos, timeframe="D", skip_ta=True)
+        res_neg = strategy.evaluate(df_neg, timeframe="D", skip_ta=True)
+
+        assert res_pos["score"] > res_neg["score"]
+        # Pos: 14.5 MACD, Neg: 7.0 MACD. Difference should be 7.5
+        assert res_pos["score"] - res_neg["score"] == pytest.approx(7.5)
+
+
+class TestEMAScoring:
+    def test_fresh_ema_cross_scores_full_weight(self):
+        """EMA5 crossing EMA13 must score full weight (28.5 pts)."""
+        df = _make_base_df()
+        df["EMA_200"] = 50.0
+        df["EMA_5"] = 110.0
+        df["EMA_13"] = 105.0
+        df["EMA_26"] = 100.0
+        df["RSI_14"] = 55.0
+        # Prev values for cross detection
+        df.loc[df.index[-2], "EMA_5"] = 104.0
+        df.loc[df.index[-2], "EMA_13"] = 105.0
+        df.loc[df.index[-2], "RSI_14"] = 54.0
+
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
+        assert result["ema_signal"] == "bullish_cross"
+        assert result["score"] >= 28.5
+
+    def test_ema_pullback_scores_21_5(self):
+        """Pullback to EMA20 in an uptrend must score 21.5 pts."""
+        df = _make_base_df()
+        df["EMA_200"] = 50.0
+        df["EMA_5"] = 120.0
+        df["EMA_13"] = 115.0
+        df["EMA_20"] = 110.0
+        df["EMA_26"] = 105.0
+        df["Close"] = 111.0  # Within 2% of EMA20 (110)
+        df["RSI_14"] = 55.0
+
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
+        assert result["ema_signal"] == "bullish_pullback"
+        assert result["score"] >= 21.5
+
+
+class TestDecoupling:
+    def test_macd_ema_correlated_event_penalty(self):
+        """When MACD and EMA cross on same day, they should score less than sum of weights."""
+        df = _make_base_df()
+        df["EMA_200"] = 50.0
+        df["EMA_5"] = 110.0
+        df["EMA_13"] = 105.0
+        df["EMA_26"] = 100.0
+        df["MACD_12_26_9"] = 1.0
+        df["MACDs_12_26_9"] = 0.5
+        df["RSI_14"] = 55.0
+
+        # Prev values for cross detection
+        df.loc[df.index[-2], "EMA_5"] = 104.0
+        df.loc[df.index[-2], "EMA_13"] = 105.0
+        df.loc[df.index[-2], "MACD_12_26_9"] = 0.4
+        df.loc[df.index[-2], "MACDs_12_26_9"] = 0.5
+
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
+
+        # Expected: EMA(28.5) + MACD correlated(11.5) + RSI strong(7.0) = 47.0
+        assert result["ema_signal"] == "bullish_cross"
+        assert result["score"] == pytest.approx(47.0)
 
 
 class TestRSIScoring:
-    def test_rsi_component_never_exceeds_15(self):
+    def test_rsi_component_never_exceeds_weighted_max(self):
         """
-        The RSI sub-component must never contribute more than 15 pts.
-        Max total technical score is 70: EMA(20) + MACD(20) + RSI(15) + Volume(15).
-        Therefore score must never exceed 70.
+        The RSI sub-component must never contribute more than its weight (default 21.5).
         """
-        # Use an uptrending DF that is likely to trigger RSI recovery + EMA cross
-        n = 300
-        # V-shape: down then strong up to trigger oversold recovery + EMA cross
-        closes = np.concatenate(
-            [
-                np.linspace(150, 90, 150),  # drop to oversold territory
-                np.linspace(90, 180, 150),  # strong recovery
-            ]
-        )
-        df = pd.DataFrame(
-            {
-                "Open": closes * 0.997,
-                "High": closes * 1.012,
-                "Low": closes * 0.988,
-                "Close": closes,
-                "Volume": np.full(n, 3_000_000.0),
-            },
-            index=pd.date_range("2021-01-01", periods=n, freq="B"),
-        )
+        df = _make_base_df()
+        df["EMA_200"] = 50.0
+        df["RSI_14"] = 60.0  # Bullish strong (7.0 pts)
 
-        result = scorer.calculate_score(df, timeframe="D")
-        assert result["score"] <= 70.0, (
-            f"Technical score {result['score']} exceeds the 70-point maximum. "
-            "RSI component must be capped at 15 pts."
-        )
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
+        # Without other signals, score should be 7.0
+        assert result["score"] == pytest.approx(7.0)
 
-    def test_rsi_recovery_with_ema_cross_scores_same_as_without(self):
-        """
-        RSI recovery confirmed by EMA cross must score 15 pts — same as recovery without cross.
-        Both paths should produce the same RSI contribution.
-        """
-        n = 300
-        closes = np.concatenate(
-            [
-                np.linspace(150, 85, 150),
-                np.linspace(85, 175, 150),
-            ]
-        )
-        df = pd.DataFrame(
-            {
-                "Open": closes * 0.997,
-                "High": closes * 1.012,
-                "Low": closes * 0.988,
-                "Close": closes,
-                "Volume": np.full(n, 3_000_000.0),
-            },
-            index=pd.date_range("2021-01-01", periods=n, freq="B"),
-        )
-        result = scorer.calculate_score(df, timeframe="D")
-        # Primary assertion: score must respect 70-pt ceiling
-        assert result["score"] <= 70.0
+        df["RSI_14"] = 85.0  # Overbought killer
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
+        assert result["score"] == 0.0
+
+    def test_rsi_recovery_confirmed_by_ema_cross(self):
+        """RSI recovery + EMA cross scores full RSI weight."""
+        df = _make_base_df()
+        df["EMA_200"] = 50.0
+        df["EMA_5"] = 110.0
+        df["EMA_13"] = 105.0
+        df["EMA_26"] = 100.0
+        df["EMA_20"] = 108.0
+        df["Close"] = 115.0
+        df["RSI_14"] = 35.0
+        # Prev values
+        df.loc[df.index[-2], "EMA_5"] = 104.0
+        df.loc[df.index[-2], "EMA_13"] = 105.0
+        df.loc[df.index[-2], "RSI_14"] = 25.0
+        # Oversold in last 5 days
+        df.loc[df.index[-3], "RSI_14"] = 25.0
+
+        result = strategy.evaluate(df, timeframe="D", skip_ta=True)
+        # EMA Cross (28.5) + RSI Recovery (21.5) = 50.0
+        assert result["ema_signal"] == "bullish_cross"
+        assert result["rsi_signal"] == "bullish_recovery_confirmed"
+        assert result["score"] == pytest.approx(50.0)
