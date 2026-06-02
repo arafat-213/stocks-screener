@@ -63,11 +63,30 @@ class TechnicalStrategy:
 
         return df
 
-    def calculate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+    def calculate_signals(self, df: pd.DataFrame, timeframe: str = "D") -> pd.DataFrame:
         """Computes boolean signal series for the entire dataframe."""
         # Ensure indicators exist
         if "EMA_5" not in df.columns:
             df = self.calculate_indicators(df)
+
+        # Check for mandatory columns; if missing (e.g. not enough data), return empty signals
+        required = [
+            "EMA_5",
+            "EMA_13",
+            "EMA_20",
+            "EMA_26",
+            "RSI_14",
+            "MACD_12_26_9",
+            "MACDs_12_26_9",
+        ]
+        missing = [c for c in required if c not in df.columns]
+        if missing:
+            df["SIGNAL_EMA_CROSS"] = False
+            df["SIGNAL_PULLBACK_20"] = False
+            df["SIGNAL_MACD_BULLISH"] = False
+            df["IS_OVEREXTENDED"] = False
+            df["IS_BULLISH"] = False
+            return df
 
         ema5 = df["EMA_5"]
         ema13 = df["EMA_13"]
@@ -96,16 +115,44 @@ class TechnicalStrategy:
             False
         )
 
-        # 5. is_bullish (Simplified vectorized version of the logic in evaluate for D)
-        df["IS_BULLISH"] = (
-            (
-                df["SIGNAL_EMA_CROSS"]
-                | df["SIGNAL_PULLBACK_20"]
-                | ((ema5 > ema13) & (ema13 > ema26))
-            )
-            & df["SIGNAL_MACD_BULLISH"]
-            & (rsi > self.config.rsi_min)
-        ).fillna(False)
+        # 5. is_bullish (Vectorized version of the logic in evaluate)
+        if timeframe == "D":
+            df["IS_BULLISH"] = (
+                (
+                    df["SIGNAL_EMA_CROSS"]
+                    | df["SIGNAL_PULLBACK_20"]
+                    | ((ema5 > ema13) & (ema13 > ema26))
+                )
+                & df["SIGNAL_MACD_BULLISH"]
+                & (rsi > self.config.rsi_min)
+            ).fillna(False)
+
+            # Hard Filters (Must match evaluate)
+            df["IS_BULLISH"] &= rsi <= self.config.rsi_max
+
+            if "EMA_200" in df.columns:
+                df["IS_BULLISH"] &= price > df["EMA_200"]
+
+            if "ADX_14" in df.columns:
+                df["IS_BULLISH"] &= df["ADX_14"] >= self.config.min_adx
+
+        elif timeframe == "W":
+            df["IS_BULLISH"] = ((rsi > 50) & (price > ema26)).fillna(False)
+        elif timeframe == "M":
+            df["IS_BULLISH"] = (
+                (rsi > 50) & ((price > ema13) | (price > ema26))
+            ).fillna(False)
+        else:
+            # Fallback to Daily logic
+            df["IS_BULLISH"] = (
+                (
+                    df["SIGNAL_EMA_CROSS"]
+                    | df["SIGNAL_PULLBACK_20"]
+                    | ((ema5 > ema13) & (ema13 > ema26))
+                )
+                & df["SIGNAL_MACD_BULLISH"]
+                & (rsi > self.config.rsi_min)
+            ).fillna(False)
 
         return df
 
@@ -369,6 +416,19 @@ class TechnicalStrategy:
 
                 if pd.notna(rsi) and rsi > self.config.rsi_overbought_threshold:
                     is_overextended = True
+
+                # Hard Filters (Task 2 Enhancements)
+                if pd.notna(rsi) and rsi > self.config.rsi_max:
+                    score = 0.0
+                    is_bullish = False
+
+                if pd.notna(ema200) and price < ema200:
+                    score = 0.0
+                    is_bullish = False
+
+                if pd.notna(adx) and adx < self.config.min_adx:
+                    score = 0.0
+                    is_bullish = False
 
             elif timeframe == "W":
                 is_bullish = (

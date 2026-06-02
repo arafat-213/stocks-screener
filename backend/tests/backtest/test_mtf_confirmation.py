@@ -5,14 +5,16 @@ import pandas as pd
 import pytest
 
 from app.backtest.engine import BacktestConfig, build_mtf_state_map, simulate_trades
+from app.core.strategy import TechnicalStrategy
 from app.db import models as db_models
 from app.routers.backtest import BacktestRequest, _serialize_run
 
 
 def test_build_mtf_state_map_empty():
     """Test with empty dataframe."""
-    assert build_mtf_state_map(None, "W") == {}
-    assert build_mtf_state_map(pd.DataFrame(), "W") == {}
+    strategy = TechnicalStrategy()
+    assert build_mtf_state_map(None, "W", strategy) == {}
+    assert build_mtf_state_map(pd.DataFrame(), "W", strategy) == {}
 
 
 def test_build_mtf_state_map_insufficient_history():
@@ -31,9 +33,10 @@ def test_build_mtf_state_map_insufficient_history():
         index=dates,
     )
 
+    strategy = TechnicalStrategy()
     # After resampling 'W', we get 1 full week and maybe an incomplete one.
     # drop_incomplete=True will leave very few bars.
-    assert build_mtf_state_map(df, "W") == {}
+    assert build_mtf_state_map(df, "W", strategy) == {}
 
 
 def test_build_mtf_state_map_uptrend():
@@ -54,7 +57,8 @@ def test_build_mtf_state_map_uptrend():
         index=dates,
     )
 
-    state_map = build_mtf_state_map(df, "W")
+    strategy = TechnicalStrategy()
+    state_map = build_mtf_state_map(df, "W", strategy)
     assert len(state_map) > 0
     # The last few bars should definitely be bullish in a strong uptrend
     last_date = sorted(state_map.keys())[-1]
@@ -76,11 +80,12 @@ def test_build_mtf_state_map_no_look_ahead_bias():
         index=dates,
     )
 
-    state_map_full = build_mtf_state_map(df, "W")
+    strategy = TechnicalStrategy()
+    state_map_full = build_mtf_state_map(df, "W", strategy)
 
     # Now score only half the data
     df_half = df.iloc[:250]
-    state_map_half = build_mtf_state_map(df_half, "W")
+    state_map_half = build_mtf_state_map(df_half, "W", strategy)
 
     # Check that for all common dates, the results are identical
     for date in state_map_half:
@@ -103,7 +108,8 @@ def test_build_mtf_state_map_downtrend():
         index=dates,
     )
 
-    state_map = build_mtf_state_map(df, "W")
+    strategy = TechnicalStrategy()
+    state_map = build_mtf_state_map(df, "W", strategy)
     assert len(state_map) > 0
     # The last few bars should definitely be non-bullish in a strong downtrend
     last_date = sorted(state_map.keys())[-1]
@@ -148,23 +154,26 @@ class TestMTFGates:
             use_regime_filter=False,
             require_consolidation=False,
             use_pullback_entry=False,
+            use_state_based_exits=False,
         )
 
-        return df, scored_dates, config
+        strategy = TechnicalStrategy(config)
+
+        return df, scored_dates, config, strategy
 
     def test_weekly_gate_bypassed_when_none(self, setup_data):
         """Should accept trade if weekly_state_map is None even if required."""
-        df, scored_dates, config = setup_data
+        df, scored_dates, config, strategy = setup_data
         config.require_weekly_confirmation = True
 
         trades = simulate_trades(
-            "TEST.NS", "Tech", df, scored_dates, config, weekly_state_map=None
+            "TEST.NS", "Tech", df, scored_dates, config, strategy, weekly_state_map=None
         )
         assert len(trades) == 1
 
     def test_weekly_gate_rejects_false(self, setup_data):
         """Should reject trade if weekly state is False."""
-        df, scored_dates, config = setup_data
+        df, scored_dates, config, strategy = setup_data
         config.require_weekly_confirmation = True
 
         # Weekly bar date must be <= signal date (2023-01-06)
@@ -176,13 +185,14 @@ class TestMTFGates:
             df,
             scored_dates,
             config,
+            strategy,
             weekly_state_map=weekly_state_map,
         )
         assert len(trades) == 0
 
     def test_weekly_gate_accepts_true(self, setup_data):
         """Should accept trade if weekly state is True."""
-        df, scored_dates, config = setup_data
+        df, scored_dates, config, strategy = setup_data
         config.require_weekly_confirmation = True
 
         weekly_state_map = {datetime.date(2023, 1, 1): True}
@@ -193,13 +203,14 @@ class TestMTFGates:
             df,
             scored_dates,
             config,
+            strategy,
             weekly_state_map=weekly_state_map,
         )
         assert len(trades) == 1
 
     def test_monthly_gate_rejects_false(self, setup_data):
         """Should reject trade if monthly state is False."""
-        df, scored_dates, config = setup_data
+        df, scored_dates, config, strategy = setup_data
         config.require_monthly_confirmation = True
 
         monthly_state_map = {datetime.date(2023, 1, 1): False}
@@ -210,13 +221,14 @@ class TestMTFGates:
             df,
             scored_dates,
             config,
+            strategy,
             monthly_state_map=monthly_state_map,
         )
         assert len(trades) == 0
 
     def test_both_gates_active(self, setup_data):
         """Should accept only if both gates are True."""
-        df, scored_dates, config = setup_data
+        df, scored_dates, config, strategy = setup_data
         config.require_weekly_confirmation = True
         config.require_monthly_confirmation = True
 
@@ -229,6 +241,7 @@ class TestMTFGates:
             df,
             scored_dates,
             config,
+            strategy,
             weekly_state_map=weekly_map,
             monthly_state_map=monthly_map,
         )
@@ -242,6 +255,7 @@ class TestMTFGates:
             df,
             scored_dates,
             config,
+            strategy,
             weekly_state_map=weekly_map,
             monthly_state_map=monthly_map,
         )
@@ -249,7 +263,7 @@ class TestMTFGates:
 
     def test_gate_fail_closed_no_preceding_bar(self, setup_data):
         """Should reject if no bar in map predates the signal."""
-        df, scored_dates, config = setup_data
+        df, scored_dates, config, strategy = setup_data
         config.require_weekly_confirmation = True
 
         # Signal is 2023-01-06. Map only has later date.
@@ -261,6 +275,7 @@ class TestMTFGates:
             df,
             scored_dates,
             config,
+            strategy,
             weekly_state_map=weekly_state_map,
         )
         assert len(trades) == 0

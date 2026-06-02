@@ -13,7 +13,7 @@ ORCHESTRATOR_PATCHES = [
     patch("app.pipeline.orchestrator.slice_bulk_df"),
     patch("app.pipeline.orchestrator.yf.Ticker"),
     patch("app.pipeline.fetcher.fetch_stock_data"),
-    patch("app.pipeline.orchestrator._scorer.calculate_score"),
+    patch("app.pipeline.orchestrator._strategy.evaluate"),
     patch("app.pipeline.orchestrator.resample_ohlcv"),
     patch("app.pipeline.fetcher.fetch_market_snapshots"),
     patch("app.pipeline.orchestrator.generate_daily_report"),

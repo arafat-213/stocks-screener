@@ -219,6 +219,7 @@ def get_dashboard_results(
     confluence: str = None,
     symbols: str = None,
     sort_by: str = "confluence",
+    fundamental_filter: bool = True,
 ):
     # Create a cache key that includes parameters
     params_str = f"off:{offset}:lim:{limit}:sec:{sector}:conf:{confluence}:sym:{symbols}:sort:{sort_by}"

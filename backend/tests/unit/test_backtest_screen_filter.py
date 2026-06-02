@@ -46,13 +46,13 @@ def test_run_backtest_with_screen_filter(db):
 
     # Mock SCREEN_REGISTRY to avoid KeyErrors
     with patch(
-        "app.backtest.engine.SCREEN_REGISTRY", {"52w-high": {"fn": MagicMock()}}
+        "app.screens.registry.SCREEN_REGISTRY", {"52w-high": {"fn": MagicMock()}}
     ):
         with patch(
             "app.backtest.engine._ohlcv_cache.get", return_value=None
         ):  # skip benchmark
             with patch(
-                "app.backtest.engine.fetch_stock_data", return_value=(None, None)
+                "app.pipeline.fetcher.fetch_stock_data", return_value=(None, None)
             ):
                 run_backtest(db, run_id, config)
 

@@ -25,9 +25,7 @@ def test_process_symbol_maps_ema_levels():
     )
 
     with (
-        patch(
-            "app.pipeline.orchestrator._scorer.calculate_score", return_value=ta_data
-        ),
+        patch("app.pipeline.orchestrator._strategy.evaluate", return_value=ta_data),
         patch(
             "app.pipeline.fetcher.fetch_stock_data",
             return_value=(df, {"longName": "Apple Inc."}),
@@ -40,9 +38,7 @@ def test_process_symbol_maps_ema_levels():
         mock_db.query().filter_by().first.return_value = None
 
         # Call the function
-        signals = process_symbol(
-            "AAPL", mock_db, hist=df, info={"longName": "Apple Inc."}
-        )
+        signals = process_symbol("AAPL", mock_db, hist=df)
 
         # In multi-timeframe, daily is usually first if it exists
         assert len(signals) > 0

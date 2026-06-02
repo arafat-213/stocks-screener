@@ -98,42 +98,42 @@ def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]
 
 
 def build_mtf_state_map(
-    df: pd.DataFrame, timeframe: str, strategy: TechnicalStrategy
+    df: pd.DataFrame, timeframe: str, strategy: Optional[TechnicalStrategy] = None
 ) -> dict:
     if df is None or df.empty:
         return {}
+
+    if strategy is None:
+        strategy = TechnicalStrategy()
 
     freq = "W" if timeframe == "W" else "ME"
     resampled = resample_ohlcv(df, freq=freq, drop_incomplete=True)
     if resampled.empty:
         return {}
 
+    # NEW: Use vectorized calculation!
+    resampled = strategy.calculate_indicators(resampled)
+    resampled = strategy.calculate_signals(resampled, timeframe=timeframe)
+
     state_map = {}
     # Technical scoring needs some history (60 bars for W, 24 for M)
     min_bars = 24 if timeframe == "M" else 60
 
     for i in range(len(resampled)):
-        bar_slice = resampled.iloc[: i + 1]
-        if len(bar_slice) < min_bars:
-            continue
-
-        try:
-            ta_data = strategy.evaluate(bar_slice, timeframe=timeframe)
-        except Exception as e:
-            logger.error(f"Error scoring MTF bar {i} for {timeframe}: {e}")
+        if (i + 1) < min_bars:
             continue
 
         bar_date = resampled.index[i]
         if hasattr(bar_date, "date"):
             bar_date = bar_date.date()
 
-        state_map[bar_date] = bool(ta_data.get("is_bullish", False))
+        state_map[bar_date] = bool(resampled["IS_BULLISH"].iloc[i])
 
     return state_map
 
 
 def _compute_all_indicators(
-    df: pd.DataFrame, strategy: TechnicalStrategy, symbol: str = None
+    df: pd.DataFrame, strategy: Optional[TechnicalStrategy] = None, symbol: str = None
 ) -> pd.DataFrame:
     """
     Computes all pandas-ta indicators on the full DataFrame in a single pass.
@@ -141,12 +141,16 @@ def _compute_all_indicators(
     Returns a new DataFrame with all indicator columns appended.
     Utilizes _TA_CACHE if symbol is provided and latest date matches.
     """
+    if strategy is None:
+        strategy = TechnicalStrategy()
+
     if symbol and symbol in _TA_CACHE:
         latest_date = df.index[-1]
         if _TA_METADATA.get(symbol) == latest_date:
             return _TA_CACHE[symbol]
 
     df = strategy.calculate_indicators(df)
+    df = strategy.calculate_signals(df)
 
     if symbol:
         _TA_CACHE[symbol] = df
@@ -156,12 +160,15 @@ def _compute_all_indicators(
 
 
 def _score_bar_from_precomputed(
-    df_ind: pd.DataFrame, i: int, strategy: TechnicalStrategy
+    df_ind: pd.DataFrame, i: int, strategy: Optional[TechnicalStrategy] = None
 ) -> dict:
     """
     Wrapper for calculate_technical_score using pre-computed indicators.
     Maps results to the format expected by the backtest engine.
     """
+    if strategy is None:
+        strategy = TechnicalStrategy()
+
     res = strategy.evaluate(df_ind, timeframe="D", i=i, skip_ta=True)
 
     # Add backtest-specific keys for compatibility
@@ -283,12 +290,15 @@ def _build_screen_driven_signals(
 
 def score_series(
     df: pd.DataFrame,
-    strategy: TechnicalStrategy,
+    strategy: Optional[TechnicalStrategy] = None,
     symbol: str = None,
     config: BacktestConfig = None,
 ) -> list[dict]:
     if df is None or df.empty:
         return []
+
+    if strategy is None:
+        strategy = TechnicalStrategy(config)
 
     if df.index.tz is not None:
         df = df.copy()
@@ -328,13 +338,20 @@ def simulate_trades(
     df: pd.DataFrame,
     scored_dates: list[dict],
     config: BacktestConfig,
-    strategy: TechnicalStrategy,
+    strategy: Optional[TechnicalStrategy] = None,
     regime_dict: dict = None,
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
     screen_dates: list[datetime.date] | None = None,
     is_screen_driven: bool = False,
 ):
+    if strategy is None:
+        strategy = TechnicalStrategy(config)
+
+    # Ensure we have vectorized signals for optimized exits
+    if config.use_state_based_exits and "IS_OVEREXTENDED" not in df.columns:
+        df = strategy.calculate_signals(df)
+
     trades = []
     last_exit_idx = -1
     _sorted_screen_dates = sorted(screen_dates) if screen_dates else None
@@ -550,9 +567,8 @@ def simulate_trades(
                     break
 
             if config.use_state_based_exits:
-                # current_eval uses skip_ta=True because indicators are pre-calculated
-                current_eval = strategy.evaluate(df, i=k, skip_ta=True)
-                if current_eval.get("is_overextended"):
+                is_overextended = df["IS_OVEREXTENDED"].iloc[k]
+                if is_overextended:
                     prev_low = df.iloc[k - 1]["Low"] if k > 0 else low
                     if close < prev_low:
                         exit_idx = min(k + 1, len(df) - 1)
@@ -638,13 +654,16 @@ def simulate_portfolio(
     all_dfs: dict[str, pd.DataFrame],
     stocks_info: dict[str, str],
     config: BacktestConfig,
-    strategy: TechnicalStrategy,
+    strategy: Optional[TechnicalStrategy] = None,
     regime_dict: dict = None,
     weekly_state_maps: dict = None,
     monthly_state_maps: dict = None,
     screen_dates_map: dict = None,
     is_screen_driven: bool = False,
 ):
+    if strategy is None:
+        strategy = TechnicalStrategy(config)
+
     timeline = []
     for sym, signals in all_signals.items():
         for sig in signals:
@@ -883,6 +902,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         all_trades = []
         all_signals, all_dfs = {}, {}
+        weekly_state_maps, monthly_state_maps = {}, {}
         symbols_processed = 0
 
         stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
@@ -892,7 +912,18 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 df = _get_cached_ohlcv(sym, period=lookback_period)
                 if df is None or df.empty:
                     continue
+
+                # NEW: Enrich DataFrame with indicators and signals BEFORE storing.
+                # This ensures columns like IS_OVEREXTENDED are available in simulate_trades.
+                df = _compute_all_indicators(df, strategy, symbol=sym)
                 all_dfs[sym] = df
+
+                # NEW: Compute MTF state maps if required.
+                if config.require_weekly_confirmation:
+                    weekly_state_maps[sym] = build_mtf_state_map(df, "W", strategy)
+                if config.require_monthly_confirmation:
+                    monthly_state_maps[sym] = build_mtf_state_map(df, "M", strategy)
+
                 if config.screen_signal_mode and is_filtered:
                     sigs = _build_screen_driven_signals(
                         sym, screen_dates_map.get(sym, []), df, config, strategy
@@ -920,6 +951,8 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             config,
             strategy,
             regime_dict,
+            weekly_state_maps=weekly_state_maps,
+            monthly_state_maps=monthly_state_maps,
             screen_dates_map=screen_dates_map,
             is_screen_driven=config.screen_signal_mode,
         )
