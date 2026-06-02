@@ -4,6 +4,9 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 
+from app.alerts.email import (
+    build_signal_email,
+)
 from app.alerts.engine import run_exit_alert_cycle
 from app.db.models import AlertLog, TradeJournal
 
@@ -13,6 +16,37 @@ def db_session():
     # This fixture should provide a clean database session
     # Based on existing tests, we can use the one from conftest
     pass
+
+
+def test_build_signal_email_contains_price():
+    signals = [
+        {
+            "symbol": "RELIANCE.NS",
+            "name": "Reliance Industries",
+            "sector": "Energy",
+            "score": 85.5,
+            "signal_tier": 1,
+            "ema_signal": "bullish_cross",
+            "rsi": 65.0,
+            "adx": 30.0,
+            "volume_breakout": True,
+            "entry_status": "in_zone",
+            "pct_above_ema20": 1.5,
+            "stop_loss": 2400.0,
+            "target_price": 2800.0,
+            "momentum_12m": 25.0,
+            "close_price": 2550.75,
+        }
+    ]
+    html = build_signal_email(signals, "2026-06-01", True)
+
+    # Check for basic info
+    assert "RELIANCE.NS" in html
+    assert "Energy" in html
+    assert "25.0%" in html  # momentum_12m
+
+    # Check for price
+    assert "₹2,550.75" in html
 
 
 def test_run_exit_alert_cycle_no_positions(db):

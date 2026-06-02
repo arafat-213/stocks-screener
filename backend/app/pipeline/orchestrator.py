@@ -249,7 +249,6 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
             stocks_fetched=0,
             stocks_scored=0,
             tier1_count=0,
-            tier2_count=0,
             errors="",
             stop_requested=False,
         )

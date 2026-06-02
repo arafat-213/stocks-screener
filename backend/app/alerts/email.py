@@ -80,13 +80,14 @@ def build_signal_email(
 
     def signal_rows(signal_list):
         if not signal_list:
-            return "<tr><td colspan='7' style='color:#6b7280;padding:12px;'>None today</td></tr>"
+            return "<tr><td colspan='8' style='color:#6b7280;padding:12px;'>None today</td></tr>"
 
         rows = ""
         for s in signal_list:
             rows += f"""
             <tr style="border-bottom:1px solid #f1f5f9;">
                 <td style="padding:10px 8px;font-weight:600;">{s["symbol"]}</td>
+                <td style="padding:10px 8px;font-weight:600;font-family:monospace;">₹{(s.get("close_price") or 0.0):,.2f}</td>
                 <td style="padding:10px 8px;color:#475569;font-size:12px;">{s.get("sector", "—")}</td>
                 <td style="padding:10px 8px;">{entry_badge(s.get("entry_status", "unknown"))}</td>
                 <td style="padding:10px 8px;font-family:monospace;">{(s.get("score") or 0.0):.1f}</td>
@@ -125,6 +126,7 @@ def build_signal_email(
             <thead>
                 <tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;">
                     <th style="padding:8px;text-align:left;">Symbol</th>
+                    <th style="padding:8px;text-align:left;">Price</th>
                     <th style="padding:8px;text-align:left;">Sector</th>
                     <th style="padding:8px;text-align:left;">Entry</th>
                     <th style="padding:8px;text-align:left;">Score</th>
@@ -143,6 +145,7 @@ def build_signal_email(
             <thead>
                 <tr style="background:#f1f5f9;color:#475569;font-size:11px;text-transform:uppercase;">
                     <th style="padding:8px;text-align:left;">Symbol</th>
+                    <th style="padding:8px;text-align:left;">Price</th>
                     <th style="padding:8px;text-align:left;">Sector</th>
                     <th style="padding:8px;text-align:left;">Entry</th>
                     <th style="padding:8px;text-align:left;">Score</th>

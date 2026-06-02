@@ -16,18 +16,15 @@ This document outlines the recommended sequence for implementing improvements an
     *   Ensure all internal comparisons use naive timestamps to prevent `TypeError`.
 ---
 
-## Phase 2: Structural Cleanup (Clearing the Path)
+## Phase 2: Structural Cleanup (Clearing the Path) [STATUS: RESOLVED]
 **Goal:** Simplify the codebase by removing obsolete logic and redundant data structures.
 
-3.  **Pipeline "Debris" Cleanup (Cleanup #1):**
-    *   Remove unused legacy functions from `backend/app/pipeline/screener.py` (e.g., `fetch_and_cache_deep_fundamentals`, `passes_tier1_fast_filters`).
+3.  **Pipeline "Debris" Cleanup (Cleanup #1):** [STATUS: RESOLVED]
+    *   Verify and remove unused legacy functions from `backend/app/pipeline/screener.py` (e.g., `fetch_and_cache_deep_fundamentals`, `passes_tier1_fast_filters`).
     *   Unify scoring shims in `scorer.py` into the main `MomentumScorer`.
-4.  **Dashboard Optimization (Cleanup #2):**
+4.  **Dashboard Optimization (Cleanup #2):** [STATUS: RESOLVED]
     *   Refactor `backend/app/routers/dashboard.py` to remove unnecessary joins and return cleaner data structures.
     *   Ensure the frontend only receives the fundamental data it actually displays (Market Cap).
-5.  **Database Model Pruning (Cleanup #3):**
-    *   Remove obsolete tables (`FundamentalData`, `FundamentalCache`) and redundant columns (like `quality_tier`) from `models.py`.
-    *   Perform a database migration to align the schema with the current 100-point technical system.
 
 ---
 

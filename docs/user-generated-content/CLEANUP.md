@@ -10,20 +10,18 @@ The pipeline refactoring for the Technical Momentum Engine has left several lega
        * PipelineRun still tracks tier1_count and tier2_count, which no longer reflect the current single-pass logic.
    * Verification: Checked backend/app/db/models.py - these tables and columns still exist.
 
-#2.  2. Dashboard Logic (backend/app/routers/dashboard.py) [STATUS: PARTIALLY RESOLVED]
+#2.  2. Dashboard Logic (backend/app/routers/dashboard.py) [STATUS: RESOLVED]
    * Heavily Impacted: This is the most "cluttered" file. It still:
        * Joins FundamentalCache and FundamentalData on every dashboard fetch, even though we only need market_cap. This is a performance drag.
        * Still supports Sorting by PE Ratio (sort_by == "pe"), which will now return unpredictable results or just nulls.
        * The enriched_data structure returns a large fundamentals object with mostly null values to the frontend.
    * UI No-Op: The fundamental_filter parameter is still accepted but is effectively a "No-Op" in the logic.
-   * Status: `dashboard.py` has been partially cleaned. `get_dashboard_results` now only joins `FundamentalCache` for `market_cap_category`. Sorting by `pe` has been removed (now only supports `score`, `rsi`, `confluence`).
-
-#1.  3. Pipeline "Debris" (backend/app/pipeline/) [STATUS: PARTIALLY RESOLVED]
-   * screener.py: This file is now ~80% dead code. Functions like fetch_and_cache_deep_fundamentals, check_profitability_streak, and passes_tier1_fast_filters (with its old 200 Cr liquidity
-     rule) are no longer used by the Orchestrator but still exist in the module.
-   * scorer.py: Contains calculate_fundamental_score and calculate_combined_score. These should be unified into a single MomentumScorer to remove the overhead of checking for non-existent
-     fundamental data.
-   * Status: `scorer.py` is now a shim calling `MomentumScorer`. `calculate_fundamental_score` and `calculate_combined_score` have been removed. `screener.py` still contains unused legacy functions like `needs_cache_refresh`.
+   * Status: `dashboard.py` has been optimized. `get_dashboard_results` now calculates `market_cap_category` on the fly, avoiding the join to `FundamentalCache`. Sorting by `pe` has been removed.
+...
+#1.  3. Pipeline "Debris" (backend/app/pipeline/) [STATUS: RESOLVED]
+   * screener.py: This file was ~80% dead code. Functions like fetch_and_cache_deep_fundamentals, check_profitability_streak, and passes_tier1_fast_filters have been removed.
+   * scorer.py: This shim has been removed, and all callers (including the Backtest Engine) now use `MomentumScorer` directly.
+   * Status: Legacy files `screener.py`, `scorer.py`, and the unused `test_backoff_logic.py` have been deleted. `engine.py` was refactored to use `MomentumScorer` directly.
 
 #4.  4. Backtest Engine (backend/app/backtest/engine.py) [STATUS: RESOLVED]
    * Logic Divergence: The backtester still tries to calculate a "Fundamental Score" if a flag is set, which will now fail or return 0.

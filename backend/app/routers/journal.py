@@ -32,8 +32,13 @@ class TradeCloseRequest(BaseModel):
 
 @router.post("/")
 def create_entry(data: TradeEntryCreate, db: Session = Depends(get_db)):
+    # Standardize symbol: ensure .NS for Indian stocks
+    symbol = data.symbol.upper().strip()
+    if symbol.isalpha() and not symbol.endswith(".NS") and not symbol.startswith("^"):
+        symbol = f"{symbol}.NS"
+
     db_entry = models.TradeJournal(
-        **data.model_dump(),
+        **{**data.model_dump(exclude={"symbol"}), "symbol": symbol},
         position_value=data.entry_price * data.shares,
         status="open",
     )

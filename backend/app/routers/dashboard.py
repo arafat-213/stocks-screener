@@ -7,7 +7,6 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import response_cache
 from app.db.models import (
-    FundamentalCache,
     MarketSnapshot,
     PipelineRun,
     Stock,
@@ -197,6 +196,19 @@ async def get_live_market(response: Response):
         return data
 
 
+def get_market_cap_category(mcap_float: float | None) -> str:
+    """Calculates market cap category based on standard Indian thresholds."""
+    if not mcap_float:
+        return "unknown"
+    # Thresholds: Large > 20,000 Cr, Mid 5,000 - 20,000 Cr, Small < 5,000 Cr
+    # Mcap in absolute INR: 5,000 Cr = 50,000,000,000
+    if mcap_float >= 200_000_000_000:
+        return "largecap"
+    if mcap_float >= 50_000_000_000:
+        return "midcap"
+    return "smallcap"
+
+
 @router.get("/screener/results")
 def get_dashboard_results(
     response: Response,
@@ -249,15 +261,10 @@ def get_dashboard_results(
     )
 
     # 3. Base Query for filtering and counting
-    query = (
-        db.query(
-            Stock,
-            FundamentalCache.market_cap_category,
-            confluence_sub.c.confluence_count,
-        )
-        .join(confluence_sub, Stock.symbol == confluence_sub.c.symbol)
-        .outerjoin(FundamentalCache, Stock.symbol == FundamentalCache.symbol)
-    )
+    query = db.query(
+        Stock,
+        confluence_sub.c.confluence_count,
+    ).join(confluence_sub, Stock.symbol == confluence_sub.c.symbol)
 
     # Apply filters
     if sector:
@@ -310,7 +317,7 @@ def get_dashboard_results(
     paged_stocks = query.offset(offset).limit(limit).all()
 
     # 6. Fetch full data for the paged symbols
-    paged_symbols = [stock.symbol for stock, market_cap_cat, count in paged_stocks]
+    paged_symbols = [stock.symbol for stock, count in paged_stocks]
 
     if not paged_symbols:
         result = {
@@ -352,10 +359,10 @@ def get_dashboard_results(
             "timeframes": {},
             "fundamentals": {
                 "market_cap": stock.market_cap,
-                "market_cap_category": market_cap_cat,
+                "market_cap_category": get_market_cap_category(stock.market_cap),
             },
         }
-        for stock, market_cap_cat, count in paged_stocks
+        for stock, count in paged_stocks
     }
 
     for sig in all_signals:
@@ -431,7 +438,6 @@ def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
         "stocks_fetched": run.stocks_fetched,
         "total_symbols": run.total_symbols or 0,
         "tier1_count": run.tier1_count,
-        "tier2_count": run.tier2_count,
         "stocks_scored": run.stocks_scored,
         "market_context": [
             {"symbol": m.symbol, "close": m.close, "change_pct": m.change_pct}

@@ -42,14 +42,14 @@
      "outliers" that usually account for 80% of a portfolio's returns. You're left with the
      "mediocre" setups that are just starting to move.
 
-#13. 5. Architectural Dead Weight [STATUS: PARTIALLY RESOLVED]
+#13. 5. Architectural Dead Weight [STATUS: RESOLVED]
   Your orchestrator.py explicitly states that Tier 2 (Fundamental caching) was removed, yet
   screener.py is full of deep fundamental fetching logic, and scorer.py still calculates a
   fundamental score that is eventually set to 0.0.
    * Honest Truth: This is messy. Either you believe in fundamentals or you don't. Leaving
      half-finished, bypassed fundamental logic in the pipeline suggests you're afraid to
      commit to a pure technical strategy, or you're too lazy to clean up the refactor.
-   * Status: Fundamentals are bypassed in orchestrator, but legacy models still exist.
+   * Status: Legacy files `screener.py` and `scorer.py` have been removed. The dashboard no longer joins `FundamentalCache`. The pipeline is now purely technical with minimal metadata (Market Cap) fetched via `fast_info`.
 
 #8. 6. The 200 EMA "Tunnel Vision" [STATUS: UNRESOLVED]
   You treat above_200ema as a binary killer.
