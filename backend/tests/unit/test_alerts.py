@@ -41,7 +41,7 @@ def test_build_signal_email_contains_price():
     html = build_signal_email(signals, "2026-06-01", True)
 
     # Check for basic info
-    assert "RELIANCE.NS" in html
+    assert "RELIANCE" in html
     assert "Energy" in html
     assert "25.0%" in html  # momentum_12m
 

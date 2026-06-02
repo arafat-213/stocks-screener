@@ -84,9 +84,10 @@ def build_signal_email(
 
         rows = ""
         for s in signal_list:
+            display_symbol = s["symbol"].replace(".NS", "")
             rows += f"""
             <tr style="border-bottom:1px solid #f1f5f9;">
-                <td style="padding:10px 8px;font-weight:600;">{s["symbol"]}</td>
+                <td style="padding:10px 8px;font-weight:600;">{display_symbol}</td>
                 <td style="padding:10px 8px;font-weight:600;font-family:monospace;">₹{(s.get("close_price") or 0.0):,.2f}</td>
                 <td style="padding:10px 8px;color:#475569;font-size:12px;">{s.get("sector", "—")}</td>
                 <td style="padding:10px 8px;">{entry_badge(s.get("entry_status", "unknown"))}</td>
@@ -189,10 +190,11 @@ def build_exit_alert_email(alerts: list[dict], signal_date: str) -> str:
 
     rows = ""
     for a in alerts:
+        display_symbol = a["symbol"].replace(".NS", "")
         pnl_color = "#16a34a" if a["unrealised_pct"] >= 0 else "#dc2626"
         rows += f"""
         <tr style="border-bottom:1px solid #f1f5f9;">
-            <td style="padding:12px 8px;font-weight:600;">{a["symbol"]}</td>
+            <td style="padding:12px 8px;font-weight:600;">{display_symbol}</td>
             <td style="padding:12px 8px;">{type_label(a["alert_type"])}</td>
             <td style="padding:12px 8px;">{urgency_badge(a["urgency"])}</td>
             <td style="padding:12px 8px;font-family:monospace;color:{pnl_color};font-weight:bold;">
