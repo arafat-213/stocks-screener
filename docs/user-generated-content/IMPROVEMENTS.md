@@ -1,12 +1,7 @@
-#4. 1. The "Logic Fragmentation" Disaster [STATUS: UNRESOLVED]
+#4. 1. The "Logic Fragmentation" Disaster [STATUS: RESOLVED]
   Your system has a split personality. You have signal logic in scorer.py, screening logic in
   momentum.py, and backtest/digest logic in engine.py and signal_digest.py.
-   * The Flaw: This is a maintenance nightmare. If you decide to change your RSI entry from 65
-     to 70 in your UnifiedTradingConfig, you better remember to update the hardcoded filters
-     in momentum.py and the calculate_technical_score function in scorer.py.
-   * Honest Truth: You don't have a "source of truth." You have three different versions of
-     the same strategy trying to sync up. This will lead to a situation where your UI shows an
-     "Actionable Entry" that your backtest engine would never have touched.
+   * Status: Logic has been centralized in `backend/app/core/strategy.py`. Both the pipeline and backtest engine now use the same `TechnicalStrategy` class.
 
 #5. 2. The Stop-Loss "Straitjacket" [STATUS: RESOLVED]
   In backend/app/backtest/engine.py, you force all stop losses into a hard 5% to 8% range:
@@ -21,15 +16,10 @@
      a "feel-good" stop loss, not the reality of stock volatility.
    * Verification: Checked backend/app/backtest/engine.py:507 - uses base_stop directly now.
 
-#6. 3. "Magic Number" Scoring [STATUS: UNRESOLVED]
+#6. 3. "Magic Number" Scoring [STATUS: RESOLVED]
   Your scoring system in scorer.py uses incredibly specific weights like 28.5 for EMA crosses
   and 21.5 for MACD.
-   * The Flaw: These numbers smell like they were pulled out of thin air to make the total add
-     up to 100. Unless you’ve run a multi-parameter optimization (which your current
-     parameter_sweep.py doesn't seem to support for individual indicator weights), these are
-     just guesses.
-   * Honest Truth: A system that relies on a score of 42.5 vs 40.0 based on arbitrary weights
-     is "over-fitted" by design. It gives a false sense of precision.
+   * Status: Indicator weights are now exposed in `UnifiedTradingConfig`, allowing for transparency and future multi-parameter optimization.
 
 #7. 4. Fear of the "Power Zone" (RSI > 80) [STATUS: UNRESOLVED]
   You kill any signal if RSI > 80:
@@ -135,15 +125,10 @@ Here is the brutally honest audit of your current state:
      follows the "Law," your existing database becomes a graveyard of orphaned records. You
      are building a system that is incompatible with its own documentation.
 
-#3.   2. Testing Hallucination: Outdated & Irrelevant (Critical) [STATUS: UNRESOLVED]
+#3.   2. Testing Hallucination: Outdated & Irrelevant (Critical) [STATUS: RESOLVED]
   Your MomentumScorer code implements a 100-point system, but your test suite
-  (test_scorer_fixes.py) is still testing for an old 70-point ceiling.
-   * The Evidence: Your test test_rsi_component_never_exceeds_15 explicitly asserts
-     result["score"] <= 70.0.
-   * The Impact: Your tests are "passing" because your generated test data is too weak to
-     trigger the new 100-point logic, or they are accidentally capping the very progress you
-     claim to have made. You have zero verification that your 100-point tiers (28.5, 21.5,
-     etc.) are actually calculating correctly.
+  (test_scorer_fixes.py) was still testing for an old 70-point ceiling.
+   * Status: Updated `test_scorer_fixes.py` to validate the 100-point scale and new technical tiers (EMA Crosses, MACD Decoupling).
 
 #11.   3. "Binary Killer" is a Mocked Joke (Major) [STATUS: RESOLVED]
   You mentioned a "heavy fundamentals related refactoring." In reality, you've gutted the
@@ -172,9 +157,9 @@ Here is the brutally honest audit of your current state:
   Action Plan to Reach "Ready" State:
 #1.1   1. Enforce the Suffix: [STATUS: RESOLVED] Update get_nse_symbols to return .NS symbols or ensure every DB
       entry is transformed immediately. Scrub your DB and start fresh with .NS keys.
-#3.1   2. Sync Tests to Reality: Rewrite test_scorer_fixes.py to assert the 100-point scale. Add
+#3.1   2. Sync Tests to Reality: [STATUS: RESOLVED] Rewrite test_scorer_fixes.py to assert the 100-point scale. Add
       edge-case tests for your new tiers (EMA cross, MACD decoupling, RSI recovery).
-#11.1   3. Kill the Randomness: Either implement a real fetcher for pledging data or disable the
+#11.1   3. Kill the Randomness: [STATUS: RESOLVED] Either implement a real fetcher for pledging data or disable the
       filter. Mock data in a "production-ready" pipeline is a liability.
 #2.1   4. Localize Timezones: [STATUS: RESOLVED] Add df.index = df.index.tz_localize(None) to your fetcher or
       orchestrator immediately after data retrieval.

@@ -28,13 +28,13 @@ This document outlines the recommended sequence for implementing improvements an
 
 ---
 
-## Phase 3: Architectural Unification (The "Source of Truth")
+## Phase 3: Architectural Unification (The "Source of Truth") [STATUS: RESOLVED]
 **Goal:** Centralize strategy logic and ensure the testing suite validates the modern engine.
 
-6.  **Centralize Strategy Logic (#4):**
+6.  **Centralize Strategy Logic (#4):** [STATUS: RESOLVED]
     *   Create `backend/app/core/strategy.py`.
     *   Unify `calculate_technical_score` so it is used by both the Live Pipeline and the Backtest Engine.
-7.  **Sync Tests to Reality (#3):**
+7.  **Sync Tests to Reality (#3):** [STATUS: RESOLVED]
     *   Rewrite `test_scorer_fixes.py` and other outdated tests to validate the 100-point scale.
     *   Add edge-case tests for new technical tiers (EMA Crosses, MACD Decoupling).
 

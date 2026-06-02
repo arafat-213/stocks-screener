@@ -27,7 +27,7 @@ The pipeline refactoring for the Technical Momentum Engine has left several lega
    * Logic Divergence: The backtester still tries to calculate a "Fundamental Score" if a flag is set, which will now fail or return 0.
    * Signal Tiering: It uses a private _compute_signal_tier function (returning Tiers 1-4) that is completely different from the 0-100 scoring logic used by the rest of the app. This creates
      a "truth mismatch" between backtest results and live scanner results.
-   * Verification: Checked backend/app/backtest/engine.py - `_compute_signal_tier` and fundamental scoring logic have been removed. It now uses `MomentumScorer` consistently.
+   * Status: Logic has been centralized in `TechnicalStrategy`. `engine.py` now uses the same scoring engine as the live pipeline.
 
 #6.  5. Frontend UI Components [STATUS: PARTIALLY RESOLVED]
    * ScreenResultTable.jsx: Still contains formatters and column definitions for peg_ratio, roce, and de_ratio. These columns will appear as "—" or empty, cluttering the table.
