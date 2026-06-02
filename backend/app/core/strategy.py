@@ -44,6 +44,69 @@ class TechnicalStrategy:
         if ema20_col in df.columns:
             df["EMA_SLOPE_20"] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
 
+        # New Vectorized Components
+        df["WEEK52_HIGH"] = df["Close"].rolling(window=252, min_periods=1).max()
+        df["WEEK52_LOW"] = df["Close"].rolling(window=252, min_periods=1).min()
+
+        # Resistance: Highest close in the year prior to the last 20 bars
+        # Original: df["Close"].iloc[i - 259 : i - 19].max()
+        # Vectorized: shift(20) then rolling(240)
+        df["RESISTANCE_LEVEL"] = (
+            df["Close"].shift(20).rolling(window=240, min_periods=1).max()
+        )
+
+        # Momentum
+        for period, shift in [("1M", 21), ("3M", 63), ("6M", 126), ("12M", 252)]:
+            df[f"MOMENTUM_{period}"] = (
+                df["Close"] / df["Close"].shift(shift) - 1
+            ) * 100
+
+        return df
+
+    def calculate_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Computes boolean signal series for the entire dataframe."""
+        # Ensure indicators exist
+        if "EMA_5" not in df.columns:
+            df = self.calculate_indicators(df)
+
+        ema5 = df["EMA_5"]
+        ema13 = df["EMA_13"]
+        ema20 = df["EMA_20"]
+        ema26 = df["EMA_26"]
+        price = df["Close"]
+        macd = df["MACD_12_26_9"]
+        signal = df["MACDs_12_26_9"]
+        rsi = df["RSI_14"]
+
+        # 1. Fresh EMA Cross
+        df["SIGNAL_EMA_CROSS"] = (
+            (ema5 > ema13) & (ema5.shift(1) <= ema13.shift(1))
+        ).fillna(False)
+
+        # 2. Pullback to EMA 20
+        df["SIGNAL_PULLBACK_20"] = (
+            (ema5 > ema13) & (ema13 > ema26) & (abs(price - ema20) / ema20 < 0.02)
+        ).fillna(False)
+
+        # 3. MACD Signal
+        df["SIGNAL_MACD_BULLISH"] = (macd > signal).fillna(False)
+
+        # 4. Overextended
+        df["IS_OVEREXTENDED"] = (rsi > self.config.rsi_overbought_threshold).fillna(
+            False
+        )
+
+        # 5. is_bullish (Simplified vectorized version of the logic in evaluate for D)
+        df["IS_BULLISH"] = (
+            (
+                df["SIGNAL_EMA_CROSS"]
+                | df["SIGNAL_PULLBACK_20"]
+                | ((ema5 > ema13) & (ema13 > ema26))
+            )
+            & df["SIGNAL_MACD_BULLISH"]
+            & (rsi > self.config.rsi_min)
+        ).fillna(False)
+
         return df
 
     def evaluate(
@@ -127,18 +190,10 @@ class TechnicalStrategy:
         w_ema200 = self.config.ema200_weight
 
         # Momentum (lookback from full df)
-        momentum_1m = (
-            ((price / df["Close"].iloc[i - 21] - 1) * 100) if i >= 21 else None
-        )
-        momentum_3m = (
-            ((price / df["Close"].iloc[i - 63] - 1) * 100) if i >= 63 else None
-        )
-        momentum_6m = (
-            ((price / df["Close"].iloc[i - 126] - 1) * 100) if i >= 126 else None
-        )
-        momentum_12m = (
-            ((price / df["Close"].iloc[i - 252] - 1) * 100) if i >= 252 else None
-        )
+        momentum_1m = latest.get("MOMENTUM_1M")
+        momentum_3m = latest.get("MOMENTUM_3M")
+        momentum_6m = latest.get("MOMENTUM_6M")
+        momentum_12m = latest.get("MOMENTUM_12M")
 
         # Above 200 EMA
         above_200ema = (price > ema200) if pd.notna(ema200) else None
@@ -146,23 +201,20 @@ class TechnicalStrategy:
             score += w_ema200
 
         # 52-Week High/Low and Resistance
-        week52_high = None
-        week52_low = None
+        week52_high = latest.get("WEEK52_HIGH")
+        week52_low = latest.get("WEEK52_LOW")
         pct_from_52w_high = None
         pct_from_52w_low = None
-        resistance_level = None
+        resistance_level = latest.get("RESISTANCE_LEVEL")
         pct_from_resistance = None
 
-        if i >= 251:
-            recent_252 = df["Close"].iloc[i - 251 : i + 1]
-            week52_high = float(recent_252.max())
-            week52_low = float(recent_252.min())
+        if pd.notna(week52_high):
             pct_from_52w_high = (price / week52_high - 1) * 100
+        if pd.notna(week52_low):
             pct_from_52w_low = (price / week52_low - 1) * 100
 
-        # Resistance: Highest close in the year prior to the last 20 bars
-        if i >= 259:
-            resistance_level = float(df["Close"].iloc[i - 259 : i - 19].max())
+        # Resistance
+        if pd.notna(resistance_level):
             pct_from_resistance = (price / resistance_level - 1) * 100
 
         # Volume Breakout (2x 20-day SMA on green day)
