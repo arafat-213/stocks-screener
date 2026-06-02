@@ -40,14 +40,14 @@ This document outlines the recommended sequence for implementing improvements an
 
 ---
 
-## Phase 4: Strategic Tuning & Alpha
+## Phase 4: Strategic Tuning & Alpha [STATUS: RESOLVED]
 **Goal:** Optimize trading performance and implement advanced exit management.
 
-8.  **Strategy Refining (#5 - #9):**
+8.  **Strategy Refining (#5 - #9):** [STATUS: RESOLVED]
     *   Implement "State-Based" exit signals (handling RSI > 80 as "Overextended" rather than a score-killer).
     *   Adopt ATR-based stop losses consistently.
     *   Refactor the 200 EMA filter to be a scoring factor rather than a binary death penalty.
-9.  **Validation Framework (#10):**
+9.  **Validation Framework (#10):** [STATUS: RESOLVED]
     *   Expose indicator weights as parameters in `UnifiedTradingConfig`.
     *   Update `parameter_sweep.py` to allow for multi-parameter optimization.
 

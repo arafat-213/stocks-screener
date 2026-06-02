@@ -21,7 +21,7 @@
   and 21.5 for MACD.
    * Status: Indicator weights are now exposed in `UnifiedTradingConfig`, allowing for transparency and future multi-parameter optimization.
 
-#7. 4. Fear of the "Power Zone" (RSI > 80) [STATUS: UNRESOLVED]
+#7. 4. Fear of the "Power Zone" (RSI > 80) [STATUS: RESOLVED]
   You kill any signal if RSI > 80:
 
    1 if ta_data.get("rsi", 0) > 80: combined_score = 0.0
@@ -31,6 +31,7 @@
    * Effectiveness: By capping RSI at 80, you are systematically excluding the high-alpha
      "outliers" that usually account for 80% of a portfolio's returns. You're left with the
      "mediocre" setups that are just starting to move.
+   * Status: Refactored into a "State Engine". RSI > 80 now flags the stock as "Overextended", triggering a tighter "Previous Day Low" exit in the backtest engine instead of zeroing the entry score.
 
 #13. 5. Architectural Dead Weight [STATUS: RESOLVED]
   Your orchestrator.py explicitly states that Tier 2 (Fundamental caching) was removed, yet
@@ -41,16 +42,17 @@
      commit to a pure technical strategy, or you're too lazy to clean up the refactor.
    * Status: Legacy files `screener.py` and `scorer.py` have been removed. The dashboard no longer joins `FundamentalCache`. The pipeline is now purely technical with minimal metadata (Market Cap) fetched via `fast_info`.
 
-#8. 6. The 200 EMA "Tunnel Vision" [STATUS: UNRESOLVED]
+#8. 6. The 200 EMA "Tunnel Vision" [STATUS: RESOLVED]
   You treat above_200ema as a binary killer.
    * The Flaw: While safe, it’s lazy. You’ll miss the entire stage-1 accumulation phase and
      the first 20% of a stage-2 breakout.
    * Advice: Use the 200 EMA as a factor, not a death penalty. A stock crossing above the 200
      EMA with volume is often a better entry than one that has been sitting at 120% of its 200
      EMA for months.
+   * Status: Transitioned to a weighted factor (`ema200_weight`). Stocks below the 200 EMA can now still qualify for trades if other indicators are exceptionally strong.
 
 
-#10. 3. Tuning the "Magic Numbers" (Validation Framework) [STATUS: UNRESOLVED]
+#10. 3. Tuning the "Magic Numbers" (Validation Framework) [STATUS: RESOLVED]
   The reason those numbers (21.5, 28.5) feel wrong is that they are static. In a trending
   market, EMA crosses are king; in a sideways market, RSI mean-reversion is king.
 
@@ -74,7 +76,9 @@
       on 2024 data (Out-of-Sample). If they fail in 2024, your "magic numbers" were just
       over-fitted to the past.
 
-#9. 4. Exit Signal Trigger vs. Binary Killers [STATUS: UNRESOLVED]
+   * Status: Indicator weights are now exposed in `UnifiedTradingConfig` and included in the `parameter_sweep.py` optimization grid.
+
+#9. 4. Exit Signal Trigger vs. Binary Killers [STATUS: RESOLVED]
   You should stop "killing" the score and start "managing the state."
 
   Proposed Transition:
@@ -93,14 +97,16 @@
   parabolic move stalls (breaks previous low), you are out with a massive gain. Your current
   system just refuses to enter or stay in the best trades of the year.
 
+  * Status: Implemented "Overextended" state handling. RSI > 80 no longer kills the score; instead, it triggers a profit-protection exit if the price breaks the previous day's low.
+
   ---
 
   Immediate Action Plan (Centralization Strategy)
 
-#4.1   1. Create backend/app/core/strategy.py: [STATUS: UNRESOLVED]
+#4.1   1. Create backend/app/core/strategy.py: [STATUS: RESOLVED]
        * Move calculate_technical_score here.
        * Pass the UnifiedTradingConfig directly into it so it uses the config's weights.
-#4.2   2. Unify the Signal Object: [STATUS: UNRESOLVED]
+#4.2   2. Unify the Signal Object: [STATUS: RESOLVED]
        * Make sure orchestrator.py (live) and engine.py (backtest) both call
          Strategy.evaluate(df, config).
 #5.1   3. Kill the Hardcoded Stop Floor/Ceiling: [STATUS: RESOLVED]
