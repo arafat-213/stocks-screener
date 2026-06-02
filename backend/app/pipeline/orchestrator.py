@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import response_cache
 from app.core.logging_manager import logging_manager
+from app.core.strategy import TechnicalStrategy
 from app.db.models import (
     PipelineCheckpoint,
     PipelineError,
@@ -22,7 +23,6 @@ from app.pipeline.fetcher import (
     get_nse_symbols,
     slice_bulk_df,
 )
-from app.pipeline.momentum_scorer import MomentumScorer
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.reporter import generate_daily_report
 from app.pipeline.rs_ranks import compute_rs_ranks
@@ -32,7 +32,7 @@ from app.screens.cache import screen_cache
 logger = logging.getLogger(__name__)
 
 _ohlcv_cache = OHLCVCache()
-_scorer = MomentumScorer()
+_strategy = TechnicalStrategy()
 
 
 def request_pipeline_stop(db: Session):
@@ -155,7 +155,7 @@ def process_symbol(
             continue
 
         signal_date = working_df.index[-1].date()
-        ta_data = _scorer.calculate_score(working_df, timeframe=tf)
+        ta_data = _strategy.evaluate(working_df, timeframe=tf)
 
         # Explicit Upsert into TechnicalSignal
         signal = (
@@ -317,7 +317,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                             # Technical-only scoring (passing None for info triggers tech-only)
                             # Tier 1 is a wide net: any technically bullish stock OR score > 60 passes.
                             # We intentionally cast wide here to avoid missing good setups due to a single weak indicator.
-                            scores = _scorer.calculate_score(hist)
+                            scores = _strategy.evaluate(hist)
                             if scores["is_bullish"] or scores["score"] > 60:
                                 tier1_survivors.append(symbol)
 

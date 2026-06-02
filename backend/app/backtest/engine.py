@@ -13,6 +13,7 @@ import pandas_ta_classic  # noqa
 from sqlalchemy.orm import Session
 
 from app.core.logging_manager import logging_manager
+from app.core.strategy import TechnicalStrategy
 from app.core.trading_config import UnifiedTradingConfig as BacktestConfig
 from app.db.models import (
     BacktestRun,
@@ -20,11 +21,10 @@ from app.db.models import (
     ScreenResult,
     Stock,
 )
-from app.pipeline.momentum_scorer import MomentumScorer
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.utils import resample_ohlcv
 
-_scorer = MomentumScorer()
+_strategy = TechnicalStrategy()
 
 
 class NumpyEncoder(json.JSONEncoder):
@@ -118,7 +118,7 @@ def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
             continue
 
         try:
-            ta_data = _scorer.calculate_score(bar_slice, timeframe=timeframe)
+            ta_data = _strategy.evaluate(bar_slice, timeframe=timeframe)
         except Exception as e:
             logger.error(f"Error scoring MTF bar {i} for {timeframe}: {e}")
             continue
@@ -144,7 +144,7 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
         if _TA_METADATA.get(symbol) == latest_date:
             return _TA_CACHE[symbol]
 
-    df = _scorer.calculate_technical_indicators(df)
+    df = _strategy.calculate_indicators(df)
 
     if symbol:
         _TA_CACHE[symbol] = df
@@ -158,7 +158,7 @@ def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
     Wrapper for calculate_technical_score using pre-computed indicators.
     Maps results to the format expected by the backtest engine.
     """
-    res = _scorer.calculate_score(df_ind, timeframe="D", i=i, skip_ta=True)
+    res = _strategy.evaluate(df_ind, timeframe="D", i=i, skip_ta=True)
 
     # Add backtest-specific keys for compatibility
     res["date"] = df_ind.index[i]

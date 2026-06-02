@@ -50,6 +50,13 @@ class UnifiedTradingConfig:
     pullback_max_wait_bars: int = 8
     pullback_tolerance_pct: float = 3.0
 
+    # Indicator Weights (Phase 3 Architectural Unification)
+    ema_weight: float = 28.5
+    macd_weight: float = 21.5
+    rsi_weight: float = 21.5
+    volume_weight: float = 21.5
+    trend_weight: float = 7.0
+
     @property
     def effective_score_threshold(self) -> float:
         return self.score_threshold
