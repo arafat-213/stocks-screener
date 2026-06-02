@@ -50,12 +50,17 @@ class UnifiedTradingConfig:
     pullback_max_wait_bars: int = 8
     pullback_tolerance_pct: float = 3.0
 
-    # Indicator Weights (Phase 3 Architectural Unification)
+    # Indicator Weights (Phase 3 & 4 Architectural Unification)
     ema_weight: float = 28.5
     macd_weight: float = 21.5
     rsi_weight: float = 21.5
     volume_weight: float = 21.5
     trend_weight: float = 7.0
+    ema200_weight: float = 7.0
+
+    # State Engine Parameters (Phase 4)
+    rsi_overbought_threshold: float = 80.0
+    use_state_based_exits: bool = True
 
     @property
     def effective_score_threshold(self) -> float:
