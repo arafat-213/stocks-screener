@@ -14,6 +14,7 @@ from app.db.models import (
     TechnicalSignal,
 )
 from app.db.session import get_db
+from app.pipeline.fetcher import get_ticker_symbol
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.rs_ranks import compute_rs_ranks
 from app.pipeline.trade_setup import compute_trade_setup
@@ -25,11 +26,16 @@ logger = logging.getLogger(__name__)
 
 
 def clean_stock_symbol(symbol: str) -> str:
-    """Standardize symbol by converting to upper case and stripping .NS suffix."""
+    """Standardize symbol by converting to upper case and stripping .NS suffix (for search)."""
     s = symbol.strip().upper()
     if s.endswith(".NS"):
         return s[:-3]
     return s
+
+
+def ensure_ns_suffix(symbol: str) -> str:
+    """Standardize symbol and ensure .NS suffix (for DB primary keys). Delegate to centralized mapper."""
+    return get_ticker_symbol(symbol)
 
 
 @router.get("/search")
@@ -316,7 +322,7 @@ def get_cache_status(symbol: str, db: Session = Depends(get_db)):
 
 @router.post("/{symbol}/refresh-cache")
 def refresh_stock_cache(symbol: str, db: Session = Depends(get_db)):
-    clean_symbol = clean_stock_symbol(symbol)
+    clean_symbol = ensure_ns_suffix(symbol)
     cache = (
         db.query(FundamentalCache)
         .filter(FundamentalCache.symbol == clean_symbol)

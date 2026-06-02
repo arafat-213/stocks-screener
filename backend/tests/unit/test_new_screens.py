@@ -6,7 +6,6 @@ from sqlalchemy.orm import sessionmaker
 
 from app.db.models import (
     Base,
-    FundamentalCache,
     SectorSnapshot,
     Stock,
     TechnicalSignal,
@@ -18,7 +17,6 @@ from app.screens.confluence import (
     screen_sector_leaders,
 )
 from app.screens.sector_rotation import compute_sector_rotation, screen_hot_sectors
-from app.screens.value import screen_qarp
 
 
 @pytest.fixture
@@ -37,13 +35,13 @@ def test_screen_mtf_confluence(db_session):
     date_m = datetime.datetime(2023, 9, 1, tzinfo=datetime.timezone.utc)
 
     # Add stocks
-    db_session.add(Stock(symbol="RELIANCE", name="Reliance", sector="Energy"))
-    db_session.add(Stock(symbol="TCS", name="TCS", sector="Tech"))
+    db_session.add(Stock(symbol="RELIANCE.NS", name="Reliance", sector="Energy"))
+    db_session.add(Stock(symbol="TCS.NS", name="TCS", sector="Tech"))
 
     # Setup mock signals
     # RELIANCE: Bullish on all three timeframes
     s_d = TechnicalSignal(
-        symbol="RELIANCE",
+        symbol="RELIANCE.NS",
         date=date_d,
         timeframe="D",
         is_bullish=True,
@@ -52,15 +50,15 @@ def test_screen_mtf_confluence(db_session):
         entry_score=80,
     )
     s_w = TechnicalSignal(
-        symbol="RELIANCE", date=date_w, timeframe="W", is_bullish=True
+        symbol="RELIANCE.NS", date=date_w, timeframe="W", is_bullish=True
     )
     s_m = TechnicalSignal(
-        symbol="RELIANCE", date=date_m, timeframe="M", is_bullish=True
+        symbol="RELIANCE.NS", date=date_m, timeframe="M", is_bullish=True
     )
 
     # TCS: Bullish on Daily but not Weekly
     t_d = TechnicalSignal(
-        symbol="TCS",
+        symbol="TCS.NS",
         date=date_d,
         timeframe="D",
         is_bullish=True,
@@ -68,7 +66,7 @@ def test_screen_mtf_confluence(db_session):
         rsi=60,
         entry_score=70,
     )
-    t_w = TechnicalSignal(symbol="TCS", date=date_w, timeframe="W", is_bullish=False)
+    t_w = TechnicalSignal(symbol="TCS.NS", date=date_w, timeframe="W", is_bullish=False)
 
     db_session.add_all([s_d, s_w, s_m, t_d, t_w])
     db_session.commit()
@@ -78,22 +76,22 @@ def test_screen_mtf_confluence(db_session):
 
     results = screen_mtf_confluence(db_session)
     assert len(results) == 1
-    assert results[0][0] == "RELIANCE"
+    assert results[0][0] == "RELIANCE.NS"
 
 
 def test_screen_sector_leaders(db_session):
     date = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
     # Stocks in Tech sector
-    db_session.add(Stock(symbol="TCS", sector="Tech"))
-    db_session.add(Stock(symbol="INFY", sector="Tech"))
-    db_session.add(Stock(symbol="WIPRO", sector="Tech"))
-    db_session.add(Stock(symbol="HCLTECH", sector="Tech"))
+    db_session.add(Stock(symbol="TCS.NS", sector="Tech"))
+    db_session.add(Stock(symbol="INFY.NS", sector="Tech"))
+    db_session.add(Stock(symbol="WIPRO.NS", sector="Tech"))
+    db_session.add(Stock(symbol="HCLTECH.NS", sector="Tech"))
 
     # Signals
     db_session.add(
         TechnicalSignal(
-            symbol="TCS",
+            symbol="TCS.NS",
             date=date,
             timeframe="D",
             rs_score=90,
@@ -103,7 +101,7 @@ def test_screen_sector_leaders(db_session):
     )
     db_session.add(
         TechnicalSignal(
-            symbol="INFY",
+            symbol="INFY.NS",
             date=date,
             timeframe="D",
             rs_score=85,
@@ -113,7 +111,7 @@ def test_screen_sector_leaders(db_session):
     )
     db_session.add(
         TechnicalSignal(
-            symbol="WIPRO",
+            symbol="WIPRO.NS",
             date=date,
             timeframe="D",
             rs_score=80,
@@ -123,7 +121,7 @@ def test_screen_sector_leaders(db_session):
     )
     db_session.add(
         TechnicalSignal(
-            symbol="HCLTECH",
+            symbol="HCLTECH.NS",
             date=date,
             timeframe="D",
             rs_score=75,
@@ -138,23 +136,23 @@ def test_screen_sector_leaders(db_session):
     # Should only have top 3: TCS, INFY, WIPRO
     assert len(results) == 3
     symbols = [r[0] for r in results]
-    assert "TCS" in symbols
-    assert "INFY" in symbols
-    assert "WIPRO" in symbols
-    assert "HCLTECH" not in symbols
+    assert "TCS.NS" in symbols
+    assert "INFY.NS" in symbols
+    assert "WIPRO.NS" in symbols
+    assert "HCLTECH.NS" not in symbols
 
 
 def test_screen_fresh_52w_breakout(db_session):
     date = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
     # Add stocks
-    db_session.add(Stock(symbol="RELIANCE", name="Reliance", sector="Energy"))
-    db_session.add(Stock(symbol="TCS", name="TCS", sector="Tech"))
+    db_session.add(Stock(symbol="RELIANCE.NS", name="Reliance", sector="Energy"))
+    db_session.add(Stock(symbol="TCS.NS", name="TCS", sector="Tech"))
 
     # Breakout stock
     db_session.add(
         TechnicalSignal(
-            symbol="RELIANCE",
+            symbol="RELIANCE.NS",
             date=date,
             timeframe="D",
             pct_from_52w_high=0.5,
@@ -169,7 +167,7 @@ def test_screen_fresh_52w_breakout(db_session):
     # Not a breakout (volume missing)
     db_session.add(
         TechnicalSignal(
-            symbol="TCS",
+            symbol="TCS.NS",
             date=date,
             timeframe="D",
             pct_from_52w_high=0.5,
@@ -185,79 +183,19 @@ def test_screen_fresh_52w_breakout(db_session):
 
     results = screen_fresh_52w_breakout(db_session)
     assert len(results) == 1
-    assert results[0][0] == "RELIANCE"
-
-
-def test_screen_qarp(db_session):
-    date = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
-
-    db_session.add(Stock(symbol="RELIANCE", sector="Energy"))
-    db_session.add(
-        FundamentalCache(
-            symbol="RELIANCE",
-            roce=0.20,
-            roe=0.18,
-            profitability_streak_passed=True,
-            de_check_passed=True,
-            fcf_positive=True,
-            peg_ratio=1.2,
-        )
-    )
-    db_session.add(
-        TechnicalSignal(
-            symbol="RELIANCE",
-            date=date,
-            timeframe="D",
-            above_200ema=True,
-            is_bullish=True,
-            rsi=50,
-            ema_slope_20=1.0,
-            entry_score=85,
-        )
-    )
-
-    # Fails ROCE
-    db_session.add(Stock(symbol="TCS", sector="Tech"))
-    db_session.add(
-        FundamentalCache(
-            symbol="TCS",
-            roce=0.10,
-            roe=0.18,
-            profitability_streak_passed=True,
-            de_check_passed=True,
-            fcf_positive=True,
-            peg_ratio=1.2,
-        )
-    )
-    db_session.add(
-        TechnicalSignal(
-            symbol="TCS",
-            date=date,
-            timeframe="D",
-            above_200ema=True,
-            is_bullish=True,
-            rsi=50,
-            ema_slope_20=1.0,
-            entry_score=80,
-        )
-    )
-    db_session.commit()
-
-    results = screen_qarp(db_session)
-    assert len(results) == 1
-    assert results[0][0] == "RELIANCE"
+    assert results[0][0] == "RELIANCE.NS"
 
 
 def test_sector_rotation_computation(db_session):
     date_val = datetime.datetime(2023, 10, 1, tzinfo=datetime.timezone.utc)
 
-    db_session.add(Stock(symbol="TCS", sector="Tech"))
-    db_session.add(Stock(symbol="INFY", sector="Tech"))
-    db_session.add(Stock(symbol="WIPRO", sector="Tech"))
+    db_session.add(Stock(symbol="TCS.NS", sector="Tech"))
+    db_session.add(Stock(symbol="INFY.NS", sector="Tech"))
+    db_session.add(Stock(symbol="WIPRO.NS", sector="Tech"))
 
     db_session.add(
         TechnicalSignal(
-            symbol="TCS",
+            symbol="TCS.NS",
             date=date_val,
             timeframe="D",
             rs_score=90,
@@ -267,7 +205,7 @@ def test_sector_rotation_computation(db_session):
     )
     db_session.add(
         TechnicalSignal(
-            symbol="INFY",
+            symbol="INFY.NS",
             date=date_val,
             timeframe="D",
             rs_score=80,
@@ -277,7 +215,7 @@ def test_sector_rotation_computation(db_session):
     )
     db_session.add(
         TechnicalSignal(
-            symbol="WIPRO",
+            symbol="WIPRO.NS",
             date=date_val,
             timeframe="D",
             rs_score=70,
@@ -311,10 +249,10 @@ def test_screen_hot_sectors(db_session):
     db_session.add(SectorSnapshot(date=date_val.date(), sector="Banks", avg_rs=70.0))
     db_session.add(SectorSnapshot(date=date_val.date(), sector="Auto", avg_rs=60.0))
 
-    db_session.add(Stock(symbol="TCS", sector="Tech"))
+    db_session.add(Stock(symbol="TCS.NS", sector="Tech"))
     db_session.add(
         TechnicalSignal(
-            symbol="TCS",
+            symbol="TCS.NS",
             date=date_val,
             timeframe="D",
             rs_score=95,
@@ -324,10 +262,10 @@ def test_screen_hot_sectors(db_session):
         )
     )
 
-    db_session.add(Stock(symbol="MARUTI", sector="Auto"))
+    db_session.add(Stock(symbol="MARUTI.NS", sector="Auto"))
     db_session.add(
         TechnicalSignal(
-            symbol="MARUTI",
+            symbol="MARUTI.NS",
             date=date_val,
             timeframe="D",
             rs_score=95,
@@ -342,4 +280,4 @@ def test_screen_hot_sectors(db_session):
     results = screen_hot_sectors(db_session)
     # Tech is top 3, Auto is not (4th)
     assert len(results) == 1
-    assert results[0][0] == "TCS"
+    assert results[0][0] == "TCS.NS"

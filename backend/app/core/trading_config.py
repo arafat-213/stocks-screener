@@ -61,6 +61,7 @@ class UnifiedTradingConfig:
     # State Engine Parameters (Phase 4)
     rsi_overbought_threshold: float = 80.0
     use_state_based_exits: bool = True
+    rsi_recovery_lookback: int = 5
 
     @property
     def effective_score_threshold(self) -> float:

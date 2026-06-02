@@ -1,15 +1,6 @@
 The pipeline refactoring for the Technical Momentum Engine has left several legacy "ghosts" in the codebase. Since we've moved to a 100-point technical system, the following areas are now
   either dead code, redundant logic, or architectural mismatches:
 
-#3.  1. Database & Models (backend/app/db/models.py) [STATUS: UNRESOLVED]
-   * Legacy Tables: FundamentalData and FundamentalCache are now 90% obsolete. They still hold market_cap and pledged_percent, but the other ~15 fields (ROE, ROCE, Debt/Equity, etc.) are
-     dead weight.
-   * Zombie Columns:
-       * ScreenResult, AlertLog, Watchlist, and TradeJournal all still carry a quality_tier column ('A', 'B', 'C'). Since we now use a continuous 0-100 score, these "Tiers" are meaningless
-         and often empty.
-       * PipelineRun still tracks tier1_count and tier2_count, which no longer reflect the current single-pass logic.
-   * Verification: Checked backend/app/db/models.py - these tables and columns still exist.
-
 #2.  2. Dashboard Logic (backend/app/routers/dashboard.py) [STATUS: RESOLVED]
    * Heavily Impacted: This is the most "cluttered" file. It still:
        * Joins FundamentalCache and FundamentalData on every dashboard fetch, even though we only need market_cap. This is a performance drag.

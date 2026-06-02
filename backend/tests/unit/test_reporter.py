@@ -24,9 +24,9 @@ def test_generate_daily_report(tmp_path):
     original_join = os.path.join
     with patch(
         "os.path.join",
-        side_effect=lambda *args: str(tmp_path)
-        if "reports" in args
-        else original_join(*args),
+        side_effect=lambda *args: (
+            str(tmp_path) if "reports" in args else original_join(*args)
+        ),
     ):
         report_path = generate_daily_report(mock_db)
 

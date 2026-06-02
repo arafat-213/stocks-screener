@@ -183,6 +183,7 @@ def build_exit_alert_email(alerts: list[dict], signal_date: str) -> str:
             "stop_approached": "🟠 Near Stop",
             "target_hit": "🟢 Target Hit",
             "target_approached": "🔵 Near Target",
+            "overextended_exit": "🟣 Overextended Exit",
         }
         return labels.get(atype, atype.replace("_", " ").title())
 

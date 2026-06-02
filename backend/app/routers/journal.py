@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import models
 from app.db.session import get_db
-from app.pipeline.fetcher import fetch_market_snapshots
+from app.pipeline.fetcher import fetch_market_snapshots, get_ticker_symbol
 
 router = APIRouter(prefix="/journal", tags=["journal"])
 
@@ -32,10 +32,8 @@ class TradeCloseRequest(BaseModel):
 
 @router.post("/")
 def create_entry(data: TradeEntryCreate, db: Session = Depends(get_db)):
-    # Standardize symbol: ensure .NS for Indian stocks
-    symbol = data.symbol.upper().strip()
-    if symbol.isalpha() and not symbol.endswith(".NS") and not symbol.startswith("^"):
-        symbol = f"{symbol}.NS"
+    # Standardize symbol: ensure .NS for Indian stocks using centralized mapper
+    symbol = get_ticker_symbol(data.symbol)
 
     db_entry = models.TradeJournal(
         **{**data.model_dump(exclude={"symbol"}), "symbol": symbol},

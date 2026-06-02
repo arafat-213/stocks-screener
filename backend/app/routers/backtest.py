@@ -214,6 +214,18 @@ class BacktestRequest(BaseModel):
         description="Maximum open positions in a single sector. 0 = unlimited.",
     )
 
+    # Indicator Weights (Phase 3 & 4)
+    ema_weight: float = Field(default=28.5, ge=0, le=100)
+    macd_weight: float = Field(default=21.5, ge=0, le=100)
+    rsi_weight: float = Field(default=21.5, ge=0, le=100)
+    volume_weight: float = Field(default=21.5, ge=0, le=100)
+    trend_weight: float = Field(default=7.0, ge=0, le=100)
+    ema200_weight: float = Field(default=7.0, ge=0, le=100)
+
+    # State Engine (Phase 4)
+    rsi_overbought_threshold: float = Field(default=80.0, ge=50, le=100)
+    use_state_based_exits: bool = Field(default=True)
+
 
 def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
     config = json.loads(run.config) if run.config else {}
@@ -355,6 +367,14 @@ def start_backtest(
         screen_membership_window_days=request.screen_membership_window_days,
         screen_reentry_gap_days=request.screen_reentry_gap_days,
         screen_driven_rsi_max=request.screen_driven_rsi_max,
+        ema_weight=request.ema_weight,
+        macd_weight=request.macd_weight,
+        rsi_weight=request.rsi_weight,
+        volume_weight=request.volume_weight,
+        trend_weight=request.trend_weight,
+        ema200_weight=request.ema200_weight,
+        rsi_overbought_threshold=request.rsi_overbought_threshold,
+        use_state_based_exits=request.use_state_based_exits,
     )
 
     # Add to background tasks

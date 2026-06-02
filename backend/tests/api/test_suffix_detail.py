@@ -6,7 +6,7 @@ from app.db.models import Stock
 @patch("app.routers.stocks.OHLCVCache.get")
 def test_get_stock_detail_with_ns_suffix_case_insensitive(mock_fetch, client, db):
     # Seed data
-    db.add(Stock(symbol="RELIANCE", name="Reliance Industries Ltd", sector="Energy"))
+    db.add(Stock(symbol="RELIANCE.NS", name="Reliance Industries Ltd", sector="Energy"))
     db.commit()
 
     # Mock the return value of OHLCVCache.get to simulate a valid response
@@ -33,4 +33,4 @@ def test_get_stock_detail_with_ns_suffix_case_insensitive(mock_fetch, client, db
         response = client.get(f"/api/stocks/RELIANCE{suffix}")
         assert response.status_code == 200, f"Failed for RELIANCE{suffix}"
         data = response.json()
-        assert data["symbol"] == "RELIANCE"
+        assert data["symbol"] == "RELIANCE.NS"

@@ -171,3 +171,18 @@ Here is the brutally honest audit of your current state:
       orchestrator immediately after data retrieval.
 
   Don't run the pipeline yet. You're just generating high-quality garbage.
+
+Backtest Performance: In engine.py, _strategy.evaluate is called for every bar inside the [STATUS: UNRESOLVED]
+     simulation loop when state-based exits are enabled. While functional, this could become a
+     bottleneck for very long backtests across 500+ symbols.
+
+MTF Performance (Backtest): In backend/app/backtest/engine.py, the build_mtf_state_map
+     function calls _strategy.evaluate in a loop over resampled bars. While correct, this
+     could be a performance bottleneck for long-duration backtests as it doesn't currently
+     benefit from the vectorized indicator computation used in the Daily timeframe.
+
+Symbol Mapping: [STATUS: RESOLVED] If get_nse_symbols ever returns a symbol that yfinance
+     cannot find with .NS (rare but possible), the pipeline marks it as a failure in
+     PipelineError but doesn't have a "correction map" for symbols that don't follow the
+     standard pattern.
+     * Status: Centralized `SYMBOL_MAP` and `get_ticker_symbol` utility implemented in `fetcher.py` and integrated across the pipeline and API.

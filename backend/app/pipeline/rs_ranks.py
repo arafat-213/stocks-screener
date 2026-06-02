@@ -59,7 +59,7 @@ def compute_rs_ranks(db: Session, signal_date: datetime.date):
 
     # Sort signals by excess return (momentum_12m - benchmark_return)
     # Percentile = (Rank / Count) * 100
-    valid_signals.sort(key=lambda x: (x.momentum_12m - benchmark_return))
+    valid_signals.sort(key=lambda x: x.momentum_12m - benchmark_return)
     count = len(valid_signals)
 
     updates = []

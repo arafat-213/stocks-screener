@@ -380,6 +380,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
         "target": 0,
         "atr_trailing_stop": 0,
         "holding_period": 0,
+        "overextended_exit": 0,
     }
 
     for pos in open_positions:
@@ -438,6 +439,20 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
         elif holding_days >= config.holding_days:
             exit_price = day_close
             exit_reason = "holding_period"
+
+        # 5. State-based Overextended Exit (Phase 4)
+        if not exit_reason and config.use_state_based_exits:
+            from app.core.strategy import TechnicalStrategy
+
+            strategy = TechnicalStrategy(config)
+            # We need the bar index in the full df to check prev low
+            today_idx = df.index.get_loc(rows.index[0])
+            eval_res = strategy.evaluate(df, i=today_idx)
+            if eval_res.get("is_overextended"):
+                prev_low = df.iloc[today_idx - 1]["Low"] if today_idx > 0 else day_low
+                if day_close < prev_low:
+                    exit_price = day_close
+                    exit_reason = "overextended_exit"
 
         if exit_price and exit_reason:
             gross_return = (exit_price - pos.entry_price) / pos.entry_price * 100

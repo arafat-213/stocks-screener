@@ -250,8 +250,9 @@ class TechnicalStrategy:
 
                 # 3. RSI 14
                 if pd.notna(rsi) and pd.notna(prev_rsi):
-                    # Check for recovery in last 5 days
-                    recent_rsi = df["RSI_14"].iloc[max(0, i - 4) : i + 1]
+                    # Check for recovery in last N days
+                    lookback = self.config.rsi_recovery_lookback
+                    recent_rsi = df["RSI_14"].iloc[max(0, i - (lookback - 1)) : i + 1]
                     was_oversold = any(recent_rsi < 30)
 
                     recovering = (

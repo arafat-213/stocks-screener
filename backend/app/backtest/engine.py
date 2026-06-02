@@ -24,8 +24,6 @@ from app.db.models import (
 from app.pipeline.ohlcv_cache import OHLCVCache
 from app.pipeline.utils import resample_ohlcv
 
-_strategy = TechnicalStrategy()
-
 
 class NumpyEncoder(json.JSONEncoder):
     def default(self, obj):
@@ -99,7 +97,9 @@ def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]
     return None
 
 
-def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
+def build_mtf_state_map(
+    df: pd.DataFrame, timeframe: str, strategy: TechnicalStrategy
+) -> dict:
     if df is None or df.empty:
         return {}
 
@@ -118,7 +118,7 @@ def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
             continue
 
         try:
-            ta_data = _strategy.evaluate(bar_slice, timeframe=timeframe)
+            ta_data = strategy.evaluate(bar_slice, timeframe=timeframe)
         except Exception as e:
             logger.error(f"Error scoring MTF bar {i} for {timeframe}: {e}")
             continue
@@ -132,7 +132,9 @@ def build_mtf_state_map(df: pd.DataFrame, timeframe: str) -> dict:
     return state_map
 
 
-def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFrame:
+def _compute_all_indicators(
+    df: pd.DataFrame, strategy: TechnicalStrategy, symbol: str = None
+) -> pd.DataFrame:
     """
     Computes all pandas-ta indicators on the full DataFrame in a single pass.
     Called once per symbol instead of once per bar.
@@ -144,7 +146,7 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
         if _TA_METADATA.get(symbol) == latest_date:
             return _TA_CACHE[symbol]
 
-    df = _strategy.calculate_indicators(df)
+    df = strategy.calculate_indicators(df)
 
     if symbol:
         _TA_CACHE[symbol] = df
@@ -153,12 +155,14 @@ def _compute_all_indicators(df: pd.DataFrame, symbol: str = None) -> pd.DataFram
     return df
 
 
-def _score_bar_from_precomputed(df_ind: pd.DataFrame, i: int) -> dict:
+def _score_bar_from_precomputed(
+    df_ind: pd.DataFrame, i: int, strategy: TechnicalStrategy
+) -> dict:
     """
     Wrapper for calculate_technical_score using pre-computed indicators.
     Maps results to the format expected by the backtest engine.
     """
-    res = _strategy.evaluate(df_ind, timeframe="D", i=i, skip_ta=True)
+    res = strategy.evaluate(df_ind, timeframe="D", i=i, skip_ta=True)
 
     # Add backtest-specific keys for compatibility
     res["date"] = df_ind.index[i]
@@ -201,6 +205,7 @@ def _build_screen_driven_signals(
     screen_dates: list[datetime.date],
     df: pd.DataFrame,
     config: BacktestConfig,
+    strategy: TechnicalStrategy,
 ) -> list[dict]:
     """
     Model B signal builder.
@@ -213,7 +218,7 @@ def _build_screen_driven_signals(
         df = df.copy()
         df.index = df.index.tz_localize(None)
 
-    df_ind = _compute_all_indicators(df, symbol=symbol)
+    df_ind = _compute_all_indicators(df, strategy, symbol=symbol)
     date_to_idx = {
         d.date() if hasattr(d, "date") else d: i for i, d in enumerate(df.index)
     }
@@ -237,7 +242,7 @@ def _build_screen_driven_signals(
             continue
 
         try:
-            bar = _score_bar_from_precomputed(df_ind, idx)
+            bar = _score_bar_from_precomputed(df_ind, idx, strategy)
         except Exception:
             continue
 
@@ -278,6 +283,7 @@ def _build_screen_driven_signals(
 
 def score_series(
     df: pd.DataFrame,
+    strategy: TechnicalStrategy,
     symbol: str = None,
     config: BacktestConfig = None,
 ) -> list[dict]:
@@ -288,7 +294,7 @@ def score_series(
         df = df.copy()
         df.index = df.index.tz_localize(None)
 
-    df_ind = _compute_all_indicators(df, symbol=symbol)
+    df_ind = _compute_all_indicators(df, strategy, symbol=symbol)
 
     # Precompute consolidation series
     consol_window = config.consolidation_bars if config else 15
@@ -308,7 +314,7 @@ def score_series(
             if config.date_to and date > config.date_to:
                 continue
 
-        bar_score = _score_bar_from_precomputed(df_ind, i)
+        bar_score = _score_bar_from_precomputed(df_ind, i, strategy)
         bar_score["is_consolidating"] = bool(is_consolidating_series.iloc[i])
         # For backtesting, we collect all signals to maintain consistent series length for tests
         scored_dates.append(bar_score)
@@ -322,6 +328,7 @@ def simulate_trades(
     df: pd.DataFrame,
     scored_dates: list[dict],
     config: BacktestConfig,
+    strategy: TechnicalStrategy,
     regime_dict: dict = None,
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
@@ -544,7 +551,7 @@ def simulate_trades(
 
             if config.use_state_based_exits:
                 # current_eval uses skip_ta=True because indicators are pre-calculated
-                current_eval = _strategy.evaluate(df, i=k, skip_ta=True)
+                current_eval = strategy.evaluate(df, i=k, skip_ta=True)
                 if current_eval.get("is_overextended"):
                     prev_low = df.iloc[k - 1]["Low"] if k > 0 else low
                     if close < prev_low:
@@ -631,6 +638,7 @@ def simulate_portfolio(
     all_dfs: dict[str, pd.DataFrame],
     stocks_info: dict[str, str],
     config: BacktestConfig,
+    strategy: TechnicalStrategy,
     regime_dict: dict = None,
     weekly_state_maps: dict = None,
     monthly_state_maps: dict = None,
@@ -674,6 +682,7 @@ def simulate_portfolio(
             df,
             [sig],
             config,
+            strategy,
             regime_dict,
             (weekly_state_maps or {}).get(sym),
             (monthly_state_maps or {}).get(sym),
@@ -813,6 +822,7 @@ def compute_metrics(
 
 def run_backtest(db: Session, run_id: str, config: BacktestConfig):
     logging_manager.setup_run_logging(run_id)
+    strategy = TechnicalStrategy(config)
     try:
         run = db.query(BacktestRun).filter_by(run_id=run_id).first()
         if not run:
@@ -829,8 +839,12 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         bench_df = _get_cached_ohlcv("^NSEI", period=lookback_period)
         regime_dict = {}
         if bench_df is not None:
-            bench_df.ta.ema(length=50, append=True)
-            bench_df.ta.ema(length=200, append=True)
+            # We use the strategy instance to calculate indicators for benchmark too
+            # (though EMA 50/200 are standard, strategy.calculate_indicators includes EMA200)
+            bench_df = strategy.calculate_indicators(bench_df)
+            # Ensure EMA50 is present as calculate_indicators might not have it
+            if "EMA_50" not in bench_df.columns:
+                bench_df.ta.ema(length=50, append=True)
             v = bench_df.dropna(subset=["EMA_50", "EMA_200"])
             regime_dict = dict(
                 zip(
@@ -881,11 +895,12 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 all_dfs[sym] = df
                 if config.screen_signal_mode and is_filtered:
                     sigs = _build_screen_driven_signals(
-                        sym, screen_dates_map.get(sym, []), df, config
+                        sym, screen_dates_map.get(sym, []), df, config, strategy
                     )
                 else:
                     sigs = score_series(
                         df,
+                        strategy=strategy,
                         symbol=sym,
                         config=config,
                     )
@@ -903,6 +918,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             all_dfs,
             stocks_info,
             config,
+            strategy,
             regime_dict,
             screen_dates_map=screen_dates_map,
             is_screen_driven=config.screen_signal_mode,

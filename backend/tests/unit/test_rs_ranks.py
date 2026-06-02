@@ -24,9 +24,9 @@ def test_compute_rs_ranks_success():
         {"Close": [100] * 251 + [110]}, index=pd.date_range("2022-01-01", periods=252)
     )
 
-    s1 = TechnicalSignal(id=1, symbol="S1", momentum_12m=20.0)
-    s2 = TechnicalSignal(id=2, symbol="S2", momentum_12m=5.0)
-    s3 = TechnicalSignal(id=3, symbol="S3", momentum_12m=15.0)
+    s1 = TechnicalSignal(id=1, symbol="S1.NS", momentum_12m=20.0)
+    s2 = TechnicalSignal(id=2, symbol="S2.NS", momentum_12m=5.0)
+    s3 = TechnicalSignal(id=3, symbol="S3.NS", momentum_12m=15.0)
 
     # The code calls: db.query(TechnicalSignal).filter(date==sd, tf=='D').all()
     # That is ONE filter call.
@@ -67,7 +67,7 @@ def test_compute_rs_ranks_no_valid_signals():
         {"Close": [100] * 252}, index=pd.date_range("2022-01-01", periods=252)
     )
 
-    s1 = TechnicalSignal(id=1, symbol="S1", momentum_12m=None)
+    s1 = TechnicalSignal(id=1, symbol="S1.NS", momentum_12m=None)
     db.query.return_value.filter.return_value.all.return_value = [s1]
 
     with patch("app.pipeline.rs_ranks._ohlcv_cache.get", return_value=hist):

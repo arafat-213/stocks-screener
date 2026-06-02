@@ -6,7 +6,7 @@ from app.db.models import FundamentalCache, Stock
 @patch("app.routers.stocks.OHLCVCache.get")
 def test_get_stock_detail_case_insensitive_suffix(mock_fetch, db, client):
     # Seed data
-    stock = Stock(symbol="RELIANCE", name="Reliance Industries", sector="Energy")
+    stock = Stock(symbol="RELIANCE.NS", name="Reliance Industries", sector="Energy")
     db.add(stock)
     db.commit()
 
@@ -28,18 +28,18 @@ def test_get_stock_detail_case_insensitive_suffix(mock_fetch, db, client):
     # Test with .NS (works currently)
     response = client.get("/api/stocks/RELIANCE.NS")
     assert response.status_code == 200
-    assert response.json()["symbol"] == "RELIANCE"
+    assert response.json()["symbol"] == "RELIANCE.NS"
 
     # Test with .ns (currently fails because .replace(".NS", "") is case sensitive)
     response = client.get("/api/stocks/RELIANCE.ns")
     assert response.status_code == 200, (
         f"Expected 200 for RELIANCE.ns, got {response.status_code}. Detail: {response.json().get('detail')}"
     )
-    assert response.json()["symbol"] == "RELIANCE"
+    assert response.json()["symbol"] == "RELIANCE.NS"
 
 
 def test_refresh_cache_case_insensitive_suffix(db, client):
-    stock = Stock(symbol="RELIANCE", name="Reliance Industries", sector="Energy")
+    stock = Stock(symbol="RELIANCE.NS", name="Reliance Industries", sector="Energy")
     db.add(stock)
     db.commit()
 
@@ -47,25 +47,27 @@ def test_refresh_cache_case_insensitive_suffix(db, client):
     response = client.post("/api/stocks/RELIANCE.ns/refresh-cache")
     assert response.status_code == 200
     # The message should contain the clean symbol
-    assert response.json()["message"] == "Force refresh scheduled for RELIANCE"
+    assert response.json()["message"] == "Force refresh scheduled for RELIANCE.NS"
 
     # Verify DB entry
     cache = (
-        db.query(FundamentalCache).filter(FundamentalCache.symbol == "RELIANCE").first()
+        db.query(FundamentalCache)
+        .filter(FundamentalCache.symbol == "RELIANCE.NS")
+        .first()
     )
     assert cache is not None
     assert cache.force_refresh
 
 
 def test_cache_status_case_insensitive_suffix(db, client):
-    stock = Stock(symbol="RELIANCE", name="Reliance Industries", sector="Energy")
+    stock = Stock(symbol="RELIANCE.NS", name="Reliance Industries", sector="Energy")
     db.add(stock)
-    fund_cache = FundamentalCache(symbol="RELIANCE", force_refresh=False)
+    fund_cache = FundamentalCache(symbol="RELIANCE.NS", force_refresh=False)
     db.add(fund_cache)
     db.commit()
 
     # Test with .ns
     response = client.get("/api/stocks/RELIANCE.ns/cache-status")
     assert response.status_code == 200
-    assert response.json()["symbol"] == "RELIANCE"
+    assert response.json()["symbol"] == "RELIANCE.NS"
     assert "force_refresh" in response.json()

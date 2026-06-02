@@ -257,7 +257,7 @@ def run_alert_cycle(
 def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> dict:
     """
     Checks all open TradeJournal positions against today's price.
-    Fires alerts for: stop approached, stop hit, target approached, target hit.
+    Fires alerts for: stop approached, stop hit, target approached, target hit, overextended.
     """
     if signal_date is None:
         from app.screens.base import get_latest_signal_date
@@ -269,6 +269,9 @@ def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) 
         return {"positions_checked": 0, "alerts_fired": 0}
 
     cache = OHLCVCache()
+    from app.core.strategy import TechnicalStrategy
+
+    strategy = TechnicalStrategy()
     alerts = []
 
     for pos in open_positions:
@@ -280,15 +283,22 @@ def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) 
         if df.index.tz is not None:
             df.index = df.index.tz_localize(None)
 
+        # Calculate indicators for overextended check (RSI)
+        df = strategy.calculate_indicators(df)
+
         # Get today's bar
         today_rows = df[df.index.date == signal_date]
         if today_rows.empty:
             continue
 
-        row = today_rows.iloc[0]
+        today_idx = df.index.get_loc(today_rows.index[0])
+        row = df.iloc[today_idx]
+        prev_row = df.iloc[today_idx - 1] if today_idx > 0 else None
+
         day_low = float(row["Low"])
         day_high = float(row["High"])
         current = float(row["Close"])
+        rsi = float(row.get("RSI_14", 0))
 
         unrealised_pct = (current - pos.entry_price) / pos.entry_price * 100
         distance_to_stop_pct = (
@@ -315,6 +325,9 @@ def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) 
         elif distance_to_target_pct < 2.0:
             alert_type = "target_approached"
             urgency = "medium"
+        elif rsi > 80.0 and prev_row is not None and current < prev_row["Low"]:
+            alert_type = "overextended_exit"
+            urgency = "high"
 
         if not alert_type:
             continue

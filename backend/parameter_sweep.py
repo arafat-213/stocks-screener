@@ -124,7 +124,7 @@ def generate_report(results):
         for i, res in enumerate(best_sharpe[:5]):
             m = res["metrics"]
             p = res["params"]
-            p_str = f"Score: {p['score_threshold']}, Hold: {p['holding_days']}, Consol: {p['require_consolidation']}, Pullback: {p['use_pullback_entry']}"
+            p_str = ", ".join([f"{k}: {v}" for k, v in p.items()])
             f.write(
                 f"| {i + 1} | {m['sharpe_ratio']:.2f} | {m['total_return_pct']:.2f}% | {m['max_drawdown_pct']:.2f}% | {m['win_rate']:.2f}% | {m['total_trades']} | {p_str} |\n"
             )
@@ -135,7 +135,7 @@ def generate_report(results):
         for i, res in enumerate(best_return[:5]):
             m = res["metrics"]
             p = res["params"]
-            p_str = f"Score: {p['score_threshold']}, Hold: {p['holding_days']}, Consol: {p['require_consolidation']}, Pullback: {p['use_pullback_entry']}"
+            p_str = ", ".join([f"{k}: {v}" for k, v in p.items()])
             f.write(
                 f"| {i + 1} | {m['total_return_pct']:.2f}% | {m['sharpe_ratio']:.2f} | {m['max_drawdown_pct']:.2f}% | {m['win_rate']:.2f}% | {m['total_trades']} | {p_str} |\n"
             )

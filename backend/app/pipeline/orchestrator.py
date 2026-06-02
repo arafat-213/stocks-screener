@@ -21,6 +21,7 @@ from app.pipeline.errors import classify_error
 from app.pipeline.fetcher import (
     fetch_market_snapshots,
     get_nse_symbols,
+    get_ticker_symbol,
     slice_bulk_df,
 )
 from app.pipeline.ohlcv_cache import OHLCVCache
@@ -292,7 +293,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 return
 
             batch = remaining_symbols[i : i + batch_size]
-            batch_ns = [s if s.endswith(".NS") else s + ".NS" for s in batch]
+            batch_ns = [get_ticker_symbol(s) for s in batch]
 
             logger.info(
                 f"Downloading Tier 1 batch {i // batch_size + 1}: {len(batch)} symbols"
@@ -366,7 +367,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
                 try:
                     current_symbol = f"{symbol} (Tier 1.5)"
-                    ticker_symbol = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
+                    ticker_symbol = get_ticker_symbol(symbol)
                     ticker = yf.Ticker(ticker_symbol)
                     fi = ticker.fast_info
 

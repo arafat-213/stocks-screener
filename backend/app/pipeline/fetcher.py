@@ -55,6 +55,37 @@ pipeline_session.headers.update(
 # Backward compatibility for any direct imports of 'session'
 session = pipeline_session
 
+# Symbol Mapping: Correction map for symbols that don't follow the standard .NS pattern
+# Key: NSE Symbol, Value: yfinance Ticker (can be with or without .NS)
+SYMBOL_MAP = {
+    "MCDOWELL-N": "UNITDSPR",
+}
+
+
+def get_ticker_symbol(symbol: str) -> str:
+    """
+    Standardizes a symbol into a yfinance ticker with .NS suffix and mapping.
+    Handles indices (starting with ^) and existing .NS suffixes.
+    """
+    if not symbol:
+        return symbol
+
+    s = symbol.upper().strip()
+
+    # Handle Indices early
+    if s.startswith("^"):
+        return s
+
+    # Remove .NS if present to check the map
+    base = s[:-3] if s.endswith(".NS") else s
+    mapped = SYMBOL_MAP.get(base, base)
+
+    # Re-apply .NS if it's a standard stock and not already suffixed
+    if not mapped.startswith("^") and not mapped.endswith(".NS"):
+        return f"{mapped}.NS"
+
+    return mapped
+
 
 # Keep the original get_nse_symbols unchanged
 def get_nse_symbols(limit: int = None) -> list[str]:
@@ -66,8 +97,8 @@ def get_nse_symbols(limit: int = None) -> list[str]:
         if limit:
             symbols = symbols[:limit]
 
-        # Enforce .NS suffix for all symbols
-        symbols = [f"{s}.NS" if not s.endswith(".NS") else s for s in symbols]
+        # Apply mapping and suffixing
+        symbols = [get_ticker_symbol(s) for s in symbols]
 
         logger.info(f"Successfully fetched {len(symbols)} symbols from NSE")
         return symbols
@@ -81,9 +112,8 @@ def fetch_stock_data(
     symbol: str, append_ns: bool = True, period: str = "1y", fetch_info: bool = False
 ):
     try:
-        ticker_symbol = symbol
-        if append_ns and not symbol.endswith(".NS"):
-            ticker_symbol = f"{symbol}.NS"
+        # Use centralized ticker resolution
+        ticker_symbol = get_ticker_symbol(symbol) if append_ns else symbol
 
         # No session injection for yfinance 0.2.66+
         ticker = yf.Ticker(ticker_symbol)
@@ -113,14 +143,9 @@ def fetch_market_snapshots(
     Dedicated function to fetch market snapshots efficiently using yf.download.
     """
     try:
-        # Standardize symbols for Yahoo Finance
-        target_symbols = []
-        for s in symbols:
-            s = s.upper().strip()
-            if not s.endswith(".NS") and not s.startswith("^") and s.isalpha():
-                target_symbols.append(f"{s}.NS")
-            else:
-                target_symbols.append(s)
+        # Standardize symbols for Yahoo Finance using the mapper
+        target_to_orig = {get_ticker_symbol(s): s for s in symbols}
+        target_symbols = list(target_to_orig.keys())
 
         # yf.download is much faster and less prone to rate limits for pure price data
         # No session injection for yfinance 0.2.66+
@@ -140,7 +165,8 @@ def fetch_market_snapshots(
             data.index = data.index.tz_localize(None)
 
         snapshots = []
-        for orig_symbol, target_symbol in zip(symbols, target_symbols):
+        for target_symbol in target_symbols:
+            orig_symbol = target_to_orig[target_symbol]
             try:
                 # When downloading multiple tickers, yf returns a MultiIndex column DataFrame
                 # If only one ticker is requested, it's a single index DataFrame
@@ -176,7 +202,7 @@ def fetch_market_snapshots(
 def slice_bulk_df(bulk_df: pd.DataFrame, symbol: str) -> pd.DataFrame | None:
     """Extracts OHLCV for a symbol from a MultiIndex or flat DataFrame."""
     try:
-        suffix_symbol = symbol if symbol.endswith(".NS") else f"{symbol}.NS"
+        suffix_symbol = get_ticker_symbol(symbol)
         if isinstance(bulk_df.columns, pd.MultiIndex):
             df = bulk_df.xs(suffix_symbol, axis=1, level=1).copy()
         else:

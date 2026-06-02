@@ -1,6 +1,6 @@
 import datetime
 import logging
-import os
+from pathlib import Path
 
 from sqlalchemy import Date, case, cast, func, text
 from sqlalchemy.orm import Session
@@ -67,19 +67,22 @@ def generate_daily_report(db: Session):
 
         report_content = "\n".join(report_lines)
 
-        # Ensure reports directory exists (backend/reports)
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        # backend/app/pipeline/reporter.py -> backend/reports/
-        reports_dir = os.path.abspath(os.path.join(current_dir, "..", "..", "reports"))
+        # Ensure reports directory exists (project-root/backend/reports)
+        # Use Path for more robust path handling
+        reports_dir = Path.cwd() / "reports"
+        if not reports_dir.exists():
+            # If run from backend/ directory
+            reports_dir = Path.cwd().parent / "reports"
+            if not reports_dir.exists():
+                # Fallback to absolute relative to this file
+                reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
 
-        if not os.path.exists(reports_dir):
-            os.makedirs(reports_dir)
+        reports_dir.mkdir(parents=True, exist_ok=True)
 
         report_filename = f"report_{today}.md"
-        report_path = os.path.join(reports_dir, report_filename)
+        report_path = reports_dir / report_filename
 
-        with open(report_path, "w") as f:
-            f.write(report_content)
+        report_path.write_text(report_content)
 
         logger.info(f"Daily report generated: {report_path}")
         return str(report_path)

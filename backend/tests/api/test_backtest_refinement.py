@@ -64,7 +64,7 @@ def test_get_backtest_trades_sorting(client, db):
     # Create trades with different dates and returns
     t1 = models.BacktestTrade(
         run_id=run_id,
-        symbol="S1",
+        symbol="S1.NS",
         signal_date=datetime.date(2024, 1, 1),
         entry_date=datetime.date(2024, 1, 2),
         exit_date=datetime.date(2024, 1, 10),
@@ -76,7 +76,7 @@ def test_get_backtest_trades_sorting(client, db):
     )
     t2 = models.BacktestTrade(
         run_id=run_id,
-        symbol="S2",
+        symbol="S2.NS",
         signal_date=datetime.date(2024, 1, 5),
         entry_date=datetime.date(2024, 1, 6),
         exit_date=datetime.date(2024, 1, 15),
@@ -95,7 +95,7 @@ def test_get_backtest_trades_sorting(client, db):
     )
     assert response.status_code == 200
     trades = response.json()["trades"]
-    assert trades[0]["symbol"] == "S2"
+    assert trades[0]["symbol"] == "S2.NS"
     assert trades[0]["return_pct"] == 20
 
     # Sort by return_pct asc
@@ -104,7 +104,7 @@ def test_get_backtest_trades_sorting(client, db):
     )
     assert response.status_code == 200
     trades = response.json()["trades"]
-    assert trades[0]["symbol"] == "S1"
+    assert trades[0]["symbol"] == "S1.NS"
     assert trades[0]["return_pct"] == 10
 
 

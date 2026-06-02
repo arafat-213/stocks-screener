@@ -478,8 +478,15 @@ const Backtest = () => {
     use_volatility_sizing: true,
     max_concurrent_positions: 0,
     max_sector_positions: 0,
-    include_fundamentals: false,
     symbol_limit: 350,
+    ema_weight: 28.5,
+    macd_weight: 21.5,
+    rsi_weight: 21.5,
+    volume_weight: 21.5,
+    trend_weight: 7.0,
+    ema200_weight: 7.0,
+    rsi_overbought_threshold: 80.0,
+    use_state_based_exits: true,
     date_from: (() => {
       const d = new Date();
       d.setFullYear(d.getFullYear() - 1);
@@ -576,8 +583,15 @@ const Backtest = () => {
       require_volume_breakout: true,
       require_weekly_confirmation: true,
       require_monthly_confirmation: false,
-      include_fundamentals: false,
       symbol_limit: 350,
+      ema_weight: 28.5,
+      macd_weight: 21.5,
+      rsi_weight: 21.5,
+      volume_weight: 21.5,
+      trend_weight: 7.0,
+      ema200_weight: 7.0,
+      rsi_overbought_threshold: 80.0,
+      use_state_based_exits: true,
       date_from: (() => {
         const d = new Date();
         d.setFullYear(d.getFullYear() - 1);
@@ -788,6 +802,7 @@ const Backtest = () => {
             <div className='flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl mb-6 border border-border/50'>
               {[
                 { id: 'strategy', label: 'Engine', icon: Zap },
+                { id: 'weights', label: 'Weights', icon: Target },
                 { id: 'risk', label: 'Risk', icon: ShieldCheck },
                 { id: 'account', label: 'Trade', icon: Briefcase },
               ].map((tab) => (
@@ -854,13 +869,6 @@ const Backtest = () => {
                     </h3>
                     <div className='space-y-4'>
                       <Toggle
-                        label='Fundamental Filter'
-                        checked={config.include_fundamentals}
-                        onChange={(v) =>
-                          handleConfigChange('include_fundamentals', v)
-                        }
-                      />
-                      <Toggle
                         label='Market Regime'
                         checked={config.use_regime_filter}
                         onChange={(v) =>
@@ -879,6 +887,83 @@ const Backtest = () => {
                         checked={config.require_weekly_confirmation}
                         onChange={(v) =>
                           handleConfigChange('require_weekly_confirmation', v)
+                        }
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'weights' && (
+                <div className='flex flex-col gap-4 animate-fade-in'>
+                  <Slider
+                    label='EMA Cross Weight'
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    value={config.ema_weight}
+                    onChange={(v) => handleConfigChange('ema_weight', v)}
+                  />
+                  <Slider
+                    label='MACD Weight'
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    value={config.macd_weight}
+                    onChange={(v) => handleConfigChange('macd_weight', v)}
+                  />
+                  <Slider
+                    label='RSI Recovery Weight'
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    value={config.rsi_weight}
+                    onChange={(v) => handleConfigChange('rsi_weight', v)}
+                  />
+                  <Slider
+                    label='Volume Breakout Weight'
+                    min={0}
+                    max={50}
+                    step={0.5}
+                    value={config.volume_weight}
+                    onChange={(v) => handleConfigChange('volume_weight', v)}
+                  />
+                  <Slider
+                    label='Trend/ADX Weight'
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    value={config.trend_weight}
+                    onChange={(v) => handleConfigChange('trend_weight', v)}
+                  />
+                  <Slider
+                    label='200 EMA Weight'
+                    min={0}
+                    max={20}
+                    step={0.5}
+                    value={config.ema200_weight}
+                    onChange={(v) => handleConfigChange('ema200_weight', v)}
+                  />
+
+                  <div className='flex flex-col gap-4 pt-6 border-t-2 border-border/50 mt-2'>
+                    <h3 className='text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-[0.3em] font-black mb-1'>
+                      State Engine (Phase 4)
+                    </h3>
+                    <div className='space-y-4'>
+                      <Toggle
+                        label='State-Based Exits'
+                        checked={config.use_state_based_exits}
+                        onChange={(v) =>
+                          handleConfigChange('use_state_based_exits', v)
+                        }
+                      />
+                      <Slider
+                        label='RSI Overextended'
+                        min={70}
+                        max={90}
+                        value={config.rsi_overbought_threshold}
+                        onChange={(v) =>
+                          handleConfigChange('rsi_overbought_threshold', v)
                         }
                       />
                     </div>

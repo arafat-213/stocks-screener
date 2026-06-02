@@ -6,7 +6,7 @@ from pathlib import Path
 import pandas as pd
 import yfinance as yf
 
-from app.pipeline.fetcher import fetch_stock_data
+from app.pipeline.fetcher import fetch_stock_data, get_ticker_symbol
 
 logger = logging.getLogger(__name__)
 
@@ -169,7 +169,7 @@ class OHLCVCache:
             end_str,
         )
 
-        ticker_sym = f"{symbol}.NS" if append_ns else symbol
+        ticker_sym = get_ticker_symbol(symbol) if append_ns else symbol
         try:
             ticker = yf.Ticker(ticker_sym)
             head = ticker.history(start=start_str, end=end_str)
@@ -212,9 +212,7 @@ class OHLCVCache:
             end_str,
         )
 
-        ticker_sym = symbol
-        if append_ns and not symbol.endswith(".NS"):
-            ticker_sym = f"{symbol}.NS"
+        ticker_sym = get_ticker_symbol(symbol) if append_ns else symbol
         try:
             ticker = yf.Ticker(ticker_sym)
             tail = ticker.history(start=start_str, end=end_str)
