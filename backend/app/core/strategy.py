@@ -102,6 +102,7 @@ class TechnicalStrategy:
         volume_signal = "neutral"
         rsi_signal = "neutral"
         is_bullish = False
+        is_overextended = False
 
         ema5 = latest.get("EMA_5")
         ema13 = latest.get("EMA_13")
@@ -313,8 +314,6 @@ class TechnicalStrategy:
                     and rsi > self.config.rsi_min
                 )
 
-                # State Engine: Flag overextended state instead of zeroing score
-                is_overextended = False
                 if pd.notna(rsi) and rsi > self.config.rsi_overbought_threshold:
                     is_overextended = True
 
@@ -324,7 +323,6 @@ class TechnicalStrategy:
                 )
                 score = 100.0 if is_bullish else 0.0
                 ema_signal = "bullish" if is_bullish else "neutral"
-                is_overextended = False
 
             elif timeframe == "M":
                 is_bullish = (
@@ -337,7 +335,6 @@ class TechnicalStrategy:
                 )
                 score = 100.0 if is_bullish else 0.0
                 ema_signal = "bullish" if is_bullish else "neutral"
-                is_overextended = False
 
         # Ensure final score is in range 0-100
         score = max(0.0, min(100.0, score))

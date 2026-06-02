@@ -542,6 +542,20 @@ def simulate_trades(
                     )
                     break
 
+            if config.use_state_based_exits:
+                # current_eval uses skip_ta=True because indicators are pre-calculated
+                current_eval = _strategy.evaluate(df, i=k, skip_ta=True)
+                if current_eval.get("is_overextended"):
+                    prev_low = df.iloc[k - 1]["Low"] if k > 0 else low
+                    if close < prev_low:
+                        exit_idx = min(k + 1, len(df) - 1)
+                        exit_price, exit_date, exit_reason = (
+                            df.iloc[exit_idx]["Open"],
+                            df.index[exit_idx],
+                            "overextended_exit",
+                        )
+                        break
+
             if not t1_hit and t1_price and high >= t1_price:
                 t1_hit = True
                 t1_trade = TradeResult(
