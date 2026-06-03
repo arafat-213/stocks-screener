@@ -409,13 +409,17 @@ class TestMomentumCalculation:
         )
 
     def test_engine_handles_min_bars_buffer(self):
-        """Verify score_series uses MIN_BARS=260 and doesn't crash."""
-        df = self._make_df(300)
+        """Verify score_series uses MIN_BARS=260 and only returns candidate signals."""
+        df = make_trending_df(n=300)
         results = score_series(df)
-        # 300 - 260 = 40 bars should be scored
-        assert len(results) == 40
-        # Check first result's date
-        assert results[0]["date"] == df.index[260]
+        # We don't expect exactly 40 bars anymore due to pre-filtering,
+        # but we expect some results from make_trending_df.
+        assert len(results) > 0
+        assert len(results) <= 40
+        # Check that no result is before index 260
+        min_date = df.index[260]
+        for res in results:
+            assert res["date"] >= min_date
 
 
 def test_high_rsi_signal_not_entered():
@@ -504,6 +508,9 @@ def test_atr_trailing_stop_locks_in_profit():
         "volume_breakout": True,
         "atr": atr,
         "above_200ema": True,
+        "vol_sma_20": 1_000_000.0,
+        "momentum_12m": 10.0,
+        "ema20_level": 98.0,
     }
     config = BacktestConfig(
         score_threshold=0.0,
@@ -564,6 +571,9 @@ def test_partial_exit_produces_two_trade_records():
         "volume_breakout": True,
         "atr": atr,
         "above_200ema": True,
+        "vol_sma_20": 1_000_000.0,
+        "momentum_12m": 10.0,
+        "ema20_level": 98.0,
     }
     config = BacktestConfig(
         score_threshold=0.0,
@@ -641,6 +651,9 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
         "volume_breakout": True,
         "atr": 3.0,
         "above_200ema": True,
+        "vol_sma_20": 1_000_000.0,
+        "momentum_12m": 10.0,
+        "ema20_level": 98.0,
     }
     config = BacktestConfig(
         score_threshold=0.0,

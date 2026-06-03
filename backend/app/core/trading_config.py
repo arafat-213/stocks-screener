@@ -1,6 +1,6 @@
 import datetime
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Sequence
 
 
 @dataclass
@@ -21,6 +21,10 @@ class UnifiedTradingConfig:
     risk_reward_ratio: float = 1.5
     use_atr_stops: bool = True
     min_adx: float = 25.0
+    tier1_adx_threshold: float = (
+        30.0  # ADX required for Tier 1 classification (independent of min_adx)
+    )
+    min_signal_tier: int = 2  # 1 = Strict (Both Vol + ADX), 2 = Relaxed (Either)
     timeframe: str = "D"
     date_from: datetime.date = None
     date_to: datetime.date = None
@@ -37,6 +41,7 @@ class UnifiedTradingConfig:
     atr_trailing_multiplier: float = 1.0
     atr_trailing_activation: float = 2.5
     use_partial_exits: bool = False
+    target_r_levels: Sequence[float] = (1.5, 2.5)
     use_signal_invalidation_exit: bool = False
     invalidation_threshold_pct: float = 3.0
     screen_signal_mode: bool = False  # When True, screen dates drive signals (Model B)

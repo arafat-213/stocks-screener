@@ -1,12 +1,17 @@
 # app/pipeline/trade_setup.py
+from app.core.trading_config import UnifiedTradingConfig
 from app.db.models import TechnicalSignal
 
-ATR_STOP_MULTIPLIER = 2.0
-TARGET_R_LEVELS = [1.5, 2.5]
+# Default fallbacks if no config is passed
+DEFAULT_ATR_STOP_MULTIPLIER = 2.0
+DEFAULT_TARGET_R_LEVELS = (1.5, 2.5)
 
 
 def compute_trade_setup(
-    signal: TechnicalSignal, capital: float = 1_000_000.0, risk_pct: float = 3.0
+    signal: TechnicalSignal,
+    capital: float = 1_000_000.0,
+    risk_pct: float = 3.0,
+    config: UnifiedTradingConfig = None,
 ) -> dict | None:
     if not signal:
         return None
@@ -16,6 +21,10 @@ def compute_trade_setup(
 
     if not price or not atr or atr <= 0:
         return None
+
+    # Use config values or fallbacks
+    atr_multiplier = config.atr_multiplier if config else DEFAULT_ATR_STOP_MULTIPLIER
+    target_r_levels = config.target_r_levels if config else DEFAULT_TARGET_R_LEVELS
 
     ema_signal = signal.ema_signal or "neutral"
     ema20 = signal.ema20_level
@@ -40,7 +49,7 @@ def compute_trade_setup(
         entry_high = price * 1.010
 
     entry_mid = (entry_low + entry_high) / 2
-    stop = entry_mid - (ATR_STOP_MULTIPLIER * atr)
+    stop = entry_mid - (atr_multiplier * atr)
     risk = entry_mid - stop
 
     if risk <= 0:
@@ -53,14 +62,14 @@ def compute_trade_setup(
             "high": round(entry_high, 2),
         },
         "stop_loss": round(stop, 2),
-        "stop_basis": f"{ATR_STOP_MULTIPLIER}× ATR below entry",
+        "stop_basis": f"{atr_multiplier}× ATR below entry",
         "targets": [
             {
                 "level": round(entry_mid + r * risk, 2),
                 "rr": r,
-                "label": "partial" if r == TARGET_R_LEVELS[0] else "primary",
+                "label": "partial" if r == target_r_levels[0] else "primary",
             }
-            for r in TARGET_R_LEVELS
+            for r in target_r_levels
         ],
         "atr": round(atr, 2),
         "risk_per_share": round(risk, 2),

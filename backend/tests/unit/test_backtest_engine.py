@@ -103,7 +103,60 @@ def test_simulate_trades_entry_is_next_day_open():
     trade = trades[0]
     assert trade.signal_date == df.index[250].date()
     assert trade.entry_date == df.index[251].date()
-    assert trade.entry_price == float(df.iloc[251]["Open"])
+    assert trades[0].entry_price == float(df.iloc[251]["Open"])
+
+
+def test_simulate_trades_tier_logic():
+    df = create_dummy_df(300)
+    # Case A: Volume Breakout Only (Tier 2)
+    # Case B: Both (Tier 1)
+    # Case C: ADX Only (Tier 2)
+    # Case D: None (Tier 3)
+
+    scored_dates = [
+        {
+            "date": df.index[261],
+            "score": 100.0,
+            "rsi": 50.0,
+            "adx": 10.0,
+            "ema_signal": "bullish",
+            "above_200ema": True,
+            "volume_breakout": True,
+        },
+        {
+            "date": df.index[271],
+            "score": 100.0,
+            "rsi": 50.0,
+            "adx": 30.0,
+            "ema_signal": "bullish",
+            "above_200ema": True,
+            "volume_breakout": True,
+        },
+        {
+            "date": df.index[281],
+            "score": 100.0,
+            "rsi": 50.0,
+            "adx": 30.0,
+            "ema_signal": "bullish",
+            "above_200ema": True,
+            "volume_breakout": False,
+        },
+    ]
+
+    config = BacktestConfig(
+        min_adx=25.0,
+        min_signal_tier=1,  # Only Case B should pass
+        require_consolidation=False,
+    )
+
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    assert len(trades) == 1
+    assert trades[0].signal_date == df.index[271].date()
+
+    config.min_signal_tier = 2  # Cases A, B, C should pass
+    config.holding_days = 5
+    trades = simulate_trades("TEST.NS", "Tech", df, scored_dates, config)
+    assert len(trades) == 3
 
 
 def test_simulate_trades_stop_loss_triggered():

@@ -116,8 +116,8 @@ class BacktestRequest(BaseModel):
     use_pullback_entry: bool = Field(
         default=True,
         description=(
-            "For bullish_cross signals: wait up to 8 bars for price to pull back to EMA20 "
-            "before entering. Dramatically improves entry price vs. chasing at next-day open. "
+            "For bullish_pullback signals: wait up to 8 bars for price to pull back to EMA20 "
+            "before entering. Dramatically improves entry price vs. buying immediately at next-day open. "
             "Signals that don't pull back within 8 bars are skipped."
         ),
     )
@@ -172,6 +172,18 @@ class BacktestRequest(BaseModel):
         ge=0,
         le=50,
         description="Minimum ADX required to enter a trade. 0 disables the filter.",
+    )
+    tier1_adx_threshold: float = Field(
+        default=30.0,
+        ge=0,
+        le=100,
+        description="ADX required for Tier 1 classification.",
+    )
+    min_signal_tier: int = Field(
+        default=2,
+        ge=1,
+        le=2,
+        description="1: Strict (Both Vol + ADX), 2: Relaxed (Either).",
     )
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
     screen_slug: Optional[str] = Field(
@@ -346,6 +358,8 @@ def start_backtest(
         use_signal_invalidation_exit=request.use_signal_invalidation_exit,
         invalidation_threshold_pct=request.invalidation_threshold_pct,
         min_adx=request.min_adx,
+        tier1_adx_threshold=request.tier1_adx_threshold,
+        min_signal_tier=request.min_signal_tier,
         symbol_limit=request.symbol_limit,
         screen_slug=request.screen_slug,
         date_from=date_from,

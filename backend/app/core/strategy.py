@@ -104,7 +104,7 @@ class TechnicalStrategy:
 
         # 2. Pullback to EMA 20
         df["SIGNAL_PULLBACK_20"] = (
-            (ema5 > ema13) & (ema13 > ema26) & (abs(price - ema20) / ema20 < 0.02)
+            (ema5 > ema13) & (ema13 > ema26) & (abs(price - ema20) / ema20 < 0.04)
         ).fillna(False)
 
         # 3. MACD Signal

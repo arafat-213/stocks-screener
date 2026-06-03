@@ -132,12 +132,26 @@ def run_alert_cycle(
             TechnicalSignal.rsi >= config.rsi_min,
             TechnicalSignal.rsi <= config.rsi_max,
             TechnicalSignal.momentum_12m > 0,
+        )
+    )
+
+    # Signal Tier Filtering
+    if config.min_signal_tier == 1:
+        # Strict: Both volume breakout and Tier 1 ADX threshold must be met
+        query = query.filter(
+            and_(
+                TechnicalSignal.volume_breakout,
+                TechnicalSignal.adx >= config.tier1_adx_threshold,
+            )
+        )
+    else:
+        # Relaxed: Either volume breakout or base ADX threshold must be met (Tier 2)
+        query = query.filter(
             or_(
                 TechnicalSignal.volume_breakout,
                 TechnicalSignal.adx >= config.min_adx,
-            ),
+            )
         )
-    )
 
     if config.require_consolidation:
         query = query.filter(TechnicalSignal.is_consolidating)
@@ -166,18 +180,18 @@ def run_alert_cycle(
             continue
 
         # Compute signal_tier from technical indicators only
-        if tech.volume_breakout and (tech.adx or 0.0) >= config.min_adx:
+        if tech.volume_breakout and (tech.adx or 0.0) >= config.tier1_adx_threshold:
             tier = 1
         elif tech.volume_breakout or (tech.adx or 0.0) >= config.min_adx:
             tier = 2
         else:
-            tier = 2
+            tier = 3
 
         entry_status, pct_above_ema20 = _compute_entry_status(
             tech.close_price, tech.ema20_level
         )
 
-        setup = compute_trade_setup(tech)
+        setup = compute_trade_setup(tech, config=config)
         stop_loss = setup["stop_loss"] if setup else None
         target_price = (
             setup["targets"][-1]["level"] if setup and setup.get("targets") else None

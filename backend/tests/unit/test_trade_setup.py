@@ -23,3 +23,27 @@ def test_compute_trade_setup_pullback():
     assert setup["risk_per_share"] == 5.0  # 98.0 - 93.0
     assert setup["targets"][0]["level"] == 105.5  # 98.0 + (1.5 * 5.0)
     assert setup["targets"][0]["rr"] == 1.5
+
+
+def test_compute_trade_setup_with_config():
+    from app.core.trading_config import UnifiedTradingConfig
+
+    signal = TechnicalSignal(
+        close_price=100.0,
+        atr=2.5,
+        ema_signal="bullish_cross",
+    )
+
+    config = UnifiedTradingConfig(
+        atr_multiplier=3.0,
+        target_r_levels=(2.0, 4.0),
+    )
+
+    setup = compute_trade_setup(signal, config=config)
+
+    assert setup["stop_basis"] == "3.0× ATR below entry"
+    assert setup["stop_loss"] == 92.5  # 100.0 - (3.0 * 2.5)
+    assert setup["targets"][0]["rr"] == 2.0
+    assert setup["targets"][1]["rr"] == 4.0
+    assert setup["targets"][0]["label"] == "partial"
+    assert setup["targets"][1]["label"] == "primary"

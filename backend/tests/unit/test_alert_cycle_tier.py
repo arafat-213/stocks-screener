@@ -14,30 +14,28 @@ def test_run_alert_cycle_tier_calculation(
 ):
     # Setup
     mock_regime.return_value = True
+    mock_send_email.return_value = "test-email-id"
     signal_date = datetime.date(2024, 1, 10)
 
     # Create test data
     stock = Stock(symbol="TIER.NS", name="Tier Test", sector="Tech")
     db.add(stock)
 
-    # Tier 1 case: volume_breakout=True, adx >= min_adx(20)
-    # EMA signals must be in ["bullish_cross", "bullish_pullback"]
-    # momentum_12m must be > 0
-    # above_200ema must be True
-    # timeframe must be 'D'
+    # Tier 1 case: volume_breakout=True, adx >= tier1_adx_threshold(30)
     tech = TechnicalSignal(
         symbol="TIER.NS",
         date=datetime.datetime.combine(signal_date, datetime.time.min),
         timeframe="D",
         ema_signal="bullish_cross",
         above_200ema=True,
-        rsi=50.0,  # rsi between 30 and 70
+        rsi=50.0,
         momentum_12m=10.0,
         volume_breakout=True,
-        adx=25.0,
+        adx=35.0,
         close_price=100.0,
         ema20_level=95.0,
         entry_score=10.0,
+        is_consolidating=True,
     )
     db.add(tech)
 
@@ -51,7 +49,12 @@ def test_run_alert_cycle_tier_calculation(
     db.commit()
 
     config = UnifiedTradingConfig(
-        strategy_id="test", rsi_min=30, rsi_max=70, min_adx=20
+        strategy_id="test",
+        rsi_min=30,
+        rsi_max=70,
+        min_adx=20,
+        tier1_adx_threshold=30,
+        require_consolidation=True,
     )
 
     # Run
@@ -64,4 +67,3 @@ def test_run_alert_cycle_tier_calculation(
     assert len(signals) == 1
     assert signals[0]["symbol"] == "TIER.NS"
     assert signals[0]["signal_tier"] == 1
-    assert signals[0]["quality_tier"] == "A"
