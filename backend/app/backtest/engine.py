@@ -560,6 +560,7 @@ def simulate_trades(
     screen_dates: list[datetime.date] | None = None,
     is_screen_driven: bool = False,
     regime_scaling_map: dict = None,
+    breadth_map: dict = None,
 ):
     if strategy is None:
         strategy = TechnicalStrategy(config)
@@ -593,6 +594,11 @@ def simulate_trades(
                 continue
             if config.date_to and compare_date > config.date_to:
                 continue
+
+        # Market Breadth Gate (New)
+        current_breadth = (breadth_map or {}).get(compare_date, 100.0)
+        if current_breadth < getattr(config, "min_market_breadth_pct", 0.0):
+            continue
 
         # MTF Confirmation Gates
         if config.require_weekly_confirmation and weekly_state_map:
@@ -917,6 +923,7 @@ def simulate_portfolio(
     screen_dates_map: dict = None,
     is_screen_driven: bool = False,
     regime_scaling_map: dict = None,  # Mapping from date to max_position_pct
+    breadth_map: dict = None,
 ) -> list[TradeResult]:
     if strategy is None:
         strategy = TechnicalStrategy(config)
@@ -965,6 +972,7 @@ def simulate_portfolio(
             (screen_dates_map or {}).get(sym),
             is_screen_driven,
             regime_scaling_map=regime_scaling_map,
+            breadth_map=breadth_map,
         )
         if trades:
             open_pos[sym] = trades[-1].exit_date
@@ -1193,6 +1201,10 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             stocks_info = cached_signals["stocks_info"]
             bench_df = cached_signals["bench_df"]
             regime_dict = cached_signals["regime_dict"]
+            breadth_map = cached_signals.get("breadth_map", {})
+            if not breadth_map and all_dfs:
+                breadth_map = _calculate_breadth_map(all_dfs)
+
             run.symbols_done = len(symbols)
             db.commit()
         else:
@@ -1229,6 +1241,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     logger.error(f"Error processing {sym}: {e}")
                     continue
 
+            # Calculate breadth based on fully populated all_dfs
+            breadth_map = _calculate_breadth_map(all_dfs)
+
             payload = dict(
                 all_signals=all_signals,
                 all_dfs=all_dfs,
@@ -1238,6 +1253,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 stocks_info=stocks_info,
                 bench_df=bench_df,
                 regime_dict=regime_dict,
+                breadth_map=breadth_map,
             )
             with _SIGNAL_CACHE_LOCK:
                 if len(_SIGNAL_RUN_CACHE) >= _MAX_SIGNAL_CACHE_ENTRIES:
@@ -1250,8 +1266,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         regime_scaling_map = {}
         if config.use_regime_position_scaling and bench_df is not None:
-            # Calculate breadth based on processed stock data
-            breadth_map = _calculate_breadth_map(all_dfs)
+            # Re-use breadth_map if already calculated
             regime_scaling_map = _build_regime_map(
                 bench_df, config, breadth_map=breadth_map
             )
@@ -1268,6 +1283,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             screen_dates_map=screen_dates_map,
             is_screen_driven=config.screen_signal_mode,
             regime_scaling_map=regime_scaling_map,
+            breadth_map=breadth_map,
         )
 
         metrics = compute_metrics(all_trades, bench_df, config)
