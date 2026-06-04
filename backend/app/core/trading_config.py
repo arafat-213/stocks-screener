@@ -82,7 +82,7 @@ TREND_INITIATION = UnifiedTradingConfig(
     use_pullback_entry=True,
     holding_days=45,
     atr_multiplier=2.0,
-    risk_reward_ratio=1.5,
+    risk_reward_ratio=2.5,
 )
 
 TREND_CONTINUATION = UnifiedTradingConfig(

@@ -627,8 +627,14 @@ def simulate_trades(
             )
             peak_price = max(peak_price, high)
 
-            if high >= entry_price + actual_risk:
+            # Staged De-risking Logic
+            # 1. At 2.0R: Move stop to Entry (Breakeven) - Highest priority
+            if high >= entry_price + 2.0 * actual_risk:
                 stop_price = max(stop_price, entry_price)
+            # 2. At 1.5R: Move stop to Entry - 0.5 * actual_risk (reduce risk by half)
+            elif high >= entry_price + 1.5 * actual_risk:
+                new_stop = entry_price - 0.5 * actual_risk
+                stop_price = max(stop_price, new_stop)
 
             if config.trailing_stop_pct > 0:
                 trail = peak_price * (1 - config.trailing_stop_pct / 100)
