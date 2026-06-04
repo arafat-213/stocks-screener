@@ -36,7 +36,7 @@ class UnifiedTradingConfig:
     risk_per_trade_pct: float = 3.0
     max_position_pct: float = 20.0
     max_concurrent_positions: int = 0
-    max_sector_positions: int = 0
+    max_sector_positions: int = 3
     use_atr_trailing_stop: bool = True
     atr_trailing_multiplier: float = 1.0
     atr_trailing_activation: float = 2.5
@@ -68,11 +68,12 @@ class UnifiedTradingConfig:
     use_state_based_exits: bool = True
     rsi_recovery_lookback: int = 5
 
-    use_regime_filter: bool = True
     use_regime_position_scaling: bool = True
     regime_bull_rsi_threshold: float = 60.0
     regime_bear_rsi_threshold: float = 45.0
     regime_adx_threshold: float = 20.0
+    regime_adx_floor: float = 15.0
+    min_market_breadth_pct: float = 40.0
     regime_bull_position_pct: float = 12.0
     regime_neutral_position_pct: float = 7.0
     regime_bear_position_pct: float = 0.0
