@@ -50,6 +50,19 @@ class BacktestRequest(BaseModel):
         description="Requires volume > 2x SMA20 for entry. The tier gate (EMA cross/pullback) already enforces signal quality.",
     )
     use_regime_filter: bool = True
+    use_regime_position_scaling: bool = True
+    regime_bull_rsi_threshold: float = Field(default=60.0, ge=50.0, le=90.0)
+    regime_bear_rsi_threshold: float = Field(default=45.0, ge=30.0, le=60.0)
+    regime_adx_threshold: float = Field(default=20.0, ge=0.0, le=50.0)
+    regime_bull_position_pct: float = Field(default=12.0, ge=1.0, le=100.0)
+    regime_neutral_position_pct: float = Field(default=3.0, ge=0.0, le=100.0)
+    regime_bear_position_pct: float = Field(default=0.0, ge=0.0, le=100.0)
+    regime_confirmation_days: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Number of consecutive days a regime must hold before switching. Prevents whipsaws.",
+    )
     require_weekly_confirmation: bool = Field(
         default=False,
         description="Requires the Weekly timeframe to be bullish (RSI > 50, price > EMA26) "
@@ -389,6 +402,14 @@ def start_backtest(
         ema200_weight=request.ema200_weight,
         rsi_overbought_threshold=request.rsi_overbought_threshold,
         use_state_based_exits=request.use_state_based_exits,
+        use_regime_position_scaling=request.use_regime_position_scaling,
+        regime_confirmation_days=request.regime_confirmation_days,
+        regime_bull_rsi_threshold=request.regime_bull_rsi_threshold,
+        regime_bear_rsi_threshold=request.regime_bear_rsi_threshold,
+        regime_adx_threshold=request.regime_adx_threshold,
+        regime_bull_position_pct=request.regime_bull_position_pct,
+        regime_neutral_position_pct=request.regime_neutral_position_pct,
+        regime_bear_position_pct=request.regime_bear_position_pct,
     )
 
     # Add to background tasks

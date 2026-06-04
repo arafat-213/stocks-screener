@@ -227,8 +227,80 @@ def _check_mtf_confirmation(date: datetime.date, state_map: dict) -> bool:
     return state_map[sorted_dates[idx - 1]]
 
 
+def _build_regime_map(
+    bench_df: pd.DataFrame, config: BacktestConfig
+) -> dict[datetime.date, float]:
+    """
+    Pre-calculates a mapping from date to position scaling (max_position_pct).
+    Uses RSI, ADX, and Price vs EMA200 with a confirmation window (debounce).
+    Regimes:
+    - BULL (2): RSI > 60 and ADX > 20 -> Full size (regime_bull_position_pct)
+    - BEAR (0): RSI < 45 or Price < EMA200 -> Cash (regime_bear_position_pct)
+    - NEUTRAL (1): Everything else -> Reduced size (regime_neutral_position_pct)
+    """
+    if bench_df is None or bench_df.empty:
+        return {}
+
+    # Ensure required indicators are present
+    if "RSI_14" not in bench_df.columns:
+        return {}
+    if "ADX_14" not in bench_df.columns:
+        bench_df.ta.adx(length=14, append=True)
+    if "EMA_200" not in bench_df.columns:
+        bench_df.ta.ema(length=200, append=True)
+
+    regime_map = {}
+    current_regime = 1  # Start Neutral
+    confirmation_counter = 0
+    target_days = config.regime_confirmation_days
+
+    # Iterate through benchmark data
+    for i in range(len(bench_df)):
+        row = bench_df.iloc[i]
+        date = bench_df.index[i].date()
+
+        rsi = row.get("RSI_14", 50.0)
+        adx = row.get("ADX_14", 0.0)
+        close = row.get("Close", 0.0)
+        ema200 = row.get("EMA_200", 0.0)
+
+        # Determine "Potential" Regime
+        if close < ema200 or rsi < config.regime_bear_rsi_threshold:
+            potential_regime = 0  # BEAR
+        elif (
+            rsi > config.regime_bull_rsi_threshold and adx > config.regime_adx_threshold
+        ):
+            potential_regime = 2  # BULL
+        else:
+            potential_regime = 1  # NEUTRAL
+
+        # Apply Hysteresis/Debounce
+        if potential_regime == current_regime:
+            confirmation_counter = 0
+        else:
+            confirmation_counter += 1
+            if confirmation_counter >= target_days:
+                current_regime = potential_regime
+                confirmation_counter = 0
+
+        # Map state to position percentage
+        if current_regime == 0:
+            val = config.regime_bear_position_pct
+        elif current_regime == 2:
+            val = config.regime_bull_position_pct
+        else:
+            val = config.regime_neutral_position_pct
+
+        regime_map[date] = val
+
+    return regime_map
+
+
 def _compute_position_size(
-    config: BacktestConfig, entry_price: float, atr: float = None
+    config: BacktestConfig,
+    entry_price: float,
+    atr: float = None,
+    regime_max_pct: float = None,
 ) -> float:
     if not config.use_volatility_sizing or atr is None or atr <= 0:
         return config.position_size
@@ -240,7 +312,12 @@ def _compute_position_size(
 
     shares = risk_amount / stop_distance
     pos_size = shares * entry_price
-    max_allowed = config.starting_capital * (config.max_position_pct / 100.0)
+
+    # Use regime-adjusted cap if provided, otherwise fall back to config
+    effective_max_pct = (
+        regime_max_pct if regime_max_pct is not None else config.max_position_pct
+    )
+    max_allowed = config.starting_capital * (effective_max_pct / 100.0)
     return min(pos_size, max_allowed)
 
 
@@ -422,6 +499,7 @@ def simulate_trades(
     monthly_state_map: dict = None,
     screen_dates: list[datetime.date] | None = None,
     is_screen_driven: bool = False,
+    regime_scaling_map: dict = None,
 ):
     if strategy is None:
         strategy = TechnicalStrategy(config)
@@ -433,6 +511,15 @@ def simulate_trades(
     trades = []
     last_exit_idx = -1
     _sorted_screen_dates = sorted(screen_dates) if screen_dates else None
+
+    # Pre-sort map keys for robust and fast lookups
+    sorted_regime_keys = sorted(regime_dict.keys()) if regime_dict else []
+    sorted_scaling_keys = (
+        sorted(regime_scaling_map.keys()) if regime_scaling_map else []
+    )
+    sorted_weekly_keys = sorted(weekly_state_map.keys()) if weekly_state_map else []
+    sorted_monthly_keys = sorted(monthly_state_map.keys()) if monthly_state_map else []
+
     date_to_idx = {date: i for i, date in enumerate(df.index)}
 
     for signal in scored_dates:
@@ -448,20 +535,14 @@ def simulate_trades(
                 continue
 
         # MTF Confirmation Gates
-        if config.require_weekly_confirmation and weekly_state_map is not None:
-            sorted_w_dates = sorted(weekly_state_map.keys())
-            w_idx = bisect.bisect_right(sorted_w_dates, compare_date)
-            if w_idx == 0:
-                continue
-            if not weekly_state_map[sorted_w_dates[w_idx - 1]]:
+        if config.require_weekly_confirmation and weekly_state_map:
+            w_idx = bisect.bisect_right(sorted_weekly_keys, compare_date)
+            if w_idx == 0 or not weekly_state_map[sorted_weekly_keys[w_idx - 1]]:
                 continue
 
-        if config.require_monthly_confirmation and monthly_state_map is not None:
-            sorted_m_dates = sorted(monthly_state_map.keys())
-            m_idx = bisect.bisect_right(sorted_m_dates, compare_date)
-            if m_idx == 0:
-                continue
-            if not monthly_state_map[sorted_m_dates[m_idx - 1]]:
+        if config.require_monthly_confirmation and monthly_state_map:
+            m_idx = bisect.bisect_right(sorted_monthly_keys, compare_date)
+            if m_idx == 0 or not monthly_state_map[sorted_monthly_keys[m_idx - 1]]:
                 continue
 
         if _sorted_screen_dates is not None and not is_screen_driven:
@@ -531,7 +612,8 @@ def simulate_trades(
             ):
                 wait_compare = df.index[wait_k].date()
                 if config.use_regime_filter and regime_dict:
-                    if not regime_dict.get(wait_compare, False):
+                    r_idx = bisect.bisect_right(sorted_regime_keys, wait_compare)
+                    if r_idx == 0 or not regime_dict[sorted_regime_keys[r_idx - 1]]:
                         all_bars_above = False
                         break
                 low, close = df.iloc[wait_k]["Low"], df.iloc[wait_k]["Close"]
@@ -562,7 +644,8 @@ def simulate_trades(
             if entry_idx < len(df):
                 entry_date = df.index[entry_idx]
                 if config.use_regime_filter and regime_dict:
-                    if not regime_dict.get(entry_date.date(), False):
+                    r_idx = bisect.bisect_right(sorted_regime_keys, entry_date.date())
+                    if r_idx == 0 or not regime_dict[sorted_regime_keys[r_idx - 1]]:
                         continue
                 entry_price = float(df.iloc[entry_idx]["Open"])
 
@@ -577,7 +660,23 @@ def simulate_trades(
         # Risk Management
         raw_atr = signal.get("atr") or 0.0
         eff_atr = max(raw_atr, entry_price * 0.015)
-        pos_size = _compute_position_size(config, entry_price, atr=eff_atr)
+
+        # ── REGIME SCALING ───────────────────────────────────────────────────
+        regime_max_pct = None
+        if config.use_regime_position_scaling and regime_scaling_map:
+            r_idx = bisect.bisect_right(sorted_scaling_keys, entry_date.date())
+            if r_idx > 0:
+                regime_max_pct = regime_scaling_map[sorted_scaling_keys[r_idx - 1]]
+            else:
+                regime_max_pct = config.regime_neutral_position_pct
+
+            if regime_max_pct <= 0.0:
+                continue  # Skip trade entirely in Bear regime
+
+        pos_size = _compute_position_size(
+            config, entry_price, atr=eff_atr, regime_max_pct=regime_max_pct
+        )
+        # ─────────────────────────────────────────────────────────────────────
 
         atr_val = signal.get("atr")
         if is_screen_driven:
@@ -757,7 +856,8 @@ def simulate_portfolio(
     monthly_state_maps: dict = None,
     screen_dates_map: dict = None,
     is_screen_driven: bool = False,
-):
+    regime_scaling_map: dict = None,  # Mapping from date to max_position_pct
+) -> list[TradeResult]:
     if strategy is None:
         strategy = TechnicalStrategy(config)
 
@@ -804,6 +904,7 @@ def simulate_portfolio(
             (monthly_state_maps or {}).get(sym),
             (screen_dates_map or {}).get(sym),
             is_screen_driven,
+            regime_scaling_map=regime_scaling_map,
         )
         if trades:
             open_pos[sym] = trades[-1].exit_date
@@ -1087,6 +1188,10 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             )
         # ── END SIGNAL CACHE BLOCK ────────────────────────────────────────────
 
+        regime_scaling_map = {}
+        if config.use_regime_position_scaling and bench_df is not None:
+            regime_scaling_map = _build_regime_map(bench_df, config)
+
         all_trades = simulate_portfolio(
             all_signals,
             all_dfs,
@@ -1098,6 +1203,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             monthly_state_maps=monthly_state_maps,
             screen_dates_map=screen_dates_map,
             is_screen_driven=config.screen_signal_mode,
+            regime_scaling_map=regime_scaling_map,
         )
 
         metrics = compute_metrics(all_trades, bench_df, config)

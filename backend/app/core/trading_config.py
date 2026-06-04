@@ -18,7 +18,7 @@ class UnifiedTradingConfig:
     require_weekly_confirmation: bool = False
     require_monthly_confirmation: bool = False
     atr_multiplier: float = 2.0
-    risk_reward_ratio: float = 1.5
+    risk_reward_ratio: float = 2.5
     use_atr_stops: bool = True
     min_adx: float = 25.0
     tier1_adx_threshold: float = (
@@ -67,6 +67,16 @@ class UnifiedTradingConfig:
     rsi_overbought_threshold: float = 80.0
     use_state_based_exits: bool = True
     rsi_recovery_lookback: int = 5
+
+    use_regime_filter: bool = True
+    use_regime_position_scaling: bool = True
+    regime_bull_rsi_threshold: float = 60.0
+    regime_bear_rsi_threshold: float = 45.0
+    regime_adx_threshold: float = 20.0
+    regime_bull_position_pct: float = 12.0
+    regime_neutral_position_pct: float = 7.0
+    regime_bear_position_pct: float = 0.0
+    regime_confirmation_days: int = 5
 
     @property
     def effective_score_threshold(self) -> float:
