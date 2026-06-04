@@ -29,7 +29,7 @@ class BacktestRequest(BaseModel):
         ),
     )
     holding_days: int = Field(
-        default=35,  # was 30; 5 extra days for 1.5R targets
+        default=50,
         ge=1,
         le=252,
     )
@@ -79,11 +79,10 @@ class BacktestRequest(BaseModel):
         default=2.0, ge=1.0, le=10.0, description="Multiplier for ATR-based stop loss."
     )
     risk_reward_ratio: float = Field(
-        default=1.5,
+        default=2.5,
         ge=0.5,
         le=10.0,
-        description="1.5R target is reachable within 35 days on NSE momentum setups. "
-        "2.0R requires 12-16% move in 30 days — only top 20% of trades qualify.",
+        description="2.5R target aligns with high-conviction trend initiation setups.",
     )
     use_atr_stops: bool = Field(
         default=True, description="Use ATR-based stop loss instead of fixed percentage."
@@ -106,9 +105,9 @@ class BacktestRequest(BaseModel):
         ge=0.5,
         le=5.0,
         description=(
-            "Activate after 2.5 ATR gain. With atr_multiplier=2.0 and risk_reward=1.5, "
-            "target is at 3.0 ATR — trail activates at 83% of target distance. "
-            "Floor = activation - multiplier = 1.5 ATR profit when first fired."
+            "Activate after 2.5 ATR gain. With atr_multiplier=2.0 and risk_reward=2.5, "
+            "target is at 4.5 ATR — trail activates midway to target. "
+            "Floor = activation - multiplier = 0.5 ATR profit when first fired."
         ),
     )
     use_partial_exits: bool = Field(
@@ -217,16 +216,16 @@ class BacktestRequest(BaseModel):
         ),
     )
     risk_per_trade_pct: float = Field(
-        default=0.5,
+        default=3.0,
         ge=0.1,
         le=5.0,
-        description="0.5% risk per trade. At 333 trades/5y, reduces turnover to sustainable levels.",
+        description="3.0% risk per trade. Scaled for regime-based aggression.",
     )
     max_position_pct: float = Field(
-        default=5.0,
+        default=20.0,
         ge=1.0,
         le=50.0,
-        description="Cap at 5% of capital. With 333 trades/5y, 10% cap created 16.6% cost drag.",
+        description="Cap at 20% of capital to allow meaningful concentration in bull regimes.",
     )
     max_concurrent_positions: int = Field(
         default=0,
