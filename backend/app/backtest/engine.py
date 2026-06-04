@@ -279,11 +279,11 @@ def _check_mtf_confirmation(date: datetime.date, state_map: dict) -> bool:
 
 
 def _build_regime_map(
-    bench_df: pd.DataFrame, config: BacktestConfig
+    bench_df: pd.DataFrame, config: BacktestConfig, breadth_map: dict = None
 ) -> dict[datetime.date, float]:
     """
     Pre-calculates a mapping from date to position scaling (max_position_pct).
-    Uses RSI, ADX, and Price vs EMA200 with a confirmation window (debounce).
+    Uses RSI, ADX, Price vs EMA200, and Universe Breadth.
     Regimes:
     - BULL (2): RSI > 60 and ADX > 20 -> Full size (regime_bull_position_pct)
     - BEAR (0): RSI < 45 or Price < EMA200 -> Cash (regime_bear_position_pct)
@@ -315,8 +315,17 @@ def _build_regime_map(
         close = row.get("Close", 0.0)
         ema200 = row.get("EMA_200", 0.0)
 
-        # Determine "Potential" Regime
-        if close < ema200 or rsi < config.regime_bear_rsi_threshold:
+        breadth = (breadth_map or {}).get(date, 50.0)
+
+        # Determine "Potential" Regime with SMART OVERRIDES
+        if adx < config.regime_adx_floor:
+            if breadth > 60.0:
+                potential_regime = 2  # Hidden Bull
+            elif breadth < config.min_market_breadth_pct:
+                potential_regime = 0  # Dangerous Sideways
+            else:
+                potential_regime = 1  # Normal Neutral
+        elif close < ema200 or rsi < config.regime_bear_rsi_threshold:
             potential_regime = 0  # BEAR
         elif (
             rsi > config.regime_bull_rsi_threshold and adx > config.regime_adx_threshold
@@ -1241,7 +1250,11 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         regime_scaling_map = {}
         if config.use_regime_position_scaling and bench_df is not None:
-            regime_scaling_map = _build_regime_map(bench_df, config)
+            # Calculate breadth based on processed stock data
+            breadth_map = _calculate_breadth_map(all_dfs)
+            regime_scaling_map = _build_regime_map(
+                bench_df, config, breadth_map=breadth_map
+            )
 
         all_trades = simulate_portfolio(
             all_signals,
