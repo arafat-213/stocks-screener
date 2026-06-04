@@ -215,6 +215,57 @@ def _score_bar_from_precomputed(
     return res
 
 
+def _calculate_breadth_map(
+    all_dfs: dict[str, pd.DataFrame],
+) -> dict[datetime.date, float]:
+    """
+    Calculates the percentage of stocks above their 200 EMA per day
+    using the already loaded Parquet dataframes.
+    """
+    if not all_dfs:
+        return {}
+
+    # Extract Close and EMA200 for all symbols into dictionaries of series
+    close_series = {}
+    ema_series = {}
+
+    for sym, df in all_dfs.items():
+        if "Close" in df.columns and "EMA_200" in df.columns:
+            # Drop timezone information for consistency if present
+            idx = df.index
+            if hasattr(idx, "tz") and idx.tz is not None:
+                idx = idx.tz_localize(None)
+
+            close_series[sym] = pd.Series(df["Close"].values, index=idx)
+            ema_series[sym] = pd.Series(df["EMA_200"].values, index=idx)
+
+    if not close_series:
+        return {}
+
+    # Create DataFrames
+    close_df = pd.DataFrame(close_series)
+    ema_df = pd.DataFrame(ema_series)
+
+    # Boolean matrix: True if Close > EMA200
+    above_mask = close_df > ema_df
+
+    # Sum True values per row and divide by number of active stocks that day
+    active_stocks = close_df.notna().sum(axis=1)
+
+    # Avoid division by zero
+    breadth_series = pd.Series(0.0, index=close_df.index)
+    valid_mask = active_stocks > 0
+    breadth_series[valid_mask] = (
+        above_mask[valid_mask].sum(axis=1) / active_stocks[valid_mask]
+    ) * 100
+
+    # Convert to dict with date keys
+    return {
+        d.date() if hasattr(d, "date") else d: float(v)
+        for d, v in breadth_series.items()
+    }
+
+
 def _check_mtf_confirmation(date: datetime.date, state_map: dict) -> bool:
     if not state_map:
         return True
