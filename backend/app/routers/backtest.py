@@ -54,8 +54,10 @@ class BacktestRequest(BaseModel):
     regime_bull_rsi_threshold: float = Field(default=60.0, ge=50.0, le=90.0)
     regime_bear_rsi_threshold: float = Field(default=45.0, ge=30.0, le=60.0)
     regime_adx_threshold: float = Field(default=20.0, ge=0.0, le=50.0)
+    regime_adx_floor: float = Field(default=15.0, ge=0.0, le=100.0)
+    min_market_breadth_pct: float = Field(default=40.0, ge=0.0, le=100.0)
     regime_bull_position_pct: float = Field(default=12.0, ge=1.0, le=100.0)
-    regime_neutral_position_pct: float = Field(default=3.0, ge=0.0, le=100.0)
+    regime_neutral_position_pct: float = Field(default=7.0, ge=0.0, le=100.0)
     regime_bear_position_pct: float = Field(default=0.0, ge=0.0, le=100.0)
     regime_confirmation_days: int = Field(
         default=5,
@@ -233,7 +235,7 @@ class BacktestRequest(BaseModel):
         description="Maximum open positions at any time. 0 = unlimited. Enable only after baseline >150 trades is validated.",
     )
     max_sector_positions: int = Field(
-        default=0,
+        default=3,
         ge=0,
         le=10,
         description="Maximum open positions in a single sector. 0 = unlimited.",
@@ -407,6 +409,8 @@ def start_backtest(
         regime_bull_rsi_threshold=request.regime_bull_rsi_threshold,
         regime_bear_rsi_threshold=request.regime_bear_rsi_threshold,
         regime_adx_threshold=request.regime_adx_threshold,
+        regime_adx_floor=request.regime_adx_floor,
+        min_market_breadth_pct=request.min_market_breadth_pct,
         regime_bull_position_pct=request.regime_bull_position_pct,
         regime_neutral_position_pct=request.regime_neutral_position_pct,
         regime_bear_position_pct=request.regime_bear_position_pct,
