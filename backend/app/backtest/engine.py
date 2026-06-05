@@ -315,7 +315,7 @@ def _build_regime_map(
         close = row.get("Close", 0.0)
         ema200 = row.get("EMA_200", 0.0)
 
-        breadth = (breadth_map or {}).get(date, 50.0)
+        breadth = (breadth_map or {}).get(date, 100.0)
 
         # Determine "Potential" Regime with SMART OVERRIDES
         if adx < config.regime_adx_floor:
@@ -406,7 +406,7 @@ def _build_screen_driven_signals(
 
     signals = []
     last_signal_date = None
-    reentry_gap = getattr(config, "screen_reentry_gap_days", 60)
+    reentry_gap = config.screen_reentry_gap_days
 
     for screen_date in sorted(screen_dates):
         if last_signal_date is not None:
@@ -432,7 +432,7 @@ def _build_screen_driven_signals(
         if bar.get("momentum_12m") is not None and bar["momentum_12m"] < 0:
             continue
 
-        rsi_max = getattr(config, "screen_driven_rsi_max", 75.0)
+        rsi_max = config.screen_driven_rsi_max
         if (bar.get("rsi") or 0.0) > rsi_max:
             continue
 
@@ -597,7 +597,7 @@ def simulate_trades(
 
         # Market Breadth Gate (New)
         current_breadth = (breadth_map or {}).get(compare_date, 100.0)
-        if current_breadth < getattr(config, "min_market_breadth_pct", 0.0):
+        if current_breadth < config.min_market_breadth_pct:
             continue
 
         # MTF Confirmation Gates
@@ -612,7 +612,7 @@ def simulate_trades(
                 continue
 
         if _sorted_screen_dates is not None and not is_screen_driven:
-            window_days = getattr(config, "screen_membership_window_days", 7)
+            window_days = config.screen_membership_window_days
             window_start = compare_date - datetime.timedelta(days=window_days)
             lo = bisect.bisect_left(_sorted_screen_dates, window_start)
             hi = bisect.bisect_right(_sorted_screen_dates, compare_date)
@@ -682,6 +682,12 @@ def simulate_trades(
                     if r_idx == 0 or not regime_dict[sorted_regime_keys[r_idx - 1]]:
                         all_bars_above = False
                         break
+
+                current_breadth = (breadth_map or {}).get(wait_compare, 100.0)
+                if current_breadth < config.min_market_breadth_pct:
+                    all_bars_above = False
+                    break
+
                 low, close = df.iloc[wait_k]["Low"], df.iloc[wait_k]["Close"]
 
                 # Bearish invalidation: price drops >5% below signal close (Issue 7)
@@ -713,6 +719,11 @@ def simulate_trades(
                     r_idx = bisect.bisect_right(sorted_regime_keys, entry_date.date())
                     if r_idx == 0 or not regime_dict[sorted_regime_keys[r_idx - 1]]:
                         continue
+
+                current_breadth = (breadth_map or {}).get(entry_date.date(), 100.0)
+                if current_breadth < config.min_market_breadth_pct:
+                    continue
+
                 entry_price = float(df.iloc[entry_idx]["Open"])
 
         if entry_idx is None or entry_idx >= len(df):

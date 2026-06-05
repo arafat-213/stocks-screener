@@ -687,7 +687,7 @@ def test_default_config_has_updated_values():
     from app.backtest.engine import BacktestConfig
 
     cfg = BacktestConfig()
-    assert cfg.score_threshold == 60.0
+    assert cfg.score_threshold == 55.0
     assert cfg.require_volume_breakout is False
     assert cfg.use_atr_stops is True
     assert cfg.min_adx == 25.0
@@ -695,3 +695,148 @@ def test_default_config_has_updated_values():
     assert cfg.max_concurrent_positions == 0
     assert cfg.max_sector_positions == 3
     assert cfg.use_atr_trailing_stop is True
+
+
+class TestBreadthGateTiming:
+    def _make_df(self, n=50):
+        closes = np.linspace(100, 200, n)
+        return pd.DataFrame(
+            {
+                "Open": closes * 0.99,
+                "High": closes * 1.01,
+                "Low": closes * 0.98,
+                "Close": closes,
+                "Volume": np.full(n, 1_000_000.0),
+            },
+            index=pd.date_range("2021-01-01", periods=n, freq="B"),
+        )
+
+    def test_breadth_checked_on_pullback_entry_date(self):
+        """Breadth must be validated on the actual entry date during a pullback wait."""
+        from app.backtest.engine import BacktestConfig, simulate_trades
+
+        df = self._make_df(50)
+        signal_idx = 10
+        ema20 = df["Low"].iloc[signal_idx] * 0.97
+
+        # Modify future days for a pullback
+        df.iloc[signal_idx + 2, df.columns.get_loc("Low")] = ema20 * 1.001
+        df.iloc[signal_idx + 2, df.columns.get_loc("Close")] = ema20 * 1.002
+
+        signal = {
+            "date": df.index[signal_idx],
+            "score": 80.0,
+            "is_bullish": True,
+            "rsi": 50.0,
+            "adx": 30.0,
+            "ema_signal": "bullish_cross",
+            "close": float(df.iloc[signal_idx]["Close"]),
+            "open": float(df.iloc[signal_idx]["Open"]),
+            "volume_breakout": True,
+            "atr": 2.0,
+            "above_200ema": True,
+            "momentum_12m": 10.0,
+            "ema20_level": ema20,
+        }
+
+        config = BacktestConfig(
+            score_threshold=60.0,
+            use_pullback_entry=True,
+            pullback_max_wait_bars=5,
+            pullback_tolerance_pct=1.0,
+            min_market_breadth_pct=20.0,
+            use_regime_filter=False,
+            min_signal_tier=3,
+            min_adx=0.0,
+            tier1_adx_threshold=0.0,
+            require_consolidation=False,
+        )
+
+        signal_date = df.index[signal_idx].date()
+        wait1_date = df.index[signal_idx + 1].date()
+        entry_date = df.index[signal_idx + 2].date()
+
+        # Scenario 1: Breadth collapses on entry date
+        breadth_map_fail = {
+            signal_date: 80.0,
+            wait1_date: 80.0,
+            entry_date: 5.0,  # Fails gate
+        }
+        trades_fail = simulate_trades(
+            "TEST", "Tech", df, [signal], config, breadth_map=breadth_map_fail
+        )
+        assert len(trades_fail) == 0, (
+            "Trade should be rejected if breadth collapses during pullback"
+        )
+
+        # Scenario 2: Breadth remains good
+        breadth_map_pass = {
+            signal_date: 80.0,
+            wait1_date: 80.0,
+            entry_date: 80.0,  # Passes gate
+        }
+        trades_pass = simulate_trades(
+            "TEST", "Tech", df, [signal], config, breadth_map=breadth_map_pass
+        )
+        assert len(trades_pass) == 1, "Trade should enter if breadth remains good"
+        assert trades_pass[0].entry_date == entry_date
+
+    def test_breadth_checked_on_standard_entry_date(self):
+        """Breadth must be validated on the standard entry date (signal + 1)."""
+        from app.backtest.engine import BacktestConfig, simulate_trades
+
+        df = self._make_df(50)
+        signal_idx = 10
+
+        signal = {
+            "date": df.index[signal_idx],
+            "score": 80.0,
+            "is_bullish": True,
+            "rsi": 50.0,
+            "adx": 30.0,
+            "ema_signal": "bullish_cross",
+            "close": float(df.iloc[signal_idx]["Close"]),
+            "open": float(df.iloc[signal_idx]["Open"]),
+            "volume_breakout": True,
+            "atr": 2.0,
+            "above_200ema": True,
+            "momentum_12m": 10.0,
+            "ema20_level": 50.0,  # Ensures no pullback
+        }
+
+        config = BacktestConfig(
+            score_threshold=60.0,
+            use_pullback_entry=False,  # Standard entry
+            min_market_breadth_pct=20.0,
+            use_regime_filter=False,
+            min_signal_tier=3,
+            min_adx=0.0,
+            tier1_adx_threshold=0.0,
+            require_consolidation=False,
+        )
+
+        signal_date = df.index[signal_idx].date()
+        entry_date = df.index[signal_idx + 1].date()
+
+        # Scenario 1: Breadth collapses on entry date (signal + 1)
+        breadth_map_fail = {
+            signal_date: 80.0,
+            entry_date: 5.0,  # Fails gate
+        }
+        trades_fail = simulate_trades(
+            "TEST", "Tech", df, [signal], config, breadth_map=breadth_map_fail
+        )
+        assert len(trades_fail) == 0, (
+            "Trade should be rejected if breadth collapses on standard entry date"
+        )
+
+        # Scenario 2: Breadth remains good
+        breadth_map_pass = {
+            signal_date: 80.0,
+            entry_date: 80.0,  # Passes gate
+        }
+        trades_pass = simulate_trades(
+            "TEST", "Tech", df, [signal], config, breadth_map=breadth_map_pass
+        )
+        assert len(trades_pass) == 1, "Trade should enter if breadth remains good"
+        assert trades_pass[0].entry_date == entry_date

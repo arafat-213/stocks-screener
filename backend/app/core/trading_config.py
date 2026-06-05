@@ -7,8 +7,8 @@ from typing import Optional, Sequence
 class UnifiedTradingConfig:
     strategy_id: str = "default"
     rsi_min: float = 35.0
-    rsi_max: float = 100.0
-    score_threshold: float = 60.0
+    rsi_max: float = 65.0
+    score_threshold: float = 55.0
     holding_days: int = 50
     stop_loss_pct: float = 7.0
     target_pct: float = 0.0
