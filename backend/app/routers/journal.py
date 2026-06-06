@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.core.utils import sanitize_for_json
 from app.db import models
 from app.db.session import get_db
 from app.pipeline.fetcher import fetch_market_snapshots, get_ticker_symbol
@@ -123,7 +124,7 @@ def get_open_trades(source: Optional[str] = None, db: Session = Depends(get_db))
         }
         results.append(trade_data)
 
-    return results
+    return sanitize_for_json(results)
 
 
 @router.get("/closed")
@@ -132,7 +133,7 @@ def get_closed_trades(source: Optional[str] = None, db: Session = Depends(get_db
     if source:
         query = query.filter(models.TradeJournal.source == source)
     trades = query.order_by(models.TradeJournal.exit_date.desc()).all()
-    return trades
+    return sanitize_for_json(trades)
 
 
 @router.patch("/{trade_id}/close")
@@ -166,7 +167,7 @@ def close_trade(trade_id: int, data: TradeCloseRequest, db: Session = Depends(ge
 
     db.commit()
     db.refresh(trade)
-    return trade
+    return sanitize_for_json(trade)
 
 
 @router.get("/stats")
@@ -205,7 +206,7 @@ def get_journal_stats(source: Optional[str] = None, db: Session = Depends(get_db
             current_price = price_map.get(t.symbol) or t.entry_price
             total_unrealized_pnl += (current_price - t.entry_price) * t.shares
 
-    return {
+    result = {
         "total_trades": total_trades,
         "win_rate": round((winning_trades / total_trades) * 100, 2)
         if total_trades > 0
@@ -215,3 +216,4 @@ def get_journal_stats(source: Optional[str] = None, db: Session = Depends(get_db
         "total_unrealized_pnl": total_unrealized_pnl,
         "open_positions": len(open_trades),
     }
+    return sanitize_for_json(result)

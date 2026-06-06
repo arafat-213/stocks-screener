@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
+from app.core.utils import sanitize_for_json
 from app.db.models import PaperPortfolio, PaperPosition, PaperTrade
 from app.db.session import get_db
 from app.pipeline.ohlcv_cache import OHLCVCache
@@ -61,7 +62,7 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
         else 0
     )
 
-    return {
+    result = {
         "portfolio_id": portfolio.id,
         "started_at": portfolio.created_at.isoformat(),
         "starting_capital": portfolio.starting_capital,
@@ -80,6 +81,7 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
         "profit_factor": round(profit_factor, 2),
         "avg_holding_days": avg_holding,
     }
+    return sanitize_for_json(result)
 
 
 @router.get("/pending")
@@ -95,7 +97,7 @@ def get_pending_orders(db: Session = Depends(get_db)):
         .all()
     )
 
-    return [
+    result = [
         {
             "id": p.id,
             "symbol": p.symbol,
@@ -110,6 +112,7 @@ def get_pending_orders(db: Session = Depends(get_db)):
         }
         for p in pending
     ]
+    return sanitize_for_json(result)
 
 
 @router.get("/positions")
@@ -156,7 +159,7 @@ def get_open_positions(db: Session = Depends(get_db)):
                 "entry_type": pos.entry_type,
             }
         )
-    return results
+    return sanitize_for_json(results)
 
 
 @router.get("/trades")
@@ -172,7 +175,7 @@ def get_closed_trades(limit: int = 50, db: Session = Depends(get_db)):
         .limit(limit)
         .all()
     )
-    return [
+    result = [
         {
             "symbol": t.symbol,
             "sector": t.sector,
@@ -187,3 +190,4 @@ def get_closed_trades(limit: int = 50, db: Session = Depends(get_db)):
         }
         for t in trades
     ]
+    return sanitize_for_json(result)

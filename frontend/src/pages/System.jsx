@@ -1,15 +1,41 @@
-import {
-  Play,
-  Square,
-  Activity,
-  RefreshCcw,
-  CheckCircle2,
-  AlertCircle,
-  Database,
-  Monitor,
-} from 'lucide-react';
+import Play from 'lucide-react/dist/esm/icons/play';
+import Square from 'lucide-react/dist/esm/icons/square';
+import Activity from 'lucide-react/dist/esm/icons/activity';
+import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw';
+import CheckCircle2 from 'lucide-react/dist/esm/icons/check-circle-2';
+import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle';
+import Database from 'lucide-react/dist/esm/icons/database';
+import Monitor from 'lucide-react/dist/esm/icons/monitor';
 import { usePipeline } from '../hooks/usePipeline';
 import { useTheme } from '../hooks/useTheme';
+
+const statusMap = {
+  running: {
+    icon: <RefreshCcw className='animate-spin text-white' />,
+    label: 'Running',
+    class: 'bg-blue-600 text-white shadow-blue-500/30',
+  },
+  stopping: {
+    icon: <RefreshCcw className='animate-spin text-white' />,
+    label: 'Stopping',
+    class: 'bg-amber-500 text-white shadow-amber-500/30',
+  },
+  idle: {
+    icon: <CheckCircle2 className='text-white' />,
+    label: 'Engine Idle',
+    class: 'bg-green-500 text-white shadow-green-500/30',
+  },
+  never_run: {
+    icon: <AlertCircle className='text-white' />,
+    label: 'Not Initialized',
+    class: 'bg-slate-500 text-white shadow-slate-500/30',
+  },
+  error: {
+    icon: <AlertCircle className='text-white' />,
+    label: 'Engine Error',
+    class: 'bg-red-500 text-white shadow-red-500/30',
+  },
+};
 
 const System = () => {
   const { status, stats: pipeline, isBusy, run, stop } = usePipeline();
@@ -29,34 +55,6 @@ const System = () => {
     } catch (error) {
       console.error('Failed to stop pipeline:', error);
     }
-  };
-
-  const statusMap = {
-    running: {
-      icon: <RefreshCcw className='animate-spin text-white' />,
-      label: 'Running',
-      class: 'bg-blue-600 text-white shadow-blue-500/30',
-    },
-    stopping: {
-      icon: <RefreshCcw className='animate-spin text-white' />,
-      label: 'Stopping',
-      class: 'bg-amber-500 text-white shadow-amber-500/30',
-    },
-    idle: {
-      icon: <CheckCircle2 className='text-white' />,
-      label: 'Engine Idle',
-      class: 'bg-green-500 text-white shadow-green-500/30',
-    },
-    never_run: {
-      icon: <AlertCircle className='text-white' />,
-      label: 'Not Initialized',
-      class: 'bg-slate-500 text-white shadow-slate-500/30',
-    },
-    error: {
-      icon: <AlertCircle className='text-white' />,
-      label: 'Engine Error',
-      class: 'bg-red-500 text-white shadow-red-500/30',
-    },
   };
 
   const currentStatus = statusMap[status] || statusMap['idle'];
@@ -207,7 +205,7 @@ const System = () => {
         </section>
       </div>
 
-      {pipeline?.scored_at && (
+      {!!pipeline?.scored_at && (
         <div className='bg-slate-50 dark:bg-slate-900/50 py-3 px-6 rounded-full border border-border w-fit mx-auto text-slate-500 font-mono font-black text-[10px] uppercase tracking-[0.2em] shadow-sm'>
           System Last Synchronized:{' '}
           {new Date(pipeline.scored_at).toLocaleString()}

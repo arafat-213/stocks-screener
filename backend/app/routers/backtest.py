@@ -9,6 +9,7 @@ from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.backtest.engine import BacktestConfig, run_backtest
+from app.core.utils import sanitize_for_json
 from app.db import models
 from app.db.session import SessionLocal, get_db
 
@@ -438,7 +439,8 @@ def list_backtest_runs(db: Session = Depends(get_db)):
         .limit(20)
         .all()
     )
-    return [_serialize_run(r, include_curve=False) for r in runs]
+    result = [_serialize_run(r, include_curve=False) for r in runs]
+    return sanitize_for_json(result)
 
 
 @router.get("/{run_id}")
@@ -452,7 +454,8 @@ def get_backtest_run(run_id: str, db: Session = Depends(get_db)):
     )
     if not run:
         raise HTTPException(status_code=404, detail="Run not found")
-    return _serialize_run(run, include_curve=True)
+    result = _serialize_run(run, include_curve=True)
+    return sanitize_for_json(result)
 
 
 @router.get("/{run_id}/trades")
@@ -487,9 +490,10 @@ def get_backtest_trades(
 
     trades = q.offset((page - 1) * page_size).limit(page_size).all()
 
-    return {
+    result = {
         "total": total,
         "page": page,
         "page_size": page_size,
         "trades": [_serialize_trade(t) for t in trades],
     }
+    return sanitize_for_json(result)

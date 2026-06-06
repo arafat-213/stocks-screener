@@ -20,8 +20,8 @@ import {
   getJournalClosed,
   getJournalStats,
   closeJournalEntry,
-  createJournalEntry,
 } from '../api/client';
+import ManualTradeModal from '../components/ManualTradeModal';
 
 const Portfolio = () => {
   const [activeTab, setActiveTab] = useState('open');
@@ -38,17 +38,7 @@ const Portfolio = () => {
 
   // Manual Entry state
   const [createModalOpen, setCreateModalOpen] = useState(false);
-  const [newTrade, setNewTrade] = useState({
-    symbol: '',
-    entry_price: '',
-    shares: '1',
-    stop_loss: '',
-    target: '',
-    entry_date: getISTDateString(),
-    notes: '',
-    watchlist_id: null,
-  });
-  const [creating, setCreating] = useState(false);
+  const [initialModalData, setInitialModalData] = useState(null);
 
   // Exit Trade state
   const [exitPrice, setExitPrice] = useState('');
@@ -58,26 +48,21 @@ const Portfolio = () => {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     if (params.get('action') === 'new') {
-      const symbol = params.get('symbol') || '';
-      const price = params.get('price') || '';
-      const sl = params.get('sl') || '';
-      const target = params.get('target') || '';
-      const wlId = params.get('wl_id') || null;
+      const data = {
+        symbol: params.get('symbol') || '',
+        price: params.get('price') || '',
+        sl: params.get('sl') || '',
+        target: params.get('target') || '',
+        wlId: params.get('wl_id') || null,
+      };
 
-      // Wrap in timeout to avoid cascading render lint error
-      setTimeout(() => {
-        setNewTrade((prev) => ({
-          ...prev,
-          symbol: symbol,
-          entry_price: price,
-          stop_loss: sl,
-          target: target,
-          watchlist_id: wlId,
-        }));
+      const timer = setTimeout(() => {
+        setInitialModalData(data);
         setCreateModalOpen(true);
         // Clean up URL after opening modal
         navigate('/portfolio', { replace: true });
       }, 0);
+      return () => clearTimeout(timer);
     }
   }, [location.search, navigate]);
 
@@ -134,40 +119,6 @@ const Portfolio = () => {
       alert('Failed to close trade. Please check console for details.');
     } finally {
       setClosing(false);
-    }
-  };
-
-  const handleCreateSubmit = async (e) => {
-    e.preventDefault();
-    if (!newTrade.symbol || !newTrade.entry_price || !newTrade.shares) return;
-
-    setCreating(true);
-    try {
-      await createJournalEntry({
-        ...newTrade,
-        symbol: newTrade.symbol.toUpperCase(),
-        entry_price: parseFloat(newTrade.entry_price),
-        shares: parseInt(newTrade.shares),
-        stop_loss: newTrade.stop_loss ? parseFloat(newTrade.stop_loss) : null,
-        target: newTrade.target ? parseFloat(newTrade.target) : null,
-      });
-      setCreateModalOpen(false);
-      setNewTrade({
-        symbol: '',
-        entry_price: '',
-        shares: '1',
-        stop_loss: '',
-        target: '',
-        entry_date: getISTDateString(),
-        notes: '',
-        watchlist_id: null,
-      });
-      loadData();
-    } catch (error) {
-      console.error('Error creating journal entry:', error);
-      alert('Failed to create trade. Please check console for details.');
-    } finally {
-      setCreating(false);
     }
   };
 
@@ -379,149 +330,15 @@ const Portfolio = () => {
 
       {/* Manual Entry Modal */}
       {createModalOpen && (
-        <div className='fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200'>
-          <div className='bg-bg-secondary border border-border w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto'>
-            <div className='flex justify-between items-center p-6 border-b border-border sticky top-0 bg-bg-secondary z-10'>
-              <h3 className='text-xl font-black text-text uppercase tracking-tight'>
-                New Trade Entry
-              </h3>
-              <button
-                onClick={() => setCreateModalOpen(false)}
-                className='p-2 hover:bg-bg-elevated rounded-full transition-colors'
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <form
-              onSubmit={handleCreateSubmit}
-              className='p-6 flex flex-col gap-5'
-            >
-              <div className='grid grid-cols-2 gap-4'>
-                <div className='flex flex-col gap-2'>
-                  <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                    Symbol
-                  </label>
-                  <input
-                    type='text'
-                    required
-                    value={newTrade.symbol}
-                    onChange={(e) =>
-                      setNewTrade({ ...newTrade, symbol: e.target.value })
-                    }
-                    className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50'
-                    placeholder='RELIANCE.NS'
-                  />
-                </div>
-                <div className='flex flex-col gap-2'>
-                  <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                    Entry Date
-                  </label>
-                  <input
-                    type='date'
-                    required
-                    value={newTrade.entry_date}
-                    onChange={(e) =>
-                      setNewTrade({ ...newTrade, entry_date: e.target.value })
-                    }
-                    className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50'
-                  />
-                </div>
-              </div>
-
-              <div className='grid grid-cols-2 gap-4'>
-                <div className='flex flex-col gap-2'>
-                  <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                    Entry Price (₹)
-                  </label>
-                  <input
-                    type='number'
-                    step='0.01'
-                    required
-                    value={newTrade.entry_price}
-                    onChange={(e) =>
-                      setNewTrade({ ...newTrade, entry_price: e.target.value })
-                    }
-                    className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50'
-                    placeholder='0.00'
-                  />
-                </div>
-                <div className='flex flex-col gap-2'>
-                  <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                    Shares
-                  </label>
-                  <input
-                    type='number'
-                    required
-                    min='1'
-                    value={newTrade.shares}
-                    onChange={(e) =>
-                      setNewTrade({ ...newTrade, shares: e.target.value })
-                    }
-                    className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50'
-                    placeholder='1'
-                  />
-                </div>
-              </div>
-
-              <div className='grid grid-cols-2 gap-4'>
-                <div className='flex flex-col gap-2'>
-                  <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                    Stop Loss (₹)
-                  </label>
-                  <input
-                    type='number'
-                    step='0.01'
-                    value={newTrade.stop_loss}
-                    onChange={(e) =>
-                      setNewTrade({ ...newTrade, stop_loss: e.target.value })
-                    }
-                    className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50'
-                    placeholder='Optional'
-                  />
-                </div>
-                <div className='flex flex-col gap-2'>
-                  <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                    Target (₹)
-                  </label>
-                  <input
-                    type='number'
-                    step='0.01'
-                    value={newTrade.target}
-                    onChange={(e) =>
-                      setNewTrade({ ...newTrade, target: e.target.value })
-                    }
-                    className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50'
-                    placeholder='Optional'
-                  />
-                </div>
-              </div>
-
-              <div className='flex flex-col gap-2'>
-                <label className='text-[10px] font-black uppercase tracking-widest text-text-muted ml-1'>
-                  Notes
-                </label>
-                <textarea
-                  value={newTrade.notes}
-                  onChange={(e) =>
-                    setNewTrade({ ...newTrade, notes: e.target.value })
-                  }
-                  className='w-full bg-bg-elevated border border-border rounded-xl px-4 py-3 font-bold text-text focus:outline-none focus:ring-2 focus:ring-primary/50 min-h-[80px]'
-                  placeholder='Why did you take this trade?'
-                />
-              </div>
-
-              <button
-                type='submit'
-                disabled={creating}
-                className='w-full bg-primary hover:bg-primary-dark disabled:opacity-50 text-white font-black py-4 rounded-2xl transition-all shadow-lg shadow-primary/20 flex items-center justify-center gap-2 mt-2'
-              >
-                {creating ? 'SAVING...' : 'SAVE TRADE ENTRY'}
-                {!creating && <ChevronRight size={18} />}
-              </button>
-            </form>
-          </div>
-        </div>
+        <ManualTradeModal
+          isOpen={createModalOpen}
+          onClose={() => {
+            setCreateModalOpen(false);
+            setInitialModalData(null);
+          }}
+          onSuccess={loadData}
+          initialData={initialModalData}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, memo } from 'react';
+import { useState, useCallback, useMemo, memo, Suspense, lazy } from 'react';
 import { getISTDateString, formatDisplayDate } from '../utils/dateUtils';
 import {
   Play,
@@ -19,16 +19,7 @@ import {
   Target,
   Briefcase,
 } from 'lucide-react';
-import {
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Legend,
-} from 'recharts';
+
 import { Link } from 'react-router-dom';
 
 import {
@@ -44,6 +35,60 @@ import { DataTable } from '../components/ui/DataTable';
 import Slider from '../components/ui/Slider';
 import Toggle from '../components/ui/Toggle';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
+
+// bundle-dynamic-imports: Lazy load heavy chart library
+const LineChart = lazy(() =>
+  import('recharts').then((m) => ({ default: m.LineChart }))
+);
+const Line = lazy(() => import('recharts').then((m) => ({ default: m.Line })));
+const XAxis = lazy(() =>
+  import('recharts').then((m) => ({ default: m.XAxis }))
+);
+const YAxis = lazy(() =>
+  import('recharts').then((m) => ({ default: m.YAxis }))
+);
+const CartesianGrid = lazy(() =>
+  import('recharts').then((m) => ({ default: m.CartesianGrid }))
+);
+const Tooltip = lazy(() =>
+  import('recharts').then((m) => ({ default: m.Tooltip }))
+);
+const ResponsiveContainer = lazy(() =>
+  import('recharts').then((m) => ({ default: m.ResponsiveContainer }))
+);
+const Legend = lazy(() =>
+  import('recharts').then((m) => ({ default: m.Legend }))
+);
+
+// rerender-memo-with-default-value: Hoist stable default values
+const EMPTY_ARRAY = [];
+
+const REASON_CLASSES = {
+  stop_loss: 'bg-red-500 text-white',
+  trailing_stop: 'bg-amber-500 text-white',
+  target: 'bg-green-500 text-white',
+  holding_period: 'bg-blue-600 text-white',
+};
+
+const DEFAULT_REASON_CLASS =
+  'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+
+const EXIT_METRICS_CONFIG = [
+  { key: 'target', label: 'Hit Target', color: 'bg-green-500' },
+  { key: 'target_partial', label: 'Partial Target', color: 'bg-green-400' },
+  { key: 'stop_loss', label: 'Stop Loss', color: 'bg-red-500' },
+  { key: 'trailing_stop', label: 'Trailing Stop', color: 'bg-amber-500' },
+  { key: 'atr_trailing_stop', label: 'ATR Trail Stop', color: 'bg-blue-500' },
+  { key: 'signal_invalidated', label: 'Signal Invalid', color: 'bg-slate-400' },
+  { key: 'holding_period', label: 'Held to End', color: 'bg-slate-500' },
+];
+
+const TABS = [
+  { id: 'strategy', label: 'Engine', icon: Zap },
+  { id: 'weights', label: 'Weights', icon: Target },
+  { id: 'risk', label: 'Risk', icon: ShieldCheck },
+  { id: 'account', label: 'Trade', icon: Briefcase },
+];
 
 // rerender-memo: Memoize expensive result components to isolate them from config changes
 const BacktestResults = memo(
@@ -105,7 +150,7 @@ const BacktestResults = memo(
       return (
         <>
           {/* Metrics Grid */}
-          {metrics.total_trades < 100 && (
+          {metrics.total_trades < 100 ? (
             <div className='bg-amber-500/10 border-2 border-amber-500/20 rounded-xl p-4 flex gap-4 text-amber-700 dark:text-amber-400 text-sm leading-relaxed mb-6 shadow-sm'>
               <AlertTriangle size={24} className='shrink-0 text-amber-500' />
               <div className='font-bold'>
@@ -116,7 +161,7 @@ const BacktestResults = memo(
                 confidence requires at least 100 trades.
               </div>
             </div>
-          )}
+          ) : null}
           <div className='grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] gap-3 sm:gap-4'>
             {[
               // 1. Headline Returns & Risk
@@ -264,42 +309,13 @@ const BacktestResults = memo(
               <Target size={20} className='text-blue-500' /> Exit Distribution
             </h3>
             <div className='grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-4'>
-              {[
-                { key: 'target', label: 'Hit Target', color: 'bg-green-500' },
-                {
-                  key: 'target_partial',
-                  label: 'Partial Target',
-                  color: 'bg-green-400',
-                },
-                { key: 'stop_loss', label: 'Stop Loss', color: 'bg-red-500' },
-                {
-                  key: 'trailing_stop',
-                  label: 'Trailing Stop',
-                  color: 'bg-amber-500',
-                },
-                {
-                  key: 'atr_trailing_stop',
-                  label: 'ATR Trail Stop',
-                  color: 'bg-blue-500',
-                },
-                {
-                  key: 'signal_invalidated',
-                  label: 'Signal Invalid',
-                  color: 'bg-slate-400',
-                },
-                {
-                  key: 'holding_period',
-                  label: 'Held to End',
-                  color: 'bg-slate-500',
-                },
-              ].map(({ key, label, color }) => {
+              {EXIT_METRICS_CONFIG.map(({ key, label, color }) => {
                 const count = metrics.exit_breakdown[key] || 0;
                 const pct =
                   metrics.total_trades > 0
                     ? (count / metrics.total_trades) * 100
                     : 0;
-                if (count === 0) return null;
-                return (
+                return count > 0 ? (
                   <div
                     key={key}
                     className='flex flex-col gap-1.5 p-3 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-border'
@@ -315,7 +331,7 @@ const BacktestResults = memo(
                       ></div>
                     </div>
                   </div>
-                );
+                ) : null;
               })}
             </div>
           </div>
@@ -330,72 +346,80 @@ const BacktestResults = memo(
               Performance
             </h3>
             <div className='w-full h-[400px]'>
-              <ResponsiveContainer>
-                <LineChart data={activeRun.equity_curve}>
-                  <CartesianGrid
-                    strokeDasharray='3 3'
-                    stroke={isDark ? '#1E293B' : '#E2E8F0'}
-                    vertical={false}
-                  />
-                  <XAxis
-                    dataKey='date'
-                    stroke='#64748B'
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    dy={10}
-                    tickFormatter={(str) => formatDisplayDate(str)}
-                  />
-                  <YAxis
-                    stroke='#64748B'
-                    fontSize={11}
-                    tickLine={false}
-                    axisLine={false}
-                    dx={-10}
-                    tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-                      borderColor: isDark ? '#1E293B' : '#E2E8F0',
-                      borderRadius: '12px',
-                      boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
-                      border: '2px solid',
-                      fontFamily: 'monospace',
-                    }}
-                    itemStyle={{ fontWeight: '900', fontSize: '12px' }}
-                  />
-                  <Legend
-                    verticalAlign='top'
-                    align='right'
-                    iconType='circle'
-                    wrapperStyle={{
-                      paddingBottom: '20px',
-                      fontSize: '11px',
-                      fontWeight: 'bold',
-                      textTransform: 'uppercase',
-                    }}
-                  />
-                  <Line
-                    name='Strategy Equity'
-                    type='monotone'
-                    dataKey='equity'
-                    stroke='#3B82F6'
-                    strokeWidth={4}
-                    dot={false}
-                    activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }}
-                  />
-                  <Line
-                    name='Benchmark (Nifty 50)'
-                    type='monotone'
-                    dataKey='benchmark_equity'
-                    stroke='#94A3B8'
-                    strokeWidth={2}
-                    strokeDasharray='6 4'
-                    dot={false}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
+              <Suspense
+                fallback={
+                  <div className='w-full h-full flex items-center justify-center bg-slate-50 dark:bg-slate-900 rounded-xl'>
+                    <Loader2 className='animate-spin text-blue-500' size={32} />
+                  </div>
+                }
+              >
+                <ResponsiveContainer>
+                  <LineChart data={activeRun.equity_curve}>
+                    <CartesianGrid
+                      strokeDasharray='3 3'
+                      stroke={isDark ? '#1E293B' : '#E2E8F0'}
+                      vertical={false}
+                    />
+                    <XAxis
+                      dataKey='date'
+                      stroke='#64748B'
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      dy={10}
+                      tickFormatter={(str) => formatDisplayDate(str)}
+                    />
+                    <YAxis
+                      stroke='#64748B'
+                      fontSize={11}
+                      tickLine={false}
+                      axisLine={false}
+                      dx={-10}
+                      tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+                        borderColor: isDark ? '#1E293B' : '#E2E8F0',
+                        borderRadius: '12px',
+                        boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)',
+                        border: '2px solid',
+                        fontFamily: 'monospace',
+                      }}
+                      itemStyle={{ fontWeight: '900', fontSize: '12px' }}
+                    />
+                    <Legend
+                      verticalAlign='top'
+                      align='right'
+                      iconType='circle'
+                      wrapperStyle={{
+                        paddingBottom: '20px',
+                        fontSize: '11px',
+                        fontWeight: 'bold',
+                        textTransform: 'uppercase',
+                      }}
+                    />
+                    <Line
+                      name='Strategy Equity'
+                      type='monotone'
+                      dataKey='equity'
+                      stroke='#3B82F6'
+                      strokeWidth={4}
+                      dot={false}
+                      activeDot={{ r: 6, strokeWidth: 0, fill: '#3B82F6' }}
+                    />
+                    <Line
+                      name='Benchmark (Nifty 50)'
+                      type='monotone'
+                      dataKey='benchmark_equity'
+                      stroke='#94A3B8'
+                      strokeWidth={2}
+                      strokeDasharray='6 4'
+                      dot={false}
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </Suspense>
             </div>
           </div>
 
@@ -416,7 +440,7 @@ const BacktestResults = memo(
                 <div className='flex items-center gap-2'>
                   <button
                     className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30'
-                    onClick={() => onPageChange((p) => Math.max(1, p - 1))}
+                    onClick={onPageChange.prev}
                     disabled={tradesPage === 1}
                   >
                     <ChevronLeft size={16} className='text-text' />
@@ -426,7 +450,7 @@ const BacktestResults = memo(
                   </span>
                   <button
                     className='bg-slate-50 dark:bg-slate-900 border-2 border-border rounded-lg p-2 cursor-pointer transition-all hover:border-blue-500 disabled:opacity-30'
-                    onClick={() => onPageChange((p) => p + 1)}
+                    onClick={onPageChange.next}
                     disabled={tradesPage * pageSize >= totalTradesCount}
                   >
                     <ChevronRight size={16} className='text-text' />
@@ -436,7 +460,7 @@ const BacktestResults = memo(
             </div>
             <DataTable
               columns={tradeColumns}
-              data={tradesData?.trades || []}
+              data={tradesData?.trades || EMPTY_ARRAY}
               loading={loadingTrades}
               skeletonRows={10}
             />
@@ -696,15 +720,7 @@ const Backtest = () => {
         key: 'exit_reason',
         label: 'Reason',
         render: (val) => {
-          const reasonClasses = {
-            stop_loss: 'bg-red-500 text-white',
-            trailing_stop: 'bg-amber-500 text-white',
-            target: 'bg-green-500 text-white',
-            holding_period: 'bg-blue-600 text-white',
-          };
-          const reasonClass =
-            reasonClasses[val] ||
-            'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400';
+          const reasonClass = REASON_CLASSES[val] || DEFAULT_REASON_CLASS;
           return (
             <span
               className={`text-[10px] px-2 py-1 rounded-md font-black uppercase tracking-widest shadow-sm ${reasonClass}`}
@@ -717,6 +733,15 @@ const Backtest = () => {
     ],
     []
   );
+
+  // rerender-move-effect-to-event: Stable handlers for pagination
+  const handleNextPage = useCallback(() => {
+    setTradesPage((p) => p + 1);
+  }, []);
+
+  const handlePrevPage = useCallback(() => {
+    setTradesPage((p) => Math.max(1, p - 1));
+  }, []);
 
   return (
     <div className='w-full animate-fade-in'>
@@ -777,11 +802,11 @@ const Backtest = () => {
                   </div>
                 </div>
               ))}
-              {recentRuns?.length === 0 && (
+              {recentRuns?.length === 0 ? (
                 <p className='text-center text-slate-400 py-8 italic text-sm'>
                   No recent runs available
                 </p>
-              )}
+              ) : null}
             </div>
           </section>
 
@@ -800,12 +825,7 @@ const Backtest = () => {
             </div>
 
             <div className='flex gap-1 bg-slate-100 dark:bg-slate-900 p-1 rounded-xl mb-6 border border-border/50'>
-              {[
-                { id: 'strategy', label: 'Engine', icon: Zap },
-                { id: 'weights', label: 'Weights', icon: Target },
-                { id: 'risk', label: 'Risk', icon: ShieldCheck },
-                { id: 'account', label: 'Trade', icon: Briefcase },
-              ].map((tab) => (
+              {TABS.map((tab) => (
                 <button
                   key={tab.id}
                   className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-[10px] font-black uppercase tracking-widest rounded-lg transition-all duration-300 cursor-pointer border-none ${activeTab === tab.id ? 'bg-bg-secondary text-blue-600 dark:text-blue-400 shadow-md border border-border/50' : 'text-slate-500 hover:text-text'}`}
@@ -818,7 +838,7 @@ const Backtest = () => {
             </div>
 
             <div className='flex flex-col gap-6'>
-              {activeTab === 'strategy' && (
+              {activeTab === 'strategy' ? (
                 <div className='flex flex-col gap-4 animate-fade-in'>
                   <div className='flex flex-col gap-2'>
                     <label className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em] flex items-center gap-2'>
@@ -892,9 +912,9 @@ const Backtest = () => {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {activeTab === 'weights' && (
+              {activeTab === 'weights' ? (
                 <div className='flex flex-col gap-4 animate-fade-in'>
                   <Slider
                     label='EMA Cross Weight'
@@ -969,9 +989,9 @@ const Backtest = () => {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {activeTab === 'risk' && (
+              {activeTab === 'risk' ? (
                 <div className='flex flex-col gap-4 animate-fade-in'>
                   <Toggle
                     label='ATR Dynamic Stops'
@@ -1042,7 +1062,7 @@ const Backtest = () => {
                           handleConfigChange('use_atr_trailing_stop', v)
                         }
                       />
-                      {config.use_atr_trailing_stop && (
+                      {config.use_atr_trailing_stop ? (
                         <>
                           <Slider
                             label='ATR Trail Multiplier'
@@ -1065,7 +1085,7 @@ const Backtest = () => {
                             }
                           />
                         </>
-                      )}
+                      ) : null}
                       <Toggle
                         label='Partial Take-Profit'
                         checked={config.use_partial_exits}
@@ -1083,9 +1103,9 @@ const Backtest = () => {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              {activeTab === 'account' && (
+              {activeTab === 'account' ? (
                 <div className='flex flex-col gap-5 animate-fade-in'>
                   <div className='flex flex-col gap-2'>
                     <label className='text-[10px] text-slate-500 dark:text-slate-400 font-black uppercase tracking-[0.2em]'>
@@ -1189,7 +1209,7 @@ const Backtest = () => {
                     </div>
                   </div>
                 </div>
-              )}
+              ) : null}
 
               <button
                 className='bg-blue-600 text-white border-none rounded-xl py-4 font-black uppercase tracking-[0.2em] text-xs cursor-pointer flex items-center justify-center gap-3 transition-all hover:bg-blue-700 hover:shadow-xl hover:shadow-blue-500/30 active:scale-[0.98] disabled:opacity-50 mt-4 shadow-lg shadow-blue-500/20'
@@ -1222,7 +1242,7 @@ const Backtest = () => {
             </div>
           </div>
 
-          {!activeRunId && !loadingActiveRun && (
+          {!activeRunId && !loadingActiveRun ? (
             <div className='py-24 text-center bg-bg-secondary border-2 border-border border-dashed rounded-3xl text-slate-400 shadow-sm'>
               <div className='bg-slate-100 dark:bg-slate-900 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6'>
                 <BarChart3 size={40} className='opacity-40' />
@@ -1235,9 +1255,9 @@ const Backtest = () => {
                 backtest.
               </p>
             </div>
-          )}
+          ) : null}
 
-          {activeRunError && <ErrorBanner message={activeRunError} />}
+          {activeRunError ? <ErrorBanner message={activeRunError} /> : null}
 
           <BacktestResults
             activeRun={activeRun}
@@ -1248,7 +1268,10 @@ const Backtest = () => {
             loadingTrades={loadingTrades}
             isDark={isDark}
             pageSize={pageSize}
-            onPageChange={setTradesPage}
+            onPageChange={useMemo(
+              () => ({ next: handleNextPage, prev: handlePrevPage }),
+              [handleNextPage, handlePrevPage]
+            )}
           />
         </main>
       </div>

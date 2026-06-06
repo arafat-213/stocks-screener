@@ -1,6 +1,7 @@
 import { Target, ShieldAlert, Zap } from 'lucide-react';
+import { memo } from 'react';
 
-const TradingPlan = ({ setup }) => {
+const TradingPlan = memo(({ setup }) => {
   if (!setup) return null;
 
   return (
@@ -81,6 +82,6 @@ const TradingPlan = ({ setup }) => {
       </div>
     </div>
   );
-};
+});
 
 export default TradingPlan;

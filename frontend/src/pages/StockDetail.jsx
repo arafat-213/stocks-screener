@@ -13,12 +13,20 @@ import { getStockDetail } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { useFetch } from '../hooks/useFetch';
 import { ErrorBanner } from '../components/ui/ErrorBanner';
-import CandlestickChart from '../components/CandlestickChart';
 import ScoreBreakdown from '../components/ScoreBreakdown';
 import TradingPlan from '../components/TradingPlan';
+import ScoreCard from '../components/ScoreCard';
 import { inferScoreBreakdown } from '../utils/scoreBreakdown';
 import { formatDisplayDate } from '../utils/dateUtils';
-import { useCallback } from 'react';
+import { useCallback, useMemo, lazy, Suspense } from 'react';
+
+const CandlestickChart = lazy(() => import('../components/CandlestickChart'));
+
+const formatMarketCap = (val) => {
+  if (!val) return 'N/A';
+  const crores = (val / 10000000).toFixed(0);
+  return `₹${Number(crores).toLocaleString('en-IN')} Cr`;
+};
 
 const StockDetail = () => {
   const { symbol } = useParams();
@@ -27,6 +35,87 @@ const StockDetail = () => {
   const { data, loading, error } = useFetch(fetchStockDetail, {
     deps: [symbol],
   });
+
+  const {
+    ohlcv,
+    latest_scores,
+    score_history,
+    name,
+    sector,
+    industry,
+    fundamentals,
+    setup,
+    dailyScore,
+  } = useMemo(() => {
+    const ohlcv = data?.ohlcv || [];
+    const latest_scores = data?.scores || {};
+    const score_history = data?.score_history || [];
+    const name = data?.name || '';
+    const sector = data?.sector || '';
+    const industry = data?.industry || '';
+    const fundamentals = data?.fundamentals || {};
+    const setup = data?.setup;
+    const dailyScore = latest_scores?.['D'];
+
+    return {
+      ohlcv,
+      latest_scores,
+      score_history,
+      name,
+      sector,
+      industry,
+      fundamentals,
+      setup,
+      dailyScore,
+    };
+  }, [data]);
+
+  const breakdown = useMemo(
+    () => inferScoreBreakdown(dailyScore),
+    [dailyScore]
+  );
+
+  const {
+    latestOhlc,
+    isPositive,
+    priceChange,
+    priceChangePct,
+    boundedPos,
+    emaLevels,
+  } = useMemo(() => {
+    const latestOhlc =
+      ohlcv.length > 0 ? ohlcv[ohlcv.length - 1] : { close: 0 };
+    const prevOhlc = ohlcv.length > 1 ? ohlcv[ohlcv.length - 2] : latestOhlc;
+    const priceChange = latestOhlc.close - (prevOhlc?.close || 0);
+    const priceChangePct =
+      prevOhlc?.close && prevOhlc.close !== 0
+        ? (priceChange / prevOhlc.close) * 100
+        : 0;
+    const isPositive = priceChange >= 0;
+
+    const week52Low = dailyScore?.week52_low || 0;
+    const week52High = dailyScore?.week52_high || 0;
+    const range52W = week52High - week52Low;
+    const currentPos =
+      range52W > 0 ? ((latestOhlc.close - week52Low) / range52W) * 100 : 0;
+    const boundedPos = Math.max(0, Math.min(100, currentPos));
+
+    const emaLevels = {
+      ema5: dailyScore?.ema5_level,
+      ema13: dailyScore?.ema13_level,
+      ema20: dailyScore?.ema20_level,
+      ema26: dailyScore?.ema26_level,
+    };
+
+    return {
+      latestOhlc,
+      isPositive,
+      priceChange,
+      priceChangePct,
+      boundedPos,
+      emaLevels,
+    };
+  }, [ohlcv, dailyScore]);
 
   if (loading) {
     return (
@@ -56,106 +145,6 @@ const StockDetail = () => {
       </div>
     );
   }
-
-  const ohlcv = data?.ohlcv || [];
-  const latest_scores = data?.scores || {};
-  const score_history = data?.score_history || [];
-  const name = data?.name || '';
-  const sector = data?.sector || '';
-  const industry = data?.industry || '';
-  const fundamentals = data?.fundamentals || {};
-  const setup = data?.setup;
-
-  const dailyScore = latest_scores?.['D'];
-  const breakdown = inferScoreBreakdown(dailyScore);
-
-  const latestOhlc = ohlcv.length > 0 ? ohlcv[ohlcv.length - 1] : { close: 0 };
-
-  // Task 4: Dynamic 52W Range Indicator
-  const week52Low = dailyScore?.week52_low || 0;
-  const week52High = dailyScore?.week52_high || 0;
-  const range52W = week52High - week52Low;
-  const currentPos =
-    range52W > 0 ? ((latestOhlc.close - week52Low) / range52W) * 100 : 0;
-  const boundedPos = Math.max(0, Math.min(100, currentPos));
-
-  const prevOhlc = ohlcv.length > 1 ? ohlcv[ohlcv.length - 2] : latestOhlc;
-  const priceChange = latestOhlc.close - (prevOhlc?.close || 0);
-  const priceChangePct =
-    prevOhlc?.close && prevOhlc.close !== 0
-      ? (priceChange / prevOhlc.close) * 100
-      : 0;
-  const isPositive = priceChange >= 0;
-
-  const renderScoreCard = (tf, label) => {
-    const scoreData = latest_scores?.[tf];
-    if (!scoreData)
-      return (
-        <div
-          className='bg-bg-secondary rounded-lg p-5 border border-border'
-          key={tf}
-        >
-          <h3 className='text-[12px] text-text-muted mb-4 uppercase tracking-widest font-bold'>
-            {label} Timeframe
-          </h3>
-          <div className='flex justify-between items-center'>
-            <div className='text-[42px] font-extrabold text-text-muted'>--</div>
-            <div className='text-right'>
-              <div className='inline-block px-3 py-1.5 rounded-lg text-sm font-bold bg-text-muted/10 text-text-muted'>
-                No Signal
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-
-    const isBullish = scoreData.ema_signal?.toLowerCase() === 'bullish';
-
-    return (
-      <div
-        className='bg-bg-secondary rounded-xl p-6 border-2 border-border shadow-sm hover:border-blue-500/30 transition-colors'
-        key={tf}
-      >
-        <h3 className='text-[11px] text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-[0.2em] font-black'>
-          {label} Timeframe
-        </h3>
-        <div className='flex justify-between items-center'>
-          <div
-            className={`text-5xl font-black ${scoreData.score >= 70 ? 'text-green-500' : scoreData.score >= 50 ? 'text-blue-500' : 'text-text'}`}
-          >
-            {scoreData.score?.toFixed(1) || scoreData.score}
-          </div>
-          <div className='text-right flex flex-col gap-2'>
-            <div
-              className={`inline-block px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider ${isBullish ? 'bg-green-500 text-white shadow-lg shadow-green-500/20' : 'bg-red-500 text-white shadow-lg shadow-red-500/20'}`}
-            >
-              {scoreData.ema_signal}
-            </div>
-            <div className='text-[13px] font-mono font-bold text-slate-500 dark:text-slate-400'>
-              RSI:{' '}
-              <span
-                className={
-                  scoreData.rsi <= 30
-                    ? 'text-green-500'
-                    : scoreData.rsi >= 70
-                      ? 'text-red-500'
-                      : 'text-text'
-                }
-              >
-                {scoreData.rsi?.toFixed(1)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  const formatMarketCap = (val) => {
-    if (!val) return 'N/A';
-    const crores = (val / 10000000).toFixed(0);
-    return `₹${Number(crores).toLocaleString('en-IN')} Cr`;
-  };
 
   return (
     <div className='w-full text-text animate-fade-in pb-20'>
@@ -229,17 +218,20 @@ const StockDetail = () => {
               <TrendingUp size={24} className='text-blue-500' /> Price Action
             </h2>
             <div className='h-[400px] lg:h-[600px] w-full rounded-xl overflow-hidden border border-border'>
-              <CandlestickChart
-                data={ohlcv}
-                isDark={isDark}
-                containerHeight={600}
-                emaLevels={{
-                  ema5: dailyScore?.ema5_level,
-                  ema13: dailyScore?.ema13_level,
-                  ema20: dailyScore?.ema20_level,
-                  ema26: dailyScore?.ema26_level,
-                }}
-              />
+              <Suspense
+                fallback={
+                  <div className='w-full h-full flex items-center justify-center bg-slate-900/5'>
+                    <Loader2 className='animate-spin text-blue-500' size={32} />
+                  </div>
+                }
+              >
+                <CandlestickChart
+                  data={ohlcv}
+                  isDark={isDark}
+                  containerHeight={600}
+                  emaLevels={emaLevels}
+                />
+              </Suspense>
             </div>
           </section>
 
@@ -310,9 +302,13 @@ const StockDetail = () => {
               </div>
               Technical Context
             </h2>
-            {renderScoreCard('D', 'Daily')}
-            {renderScoreCard('W', 'Weekly')}
-            {renderScoreCard('M', 'Monthly')}
+            <ScoreCard tf='D' label='Daily' scoreData={latest_scores?.['D']} />
+            <ScoreCard tf='W' label='Weekly' scoreData={latest_scores?.['W']} />
+            <ScoreCard
+              tf='M'
+              label='Monthly'
+              scoreData={latest_scores?.['M']}
+            />
 
             <section className='bg-bg-secondary rounded-2xl p-6 border-2 border-border shadow-sm'>
               <h3 className='text-[11px] text-slate-500 dark:text-slate-400 mb-6 uppercase tracking-[0.2em] font-black'>

@@ -106,7 +106,8 @@ export const GlobalSearch = () => {
     debounceRef.current = setTimeout(() => {
       searchStocks(val)
         .then((res) => {
-          setResults(res.data);
+          // searchStocks in client.js already returns res.data
+          setResults(res || []);
           setLoading(false);
         })
         .catch(() => {

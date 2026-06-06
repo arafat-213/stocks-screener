@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.utils import sanitize_for_json
 from app.db.models import (
     FundamentalCache,
     PipelineError,
@@ -195,7 +196,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
     if daily_sig:
         setup = compute_trade_setup(daily_sig)
 
-    return {
+    result = {
         "symbol": clean_symbol,
         "name": stock.name,
         "sector": stock.sector,
@@ -206,6 +207,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
         "fundamentals": fundamentals,
         "setup": setup,
     }
+    return sanitize_for_json(result)
 
 
 @router.get("/{symbol}/history")
@@ -232,7 +234,7 @@ def get_stock_history(
         .all()
     )
 
-    return signals
+    return sanitize_for_json(signals)
 
 
 @router.get("/{symbol}/chart")
@@ -454,7 +456,7 @@ def get_trade_setup(symbol: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="No daily signal found for symbol")
 
     setup = compute_trade_setup(signal)
-    return setup
+    return sanitize_for_json(setup)
 
 
 # routers/stocks.py — temporary cleanup endpoint, remove after use

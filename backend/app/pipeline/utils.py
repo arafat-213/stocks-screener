@@ -1,5 +1,6 @@
 import datetime
 import logging
+import math
 
 import pandas as pd
 from sqlalchemy import func
@@ -33,11 +34,14 @@ def get_market_regime(db: Session, date: datetime.date) -> bool:
 
 
 def to_float(val, default=None):
-    """Safely converts a value to float."""
+    """Safely converts a value to float, returning default for NaN/Inf."""
     if val is None:
         return default
     try:
-        return float(val)
+        f_val = float(val)
+        if not math.isfinite(f_val):
+            return default
+        return f_val
     except (ValueError, TypeError):
         return default
 

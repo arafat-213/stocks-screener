@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.utils import sanitize_for_json
 from app.db import models
 from app.db.session import get_db
 from app.pipeline.trade_setup import compute_trade_setup
@@ -278,6 +279,7 @@ def get_screen_results(
             )
 
     # 4. Cache write — after both paths
+    results = sanitize_for_json(results)
     screen_cache.set(cache_key, results, 60 if live else 900)
     return results
 
@@ -317,5 +319,6 @@ def get_sector_rotation(response: Response, db: Session = Depends(get_db)):
         for r in rows
     ]
 
+    result = sanitize_for_json(result)
     screen_cache.set(cache_key, result, 900)
     return result

@@ -52,7 +52,7 @@ const ChangeBanner = ({ changes = [], prevDate, loading }) => {
         <div className='flex items-center gap-2 sm:gap-3'>
           <Zap size={18} className='text-amber-500 fill-amber-500 sm:size-5' />
           <span className='uppercase tracking-[0.1em] text-xs sm:text-sm'>
-            Signal Changes Since {prevDate}
+            Trend Changes Since {prevDate}
           </span>
           <span className='bg-blue-600 text-white text-[9px] sm:text-[10px] px-2 py-0.5 rounded-full font-black shadow-lg shadow-blue-500/20'>
             {size(changes)}

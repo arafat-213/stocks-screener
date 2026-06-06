@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 
 from fastapi import APIRouter, Depends, Response
 from sqlalchemy import case, func, or_
@@ -6,6 +7,7 @@ from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
 
 from app.core.cache import response_cache
+from app.core.utils import sanitize_for_json
 from app.db.models import (
     MarketSnapshot,
     PipelineRun,
@@ -169,6 +171,7 @@ def get_signal_changes(response: Response, db: Session = Depends(get_db)):
         "changes": final_changes,
     }
 
+    data = sanitize_for_json(data)
     response_cache.set(cache_key, data, 600)
     return data
 
@@ -209,7 +212,7 @@ def get_market_cap_category(mcap_float: float | None) -> str:
     return "smallcap"
 
 
-@router.get("/screener/results")
+@router.get("/changes")
 def get_dashboard_results(
     response: Response,
     db: Session = Depends(get_db),
@@ -398,6 +401,9 @@ def get_dashboard_results(
         "items": items,
     }
 
+    # Sanitize for JSON (handles NaN/Infinity in DB)
+    result = sanitize_for_json(result)
+
     response_cache.set(cache_key, result, 600)
     return result
 
@@ -425,8 +431,6 @@ def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
     )
 
     # Calculate age
-    import datetime
-
     age_delta = datetime.datetime.now(datetime.timezone.utc) - run.timestamp
     data_age_hours = round(age_delta.total_seconds() / 3600.0, 1)
     is_stale = data_age_hours > 26
@@ -445,5 +449,6 @@ def get_pipeline_status(response: Response, db: Session = Depends(get_db)):
             for m in market
         ],
     }
+    data = sanitize_for_json(data)
     response_cache.set(cache_key, data, 30)
     return data

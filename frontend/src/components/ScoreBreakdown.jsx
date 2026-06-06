@@ -1,7 +1,8 @@
 import { Activity } from 'lucide-react';
 import { filter, map } from 'lodash/fp';
+import { memo } from 'react';
 
-const ScoreBreakdown = ({ breakdown, totalScore }) => {
+const ScoreBreakdown = memo(({ breakdown, totalScore }) => {
   const technical = filter((b) => b.category === 'technical', breakdown);
   const fundamental = filter((b) => b.category === 'fundamental', breakdown);
 
@@ -57,7 +58,7 @@ const ScoreBreakdown = ({ breakdown, totalScore }) => {
       </p>
     </div>
   );
-};
+});
 
 const getSignalColor = (signal) => {
   if (!signal) return 'text-slate-400';
