@@ -128,7 +128,7 @@ def _calculate_live_metrics(entry: Watchlist, df: pd.DataFrame):
 
     # Ensure index is naive for comparison
     if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
+        df.index = df.index.tz_convert(None)
 
     # 1. Days elapsed since signal_date (trading sessions)
     # signal_date is date, df.index is Timestamps

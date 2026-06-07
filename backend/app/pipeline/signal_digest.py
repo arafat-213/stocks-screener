@@ -77,7 +77,7 @@ def generate_signal_digest(
                 df = _ohlcv_cache.get(sig.symbol, period="5y")
                 if df is not None and not df.empty:
                     if df.index.tz is not None:
-                        df.index = df.index.tz_localize(None)
+                        df.index = df.index.tz_convert(None)
                     matching = df.index[df.index.date <= today]
                     if not matching.empty:
                         idx = len(matching) - 1
@@ -154,7 +154,7 @@ def _get_regime_state() -> bool:
         if df is None or df.empty:
             return True
         if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+            df.index = df.index.tz_convert(None)
         import pandas_ta_classic  # noqa
 
         df.ta.ema(length=50, append=True)

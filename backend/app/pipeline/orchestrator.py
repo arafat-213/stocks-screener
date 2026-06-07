@@ -306,7 +306,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
                 )
 
                 if not bulk_data.empty and bulk_data.index.tz is not None:
-                    bulk_data.index = bulk_data.index.tz_localize(None)
+                    bulk_data.index = bulk_data.index.tz_convert(None)
 
                 for symbol in batch:
                     try:
