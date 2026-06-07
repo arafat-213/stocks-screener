@@ -61,6 +61,110 @@ SYMBOL_MAP = {
     "MCDOWELL-N": "UNITDSPR",
 }
 
+# Nifty 100 Fallback List (as of June 2026)
+NIFTY_100_FALLBACK = [
+    "ABB",
+    "ADANIENSOL",
+    "ADANIENT",
+    "ADANIGREEN",
+    "ADANIPORTS",
+    "ADANIPOWER",
+    "AMBUJACEM",
+    "APOLLOHOSP",
+    "ASIANPAINT",
+    "DMART",
+    "AXISBANK",
+    "BAJAJ-AUTO",
+    "BAJFINANCE",
+    "BAJAJFINSV",
+    "BAJAJHLDNG",
+    "BAJAJHFL",
+    "BANKBARODA",
+    "BEL",
+    "BPCL",
+    "BHARTIARTL",
+    "BOSCHLTD",
+    "BRITANNIA",
+    "CGPOWER",
+    "CANBK",
+    "CHOLAFIN",
+    "CIPLA",
+    "COALINDIA",
+    "DLF",
+    "DABUR",
+    "DIVISLAB",
+    "DRREDDY",
+    "EICHERMOT",
+    "ETERNAL",
+    "GAIL",
+    "GODREJCP",
+    "GRASIM",
+    "HCLTECH",
+    "HDFCBANK",
+    "HDFCLIFE",
+    "HAVELLS",
+    "HEROMOTOCO",
+    "HINDALCO",
+    "HAL",
+    "HINDUNILVR",
+    "HYUNDAI",
+    "ICICIBANK",
+    "ICICIGI",
+    "ICICIPRULI",
+    "ITC",
+    "INDHOTEL",
+    "IOC",
+    "IRFC",
+    "INDUSINDBK",
+    "NAUKRI",
+    "INFY",
+    "INDIGO",
+    "JSWENERGY",
+    "JSWSTEEL",
+    "JINDALSTEL",
+    "JIOFIN",
+    "KOTAKBANK",
+    "LTIM",
+    "LT",
+    "LICI",
+    "LODHA",
+    "M&M",
+    "MARUTI",
+    "NTPC",
+    "NESTLEIND",
+    "ONGC",
+    "PIDILITIND",
+    "PFC",
+    "POWERGRID",
+    "PNB",
+    "RECLTD",
+    "RELIANCE",
+    "SBILIFE",
+    "MOTHERSON",
+    "SHREECEM",
+    "SHRIRAMFIN",
+    "SIEMENS",
+    "SBIN",
+    "SUNPHARMA",
+    "SWIGGY",
+    "TVSMOTOR",
+    "TCS",
+    "TATACONSUM",
+    "TATAMOTORS",
+    "TATAPOWER",
+    "TATASTEEL",
+    "TECHM",
+    "TITAN",
+    "TORNTPHARM",
+    "TRENT",
+    "ULTRACEMCO",
+    "UNITDSPR",
+    "VBL",
+    "VEDL",
+    "WIPRO",
+    "ZYDUSLIFE",
+]
+
 
 def get_ticker_symbol(symbol: str) -> str:
     """
@@ -104,8 +208,8 @@ def get_nse_symbols(limit: int = None) -> list[str]:
         return symbols
     except Exception as e:
         logger.error(f"Failed to fetch NSE universe: {e}")
-        # Fallback with .NS suffix
-        return ["RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "HINDUNILVR.NS"]
+        # Fallback to Nifty 100 with .NS suffix
+        return [get_ticker_symbol(s) for s in NIFTY_100_FALLBACK]
 
 
 def fetch_stock_data(
@@ -128,7 +232,7 @@ def fetch_stock_data(
 
         # Fix Timezone Fragility: ensure index is naive as per project standards
         if hist.index.tz is not None:
-            hist.index = hist.index.tz_localize(None)
+            hist.index = hist.index.tz_convert(None)
 
         return hist, info
     except Exception as e:
