@@ -8,25 +8,25 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.backtest.engine import BacktestConfig, run_backtest
+from app.backtest.engine import BacktestConfig
 from app.core.utils import sanitize_for_json
 from app.db import models
-from app.db.session import SessionLocal, get_db
+from app.db.session import get_db
 
 router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 
 class BacktestRequest(BaseModel):
     score_threshold: float = Field(
-        default=60.0,
+        default=55.0,
         ge=0,
         le=100,
         description=(
-            "Signal quality bar on a 0–100 intention scale. "
-            "Automatically normalised: the max possible score is 70, so a threshold of 60 becomes an effective "
-            "35 (50% of 70). "
-            "Note: the MACD same-day cap (8 pts) means a fresh EMA+MACD cross without "
-            "volume scores ~38, which requires this threshold to be ≤54 to pass."
+            "Minimum signal quality score (0–100 scale). The practical score ceiling "
+            "is ~97 due to the same-day EMA/MACD correlation cap. Default 55 ≈ 56% of max. "
+            "At 55, a fresh EMA cross with ADX ≥ 25 and above 200EMA but no volume "
+            "scores roughly 58–62 and will pass. A weak cross with no MACD confirmation "
+            "and no trend scores ~35 and will be filtered."
         ),
     )
     holding_days: int = Field(
