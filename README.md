@@ -81,6 +81,7 @@ cd backend
 source venv/bin/activate
 uvicorn app.main:app --reload
 ```
+*Note: For high-performance backtesting sweeps, run with multiple workers: `uvicorn app.main:app --workers 4`*
 
 #### **Terminal 3: Celery Worker**
 ```bash

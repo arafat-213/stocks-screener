@@ -416,16 +416,10 @@ def start_backtest(
         regime_bear_position_pct=request.regime_bear_position_pct,
     )
 
-    # Add to background tasks
-    # We use SessionLocal() because run_backtest needs its own session in a separate thread
-    def run_wrapper(rid, cfg):
-        engine_db = SessionLocal()
-        try:
-            run_backtest(engine_db, rid, cfg)
-        finally:
-            engine_db.close()
+    # Trigger Celery task
+    from app.tasks import execute_backtest_task
 
-    background_tasks.add_task(run_wrapper, run_id, config)
+    execute_backtest_task.delay(run_id, request.model_dump())
 
     return {"run_id": run_id, "status": "pending"}
 

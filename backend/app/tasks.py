@@ -1,11 +1,28 @@
 import logging
 
+from app.backtest.engine import run_backtest as execute_backtest_engine
 from app.core.celery_app import celery_app
+from app.core.trading_config import UnifiedTradingConfig as BacktestConfig
 from app.db.session import SessionLocal
 from app.pipeline.cleanup import run_cleanup
 from app.pipeline.orchestrator import run_pipeline
 
 logger = logging.getLogger(__name__)
+
+
+@celery_app.task(name="app.tasks.execute_backtest_task")
+def execute_backtest_task(run_id: str, config_dict: dict):
+    logger.info(f"Starting backtest task (run_id={run_id})")
+    db = SessionLocal()
+    try:
+        # Reconstruct config object from dict using robust helper
+        config = BacktestConfig.from_dict(config_dict)
+        execute_backtest_engine(db, run_id, config)
+    except Exception as e:
+        logger.error(f"Backtest task {run_id} failed: {e}")
+        raise
+    finally:
+        db.close()
 
 
 @celery_app.task(name="app.tasks.execute_pipeline_task")

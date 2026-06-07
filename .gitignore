@@ -159,3 +159,5 @@ backend/reports/
 .worktrees/
 http_cache.sqlite
 .worktrees/
+
+notes/

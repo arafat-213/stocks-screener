@@ -47,6 +47,7 @@ The daily research pipeline is the core of this system. It must be resilient, re
 2. `pip install -r requirements.txt`
 3. `alembic upgrade head`
 4. `uvicorn app.main:app --reload`
+   - **Pro Tip:** For parallel backtesting (e.g., when running `parameter_sweep.py`), use multiple workers to bypass the GIL: `uvicorn app.main:app --workers 4`
 5. Start Worker: `celery -A app.core.celery_app worker --loglevel=info`
 
 ### Frontend Setup
