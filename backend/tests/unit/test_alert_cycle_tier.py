@@ -34,7 +34,7 @@ def test_run_alert_cycle_tier_calculation(
         adx=35.0,
         close_price=100.0,
         ema20_level=95.0,
-        entry_score=10.0,
+        entry_score=85.0,
         is_consolidating=True,
     )
     db.add(tech)

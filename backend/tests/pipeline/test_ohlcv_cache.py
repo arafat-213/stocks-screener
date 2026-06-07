@@ -251,3 +251,33 @@ def test_incremental_no_new_data_returns_cached(tmp_path):
 
     assert result is not None
     assert len(result) == 5  # original cached rows returned unchanged
+
+
+def test_incremental_fetch_sanity_check_failure(tmp_path):
+    """Incremental fetch with >20% gap should be rejected to prevent corruption."""
+    cache = OHLCVCache(cache_dir=str(tmp_path))
+
+    # Base data ending 5 days ago (Price Close = 102 from _make_df)
+    old_end = pd.Timestamp.now(tz="UTC").replace(tzinfo=None) - pd.Timedelta(days=5)
+    old_df = _make_df(days=5)
+    old_idx = pd.date_range(end=old_end.floor("D"), periods=5, freq="D")
+    old_df.index = old_idx
+    old_df.to_parquet(cache._file_path("GAP_STOCK"))
+
+    # Mock tail with ~27% gap (Open = 130, Close = 102)
+    tail_df = _make_df(days=1)
+    tail_df.index = pd.date_range(
+        start=old_idx[-1] + pd.Timedelta(days=1), periods=1, freq="D"
+    )
+    tail_df["Open"] = 130.0
+
+    mock_ticker = MagicMock()
+    mock_ticker.history.return_value = tail_df
+
+    with patch("yfinance.Ticker", return_value=mock_ticker):
+        # Use short period to avoid backfill
+        result = cache.get("GAP_STOCK", append_ns=True, period="10d")
+
+    # Should only return the original 5 rows (merge skipped)
+    assert len(result) == 5
+    assert result["Close"].iloc[-1] == 102.0
