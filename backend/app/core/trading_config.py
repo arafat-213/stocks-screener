@@ -79,8 +79,26 @@ class UnifiedTradingConfig:
     regime_bear_position_pct: float = 0.0
     regime_confirmation_days: int = 5
 
+    @classmethod
+    def from_dict(cls, data: dict) -> "UnifiedTradingConfig":
+        """Reconstruct config from a dictionary, handling date parsing."""
+        d = data.copy()
+        for field in ["date_from", "date_to"]:
+            val = d.get(field)
+            if isinstance(val, str) and val:
+                try:
+                    d[field] = datetime.date.fromisoformat(val)
+                except ValueError:
+                    d[field] = None
+        return cls(**d)
+
     @property
     def effective_score_threshold(self) -> float:
+        """
+        Score threshold compared against TechnicalStrategy.evaluate() output.
+        Practical score range: 0–100 (hard cap). Real ceiling ~97 due to
+        MACD/EMA same-day correlation cap. Default 55.0 = roughly 56% of max.
+        """
         return self.score_threshold
 
 
