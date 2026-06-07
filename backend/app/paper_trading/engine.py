@@ -339,6 +339,10 @@ def _convert_to_open(
     else:
         base_stop = entry_price * (1 - config.stop_loss_pct / 100)
 
+    # Enforce hard cap based on config.stop_loss_pct
+    hard_stop = entry_price * (1 - config.stop_loss_pct / 100)
+    base_stop = max(base_stop, hard_stop)
+
     # Allow for tighter stops if ATR/Structure permits, but ensure below entry
     pos.stop_loss_price = min(base_stop, entry_price * 0.99)
 
@@ -367,6 +371,7 @@ def _convert_to_open(
 def update_open_positions(db: Session, today: datetime.date) -> dict:
     """
     Checks exit conditions for open positions.
+    Returns detailed dictionary of closed positions and trailing stop updates.
     """
     portfolio = _get_or_create_portfolio(db, TREND_INITIATION)
     open_positions = (
@@ -375,13 +380,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
         .all()
     )
 
-    exit_counts = {
-        "stop_loss": 0,
-        "target": 0,
-        "atr_trailing_stop": 0,
-        "holding_period": 0,
-        "overextended_exit": 0,
-    }
+    results = {"closed": [], "trail_moved": []}
 
     for pos in open_positions:
         config = _get_config_for_position(pos)
@@ -389,7 +388,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
         if df is None or df.empty:
             continue
         if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+            df.index = df.index.tz_convert(None)
 
         rows = df[df.index.date == today]
         if rows.empty:
@@ -401,9 +400,13 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
         day_open = float(row["Open"])
         day_close = float(row["Close"])
 
+        trail_moved_today = False
+        new_trail_stop = None
+
         # Update highest price
         if day_high > pos.highest_price:
             pos.highest_price = day_high
+            trail_moved_today = True
 
         holding_days = (today - pos.entry_date).days
         exit_price = None
@@ -431,6 +434,7 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
                     pos.highest_price
                     - (config.atr_trailing_multiplier * pos.atr_at_signal),
                 )
+                new_trail_stop = trail_stop
                 if day_low <= trail_stop:
                     exit_price = max(trail_stop, day_open)
                     exit_reason = "atr_trailing_stop"
@@ -483,7 +487,17 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
             pos.exit_price = exit_price
             pos.exit_reason = exit_reason
             pos.closed_at = datetime.datetime.now(datetime.timezone.utc)
-            exit_counts[exit_reason] += 1
+
+            results["closed"].append(
+                {
+                    "symbol": pos.symbol,
+                    "exit_price": exit_price,
+                    "return_pct": net_return,
+                    "reason": exit_reason,
+                    "holding_days": holding_days,
+                }
+            )
+
             logger.info(
                 "paper_trading: CLOSE %s exit=%.2f return=%.2f%% reason=%s",
                 pos.symbol,
@@ -492,9 +506,18 @@ def update_open_positions(db: Session, today: datetime.date) -> dict:
                 exit_reason,
             )
             sync_paper_to_journal(db, pos)
+        elif trail_moved_today and new_trail_stop and pos.atr_trail_active:
+            # We didn't exit, but the trail stop moved up today
+            results["trail_moved"].append(
+                {
+                    "symbol": pos.symbol,
+                    "new_trail_stop": new_trail_stop,
+                    "current_price": day_close,
+                }
+            )
 
     db.commit()
-    return exit_counts
+    return results
 
 
 def run_paper_trading_cycle(db: Session) -> dict:

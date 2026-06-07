@@ -102,7 +102,7 @@ class TradeResult:
     adx_at_signal: float
     ema_signal: str
     position_size_used: float = 0.0
-
+    
     # Statistical and Regime Fields
     regime_at_signal: Optional[int] = None
     regime_at_entry: Optional[int] = None
@@ -797,6 +797,9 @@ def simulate_trades(
                 if eff_atr > 0
                 else entry_price * (1 - config.stop_loss_pct / 100)
             )
+            # Enforce hard cap
+            hard_stop = entry_price * (1 - config.stop_loss_pct / 100)
+            base_stop = max(base_stop, hard_stop)
         else:
             consol_low = df.iloc[
                 max(0, signal_idx - config.consolidation_bars) : signal_idx
@@ -806,10 +809,17 @@ def simulate_trades(
                 entry_price - config.atr_multiplier * atr_val if atr_val else None
             )
             base_stop = (
-                min(struct_stop, atr_stop)
+                max(struct_stop, atr_stop)
                 if struct_stop and atr_stop
-                else (struct_stop or atr_stop or entry_price * 0.93)
+                else (
+                    struct_stop
+                    or atr_stop
+                    or entry_price * (1 - config.stop_loss_pct / 100)
+                )
             )
+            # Enforce hard cap based on config.stop_loss_pct
+            hard_stop = entry_price * (1 - config.stop_loss_pct / 100)
+            base_stop = max(base_stop, hard_stop)
 
         # Use base_stop directly to allow for volatility-based stops (e.g. 10%+ for midcaps)
         # Cap at 99% of entry to ensure it's always a sell-below stop.

@@ -50,6 +50,12 @@ def compute_trade_setup(
 
     entry_mid = (entry_low + entry_high) / 2
     stop = entry_mid - (atr_multiplier * atr)
+    
+    # Enforce hard cap based on config.stop_loss_pct
+    if config:
+        hard_stop = entry_mid * (1 - config.stop_loss_pct / 100)
+        stop = max(stop, hard_stop)
+    
     risk = entry_mid - stop
 
     if risk <= 0:

@@ -37,12 +37,13 @@ def test_compute_trade_setup_with_config():
     config = UnifiedTradingConfig(
         atr_multiplier=3.0,
         target_r_levels=(2.0, 4.0),
+        stop_loss_pct=10.0, # Wider than ATR stop to allow ATR stop to be used in test
     )
 
     setup = compute_trade_setup(signal, config=config)
 
     assert setup["stop_basis"] == "3.0× ATR below entry"
-    assert setup["stop_loss"] == 92.5  # 100.0 - (3.0 * 2.5)
+    assert setup["stop_loss"] == 92.5  # 100.0 - (3.0 * 2.5) is tighter than 90.0 (10% SL)
     assert setup["targets"][0]["rr"] == 2.0
     assert setup["targets"][1]["rr"] == 4.0
     assert setup["targets"][0]["label"] == "partial"
