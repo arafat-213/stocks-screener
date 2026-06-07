@@ -229,7 +229,24 @@ class OHLCVCache:
         if tail.index.tz is not None:
             tail.index = tail.index.tz_convert(None)
         if cached_df.index.tz is not None:
-            cached_df.index = cached_df.index.tz_localize(None)
+            cached_df.index = cached_df.index.tz_convert(None)
+
+        # --- SANITY CHECK (a) ---
+        last_close = float(cached_df["Close"].iloc[-1])
+        new_price = float(tail["Open"].iloc[0])
+
+        gap_pct = abs((new_price - last_close) / last_close)
+        if gap_pct > 0.20:
+            logger.error(
+                "ohlcv_cache: SANITY CHECK FAILED for %s. Gap is %.2f%% (Last Close: %.2f, New Open: %.2f). "
+                "Potential bad data or unadjusted split. Skipping merge to prevent cache corruption.",
+                symbol,
+                gap_pct * 100,
+                last_close,
+                new_price,
+            )
+            return cached_df
+        # ------------------------
 
         combined = pd.concat([cached_df, tail])
         combined = combined[~combined.index.duplicated(keep="last")]
