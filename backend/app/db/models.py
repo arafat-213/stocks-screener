@@ -262,6 +262,7 @@ class BacktestRun(Base):
     avg_win_pct = Column(Float, nullable=True)
     avg_loss_pct = Column(Float, nullable=True)
     exit_breakdown_json = Column(Text, nullable=True)
+    regime_map_json = Column(Text, nullable=True)
 
 
 class BacktestTrade(Base):
@@ -284,6 +285,14 @@ class BacktestTrade(Base):
     rsi_at_signal = Column(Float, nullable=True)
     adx_at_signal = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
+    
+    # Statistical and Regime Fields
+    regime_at_signal = Column(Integer, nullable=True)
+    regime_at_entry = Column(Integer, nullable=True)
+    regime_at_exit = Column(Integer, nullable=True)
+    market_breadth_at_entry = Column(Float, nullable=True)
+    consolidation_bars_at_signal = Column(Integer, nullable=True)
+    pullback_depth_pct = Column(Float, nullable=True)
 
     __table_args__ = (
         # Every trade fetch is filtered by run_id — this index is critical

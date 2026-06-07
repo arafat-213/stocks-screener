@@ -103,6 +103,14 @@ class TradeResult:
     ema_signal: str
     position_size_used: float = 0.0
 
+    # Statistical and Regime Fields
+    regime_at_signal: Optional[int] = None
+    regime_at_entry: Optional[int] = None
+    regime_at_exit: Optional[int] = None
+    market_breadth_at_entry: Optional[float] = None
+    consolidation_bars_at_signal: Optional[int] = None
+    pullback_depth_pct: Optional[float] = None
+
 
 def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]:
     """
@@ -116,7 +124,7 @@ def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]
 
     if df is not None and not df.empty:
         if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+            df.index = df.index.tz_convert(None)
 
         _OHLCV_CACHE[symbol] = df
         return df
@@ -234,7 +242,7 @@ def _calculate_breadth_map(
             # Drop timezone information for consistency if present
             idx = df.index
             if hasattr(idx, "tz") and idx.tz is not None:
-                idx = idx.tz_localize(None)
+                idx = idx.tz_convert(None)
 
             close_series[sym] = pd.Series(df["Close"].values, index=idx)
             ema_series[sym] = pd.Series(df["EMA_200"].values, index=idx)
@@ -280,10 +288,9 @@ def _check_mtf_confirmation(date: datetime.date, state_map: dict) -> bool:
 
 def _build_regime_map(
     bench_df: pd.DataFrame, config: BacktestConfig, breadth_map: dict = None
-) -> dict[datetime.date, float]:
+) -> dict[datetime.date, int]:
     """
-    Pre-calculates a mapping from date to position scaling (max_position_pct).
-    Uses RSI, ADX, Price vs EMA200, and Universe Breadth.
+    Pre-calculates a mapping from date to regime ID.
     Regimes:
     - BULL (2): RSI > 60 and ADX > 20 -> Full size (regime_bull_position_pct)
     - BEAR (0): RSI < 45 or Price < EMA200 -> Cash (regime_bear_position_pct)
@@ -343,15 +350,7 @@ def _build_regime_map(
                 current_regime = potential_regime
                 confirmation_counter = 0
 
-        # Map state to position percentage
-        if current_regime == 0:
-            val = config.regime_bear_position_pct
-        elif current_regime == 2:
-            val = config.regime_bull_position_pct
-        else:
-            val = config.regime_neutral_position_pct
-
-        regime_map[date] = val
+        regime_map[date] = current_regime
 
     return regime_map
 
@@ -397,7 +396,7 @@ def _build_screen_driven_signals(
 
     if df.index.tz is not None:
         df = df.copy()
-        df.index = df.index.tz_localize(None)
+        df.index = df.index.tz_convert(None)
 
     df_ind = _compute_all_indicators(df, strategy, symbol=symbol)
     date_to_idx = {
@@ -476,7 +475,7 @@ def score_series(
 
     if df.index.tz is not None:
         df = df.copy()
-        df.index = df.index.tz_localize(None)
+        df.index = df.index.tz_convert(None)
 
     df_ind = _compute_all_indicators(df, strategy, symbol=symbol)
 
@@ -738,17 +737,53 @@ def simulate_trades(
         raw_atr = signal.get("atr") or 0.0
         eff_atr = max(raw_atr, entry_price * 0.015)
 
-        # ── REGIME SCALING ───────────────────────────────────────────────────
+        # ── REGIME & STATS CAPTURE ───────────────────────────────────────────
+        # Determine regime IDs at critical points
+        r_idx_signal = bisect.bisect_right(sorted_scaling_keys, compare_date)
+        regime_id_signal = (
+            regime_scaling_map[sorted_scaling_keys[r_idx_signal - 1]]
+            if r_idx_signal > 0
+            else 1
+        )
+
+        entry_compare_date = (
+            entry_date.date() if hasattr(entry_date, "date") else entry_date
+        )
+        r_idx_entry = bisect.bisect_right(sorted_scaling_keys, entry_compare_date)
+        regime_id_entry = (
+            regime_scaling_map[sorted_scaling_keys[r_idx_entry - 1]]
+            if r_idx_entry > 0
+            else 1
+        )
+
         regime_max_pct = None
         if config.use_regime_position_scaling and regime_scaling_map:
-            r_idx = bisect.bisect_right(sorted_scaling_keys, entry_date.date())
-            if r_idx > 0:
-                regime_max_pct = regime_scaling_map[sorted_scaling_keys[r_idx - 1]]
+            if regime_id_entry == 0:
+                regime_max_pct = config.regime_bear_position_pct
+            elif regime_id_entry == 2:
+                regime_max_pct = config.regime_bull_position_pct
             else:
                 regime_max_pct = config.regime_neutral_position_pct
 
             if regime_max_pct <= 0.0:
                 continue  # Skip trade entirely in Bear regime
+
+        # Additional Stats
+        breadth_at_entry = (breadth_map or {}).get(entry_compare_date, 100.0)
+        consolidation_bars = signal.get("consolidation_bars")
+        if consolidation_bars is None:
+            # Fallback: if it was required and passed, use config value
+            consolidation_bars = (
+                config.consolidation_bars if signal.get("is_consolidating") else 0
+            )
+
+        # Pullback depth: depth from signal close to the lowest low before entry
+        pullback_depth = 0.0
+        if use_pullback:
+            signal_close = df.iloc[signal_idx]["Close"]
+            # Entry idx is when we actually entered. Lowest low between signal and entry.
+            lowest_low = df.iloc[signal_idx : entry_idx + 1]["Low"].min()
+            pullback_depth = max(0.0, (1 - lowest_low / signal_close) * 100)
 
         pos_size = _compute_position_size(
             config, entry_price, atr=eff_atr, regime_max_pct=regime_max_pct
@@ -760,7 +795,7 @@ def simulate_trades(
             base_stop = (
                 entry_price - config.atr_multiplier * eff_atr
                 if eff_atr > 0
-                else entry_price * 0.93
+                else entry_price * (1 - config.stop_loss_pct / 100)
             )
         else:
             consol_low = df.iloc[
@@ -854,6 +889,17 @@ def simulate_trades(
 
             if not t1_hit and t1_price and high >= t1_price:
                 t1_hit = True
+                t1_exit_date = (
+                    df.index[k].date()
+                    if hasattr(df.index[k], "date")
+                    else df.index[k]
+                )
+                r_idx_exit_t1 = bisect.bisect_right(sorted_scaling_keys, t1_exit_date)
+                regime_id_exit_t1 = (
+                    regime_scaling_map[sorted_scaling_keys[r_idx_exit_t1 - 1]]
+                    if r_idx_exit_t1 > 0
+                    else 1
+                )
                 t1_trade = TradeResult(
                     symbol,
                     sector,
@@ -863,11 +909,7 @@ def simulate_trades(
                         else signal_date
                     ),
                     (entry_date.date() if hasattr(entry_date, "date") else entry_date),
-                    (
-                        df.index[k].date()
-                        if hasattr(df.index[k], "date")
-                        else df.index[k]
-                    ),
+                    t1_exit_date,
                     "target_partial",
                     signal.get("score", 0),
                     entry_price,
@@ -877,6 +919,12 @@ def simulate_trades(
                     signal.get("adx", 0),
                     signal.get("ema_signal", "neutral"),
                     pos_size * 0.5,
+                    regime_at_signal=regime_id_signal,
+                    regime_at_entry=regime_id_entry,
+                    regime_at_exit=regime_id_exit_t1,
+                    market_breadth_at_entry=breadth_at_entry,
+                    consolidation_bars_at_signal=consolidation_bars,
+                    pullback_depth_pct=pullback_depth,
                 )
                 stop_price, pos_size = entry_price, pos_size * 0.5
 
@@ -898,6 +946,12 @@ def simulate_trades(
             trades.append(t1_trade)
 
         exit_date_final = exit_date.date() if hasattr(exit_date, "date") else exit_date
+        r_idx_exit = bisect.bisect_right(sorted_scaling_keys, exit_date_final)
+        regime_id_exit = (
+            regime_scaling_map[sorted_scaling_keys[r_idx_exit - 1]]
+            if r_idx_exit > 0
+            else 1
+        )
 
         trades.append(
             TradeResult(
@@ -915,6 +969,12 @@ def simulate_trades(
                 signal["adx"],
                 signal["ema_signal"],
                 pos_size,
+                regime_at_signal=regime_id_signal,
+                regime_at_entry=regime_id_entry,
+                regime_at_exit=regime_id_exit,
+                market_breadth_at_entry=breadth_at_entry,
+                consolidation_bars_at_signal=consolidation_bars,
+                pullback_depth_pct=pullback_depth,
             )
         )
         last_exit_idx = date_to_idx.get(exit_date, -1)
@@ -1276,8 +1336,8 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         # ── END SIGNAL CACHE BLOCK ────────────────────────────────────────────
 
         regime_scaling_map = {}
-        if config.use_regime_position_scaling and bench_df is not None:
-            # Re-use breadth_map if already calculated
+        if bench_df is not None:
+            # We always calculate this for statistical analysis even if use_regime_position_scaling is False
             regime_scaling_map = _build_regime_map(
                 bench_df, config, breadth_map=breadth_map
             )
@@ -1321,6 +1381,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             metrics["exit_breakdown"], cls=NumpyEncoder
         )
         run.equity_curve_json = json.dumps(metrics["equity_curve"], cls=NumpyEncoder)
+        run.regime_map_json = json.dumps(
+            {str(k): v for k, v in regime_scaling_map.items()}, cls=NumpyEncoder
+        )
 
         # Save individual trades
         db_trades = []
@@ -1353,6 +1416,16 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     if t.adx_at_signal is not None
                     else None,
                     "ema_signal": t.ema_signal,
+                    "regime_at_signal": t.regime_at_signal,
+                    "regime_at_entry": t.regime_at_entry,
+                    "regime_at_exit": t.regime_at_exit,
+                    "market_breadth_at_entry": float(_clean(t.market_breadth_at_entry))
+                    if t.market_breadth_at_entry is not None
+                    else None,
+                    "consolidation_bars_at_signal": t.consolidation_bars_at_signal,
+                    "pullback_depth_pct": float(_clean(t.pullback_depth_pct))
+                    if t.pullback_depth_pct is not None
+                    else None,
                 }
             )
         if db_trades:
