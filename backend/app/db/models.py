@@ -493,3 +493,16 @@ class TradeJournal(Base):
         Index("ix_tj_status", "status"),
         Index("ix_tj_symbol", "symbol"),
     )
+
+class DailyDigestLog(Base):
+    __tablename__ = "daily_digest_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    date = Column(Date, nullable=False, unique=True, index=True)
+    regime_bullish = Column(Boolean, nullable=False, default=True)
+    new_signals = Column(JSON, default=list)
+    opened_positions = Column(JSON, default=list)
+    closed_positions = Column(JSON, default=list)
+    trail_moved = Column(JSON, default=list)
+    warnings = Column(JSON, default=list)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))

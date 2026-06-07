@@ -3,37 +3,65 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
+from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
-from app.db.models import Stock, TechnicalSignal
+from app.db.models import DailyDigestLog, Stock, TechnicalSignal
 from app.db.session import get_db
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
 @router.get("/digest/latest")
-def get_latest_digest():
-    reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
-    digests = sorted(reports_dir.glob("digest_*.json"), reverse=True)
-    if not digests:
-        raise HTTPException(status_code=404, detail="No digest found")
-    try:
-        return json.loads(digests[0].read_text())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
+def get_latest_digest(db: Session = Depends(get_db)):
+    latest_digest = db.query(DailyDigestLog).order_by(desc(DailyDigestLog.date)).first()
+    if not latest_digest:
+        # Fallback to the old JSON method for backward compatibility if no DB record exists
+        reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
+        digests = sorted(reports_dir.glob("digest_*.json"), reverse=True)
+        if not digests:
+            raise HTTPException(status_code=404, detail="No digest found")
+        try:
+            return json.loads(digests[0].read_text())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
+    
+    return {
+        "date": latest_digest.date.isoformat(),
+        "regime_bullish": latest_digest.regime_bullish,
+        "new_signals": latest_digest.new_signals,
+        "opened_positions": latest_digest.opened_positions,
+        "closed_positions": latest_digest.closed_positions,
+        "trail_moved": latest_digest.trail_moved,
+        "warnings": latest_digest.warnings,
+        "actionable": latest_digest.new_signals, # Fallback for old UI format if needed
+    }
 
 
 @router.get("/digest/{date}")
-def get_digest_by_date(date: str):
-    reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
-    path = reports_dir / f"digest_{date}.json"
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Digest not found for this date")
-    try:
-        return json.loads(path.read_text())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
+def get_digest_by_date(date: str, db: Session = Depends(get_db)):
+    digest_log = db.query(DailyDigestLog).filter(DailyDigestLog.date == date).first()
+    if not digest_log:
+        # Fallback to the old JSON method
+        reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
+        path = reports_dir / f"digest_{date}.json"
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Digest not found for this date")
+        try:
+            return json.loads(path.read_text())
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
+    
+    return {
+        "date": digest_log.date.isoformat(),
+        "regime_bullish": digest_log.regime_bullish,
+        "new_signals": digest_log.new_signals,
+        "opened_positions": digest_log.opened_positions,
+        "closed_positions": digest_log.closed_positions,
+        "trail_moved": digest_log.trail_moved,
+        "warnings": digest_log.warnings,
+        "actionable": digest_log.new_signals, # Fallback for old UI format if needed
+    }
 
 
 @router.get("")

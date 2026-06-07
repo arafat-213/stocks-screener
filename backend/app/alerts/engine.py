@@ -14,6 +14,7 @@ from app.alerts.email import (
 from app.core.trading_config import TREND_INITIATION, UnifiedTradingConfig
 from app.db.models import (
     AlertLog,
+    DailyDigestLog,
     ScreenResult,
     Stock,
     TechnicalSignal,
@@ -81,31 +82,12 @@ def _log_alert(
         db.rollback()
 
 
-def run_alert_cycle(
+def get_new_signals_for_alert(
     db: Session,
-    signal_date: datetime.date | None = None,
-    config: UnifiedTradingConfig = None,
-) -> dict:
-    """
-    Main entry point. Called after pipeline completes.
-    Finds new actionable signals, deduplicates, and fires email.
-    Returns summary dict for logging.
-    """
-    if config is None:
-        config = TREND_INITIATION
-
-    if signal_date is None:
-        from app.screens.base import get_latest_signal_date
-
-        signal_date = get_latest_signal_date(db, "D")
-
-    logger.info(
-        "alert_cycle: scanning signals for %s using strategy '%s'",
-        signal_date,
-        config.strategy_id,
-    )
-    regime_bullish = get_market_regime(db, signal_date)
-
+    signal_date: datetime.date,
+    config: UnifiedTradingConfig,
+) -> tuple[list[dict], int]:
+    """Scans for new actionable signals and returns (signals_to_alert, skipped_count)."""
     # Define signals to match based on config
     ema_signals = ["bullish_cross", "bullish_pullback"]
 
@@ -132,6 +114,7 @@ def run_alert_cycle(
             TechnicalSignal.rsi >= config.rsi_min,
             TechnicalSignal.rsi <= config.rsi_max,
             TechnicalSignal.momentum_12m > 0,
+            TechnicalSignal.entry_score >= config.effective_score_threshold,
         )
     )
 
@@ -159,8 +142,7 @@ def run_alert_cycle(
     candidates = query.all()
 
     if not candidates:
-        logger.info("alert_cycle: no candidates on %s", signal_date)
-        return {"signals_found": 0, "alerts_sent": 0, "skipped_duplicate": 0}
+        return [], 0
 
     signals_to_alert = []
     skipped = 0
@@ -173,10 +155,6 @@ def run_alert_cycle(
             continue
 
         if not tech.close_price or not tech.ema20_level:
-            logger.warning(
-                "alert_cycle: skipping %s — missing close_price or ema20_level",
-                tech.symbol,
-            )
             continue
 
         # Compute signal_tier from technical indicators only
@@ -215,23 +193,52 @@ def run_alert_cycle(
                 "target_price": target_price,
                 "momentum_12m": tech.momentum_12m or 0.0,
                 "close_price": tech.close_price,
+                "ema20_level": tech.ema20_level,
             }
         )
 
+    # Sort: tier 1 first, then by score descending
+    signals_to_alert.sort(key=lambda x: (x["signal_tier"], -x["score"]))
+    return signals_to_alert, skipped
+
+
+def run_alert_cycle(
+    db: Session,
+    signal_date: datetime.date | None = None,
+    config: UnifiedTradingConfig = None,
+) -> dict:
+    """
+    Main entry point. Called after pipeline completes.
+    Finds new actionable signals, deduplicates, and fires email.
+    Returns summary dict for logging.
+    """
+    if config is None:
+        config = TREND_INITIATION
+
+    if signal_date is None:
+        from app.screens.base import get_latest_signal_date
+
+        signal_date = get_latest_signal_date(db, "D")
+
+    logger.info(
+        "alert_cycle: scanning signals for %s using strategy '%s'",
+        signal_date,
+        config.strategy_id,
+    )
+    regime_bullish = get_market_regime(db, signal_date)
+
+    signals_to_alert, skipped = get_new_signals_for_alert(db, signal_date, config)
+
     if not signals_to_alert:
         logger.info(
-            "alert_cycle: %d candidates found, all already alerted or filtered (skipped=%d)",
-            len(candidates),
+            "alert_cycle: no candidates found or all already alerted (skipped=%d)",
             skipped,
         )
         return {
-            "signals_found": len(candidates),
+            "signals_found": skipped,
             "alerts_sent": 0,
             "skipped_duplicate": skipped,
         }
-
-    # Sort: tier 1 first, then by score descending
-    signals_to_alert.sort(key=lambda x: (x["signal_tier"], -x["score"]))
 
     # Build and send single batched email
     subject = (
@@ -260,7 +267,7 @@ def run_alert_cycle(
         skipped,
     )
     return {
-        "signals_found": len(candidates),
+        "signals_found": len(signals_to_alert) + skipped,
         "alerts_sent": len(signals_to_alert),
         "skipped_duplicate": skipped,
         "email_id": email_id,
@@ -268,37 +275,28 @@ def run_alert_cycle(
     }
 
 
-def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> dict:
-    """
-    Checks all open TradeJournal positions against today's price.
-    Fires alerts for: stop approached, stop hit, target approached, target hit, overextended.
-    """
-    if signal_date is None:
-        from app.screens.base import get_latest_signal_date
-
-        signal_date = get_latest_signal_date(db, "D")
-
+def get_exit_alerts_for_date(
+    db: Session, signal_date: datetime.date
+) -> tuple[list[dict], int]:
+    """Checks open positions and returns (alerts, positions_checked)."""
     open_positions = db.query(TradeJournal).filter_by(status="open").all()
     if not open_positions:
-        return {"positions_checked": 0, "alerts_fired": 0}
+        return [], 0
 
     cache = OHLCVCache()
-    from app.core.strategy import TechnicalStrategy
-
-    strategy = TechnicalStrategy()
     alerts = []
 
     for pos in open_positions:
-        # TODO: Batch these cache reads if positions grow
-        df = cache.get(pos.symbol, period="1y")
+        # Fetch minimum data required for indicators (RSI_14 needs ~40-60 bars for convergence)
+        df = cache.get(pos.symbol, period="60d")
         if df is None or df.empty:
             continue
 
         if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+            df.index = df.index.tz_convert(None)
 
-        # Calculate indicators for overextended check (RSI)
-        df = strategy.calculate_indicators(df)
+        # Calculate only required indicator (RSI) to save CPU/memory
+        df.ta.rsi(length=14, append=True)
 
         # Get today's bar
         today_rows = df[df.index.date == signal_date]
@@ -369,12 +367,26 @@ def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) 
             }
         )
 
-    if not alerts:
-        return {"positions_checked": len(open_positions), "alerts_fired": 0}
-
     # Sort: critical first
     urgency_order = {"critical": 0, "high": 1, "medium": 2}
     alerts.sort(key=lambda x: urgency_order.get(x["urgency"], 3))
+    return alerts, len(open_positions)
+
+
+def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) -> dict:
+    """
+    Checks all open TradeJournal positions against today's price.
+    Fires alerts for: stop approached, stop hit, target approached, target hit, overextended.
+    """
+    if signal_date is None:
+        from app.screens.base import get_latest_signal_date
+
+        signal_date = get_latest_signal_date(db, "D")
+
+    alerts, positions_checked = get_exit_alerts_for_date(db, signal_date)
+
+    if not alerts:
+        return {"positions_checked": positions_checked, "alerts_fired": 0}
 
     subject = f"⚠️ Position Alert — {signal_date.strftime('%d %b %Y')}"
     html = build_exit_alert_email(alerts, str(signal_date))
@@ -386,4 +398,137 @@ def run_exit_alert_cycle(db: Session, signal_date: datetime.date | None = None) 
                 db, a["symbol"], signal_date, a["alert_type"], None, None, email_id
             )
 
-    return {"positions_checked": len(open_positions), "alerts_fired": len(alerts)}
+    return {"positions_checked": positions_checked, "alerts_fired": len(alerts)}
+
+
+def run_daily_digest(
+    db: Session,
+    pt_results: dict,
+    signal_date: datetime.date | None = None,
+    configs: list[UnifiedTradingConfig] = None,
+) -> dict:
+    """
+    Main orchestrator for the Full Story Daily Digest.
+    Aggregates new signals, entry triggers, exits, and warnings into a single email.
+    """
+    from app.alerts.email import build_daily_digest_email
+
+    if signal_date is None:
+        from app.screens.base import get_latest_signal_date
+
+        signal_date = get_latest_signal_date(db, "D")
+
+    if configs is None:
+        configs = [TREND_INITIATION]
+
+    regime_bullish = get_market_regime(db, signal_date)
+
+    # 1. New Signals
+    all_new_signals = []
+    for config in configs:
+        signals_to_alert, skipped = get_new_signals_for_alert(db, signal_date, config)
+        all_new_signals.extend(signals_to_alert)
+
+    # Deduplicate new signals by symbol (keeping highest tier/score)
+    deduped_signals = {}
+    for sig in all_new_signals:
+        sym = sig["symbol"]
+        if sym not in deduped_signals:
+            deduped_signals[sym] = sig
+        else:
+            # If same symbol found across configs, keep the one with better tier/score
+            existing = deduped_signals[sym]
+            if sig["signal_tier"] < existing["signal_tier"] or (
+                sig["signal_tier"] == existing["signal_tier"]
+                and sig["score"] > existing["score"]
+            ):
+                deduped_signals[sym] = sig
+
+    new_signals = list(deduped_signals.values())
+    new_signals.sort(key=lambda x: (x["signal_tier"], -x["score"]))
+
+    # 2. Entries & Exits from Paper Trading
+    opened_positions = pt_results.get("pending", {}).get("opened", [])
+    closed_positions = pt_results.get("closed", {}).get("closed", [])
+    trail_moved = pt_results.get("closed", {}).get("trail_moved", [])
+
+    # 3. Warnings (Near Stop, Near Target)
+    # We use get_exit_alerts_for_date but only keep the warnings
+    exit_alerts, _ = get_exit_alerts_for_date(db, signal_date)
+    warnings = [a for a in exit_alerts if "approached" in a["alert_type"]]
+
+    # If nothing happened today, we might skip email, but usually there are at least new signals.
+    if not (
+        new_signals or opened_positions or closed_positions or trail_moved or warnings
+    ):
+        logger.info("daily_digest: No events or signals today. Skipping email.")
+        return {"status": "skipped", "reason": "no_events"}
+
+    subject = f"📈 Stock AI Daily Digest — {signal_date.strftime('%d %b %Y')}"
+    html = build_daily_digest_email(
+        signal_date=str(signal_date),
+        regime_bullish=regime_bullish,
+        new_signals=new_signals,
+        opened_positions=opened_positions,
+        closed_positions=closed_positions,
+        trail_moved=trail_moved,
+        warnings=warnings,
+    )
+
+    email_id = send_alert_email(subject, html)
+
+    # Log alerts sent
+    if email_id:
+        for sig in new_signals:
+            _log_alert(
+                db,
+                sig["symbol"],
+                signal_date,
+                sig["alert_type"],
+                None,
+                sig["score"],
+                email_id,
+            )
+        for w in warnings:
+            _log_alert(
+                db, w["symbol"], signal_date, w["alert_type"], None, None, email_id
+            )
+
+    logger.info("daily_digest: Sent unified digest email_id=%s", email_id)
+    
+    # Persist the digest in DB
+    try:
+        existing = db.query(DailyDigestLog).filter_by(date=signal_date).first()
+        if existing:
+            existing.regime_bullish = regime_bullish
+            existing.new_signals = new_signals
+            existing.opened_positions = opened_positions
+            existing.closed_positions = closed_positions
+            existing.trail_moved = trail_moved
+            existing.warnings = warnings
+        else:
+            digest_log = DailyDigestLog(
+                date=signal_date,
+                regime_bullish=regime_bullish,
+                new_signals=new_signals,
+                opened_positions=opened_positions,
+                closed_positions=closed_positions,
+                trail_moved=trail_moved,
+                warnings=warnings,
+            )
+            db.add(digest_log)
+        db.commit()
+        logger.info("daily_digest: Persisted to database.")
+    except Exception as e:
+        logger.error("daily_digest: Failed to persist to database: %s", e)
+        db.rollback()
+
+    return {
+        "status": "sent",
+        "email_id": email_id,
+        "new_signals": len(new_signals),
+        "opened": len(opened_positions),
+        "closed": len(closed_positions),
+        "trail_moved": len(trail_moved),
+        "warnings": len(warnings),
+    }

@@ -541,6 +541,7 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         materialize_all_screens(db)
 
         # 7. Paper Trading
+        pt_result = {}
         try:
             from app.paper_trading.engine import run_paper_trading_cycle
 
@@ -552,27 +553,22 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
 
             logger.error(traceback.format_exc())
 
-        # 8. Alert cycle — fires email for new actionable signals
+        # 8. Alert cycle — unified daily digest
         try:
-            from app.alerts.engine import run_alert_cycle, run_exit_alert_cycle
+            from app.alerts.engine import run_daily_digest
             from app.core.trading_config import TREND_CONTINUATION, TREND_INITIATION
 
             configs = [TREND_INITIATION, TREND_CONTINUATION]
 
-            # Entry alerts — new signals
-            for config in configs:
-                alert_result = run_alert_cycle(
-                    db, signal_date=final_signal_date, config=config
-                )
-                logger.info(
-                    "Entry alert cycle (%s): %s", config.strategy_id, alert_result
-                )
+            digest_result = run_daily_digest(
+                db, pt_results=pt_result, signal_date=final_signal_date, configs=configs
+            )
+            logger.info("Daily digest cycle: %s", digest_result)
 
-            # Exit alerts — open positions
-            exit_result = run_exit_alert_cycle(db, signal_date=final_signal_date)
-            logger.info("Exit alert cycle: %s", exit_result)
         except Exception as e:
             logger.error("Alert cycle failed (non-fatal): %s", e)
+            import traceback
+
             logger.error(traceback.format_exc())
 
         run.status = "complete"
@@ -603,6 +599,3 @@ def run_pipeline(db: Session, limit: int = None, resume_run_id: str | None = Non
         db.commit()
     finally:
         logging_manager.cleanup_run_logging(log_handler)
-
-
-()

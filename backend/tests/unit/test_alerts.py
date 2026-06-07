@@ -32,10 +32,29 @@ def test_build_signal_email_contains_price():
             "volume_breakout": True,
             "entry_status": "in_zone",
             "pct_above_ema20": 1.5,
+            "ema20_level": 2500.00,
             "stop_loss": 2400.0,
             "target_price": 2800.0,
             "momentum_12m": 25.0,
             "close_price": 2550.75,
+        },
+        {
+            "symbol": "TCS.NS",
+            "name": "Tata Consultancy Services",
+            "sector": "IT",
+            "score": 80.0,
+            "signal_tier": 2,
+            "ema_signal": "bullish_pullback",
+            "rsi": 55.0,
+            "adx": 20.0,
+            "volume_breakout": False,
+            "entry_status": "extended",
+            "pct_above_ema20": 5.0,
+            "ema20_level": 3500.00,
+            "stop_loss": 3400.0,
+            "target_price": 3800.0,
+            "momentum_12m": 15.0,
+            "close_price": 3675.00,
         }
     ]
     html = build_signal_email(signals, "2026-06-01", True)
@@ -47,6 +66,11 @@ def test_build_signal_email_contains_price():
 
     # Check for price
     assert "₹2,550.75" in html
+
+    # Check for pullback advice
+    assert "Buy near ₹2,500.00" in html
+    assert "Wait for ₹3,500.00" in html
+    assert "Pullback to EMA20 within 8 bars" in html
 
 
 def test_run_exit_alert_cycle_no_positions(db):
