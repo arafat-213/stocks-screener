@@ -130,7 +130,7 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
                 if df is None or df.empty:
                     continue
                 if df.index.tz is not None:
-                    df.index = df.index.tz_localize(None)
+                    df.index = df.index.tz_convert(None)
 
                 # Find signal bar index
                 matching = df.index[df.index.date <= today]
@@ -220,7 +220,7 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
         if df is None or df.empty:
             continue
         if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+            df.index = df.index.tz_convert(None)
 
         # Get today's bar
         rows = df[df.index.date == today]
@@ -318,7 +318,7 @@ def _convert_to_open(
     # Get recent low for structural stop
     df = _ohlcv_cache.get(pos.symbol, period="5y")
     if df.index.tz is not None:
-        df.index = df.index.tz_localize(None)
+        df.index = df.index.tz_convert(None)
 
     matching = df.index[df.index.date <= today]
     idx = len(matching) - 1
@@ -331,7 +331,7 @@ def _convert_to_open(
     atr_stop = (entry_price - config.atr_multiplier * atr_val) if atr_val else None
 
     if structural_stop and atr_stop:
-        base_stop = min(structural_stop, atr_stop)
+        base_stop = max(structural_stop, atr_stop)
     elif structural_stop:
         base_stop = structural_stop
     elif atr_stop:

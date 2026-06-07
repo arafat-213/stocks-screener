@@ -24,11 +24,11 @@ def has_5y_data(path):
 
         first_date = df.index[0]
         if hasattr(first_date, "tzinfo") and first_date.tzinfo is not None:
-            first_date = first_date.tz_localize(None)
+            first_date = first_date.tz_convert(None)
 
         last_date = df.index[-1]
         if hasattr(last_date, "tzinfo") and last_date.tzinfo is not None:
-            last_date = last_date.tz_localize(None)
+            last_date = last_date.tz_convert(None)
 
         # Check if the date span is roughly 5 years (allowing some margin for weekends/holidays, > 4.5 years = 1640 days)
         days_span = (last_date - first_date).days

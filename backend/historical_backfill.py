@@ -425,7 +425,7 @@ def backfill_history():
 
                 # Ensure datetime index
                 if hasattr(df.index, "tzinfo") and df.index.tzinfo is not None:
-                    df.index = df.index.tz_localize(None)
+                    df.index = df.index.tz_convert(None)
 
                 # Calculate Daily
                 df_daily = calculate_historical_indicators(df)

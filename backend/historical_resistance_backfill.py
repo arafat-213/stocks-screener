@@ -52,7 +52,7 @@ def backfill_resistance():
 
                 # Ensure datetime index
                 if hasattr(df.index, "tzinfo") and df.index.tzinfo is not None:
-                    df.index = df.index.tz_localize(None)
+                    df.index = df.index.tz_convert(None)
 
                 # Resistance: Highest close in the year prior to the last 20 bars (240 bar window)
                 # Rolling max with a shift to exclude the most recent 20 bars

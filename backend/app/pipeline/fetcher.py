@@ -162,7 +162,7 @@ def fetch_market_snapshots(
 
         # Fix Timezone Fragility
         if data.index.tz is not None:
-            data.index = data.index.tz_localize(None)
+            data.index = data.index.tz_convert(None)
 
         snapshots = []
         for target_symbol in target_symbols:

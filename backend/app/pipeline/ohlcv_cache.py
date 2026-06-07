@@ -51,7 +51,7 @@ class OHLCVCache:
                 requested_start = self._get_requested_start(period)
                 actual_start = cached_df.index[0]
                 if hasattr(actual_start, "tzinfo") and actual_start.tzinfo is not None:
-                    actual_start = actual_start.tz_localize(None)
+                    actual_start = actual_start.tz_convert(None)
 
                 # If requested start is significantly older than actual start, backfill
                 if requested_start < actual_start - pd.Timedelta(days=7):
@@ -109,7 +109,7 @@ class OHLCVCache:
             last_ts = last_ts.tz_convert(None)
 
         # Ensure now is naive UTC to match last_ts
-        now_utc_naive = pd.Timestamp.now(tz="UTC").tz_localize(None)
+        now_utc_naive = pd.Timestamp.now(tz="UTC").tz_convert(None)
         age_hours = (now_utc_naive - last_ts).total_seconds() / 3600
 
         # 1. Standard age check
@@ -141,7 +141,7 @@ class OHLCVCache:
 
         # Fix Timezone Fragility
         if df.index.tz is not None:
-            df.index = df.index.tz_localize(None)
+            df.index = df.index.tz_convert(None)
 
         self._write_atomic(df, path)
         return df
@@ -156,7 +156,7 @@ class OHLCVCache:
     ) -> pd.DataFrame:
         actual_start = cached_df.index[0]
         if hasattr(actual_start, "tzinfo") and actual_start.tzinfo is not None:
-            actual_start = actual_start.tz_localize(None)
+            actual_start = actual_start.tz_convert(None)
 
         start_str = requested_start.strftime("%Y-%m-%d")
         # Go up to the start of current cache to bridge the gap
@@ -182,9 +182,9 @@ class OHLCVCache:
             return cached_df
 
         if head.index.tz is not None:
-            head.index = head.index.tz_localize(None)
+            head.index = head.index.tz_convert(None)
         if cached_df.index.tz is not None:
-            cached_df.index = cached_df.index.tz_localize(None)
+            cached_df.index = cached_df.index.tz_convert(None)
 
         combined = pd.concat([head, cached_df])
         # deduplicate: keep original cached rows in case of overlap
@@ -200,7 +200,7 @@ class OHLCVCache:
     ) -> pd.DataFrame | None:
         last_date = cached_df.index[-1]
         if hasattr(last_date, "tzinfo") and last_date.tzinfo is not None:
-            last_date = last_date.tz_localize(None)
+            last_date = last_date.tz_convert(None)
 
         start_str = (last_date + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
         end_str = (pd.Timestamp.now("UTC") + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
@@ -227,7 +227,7 @@ class OHLCVCache:
             return cached_df
 
         if tail.index.tz is not None:
-            tail.index = tail.index.tz_localize(None)
+            tail.index = tail.index.tz_convert(None)
         if cached_df.index.tz is not None:
             cached_df.index = cached_df.index.tz_localize(None)
 
