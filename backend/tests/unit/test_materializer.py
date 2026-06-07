@@ -1,3 +1,4 @@
+import pytest
 from unittest.mock import MagicMock, patch
 
 from app.db.models import ScreenResult
@@ -74,3 +75,33 @@ def test_materialize_all_screens_default_score():
 
     for res in added_objs:
         assert res.score_used == 0.0
+
+def test_materialize_all_screens_transaction_safety():
+    """
+    Verifies that the materializer behaves atomically.
+    If any screen fails, the entire day's materialization (including delete) is rolled back.
+    """
+    db = MagicMock()
+    
+    # Mock registry with two screens, the second one will fail
+    mock_results = {
+        "success-screen": [("RELIANCE.NS", 85.5)],
+    }
+    
+    def fail_fn(db, target_date=None):
+        raise Exception("Boom!")
+
+    mock_registry = {
+        "success-screen": {"fn": lambda db, target_date=None: mock_results["success-screen"]},
+        "fail-screen": {"fn": fail_fn},
+    }
+
+    with patch("app.screens.materializer.SCREEN_REGISTRY", mock_registry):
+        with pytest.raises(Exception, match="Boom!"):
+            materialize_all_screens(db)
+
+    # Atomic behavior check:
+    # 1. No commits occurred
+    # 2. Rollback occurred once for the entire batch
+    assert db.commit.call_count == 0
+    assert db.rollback.call_count == 1
