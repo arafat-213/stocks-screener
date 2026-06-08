@@ -24,6 +24,10 @@ class TestEffectiveScoreThreshold:
         config = BacktestConfig(score_threshold=60.0)
         assert config.effective_score_threshold == pytest.approx(60.0)
 
+    def test_initial_stop_atr_multiplier_default(self):
+        config = BacktestConfig()
+        assert config.initial_stop_atr_multiplier == 2.0
+
     def test_zero_threshold_always_zero(self):
         config = BacktestConfig(score_threshold=0.0)
         assert config.effective_score_threshold == pytest.approx(0.0)

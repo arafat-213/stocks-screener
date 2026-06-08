@@ -122,7 +122,7 @@ class TestADXGate:
             "ema_signal": "bullish_cross",
             "volume_signal": "bullish",
             "rsi_signal": "bullish_strong",
-            "volume_breakout": True,
+            "volume_breakout": False,
             "atr": 2.0,
         }
 
@@ -163,12 +163,70 @@ class TestADXGate:
 class TestConfigDefaults:
     def test_default_score_threshold_is_55(self):
         config = BacktestConfig()
-        assert config.score_threshold == 60.0, (
-            f"Default score_threshold must be 60.0, got {config.score_threshold}"
+        assert config.score_threshold == 55.0, (
+            f"Default score_threshold must be 55.0, got {config.score_threshold}"
         )
 
     def test_default_require_volume_breakout_is_true(self):
         config = BacktestConfig()
         assert config.require_volume_breakout is False, (
             "Default require_volume_breakout must be False"
+        )
+
+
+class TestSignalVolatilityFilter:
+    def _base_config(self) -> BacktestConfig:
+        return BacktestConfig(
+            score_threshold=10.0,
+            stop_loss_pct=10.0,
+            atr_multiplier=2.0,
+            use_pullback_entry=False,
+            use_regime_filter=False,
+            require_consolidation=False,
+        )
+
+    def test_extreme_volatility_signal_skipped(self):
+        """
+        Signal bar range = 20%.
+        Intended stop = min(ATR stop, hard stop).
+        ATR = 1.0, close = 100.0, atr_mult = 2.0 -> atr_stop_pct = 2.0%.
+        Hard stop = 10.0%.
+        Intended stop = 2.0%.
+        Threshold = 2.0 * 1.5 = 3.0%.
+        Signal bar range (20%) > Threshold (3.0%) -> Skip.
+        """
+        n = 300
+        closes = np.linspace(100, 200, n)
+        df = pd.DataFrame(
+            {
+                "Open": closes * 0.99,
+                "High": closes * 1.01,
+                "Low": closes * 0.99,
+                "Close": closes,
+                "Volume": 2_000_000.0,
+            },
+            index=pd.date_range("2020-01-01", periods=n, freq="B"),
+        )
+
+        # Inject extreme volatility at signal index
+        signal_idx = 250
+        df.iloc[signal_idx, df.columns.get_loc("High")] = 110.0
+        df.iloc[signal_idx, df.columns.get_loc("Low")] = 90.0
+        df.iloc[signal_idx, df.columns.get_loc("Close")] = 100.0
+        # Range = (110 - 90) / 100 * 100 = 20%
+
+        signal = {
+            "date": df.index[signal_idx],
+            "score": 80.0,
+            "above_200ema": True,
+            "rsi": 55.0,
+            "adx": 25.0,
+            "ema_signal": "bullish_cross",
+            "atr": 1.0,
+            "close": 100.0,
+        }
+
+        trades = simulate_trades("TEST", "Tech", df, [signal], self._base_config())
+        assert trades == [], (
+            f"Expected signal to be skipped due to volatility, but got {len(trades)} trades"
         )
