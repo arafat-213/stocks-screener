@@ -1,4 +1,3 @@
-import datetime
 import json
 import uuid
 from typing import Optional
@@ -8,7 +7,6 @@ from pydantic import BaseModel, Field
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
-from app.backtest.engine import BacktestConfig
 from app.core.utils import sanitize_for_json
 from app.db import models
 from app.db.session import get_db
@@ -78,6 +76,12 @@ class BacktestRequest(BaseModel):
     )
     atr_multiplier: float = Field(
         default=2.0, ge=1.0, le=10.0, description="Multiplier for ATR-based stop loss."
+    )
+    initial_stop_atr_multiplier: float = Field(
+        default=2.0,
+        ge=1.0,
+        le=10.0,
+        description="ATR multiplier for the INITIAL stop loss anchoring.",
     )
     risk_reward_ratio: float = Field(
         default=2.5,
@@ -331,12 +335,6 @@ def start_backtest(
     Starts a backtest as a background task.
     Returns run_id immediately; poll GET /api/backtest/{run_id} for status.
     """
-    # Validate and parse dates
-    date_from = (
-        datetime.date.fromisoformat(request.date_from) if request.date_from else None
-    )
-    date_to = datetime.date.fromisoformat(request.date_to) if request.date_to else None
-
     run_id = str(uuid.uuid4())
 
     # Save run record
@@ -351,70 +349,6 @@ def start_backtest(
     )
     db.add(db_run)
     db.commit()
-
-    # Prepare config for engine
-    config = BacktestConfig(
-        score_threshold=request.score_threshold,
-        holding_days=request.holding_days,
-        stop_loss_pct=request.stop_loss_pct,
-        target_pct=request.target_pct,
-        trailing_stop_pct=request.trailing_stop_pct,
-        require_volume_breakout=request.require_volume_breakout,
-        use_regime_filter=request.use_regime_filter,
-        require_weekly_confirmation=request.require_weekly_confirmation,
-        require_monthly_confirmation=request.require_monthly_confirmation,
-        atr_multiplier=request.atr_multiplier,
-        risk_reward_ratio=request.risk_reward_ratio,
-        use_atr_stops=request.use_atr_stops,
-        use_atr_trailing_stop=request.use_atr_trailing_stop,
-        atr_trailing_multiplier=request.atr_trailing_multiplier,
-        atr_trailing_activation=request.atr_trailing_activation,
-        use_partial_exits=request.use_partial_exits,
-        use_signal_invalidation_exit=request.use_signal_invalidation_exit,
-        invalidation_threshold_pct=request.invalidation_threshold_pct,
-        min_adx=request.min_adx,
-        tier1_adx_threshold=request.tier1_adx_threshold,
-        min_signal_tier=request.min_signal_tier,
-        symbol_limit=request.symbol_limit,
-        screen_slug=request.screen_slug,
-        date_from=date_from,
-        date_to=date_to,
-        starting_capital=request.starting_capital,
-        position_size=request.position_size,
-        use_volatility_sizing=request.use_volatility_sizing,
-        risk_per_trade_pct=request.risk_per_trade_pct,
-        max_position_pct=request.max_position_pct,
-        max_concurrent_positions=request.max_concurrent_positions,
-        max_sector_positions=request.max_sector_positions,
-        require_consolidation=request.require_consolidation,
-        use_pullback_entry=request.use_pullback_entry,
-        pullback_max_wait_bars=request.pullback_max_wait_bars,
-        pullback_tolerance_pct=request.pullback_tolerance_pct,
-        consolidation_bars=request.consolidation_bars,
-        consolidation_max_range_pct=request.consolidation_max_range_pct,
-        screen_signal_mode=request.screen_signal_mode,
-        screen_membership_window_days=request.screen_membership_window_days,
-        screen_reentry_gap_days=request.screen_reentry_gap_days,
-        screen_driven_rsi_max=request.screen_driven_rsi_max,
-        ema_weight=request.ema_weight,
-        macd_weight=request.macd_weight,
-        rsi_weight=request.rsi_weight,
-        volume_weight=request.volume_weight,
-        trend_weight=request.trend_weight,
-        ema200_weight=request.ema200_weight,
-        rsi_overbought_threshold=request.rsi_overbought_threshold,
-        use_state_based_exits=request.use_state_based_exits,
-        use_regime_position_scaling=request.use_regime_position_scaling,
-        regime_confirmation_days=request.regime_confirmation_days,
-        regime_bull_rsi_threshold=request.regime_bull_rsi_threshold,
-        regime_bear_rsi_threshold=request.regime_bear_rsi_threshold,
-        regime_adx_threshold=request.regime_adx_threshold,
-        regime_adx_floor=request.regime_adx_floor,
-        min_market_breadth_pct=request.min_market_breadth_pct,
-        regime_bull_position_pct=request.regime_bull_position_pct,
-        regime_neutral_position_pct=request.regime_neutral_position_pct,
-        regime_bear_position_pct=request.regime_bear_position_pct,
-    )
 
     # Trigger Celery task
     from app.tasks import execute_backtest_task

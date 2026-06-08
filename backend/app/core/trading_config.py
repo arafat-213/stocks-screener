@@ -18,6 +18,7 @@ class UnifiedTradingConfig:
     require_weekly_confirmation: bool = False
     require_monthly_confirmation: bool = False
     atr_multiplier: float = 2.0
+    initial_stop_atr_multiplier: float = 2.0
     risk_reward_ratio: float = 2.5
     use_atr_stops: bool = True
     min_adx: float = 25.0
