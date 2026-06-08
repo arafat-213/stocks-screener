@@ -102,7 +102,7 @@ class TradeResult:
     adx_at_signal: float
     ema_signal: str
     position_size_used: float = 0.0
-    
+
     # Statistical and Regime Fields
     regime_at_signal: Optional[int] = None
     regime_at_entry: Optional[int] = None
@@ -622,6 +622,34 @@ def simulate_trades(
         if signal_idx is None or signal_idx <= last_exit_idx:
             continue
 
+        # Signal Bar Volatility Filter (Task 2)
+        # Prevents entering if the signal bar itself is so large it exhausts the risk budget
+        signal_bar = df.iloc[signal_idx]
+        sig_high, sig_low, sig_close = (
+            signal_bar["High"],
+            signal_bar["Low"],
+            signal_bar["Close"],
+        )
+
+        if sig_close > 0:
+            sig_range_pct = (sig_high - sig_low) / sig_close * 100
+            atr = signal.get("atr") or 0.0
+            atr_stop_pct = (
+                (config.initial_stop_atr_multiplier * atr) / sig_close * 100
+                if atr > 0
+                else 0.0
+            )
+            hard_stop_pct = config.stop_loss_pct
+
+            # Intended stop is the tighter of ATR or Hard Stop (as used in entry logic)
+            if atr_stop_pct > 0 and hard_stop_pct > 0:
+                intended_stop_pct = min(atr_stop_pct, hard_stop_pct)
+            else:
+                intended_stop_pct = atr_stop_pct or hard_stop_pct
+
+            if intended_stop_pct > 0 and sig_range_pct > (intended_stop_pct * 1.5):
+                continue
+
         if signal.get("above_200ema") in [False, None]:
             continue
         if signal.get("momentum_12m") is not None and signal["momentum_12m"] < 0:
@@ -790,40 +818,34 @@ def simulate_trades(
         )
         # ─────────────────────────────────────────────────────────────────────
 
-        atr_val = signal.get("atr")
-        if is_screen_driven:
-            base_stop = (
-                entry_price - config.atr_multiplier * eff_atr
-                if eff_atr > 0
-                else entry_price * (1 - config.stop_loss_pct / 100)
-            )
-            # Enforce hard cap
-            hard_stop = entry_price * (1 - config.stop_loss_pct / 100)
-            base_stop = max(base_stop, hard_stop)
-        else:
-            consol_low = df.iloc[
-                max(0, signal_idx - config.consolidation_bars) : signal_idx
-            ]["Low"].min()
-            struct_stop = consol_low * 0.98 if pd.notna(consol_low) else None
-            atr_stop = (
-                entry_price - config.atr_multiplier * atr_val if atr_val else None
-            )
-            base_stop = (
-                max(struct_stop, atr_stop)
-                if struct_stop and atr_stop
-                else (
-                    struct_stop
-                    or atr_stop
-                    or entry_price * (1 - config.stop_loss_pct / 100)
-                )
-            )
-            # Enforce hard cap based on config.stop_loss_pct
-            hard_stop = entry_price * (1 - config.stop_loss_pct / 100)
-            base_stop = max(base_stop, hard_stop)
+        # Robust Stop Anchoring (Task 3)
+        # 1. Structural Stop (Pre-signal consolidation)
+        consol_bars = signal.get("consolidation_bars") or config.consolidation_bars
+        consol_low = df.iloc[max(0, signal_idx - consol_bars) : signal_idx]["Low"].min()
+        struct_stop = consol_low * 0.98 if pd.notna(consol_low) else 0.0
 
-        # Use base_stop directly to allow for volatility-based stops (e.g. 10%+ for midcaps)
-        # Cap at 99% of entry to ensure it's always a sell-below stop.
-        stop_price = min(base_stop, entry_price * 0.99)
+        # 2. Volatility Stop
+        vol_stop = entry_price - (config.initial_stop_atr_multiplier * eff_atr)
+
+        # 3. Hard Cap Stop
+        hard_cap_stop = (
+            entry_price * (1 - config.stop_loss_pct / 100)
+            if config.stop_loss_pct > 0
+            else 0.0
+        )
+
+        # Final Hybrid Stop (Tighter of the three = Highest Price)
+        stop_price = max(struct_stop, vol_stop, hard_cap_stop)
+
+        # Sanity Clamp: Stop must be at least 1% below entry
+        stop_price = min(stop_price, entry_price * 0.99)
+
+        # Falling Knife Filter (Task 3)
+        # Prevents entering if the stock is crashing through the stop on the same day
+        entry_day_low = df.iloc[entry_idx]["Low"]
+        if entry_day_low <= stop_price:
+            continue
+
         actual_risk = max(entry_price - stop_price, entry_price * 0.01)
         target_price = (
             entry_price * (1 + config.target_pct / 100)
@@ -900,9 +922,7 @@ def simulate_trades(
             if not t1_hit and t1_price and high >= t1_price:
                 t1_hit = True
                 t1_exit_date = (
-                    df.index[k].date()
-                    if hasattr(df.index[k], "date")
-                    else df.index[k]
+                    df.index[k].date() if hasattr(df.index[k], "date") else df.index[k]
                 )
                 r_idx_exit_t1 = bisect.bisect_right(sorted_scaling_keys, t1_exit_date)
                 regime_id_exit_t1 = (
