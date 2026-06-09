@@ -160,6 +160,53 @@ def _run_one(params):
     return summary
 
 
+def run_validation(finalist):
+    print(f"\n--- VALIDATING CONFIG: {finalist['params']} ---")
+    val_results = []
+    val_run_ids = {}
+
+    for fold in VALIDATION_FOLDS:
+        run_id = run_backtest(finalist["params"], fold["date_from"], fold["date_to"])
+        if not run_id:
+            return None
+
+        result = wait_for_run(run_id)
+        if not result:
+            return None
+
+        val_run_ids[fold["name"]] = run_id
+        val_results.append(
+            {
+                "fold": fold["name"],
+                "sharpe_ratio": result["sharpe_ratio"],
+                "total_return_pct": result["total_return_pct"],
+            }
+        )
+
+        if result["sharpe_ratio"] < 0:
+            print(f"  FAILED Validation on {fold['name']} (Sharpe < 0)")
+            return None
+
+    return {"results": val_results, "run_ids": val_run_ids}
+
+
+def run_continuous_test(params):
+    print("\n--- RUNNING CONTINUOUS STRESS TEST (2020-2026) ---")
+    run_id = run_backtest(params, "2020-02-01", "2026-06-09")
+    if not run_id:
+        return None
+
+    result = wait_for_run(run_id)
+    return {"run_id": run_id, "metrics": result} if result else None
+
+
+def generate_master_report(finalists):
+    """Stub for Task 4"""
+    print(f"Generating master report for {len(finalists)} finalists...")
+    with open("MASTER_STRATEGY_REPORT.md", "w") as f:
+        f.write("# Master Strategy Audit Report (STUB)\n")
+
+
 def main():
     keys = list(GRID.keys())
     combos = list(itertools.product(*GRID.values()))
@@ -181,6 +228,27 @@ def main():
                         json.dump(all_results, f, indent=2)
             print(f"[{done}/{len(combos)}] done, {len(all_results)} collected")
 
+    # Stage 2: Validation of top candidates
+    print("\n--- STAGE 2: VALIDATION ---")
+    top_candidates = sorted(
+        all_results, key=lambda x: x["wfo_metrics"]["robustness_score"], reverse=True
+    )[:5]
+
+    final_verified = []
+    for finalist in top_candidates:
+        val_data = run_validation(finalist)
+        if val_data:
+            stress_data = run_continuous_test(finalist["params"])
+            if stress_data:
+                finalist["validation"] = val_data
+                finalist["continuous_test"] = stress_data
+                final_verified.append(finalist)
+
+    # Save final results and generate report
+    with open("final_verified_strategies.json", "w") as f:
+        json.dump(final_verified, f, indent=2)
+
+    generate_master_report(final_verified)
     generate_report(all_results)
 
 
