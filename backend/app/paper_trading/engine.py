@@ -173,7 +173,7 @@ def scan_for_new_signals(db: Session, today: datetime.date) -> int:
             signal_score=sig.entry_score,
             ema_signal=sig.ema_signal,
             atr_at_signal=sig.atr,
-            ema20_at_signal=sig.ema20_level,
+            ema21_at_signal=sig.ema21_level,
             status="pending",
             wait_days_elapsed=0,
             strategy_tags=tags,
@@ -232,18 +232,18 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
         day_close = float(row["Close"])
         day_open = float(row["Open"])
 
-        # We need EMA20 to check pullback
+        # We need EMA21 to check pullback
         import pandas_ta_classic  # noqa
 
         df_ta = df.copy()
-        df_ta.ta.ema(length=20, append=True)
-        ema20 = df_ta.loc[rows.index[0], "EMA_20"]
+        df_ta.ta.ema(length=21, append=True)
+        ema21 = df_ta.loc[rows.index[0], "EMA_21"]
 
         pos.wait_days_elapsed += 1
 
-        # Check for invalidation (Closed meaningfully below EMA20)
-        # Threshold: 2.5% below EMA20
-        if day_close < ema20 * 0.975:
+        # Check for invalidation (Closed meaningfully below EMA21)
+        # Threshold: 2.5% below EMA21
+        if day_close < ema21 * 0.975:
             pos.status = "expired"
             pos.exit_reason = "invalidated"
             pos.is_invalidated = True
@@ -258,9 +258,9 @@ def process_pending_orders(db: Session, today: datetime.date) -> dict:
         # Path A: Pullback Entry (Price touched EMA20 and closed above)
         tol = config.pullback_tolerance_pct / 100.0
         # Check if Low touched EMA20 area (within tolerance) or High/Low bracketed it
-        touched_ema = (day_low <= ema20 * (1 + tol)) and (day_close > ema20)
+        touched_ema = (day_low <= ema21 * (1 + tol)) and (day_close > ema21)
 
-        closeness = abs(day_low - ema20) / ema20 * 100
+        closeness = abs(day_low - ema21) / ema21 * 100
         if closeness < pos.pending_highest_closeness_pct:
             pos.pending_highest_closeness_pct = closeness
 

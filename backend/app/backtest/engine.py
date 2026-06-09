@@ -456,7 +456,7 @@ def _build_screen_driven_signals(
                 "above_200ema": True,
                 "momentum_12m": bar["momentum_12m"],
                 "momentum_3m": bar["momentum_3m"],
-                "ema20_level": bar["ema20_level"],
+                "ema21_level": bar["ema21_level"],
                 "is_consolidating": True,
             }
         )
@@ -494,10 +494,10 @@ def score_series(
     # ── VECTORIZED PRE-FILTER ─────────────────────────────────────────────────
     # Only call evaluate() on bars with an actual EMA entry signal.
     # Reduces evaluate() calls by ~97% on a typical 5-year daily series.
-    if "SIGNAL_EMA_CROSS" in df_ind.columns and "SIGNAL_PULLBACK_20" in df_ind.columns:
+    if "SIGNAL_EMA_CROSS" in df_ind.columns and "SIGNAL_PULLBACK_21" in df_ind.columns:
         mask = (
             df_ind["SIGNAL_EMA_CROSS"].fillna(False)
-            | df_ind["SIGNAL_PULLBACK_20"].fillna(False)
+            | df_ind["SIGNAL_PULLBACK_21"].fillna(False)
         ).to_numpy(dtype=bool)
     else:
         mask = (
@@ -685,7 +685,7 @@ def simulate_trades(
 
         # Entry Logic
         ema_signal_type = signal.get("ema_signal", "")
-        signal_ema20 = signal.get("ema20_level")
+        signal_ema21 = signal.get("ema21_level")
 
         entry_idx = None
         entry_price = None
@@ -694,8 +694,8 @@ def simulate_trades(
         use_pullback = (
             config.use_pullback_entry
             and ema_signal_type == "bullish_cross"
-            and signal_ema20 is not None
-            and signal_ema20 > 0
+            and signal_ema21 is not None
+            and signal_ema21 > 0
         )
 
         if use_pullback:
@@ -727,9 +727,9 @@ def simulate_trades(
                     all_bars_above = False
                     break
 
-                approach = (low - signal_ema20) / signal_ema20 * 100
+                approach = (low - signal_ema21) / signal_ema21 * 100
                 closest_approach = min(closest_approach, approach)
-                if low <= signal_ema20 * (1 + tol) and close >= signal_ema20 * 0.995:
+                if low <= signal_ema21 * (1 + tol) and close >= signal_ema21 * 0.995:
                     entry_idx, entry_date, entry_price = (
                         wait_k,
                         df.index[wait_k],

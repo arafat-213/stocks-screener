@@ -28,7 +28,7 @@ def sync_paper_to_journal(db: Session, paper_pos: models.PaperPosition):
     # Sync state-specific fields
     if paper_pos.status == "pending":
         journal.status = "pending"
-        journal.entry_price = paper_pos.ema20_at_signal or 0.0  # Target price
+        journal.entry_price = paper_pos.ema21_at_signal or 0.0  # Target price
         journal.shares = 0
         journal.position_value = 0.0
 
