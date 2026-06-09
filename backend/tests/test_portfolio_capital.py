@@ -79,6 +79,6 @@ def test_portfolio_hard_capital_cap():
     # Verify that at no point utilization exceeds starting_capital
     all_dates = pd.date_range(dates.min(), dates.max())
     for d in all_dates:
-        active_trades = [t for t in trades if t.entry_date <= d.date() < t.exit_date]
+        active_trades = [t for t in trades if t.entry_date <= d.date() <= t.exit_date]
         util = sum(t.position_size_used for t in active_trades)
-        assert util <= config.starting_capital
+        assert util <= config.starting_capital + 0.01  # Allow for small float epsilon

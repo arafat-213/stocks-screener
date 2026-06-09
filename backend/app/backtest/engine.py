@@ -1042,12 +1042,12 @@ def _is_portfolio_valid(
             check_dates.add(t.exit_date)
 
     for d in sorted(check_dates):
-        # A trade is active if d is within [entry, exit)
+        # A trade is active if d is within [entry, exit]
         active_existing = [
-            t for t in existing_trades if t.entry_date <= d < t.exit_date
+            t for t in existing_trades if t.entry_date <= d <= t.exit_date
         ]
         active_candidate = [
-            t for t in candidate_trades if t.entry_date <= d < t.exit_date
+            t for t in candidate_trades if t.entry_date <= d <= t.exit_date
         ]
 
         if not active_candidate:
@@ -1119,7 +1119,7 @@ def simulate_portfolio(
 
         # Fast Filter 2: Heuristic check for concurrency at signal date
         if config.max_concurrent_positions > 0:
-            active_count = sum(1 for d in open_pos.values() if d > date)
+            active_count = sum(1 for d in open_pos.values() if d >= date)
             if active_count >= config.max_concurrent_positions:
                 continue
 
@@ -1129,7 +1129,7 @@ def simulate_portfolio(
             sector_active = sum(
                 1
                 for other_sym, exit_d in open_pos.items()
-                if stocks_info.get(other_sym) == sector and exit_d > date
+                if stocks_info.get(other_sym) == sector and exit_d >= date
             )
             if sector_active >= config.max_sector_positions:
                 continue
