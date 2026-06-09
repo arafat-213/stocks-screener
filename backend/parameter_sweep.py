@@ -118,15 +118,16 @@ def _run_one(params):
             config_failed = True
             break
 
+        metrics = result["metrics"]
         fold_metrics.append(
             {
                 "fold": fold["name"],
-                "total_return_pct": result["total_return_pct"],
-                "sharpe_ratio": result["sharpe_ratio"],
-                "max_drawdown_pct": result["max_drawdown_pct"],
-                "max_drawdown_duration": result.get("max_drawdown_duration", 0),
-                "win_rate": result["win_rate"],
-                "total_trades": result["total_trades"],
+                "total_return_pct": metrics["total_return_pct"],
+                "sharpe_ratio": metrics["sharpe_ratio"],
+                "max_drawdown_pct": metrics["max_drawdown_pct"],
+                "max_drawdown_duration": metrics.get("max_drawdown_duration", 0),
+                "win_rate": metrics["win_rate"],
+                "total_trades": metrics["total_trades"],
             }
         )
 
@@ -174,16 +175,17 @@ def run_validation(finalist):
         if not result:
             return None
 
+        metrics = result["metrics"]
         val_run_ids[fold["name"]] = run_id
         val_results.append(
             {
                 "fold": fold["name"],
-                "sharpe_ratio": result["sharpe_ratio"],
-                "total_return_pct": result["total_return_pct"],
+                "sharpe_ratio": metrics["sharpe_ratio"],
+                "total_return_pct": metrics["total_return_pct"],
             }
         )
 
-        if result["sharpe_ratio"] < 0:
+        if metrics["sharpe_ratio"] < 0:
             print(f"  FAILED Validation on {fold['name']} (Sharpe < 0)")
             return None
 
@@ -197,14 +199,73 @@ def run_continuous_test(params):
         return None
 
     result = wait_for_run(run_id)
-    return {"run_id": run_id, "metrics": result} if result else None
+    return {"run_id": run_id, "metrics": result["metrics"]} if result else None
 
 
 def generate_master_report(finalists):
-    """Stub for Task 4"""
+    if not finalists:
+        print("No finalists to report in Master Report.")
+        return
+
     print(f"Generating master report for {len(finalists)} finalists...")
     with open("MASTER_STRATEGY_REPORT.md", "w") as f:
-        f.write("# Master Strategy Audit Report (STUB)\n")
+        f.write("# Master Strategy Audit Report (2020-2026)\n\n")
+        f.write(
+            "This report summarizes strategies that passed all 3 discovery folds, all validation folds, and the continuous stress test.\n\n"
+        )
+
+        for i, fst in enumerate(finalists):
+            f.write(f"## Strategy Rank #{i + 1}\n")
+            f.write(f"**Params:** `{fst['params']}`\n\n")
+
+            f.write("### Continuous Stress Test Metrics (2020-2026)\n")
+            m = fst["continuous_test"]["metrics"]
+            f.write(
+                f"- **Sharpe Ratio:** {m['sharpe_ratio']:.2f}\n"
+                f"- **Total Return:** {m['total_return_pct']:.2f}%\n"
+                f"- **Max Drawdown:** {m['max_drawdown_pct']:.2f}%\n"
+                f"- **Win Rate:** {m['win_rate']:.2f}%\n"
+                f"- **Total Trades:** {m['total_trades']}\n\n"
+            )
+
+            f.write("### Performance Across All Folds\n")
+            f.write(
+                "| Phase | Fold | Sharpe | Return % | DD % | Run ID |\n"
+                "|-------|------|--------|----------|------|--------|\n"
+            )
+
+            # Stage 1 (Discovery)
+            for res in fst["fold_results"]:
+                r_id = fst["run_ids"].get(res["fold"], "N/A")
+                f.write(
+                    f"| Discovery | {res['fold']} | {res['sharpe_ratio']:.2f} | {res['total_return_pct']:.2f}% | {res['max_drawdown_pct']:.2f}% | `{r_id[:8]}` |\n"
+                )
+
+            # Stage 2 (Validation)
+            for res in fst["validation"]["results"]:
+                r_id = fst["validation"]["run_ids"].get(res["fold"], "N/A")
+                f.write(
+                    f"| Validation | {res['fold']} | {res['sharpe_ratio']:.2f} | {res['total_return_pct']:.2f}% | N/A | `{r_id[:8]}` |\n"
+                )
+
+            # Continuous
+            c_id = fst["continuous_test"]["run_id"]
+            f.write(
+                f"| Stress Test | Continuous | {m['sharpe_ratio']:.2f} | {m['total_return_pct']:.2f}% | {m['max_drawdown_pct']:.2f}% | `{c_id[:8]}` |\n\n"
+            )
+
+            # Audit Command
+            all_ids = (
+                list(fst["run_ids"].values())
+                + list(fst["validation"]["run_ids"].values())
+                + [c_id]
+            )
+            f.write("### Audit Command\n")
+            f.write(
+                f"```bash\npython verify_backtest_trades.py {' '.join(all_ids)}\n```\n\n"
+            )
+
+    print("Master report generated: MASTER_STRATEGY_REPORT.md")
 
 
 def main():
