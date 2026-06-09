@@ -1,19 +1,22 @@
 import itertools
 import json
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 
 import numpy as np
 import requests
 
 # Configuration
+MAX_CONCURRENT = 4
 BASE_URL = "http://localhost:8000/api/backtest"
 REPORT_FILE = "sweep_report.md"
 RESULTS_FILE = "sweep_results.json"
 
-# Parameters to Sweep (Reduced grid for faster testing, expand as needed)
+# Parameters to Sweep (Discovery Grid)
 GRID = {
-    "score_threshold": [55.0, 65.0],
+    "score_threshold": [55.0, 60.0, 65.0],
     "holding_days": [30, 45],
     "ema_weight": [25.0, 30.0],
     "macd_weight": [15.0],
@@ -22,19 +25,23 @@ GRID = {
     "ema200_weight": [10.0],
 }
 
-# Regime-Balanced Walk-Forward Optimization (WFO) Folds
-# Fold 1: Post-Covid Bull Rally
-# Fold 2: Extended Chop/Mild Bear Phase
-# Fold 3: Renewed Bull Rally
-FOLDS = [
-    {"name": "Fold 1 (Bull)", "date_from": "2020-04-01", "date_to": "2021-10-18"},
-    {"name": "Fold 2 (Chop/Bear)", "date_from": "2021-10-19", "date_to": "2023-03-20"},
+# Stage 1 Folds (In-Sample Discovery)
+DISCOVERY_FOLDS = [
+    {"name": "Fold 1 (Crash)", "date_from": "2020-02-01", "date_to": "2020-04-30"},
+    {"name": "Fold 2 (Chop)", "date_from": "2021-10-19", "date_to": "2023-03-20"},
     {"name": "Fold 3 (Bull)", "date_from": "2023-03-21", "date_to": "2024-02-01"},
+]
+
+# Stage 2 Folds (Out-of-Sample Validation)
+VALIDATION_FOLDS = [
+    {"name": "Fold 4 (Recovery)", "date_from": "2020-05-01", "date_to": "2021-10-18"},
+    {"name": "Fold 5 (Post-Bull)", "date_from": "2024-02-02", "date_to": "2025-06-01"},
+    {"name": "Fold 6 (Recent)", "date_from": "2025-06-02", "date_to": "2026-06-09"},
 ]
 
 # Fixed Parameters
 DEFAULTS = {
-    "symbol_limit": 100,  # Keep it small for the sweep
+    "symbol_limit": None,  # Trigger full universe
     "use_regime_filter": True,
     "starting_capital": 1000000.0,
     "position_size": 20000.0,
@@ -56,111 +63,124 @@ def run_backtest(params, date_from, date_to):
 
 
 def wait_for_run(run_id):
-    print(f"Waiting for run {run_id}...", end="", flush=True)
+    print(f"[{run_id}] Waiting for run to complete...")
     while True:
         try:
             response = requests.get(f"{BASE_URL}/{run_id}")
             if response.status_code != 200:
-                print(f"\nError checking status: {response.text}")
+                print(f"[{run_id}] Error checking status: {response.text}")
                 return None
 
             data = response.json()
             status = data["status"]
             if status == "complete":
-                print(" Done.")
+                print(f"[{run_id}] Done.")
                 return data
             elif status == "failed":
-                print(f" Failed: {data.get('error_message')}")
+                print(f"[{run_id}] Failed: {data.get('error_message')}")
                 return None
 
-            print(".", end="", flush=True)
             time.sleep(5)
         except Exception as e:
-            print(f"\nException checking status: {e}")
+            print(f"[{run_id}] Exception checking status: {e}")
             return None
 
 
+def calculate_robustness(fold_metrics):
+    sharpes = [m["sharpe_ratio"] for m in fold_metrics]
+    if not sharpes:
+        return -99.0
+
+    mean_sharpe = float(np.mean(sharpes))
+    std_sharpe = float(np.std(sharpes))
+
+    # CLB Robustness = Mean - Std
+    return mean_sharpe - std_sharpe
+
+
+def _run_one(params):
+    fold_metrics = []
+    fold_run_ids = {}
+    config_failed = False
+
+    for fold in DISCOVERY_FOLDS:
+        print(f"  -> Running {fold['name']} with params {params}")
+        run_id = run_backtest(params, fold["date_from"], fold["date_to"])
+
+        if not run_id:
+            config_failed = True
+            break
+
+        fold_run_ids[fold["name"]] = run_id
+        result = wait_for_run(run_id)
+
+        if not result:
+            config_failed = True
+            break
+
+        fold_metrics.append(
+            {
+                "fold": fold["name"],
+                "total_return_pct": result["total_return_pct"],
+                "sharpe_ratio": result["sharpe_ratio"],
+                "max_drawdown_pct": result["max_drawdown_pct"],
+                "max_drawdown_duration": result.get("max_drawdown_duration", 0),
+                "win_rate": result["win_rate"],
+                "total_trades": result["total_trades"],
+            }
+        )
+
+    if config_failed:
+        print(f"  -> Config {params} failed on one or more folds. Skipping.")
+        return None
+
+    # Calculate WFO Aggregate Metrics
+    sharpes = [m["sharpe_ratio"] for m in fold_metrics]
+    returns = [m["total_return_pct"] for m in fold_metrics]
+    dds = [m["max_drawdown_pct"] for m in fold_metrics]
+
+    mean_sharpe = float(np.mean(sharpes))
+    std_sharpe = float(np.std(sharpes))
+    robustness_score = calculate_robustness(fold_metrics)
+
+    summary = {
+        "params": params,
+        "wfo_metrics": {
+            "mean_sharpe": mean_sharpe,
+            "std_sharpe": std_sharpe,
+            "robustness_score": robustness_score,
+            "mean_return_pct": float(np.mean(returns)),
+            "mean_drawdown_pct": float(np.mean(dds)),
+            "min_sharpe": float(np.min(sharpes)),
+            "total_trades_all_folds": sum(m["total_trades"] for m in fold_metrics),
+        },
+        "fold_results": fold_metrics,
+        "run_ids": fold_run_ids,  # Persist run_ids for analysis
+    }
+    return summary
+
+
 def main():
-    keys = GRID.keys()
-    combinations = list(itertools.product(*GRID.values()))
-    print(
-        f"Starting WFO sweep with {len(combinations)} combinations across {len(FOLDS)} folds..."
-    )
+    keys = list(GRID.keys())
+    combos = list(itertools.product(*GRID.values()))
+    print(f"Sweep: {len(combos)} combinations, {MAX_CONCURRENT} concurrent\n")
 
-    all_results = []
+    all_results: list[dict] = []
+    lock = threading.Lock()
 
-    for i, values in enumerate(combinations):
-        params = dict(zip(keys, values))
-        print(f"\n[{i + 1}/{len(combinations)}] Testing Config: {params}")
-
-        fold_metrics = []
-        fold_run_ids = {}
-        config_failed = False
-
-        for fold in FOLDS:
-            print(
-                f"  -> Running {fold['name']} ({fold['date_from']} to {fold['date_to']})"
-            )
-            run_id = run_backtest(params, fold["date_from"], fold["date_to"])
-
-            if not run_id:
-                config_failed = True
-                break
-
-            fold_run_ids[fold["name"]] = run_id
-            result = wait_for_run(run_id)
-
-            if not result:
-                config_failed = True
-                break
-
-            fold_metrics.append(
-                {
-                    "fold": fold["name"],
-                    "total_return_pct": result["total_return_pct"],
-                    "sharpe_ratio": result["sharpe_ratio"],
-                    "max_drawdown_pct": result["max_drawdown_pct"],
-                    "max_drawdown_duration": result.get("max_drawdown_duration", 0),
-                    "win_rate": result["win_rate"],
-                    "total_trades": result["total_trades"],
-                }
-            )
-
-        if config_failed:
-            print("  -> Config failed on one or more folds. Skipping.")
-            continue
-
-        # Calculate WFO Aggregate Metrics
-        sharpes = [m["sharpe_ratio"] for m in fold_metrics]
-        returns = [m["total_return_pct"] for m in fold_metrics]
-        dds = [m["max_drawdown_pct"] for m in fold_metrics]
-
-        mean_sharpe = float(np.mean(sharpes))
-        std_sharpe = float(np.std(sharpes))
-        # Robustness Score: Mean Sharpe / (StdDev Sharpe + Penalty for near zero)
-        robustness_score = mean_sharpe / (std_sharpe + 0.1)
-
-        summary = {
-            "params": params,
-            "wfo_metrics": {
-                "mean_sharpe": mean_sharpe,
-                "std_sharpe": std_sharpe,
-                "robustness_score": robustness_score,
-                "mean_return_pct": float(np.mean(returns)),
-                "mean_drawdown_pct": float(np.mean(dds)),
-                "min_sharpe": float(np.min(sharpes)),
-                "total_trades_all_folds": sum(m["total_trades"] for m in fold_metrics),
-            },
-            "fold_results": fold_metrics,
-            "run_ids": fold_run_ids,  # Persist run_ids for analysis
+    with ThreadPoolExecutor(max_workers=MAX_CONCURRENT) as pool:
+        futures = {
+            pool.submit(_run_one, dict(zip(keys, v))): i for i, v in enumerate(combos)
         }
-        all_results.append(summary)
+        for done, future in enumerate(as_completed(futures), 1):
+            result = future.result()
+            if result:
+                with lock:
+                    all_results.append(result)
+                    with open(RESULTS_FILE, "w") as f:
+                        json.dump(all_results, f, indent=2)
+            print(f"[{done}/{len(combos)}] done, {len(all_results)} collected")
 
-        # Intermediate save
-        with open(RESULTS_FILE, "w") as f:
-            json.dump(all_results, f, indent=2)
-
-    # Generate Report
     generate_report(all_results)
 
 
