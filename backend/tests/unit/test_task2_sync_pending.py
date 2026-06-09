@@ -18,7 +18,7 @@ def test_sync_pending_position(db: Session):
         portfolio_id=1,
         symbol="INFY.NS",
         status="pending",
-        ema20_at_signal=1500.0,
+        ema21_at_signal=1500.0,
         signal_date=datetime.date(2024, 1, 1),
     )
 
@@ -43,7 +43,7 @@ def test_sync_transition_pending_to_open(db: Session):
         portfolio_id=1,
         symbol="SBIN.NS",
         status="pending",
-        ema20_at_signal=600.0,
+        ema21_at_signal=600.0,
         signal_date=datetime.date(2024, 1, 1),
     )
     sync_paper_to_journal(db, paper_pos)
@@ -79,7 +79,7 @@ def test_sync_expired_position(db: Session):
         portfolio_id=1,
         symbol="HDFCBANK.NS",
         status="pending",
-        ema20_at_signal=1600.0,
+        ema21_at_signal=1600.0,
         signal_date=datetime.date(2024, 1, 1),
     )
     sync_paper_to_journal(db, paper_pos)
@@ -121,7 +121,7 @@ def test_scan_calls_sync(mock_sync, mock_regime, db: Session):
         above_200ema=True,
         entry_score=80.0,
         ema_signal="bullish_cross",
-        ema20_level=100.0,
+        ema21_level=100.0,
         rsi=50.0,
         volume_breakout=True,
         atr=5.0,
@@ -160,7 +160,7 @@ def test_process_pending_expiration_calls_sync(mock_sync, db: Session):
         status="pending",
         wait_days_elapsed=10,  # already over limit
         signal_date=datetime.date(2024, 1, 1),
-        ema20_at_signal=100.0,
+        ema21_at_signal=100.0,
         pending_highest_closeness_pct=20.0,  # way too far
     )
     db.add(pos)
@@ -176,7 +176,7 @@ def test_process_pending_expiration_calls_sync(mock_sync, db: Session):
                 "High": [130.0],
                 "Close": [125.0],
                 "Open": [125.0],
-                "EMA_20": [100.0],
+                "EMA_21": [100.0],
             },
             index=[pd.Timestamp(today)],
         )

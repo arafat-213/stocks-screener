@@ -75,7 +75,7 @@ def test_get_watchlist_live_data(client, db, monkeypatch):
     assert item["days_elapsed"] == 3
     assert item["current_price"] == 2460.0
     # EMA20 will be calculated in the helper
-    assert "vs_ema20_pct" in item
+    assert "vs_ema21_pct" in item
     assert "in_zone" in item
 
 

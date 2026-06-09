@@ -29,7 +29,7 @@ def setup_test_data(db):
         momentum_3m=10.0,
         adx=25.0,
         above_200ema=True,
-        ema_slope_20=1.5,
+        ema_slope_21=1.5,
         week52_high=100.0,
         week52_low=80.0,
         pct_from_52w_high=-2.0,

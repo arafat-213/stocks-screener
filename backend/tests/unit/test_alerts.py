@@ -31,8 +31,8 @@ def test_build_signal_email_contains_price():
             "adx": 30.0,
             "volume_breakout": True,
             "entry_status": "in_zone",
-            "pct_above_ema20": 1.5,
-            "ema20_level": 2500.00,
+            "pct_above_ema21": 1.5,
+            "ema21_level": 2500.00,
             "stop_loss": 2400.0,
             "target_price": 2800.0,
             "momentum_12m": 25.0,
@@ -49,13 +49,13 @@ def test_build_signal_email_contains_price():
             "adx": 20.0,
             "volume_breakout": False,
             "entry_status": "extended",
-            "pct_above_ema20": 5.0,
-            "ema20_level": 3500.00,
+            "pct_above_ema21": 5.0,
+            "ema21_level": 3500.00,
             "stop_loss": 3400.0,
             "target_price": 3800.0,
             "momentum_12m": 15.0,
             "close_price": 3675.00,
-        }
+        },
     ]
     html = build_signal_email(signals, "2026-06-01", True)
 

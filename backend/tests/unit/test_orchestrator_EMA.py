@@ -15,8 +15,7 @@ def test_process_symbol_maps_ema_levels():
         "close_price": 105.0,
         "ema5_level": 104.0,
         "ema13_level": 102.0,
-        "ema20_level": 100.0,
-        "ema26_level": 98.0,
+        "ema21_level": 100.0,
     }
 
     # Mock fetch_stock_data to return a simple DF
@@ -46,5 +45,4 @@ def test_process_symbol_maps_ema_levels():
 
         assert signal.ema5_level == 104.0
         assert signal.ema13_level == 102.0
-        assert signal.ema20_level == 100.0
-        assert signal.ema26_level == 98.0
+        assert signal.ema21_level == 100.0

@@ -25,7 +25,7 @@ def test_technical_signal_new_fields():
         rs_score=85.0,
         adx=25.0,
         above_200ema=True,
-        ema_slope_20=0.05,
+        ema_slope_21=0.05,
         pct_from_52w_high=-5.0,
         pct_from_52w_low=40.0,
         week52_high=150.0,

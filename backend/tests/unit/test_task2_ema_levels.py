@@ -32,14 +32,12 @@ def test_calculate_technical_score_returns_ema_levels():
 
     assert "ema5_level" in result
     assert "ema13_level" in result
-    assert "ema20_level" in result
-    assert "ema26_level" in result
+    assert "ema21_level" in result
 
     # Verify they are not None if the columns were calculated
     assert result["ema5_level"] is not None
     assert result["ema13_level"] is not None
-    assert result["ema20_level"] is not None
-    assert result["ema26_level"] is not None
+    assert result["ema21_level"] is not None
 
 
 def test_calculate_technical_score_empty_df_returns_none_levels():
@@ -48,5 +46,4 @@ def test_calculate_technical_score_empty_df_returns_none_levels():
 
     assert result["ema5_level"] is None
     assert result["ema13_level"] is None
-    assert result["ema20_level"] is None
-    assert result["ema26_level"] is None
+    assert result["ema21_level"] is None

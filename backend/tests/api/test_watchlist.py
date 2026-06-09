@@ -19,7 +19,7 @@ def test_add_to_watchlist_success(client, db):
         entry_score=85.5,
         close_price=2500.0,
         atr=50.0,
-        ema20_level=2450.0,
+        ema21_level=2450.0,
         ema_signal="bullish_cross",
         is_bullish=True,
     )

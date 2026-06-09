@@ -515,7 +515,7 @@ def test_atr_trailing_stop_locks_in_profit():
         "above_200ema": True,
         "vol_sma_20": 1_000_000.0,
         "momentum_12m": 10.0,
-        "ema20_level": 98.0,
+        "ema21_level": 98.0,
     }
     config = BacktestConfig(
         score_threshold=0.0,
@@ -578,7 +578,7 @@ def test_partial_exit_produces_two_trade_records():
         "above_200ema": True,
         "vol_sma_20": 1_000_000.0,
         "momentum_12m": 10.0,
-        "ema20_level": 98.0,
+        "ema21_level": 98.0,
     }
     config = BacktestConfig(
         score_threshold=0.0,
@@ -658,7 +658,7 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
         "above_200ema": True,
         "vol_sma_20": 1_000_000.0,
         "momentum_12m": 10.0,
-        "ema20_level": 98.0,
+        "ema21_level": 98.0,
     }
     config = BacktestConfig(
         score_threshold=0.0,
@@ -741,7 +741,7 @@ class TestBreadthGateTiming:
             "atr": 2.0,
             "above_200ema": True,
             "momentum_12m": 10.0,
-            "ema20_level": ema20,
+            "ema21_level": ema20,
         }
 
         config = BacktestConfig(
@@ -806,7 +806,7 @@ class TestBreadthGateTiming:
             "atr": 2.0,
             "above_200ema": True,
             "momentum_12m": 10.0,
-            "ema20_level": 50.0,  # Ensures no pullback
+            "ema21_level": 50.0,  # Ensures no pullback
         }
 
         config = BacktestConfig(

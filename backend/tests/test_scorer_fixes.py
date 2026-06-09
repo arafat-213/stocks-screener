@@ -144,8 +144,7 @@ class TestRSIScoring:
         df["EMA_200"] = 50.0
         df["EMA_5"] = 110.0
         df["EMA_13"] = 105.0
-        df["EMA_26"] = 100.0
-        df["EMA_20"] = 108.0
+        df["EMA_21"] = 108.0
         df["Close"] = 115.0
         df["RSI_14"] = 35.0
         # Prev values

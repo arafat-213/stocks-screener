@@ -47,8 +47,7 @@ def test_get_stock_detail_enhanced(mock_fetch, db, client):
             is_consolidating=False,
             ema5_level=105.0,
             ema13_level=104.0,
-            ema20_level=103.0,
-            ema26_level=102.0,
+            ema21_level=103.0,
         )
         db.add(sig)
 
@@ -86,8 +85,7 @@ def test_get_stock_detail_enhanced(mock_fetch, db, client):
     assert scores_d["is_consolidating"] is False
     assert scores_d["ema5_level"] == 105.0
     assert scores_d["ema13_level"] == 104.0
-    assert scores_d["ema20_level"] == 103.0
-    assert scores_d["ema26_level"] == 102.0
+    assert scores_d["ema21_level"] == 103.0
 
     # Verify score_history limit
     assert len(data["score_history"]) == 250
@@ -99,4 +97,7 @@ def test_get_stock_detail_enhanced(mock_fetch, db, client):
     assert funds["roe"] == 20.0  # From FundamentalCache
     assert funds["roce"] == 22.0  # From FundamentalCache
     assert funds["debt_equity"] == 0.2  # From FundamentalCache
-    assert funds["pledged_percent"] == 0.0  # From FundamentalData
+    assert funds["pledged_percent"] == 0.0  # From FunFundamentalData
+
+
+FundamentalData

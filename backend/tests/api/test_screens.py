@@ -60,7 +60,7 @@ def test_get_screen_results_with_setup(client, db):
         adx=30.0,
         is_bullish=True,
         above_200ema=True,
-        ema_slope_20=0.1,
+        ema_slope_21=0.1,
     )
     db.add(tech)
 

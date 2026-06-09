@@ -56,7 +56,7 @@ def test_portfolio_hard_capital_cap():
                 "above_200ema": True,
                 "is_consolidating": True,
                 "atr": 5.0,
-                "ema20_level": 98.0,
+                "ema21_level": 98.0,
                 "momentum_12m": 10.0,
                 "momentum_3m": 5.0,
             }

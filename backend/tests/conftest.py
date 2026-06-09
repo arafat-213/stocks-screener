@@ -126,5 +126,5 @@ def make_signal(
         "vol_sma_20": float(df["Volume"].rolling(window=20).mean().iloc[idx]),
         "momentum_12m": 10.0,
         "momentum_3m": 5.0,
-        "ema20_level": float(df.iloc[idx]["Close"]) * 0.98,
+        "ema21_level": float(df.iloc[idx]["Close"]) * 0.98,
     }
