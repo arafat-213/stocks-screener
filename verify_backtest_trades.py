@@ -18,131 +18,167 @@ REGIME_LABELS = {
     2: "Bull"
 }
 
-def get_run_data(run_id):
-    query = f"SELECT starting_capital, config FROM backtest_runs WHERE run_id = '{run_id}'"
+def get_run_data(run_ids):
+    ids_str = ", ".join([f"'{rid}'" for rid in run_ids])
+    query = f"SELECT starting_capital, config FROM backtest_runs WHERE run_id IN ({ids_str})"
     return pd.read_sql(query, engine)
 
-def analyze_trades(run_id):
+
+def analyze_trades(run_ids):
+    if isinstance(run_ids, str):
+        run_ids = [run_ids]
+
     # Load trades into a DataFrame
-    query = f"SELECT * FROM backtest_trades WHERE run_id = '{run_id}'"
+    ids_str = ", ".join([f"'{rid}'" for rid in run_ids])
+    query = f"SELECT * FROM backtest_trades WHERE run_id IN ({ids_str})"
     df = pd.read_sql(query, engine)
 
     if df.empty:
-        print(f"No trades found for run_id: {run_id}")
+        print(f"No trades found for run_ids: {run_ids}")
         return
 
     # Data Cleaning: Handle empty or null sectors
-    df['sector'] = df['sector'].fillna('Unknown')
-    df['sector'] = df['sector'].replace('', 'Unknown')
+    df["sector"] = df["sector"].fillna("Unknown")
+    df["sector"] = df["sector"].replace("", "Unknown")
 
     # Mapping Regime Labels
-    df['regime_label'] = df['regime_at_entry'].map(REGIME_LABELS).fillna('Unknown')
+    df["regime_label"] = df["regime_at_entry"].map(REGIME_LABELS).fillna("Unknown")
 
     # Fetch run context
-    run_meta = get_run_data(run_id)
-    starting_capital = 1000000.0 # Default fallback
+    run_meta = get_run_data(run_ids)
+    starting_capital = 1000000.0  # Default fallback
     if not run_meta.empty:
-        starting_capital = run_meta['starting_capital'].iloc[0] or 1000000.0
+        # For aggregated runs, we take the starting_capital of the first run
+        # but technically we might want to be more nuanced if they differ.
+        starting_capital = run_meta["starting_capital"].iloc[0] or 1000000.0
 
-    df['entry_date'] = pd.to_datetime(df['entry_date'])
-    df['exit_date'] = pd.to_datetime(df['exit_date'])
-    df['holding_days'] = (df['exit_date'] - df['entry_date']).dt.days
+    df["entry_date"] = pd.to_datetime(df["entry_date"])
+    df["exit_date"] = pd.to_datetime(df["exit_date"])
+    df["holding_days"] = (df["exit_date"] - df["entry_date"]).dt.days
 
     # --- 1. Trade Density & Capital Utilization ---
-    start_date = df['entry_date'].min()
-    end_date = df['exit_date'].max()
+    start_date = df["entry_date"].min()
+    end_date = df["exit_date"].max()
     all_dates = pd.date_range(start_date, end_date)
 
     exposure_over_time = []
     capital_exposure_over_time = []
 
+    # OPTIMIZATION: Use a more efficient way to calculate exposure if all_dates is large
+    # For now, keeping it simple as per original logic but aware it might be slow for many years.
     for d in all_dates:
-        active_trades = df[(df['entry_date'] <= d) & (df['exit_date'] >= d)]
+        active_trades = df[(df["entry_date"] <= d) & (df["exit_date"] >= d)]
         exposure_over_time.append(len(active_trades))
 
-        if 'position_size' in df.columns and not df['position_size'].isnull().all():
-            capital_exposure_over_time.append(active_trades['position_size'].sum())
+        if "position_size" in df.columns and not df["position_size"].isnull().all():
+            capital_exposure_over_time.append(active_trades["position_size"].sum())
         else:
-            capital_exposure_over_time.append(len(active_trades) * (starting_capital * 0.1))
+            capital_exposure_over_time.append(
+                len(active_trades) * (starting_capital * 0.1)
+            )
 
-    counts_df = pd.DataFrame({
-        'date': all_dates,
-        'active_trades': exposure_over_time,
-        'capital_util': capital_exposure_over_time
-    })
+    counts_df = pd.DataFrame(
+        {
+            "date": all_dates,
+            "active_trades": exposure_over_time,
+            "capital_util": capital_exposure_over_time,
+        }
+    )
 
-    avg_active = counts_df['active_trades'].mean()
-    max_active = counts_df['active_trades'].max()
-    avg_util = counts_df['capital_util'].mean()
-    max_util = counts_df['capital_util'].max()
+    avg_active = counts_df["active_trades"].mean()
+    max_active = counts_df["active_trades"].max()
+    avg_util = counts_df["capital_util"].mean()
+    max_util = counts_df["capital_util"].max()
 
-    print(f"\n--- Trade Density Audit ---")
+    print(f"\n--- Trade Density Audit (Aggregated {len(run_ids)} runs) ---")
     print(f"Average Active Trades: {avg_active:.2f}")
     print(f"Peak Active Trades: {max_active}")
-    print(f"Average Capital Utilization: ₹{avg_util:,.2f} ({avg_util / starting_capital * 100:.2f}%)")
-    print(f"Max Capital Utilization: ₹{max_util:,.2f} ({max_util / starting_capital * 100:.2f}%)")
+    print(
+        f"Average Capital Utilization: ₹{avg_util:,.2f} ({avg_util / starting_capital * 100:.2f}%)"
+    )
+    print(
+        f"Max Capital Utilization: ₹{max_util:,.2f} ({max_util / starting_capital * 100:.2f}%)"
+    )
 
     # --- 2. Performance Metrics ---
     total_trades = len(df)
-    winners = df[df['return_pct'] > 0]
-    losers = df[df['return_pct'] <= 0]
+    winners = df[df["return_pct"] > 0]
+    losers = df[df["return_pct"] <= 0]
 
     win_rate = len(winners) / total_trades
-    avg_win = winners['return_pct'].mean() if not winners.empty else 0
-    avg_loss = losers['return_pct'].mean() if not losers.empty else 0
+    avg_win = winners["return_pct"].mean() if not winners.empty else 0
+    avg_loss = losers["return_pct"].mean() if not losers.empty else 0
     expectancy = (win_rate * avg_win) + ((1 - win_rate) * avg_loss)
 
-    if 'position_size' in df.columns:
-        df['pnl'] = df['position_size'] * (df['return_pct'] / 100)
-        total_profit = df[df['pnl'] > 0]['pnl'].sum()
-        total_loss = abs(df[df['pnl'] < 0]['pnl'].sum())
-        profit_factor = total_profit / total_loss if total_loss > 0 else float('inf')
+    if "position_size" in df.columns:
+        df["pnl"] = df["position_size"] * (df["return_pct"] / 100)
+        total_profit = df[df["pnl"] > 0]["pnl"].sum()
+        total_loss = abs(df[df["pnl"] < 0]["pnl"].sum())
+        profit_factor = total_profit / total_loss if total_loss > 0 else float("inf")
     else:
-        profit_factor = (winners['return_pct'].sum()) / abs(losers['return_pct'].sum()) if not losers.empty else float('inf')
+        profit_factor = (
+            (winners["return_pct"].sum()) / abs(losers["return_pct"].sum())
+            if not losers.empty
+            else float("inf")
+        )
 
-    print(f"\n--- Trade Summary for {run_id} ---")
+    print(f"\n--- Trade Summary ---")
     print(f"Total Trades: {total_trades}")
     print(f"Win Rate: {win_rate * 100:.2f}%")
     print(f"Avg Return: {df['return_pct'].mean():.2f}%")
     print(f"Avg Win: {avg_win:.2f}% | Avg Loss: {avg_loss:.2f}%")
-    print(f"Risk/Reward Ratio: 1:{abs(avg_win/avg_loss):.2f}" if avg_loss != 0 else "R/R: N/A")
+    print(
+        f"Risk/Reward Ratio: 1:{abs(avg_win/avg_loss):.2f}"
+        if avg_loss != 0
+        else "R/R: N/A"
+    )
     print(f"Expectancy: {expectancy:.2f}% per trade")
     print(f"Profit Factor: {profit_factor:.2f}")
 
     # --- 3. Segmented Analysis ---
     print("\n--- Exit Reason Breakdown ---")
-    exit_stats = df.groupby('exit_reason').agg({
-        'return_pct': ['count', 'mean', 'median'],
-        'holding_days': ['mean', 'median']
-    })
+    exit_stats = df.groupby("exit_reason").agg(
+        {
+            "return_pct": ["count", "mean", "median"],
+            "holding_days": ["mean", "median"],
+        }
+    )
     print(exit_stats)
 
     print("\n--- Performance by Regime (Entry) ---")
-    regime_stats = df.groupby('regime_label')['return_pct'].agg(['count', 'mean', 'median', 'std'])
+    regime_stats = df.groupby("regime_label")["return_pct"].agg(
+        ["count", "mean", "median", "std"]
+    )
     print(regime_stats)
 
     print("\n--- Top 10 Sectors by Avg Return ---")
-    print(df.groupby('sector')['return_pct'].mean().sort_values(ascending=False).head(10))
+    print(
+        df.groupby("sector")["return_pct"].mean().sort_values(ascending=False).head(10)
+    )
 
     # --- 4. Text-Based Heatmaps ---
     print("\n--- Monthly Returns Heatmap (%) ---")
-    df['exit_month'] = df['exit_date'].dt.month
-    df['exit_year'] = df['exit_date'].dt.year
+    df["exit_month"] = df["exit_date"].dt.month
+    df["exit_year"] = df["exit_date"].dt.year
 
-    if 'pnl' in df.columns:
-        monthly_pnl = df.groupby(['exit_year', 'exit_month'])['pnl'].sum().reset_index()
-        monthly_pnl['return_pct'] = (monthly_pnl['pnl'] / starting_capital) * 100
+    if "pnl" in df.columns:
+        monthly_pnl = df.groupby(["exit_year", "exit_month"])["pnl"].sum().reset_index()
+        monthly_pnl["return_pct"] = (monthly_pnl["pnl"] / starting_capital) * 100
     else:
-        monthly_pnl = df.groupby(['exit_year', 'exit_month'])['return_pct'].sum().reset_index()
+        monthly_pnl = (
+            df.groupby(["exit_year", "exit_month"])["return_pct"].sum().reset_index()
+        )
 
-    pivot_monthly = monthly_pnl.pivot(index="exit_year", columns="exit_month", values="return_pct").fillna(0)
+    pivot_monthly = monthly_pnl.pivot(
+        index="exit_year", columns="exit_month", values="return_pct"
+    ).fillna(0)
     # Use pandas options to format the output nicely
-    pd.options.display.float_format = '{:,.2f}%'.format
+    pd.options.display.float_format = "{:,.2f}%".format
     print(pivot_monthly)
 
     print("\n--- Regime vs Exit Reason Heatmap (Trade Counts) ---")
-    regime_exit = df.groupby(['regime_label', 'exit_reason']).size().unstack(fill_value=0)
-    pd.options.display.float_format = '{:,.0f}'.format
+    regime_exit = df.groupby(["regime_label", "exit_reason"]).size().unstack(fill_value=0)
+    pd.options.display.float_format = "{:,.0f}".format
     print(regime_exit)
 
     # Reset float format
@@ -150,15 +186,30 @@ def analyze_trades(run_id):
 
     # --- 5. Best/Worst Trades ---
     print("\n--- Best 10 Trades ---")
-    print(df.sort_values(by='return_pct', ascending=False)[['symbol', 'return_pct', 'exit_reason', 'holding_days']].head(10).to_string(index=False))
+    print(
+        df.sort_values(by="return_pct", ascending=False)[
+            ["symbol", "return_pct", "exit_reason", "holding_days"]
+        ]
+        .head(10)
+        .to_string(index=False)
+    )
 
     print("\n--- Worst 10 Trades ---")
-    print(df.sort_values(by='return_pct', ascending=True)[['symbol', 'return_pct', 'exit_reason', 'holding_days']].head(10).to_string(index=False))
+    print(
+        df.sort_values(by="return_pct", ascending=True)[
+            ["symbol", "return_pct", "exit_reason", "holding_days"]
+        ]
+        .head(10)
+        .to_string(index=False)
+    )
+
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Analyze backtest trades for a specific run.")
-    parser.add_argument("run_id", type=str, help="The UUID of the backtest run to analyze.")
+    parser = argparse.ArgumentParser(
+        description="Analyze backtest trades for one or more runs."
+    )
+    parser.add_argument("run_ids", nargs="+", help="The UUIDs of the backtest runs to analyze.")
 
     args = parser.parse_args()
-    analyze_trades(args.run_id)
+    analyze_trades(args.run_ids)
     engine.dispose()
