@@ -27,12 +27,12 @@ from app.pipeline.utils import get_market_regime
 logger = logging.getLogger(__name__)
 
 
-def _compute_entry_status(close_price: float, ema20: float) -> tuple[str, float]:
-    """Returns (entry_status, pct_above_ema20)."""
-    if not close_price or not ema20 or ema20 == 0:
+def _compute_entry_status(close_price: float, ema21: float) -> tuple[str, float]:
+    """Returns (entry_status, pct_above_ema21)."""
+    if not close_price or not ema21 or ema21 == 0:
         return "unknown", 0.0
 
-    pct = (close_price - ema20) / ema20 * 100
+    pct = (close_price - ema21) / ema21 * 100
     if pct <= 3.0:
         status = "in_zone"
     elif pct <= 8.0:
@@ -154,7 +154,7 @@ def get_new_signals_for_alert(
             skipped += 1
             continue
 
-        if not tech.close_price or not tech.ema20_level:
+        if not tech.close_price or not tech.ema21_level:
             continue
 
         # Compute signal_tier from technical indicators only
@@ -165,8 +165,8 @@ def get_new_signals_for_alert(
         else:
             tier = 3
 
-        entry_status, pct_above_ema20 = _compute_entry_status(
-            tech.close_price, tech.ema20_level
+        entry_status, pct_above_ema21 = _compute_entry_status(
+            tech.close_price, tech.ema21_level
         )
 
         setup = compute_trade_setup(tech, config=config)
@@ -188,12 +188,12 @@ def get_new_signals_for_alert(
                 "adx": tech.adx or 0.0,
                 "volume_breakout": tech.volume_breakout or False,
                 "entry_status": entry_status,
-                "pct_above_ema20": pct_above_ema20,
+                "pct_above_ema21": pct_above_ema21,
                 "stop_loss": stop_loss,
                 "target_price": target_price,
                 "momentum_12m": tech.momentum_12m or 0.0,
                 "close_price": tech.close_price,
-                "ema20_level": tech.ema20_level,
+                "ema21_level": tech.ema21_level,
             }
         )
 
@@ -495,7 +495,7 @@ def run_daily_digest(
             )
 
     logger.info("daily_digest: Sent unified digest email_id=%s", email_id)
-    
+
     # Persist the digest in DB
     try:
         existing = db.query(DailyDigestLog).filter_by(date=signal_date).first()
