@@ -141,8 +141,7 @@ def get_stock_detail(symbol: str, db: Session = Depends(get_db)):
                 "above_200ema": sig.above_200ema,
                 "ema5_level": sig.ema5_level,
                 "ema13_level": sig.ema13_level,
-                "ema20_level": sig.ema20_level,
-                "ema26_level": sig.ema26_level,
+                "ema21_level": sig.ema21_level,
             }
 
     # 2. Get score history (Daily)

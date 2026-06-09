@@ -35,7 +35,7 @@ def screen_52w_high(db: Session, timeframe: str = "D", target_date=None):
 def screen_52w_low(db: Session, timeframe: str = "D", target_date=None):
     """
     Stocks within 15% of 52-week low but showing early recovery:
-    RSI has bounced from oversold (<35) and price is above EMA20.
+    RSI has bounced from oversold (<35) and price is above EMA21.
     Useful as a watchlist for potential reversals, not direct entry signals.
     """
     date = target_date if target_date else get_latest_signal_date(db, timeframe)
@@ -50,7 +50,7 @@ def screen_52w_low(db: Session, timeframe: str = "D", target_date=None):
                 TechnicalSignal.pct_from_52w_low <= 15.0,
                 TechnicalSignal.rsi >= 35,  # bounced off oversold territory
                 TechnicalSignal.rsi <= 55,  # not yet overbought — early recovery
-                TechnicalSignal.ema_slope_20 > 0,  # EMA20 turning up
+                TechnicalSignal.ema_slope_21 > 0,  # EMA21 turning up
             )
         )
         .order_by(TechnicalSignal.rsi.asc())

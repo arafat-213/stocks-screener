@@ -23,10 +23,10 @@ class TechnicalStrategy:
         df = df.copy()
 
         # Calculate Indicators using pandas-ta
+        # Refactored to 4-EMA Standard: 5, 13, 21, 200
         df.ta.ema(length=5, append=True)
         df.ta.ema(length=13, append=True)
-        df.ta.ema(length=20, append=True)
-        df.ta.ema(length=26, append=True)
+        df.ta.ema(length=21, append=True)
         df.ta.ema(length=200, append=True)
         df.ta.macd(fast=12, slow=26, signal=9, append=True)
         df.ta.rsi(length=14, append=True)
@@ -39,18 +39,16 @@ class TechnicalStrategy:
         else:
             df["VOL_SMA_20"] = pd.Series(dtype="float64")
 
-        # EMA Slope (20 periods)
-        ema20_col = "EMA_20"
-        if ema20_col in df.columns:
-            df["EMA_SLOPE_20"] = (df[ema20_col] - df[ema20_col].shift(5)) / 5.0
+        # EMA Slope (21 periods) - The "Trend Anchor"
+        ema21_col = "EMA_21"
+        if ema21_col in df.columns:
+            df["EMA_SLOPE_21"] = (df[ema21_col] - df[ema21_col].shift(5)) / 5.0
 
         # New Vectorized Components
         df["WEEK52_HIGH"] = df["Close"].rolling(window=252, min_periods=1).max()
         df["WEEK52_LOW"] = df["Close"].rolling(window=252, min_periods=1).min()
 
         # Resistance: Highest close in the year prior to the last 20 bars
-        # Original: df["Close"].iloc[i - 259 : i - 19].max()
-        # Vectorized: shift(20) then rolling(240)
         df["RESISTANCE_LEVEL"] = (
             df["Close"].shift(20).rolling(window=240, min_periods=1).max()
         )
@@ -69,12 +67,11 @@ class TechnicalStrategy:
         if "EMA_5" not in df.columns:
             df = self.calculate_indicators(df)
 
-        # Check for mandatory columns; if missing (e.g. not enough data), return empty signals
+        # Check for mandatory columns
         required = [
             "EMA_5",
             "EMA_13",
-            "EMA_20",
-            "EMA_26",
+            "EMA_21",
             "RSI_14",
             "MACD_12_26_9",
             "MACDs_12_26_9",
@@ -82,7 +79,7 @@ class TechnicalStrategy:
         missing = [c for c in required if c not in df.columns]
         if missing:
             df["SIGNAL_EMA_CROSS"] = False
-            df["SIGNAL_PULLBACK_20"] = False
+            df["SIGNAL_PULLBACK_21"] = False
             df["SIGNAL_MACD_BULLISH"] = False
             df["IS_OVEREXTENDED"] = False
             df["IS_BULLISH"] = False
@@ -90,21 +87,20 @@ class TechnicalStrategy:
 
         ema5 = df["EMA_5"]
         ema13 = df["EMA_13"]
-        ema20 = df["EMA_20"]
-        ema26 = df["EMA_26"]
+        ema21 = df["EMA_21"]
         price = df["Close"]
         macd = df["MACD_12_26_9"]
         signal = df["MACDs_12_26_9"]
         rsi = df["RSI_14"]
 
-        # 1. Fresh EMA Cross
+        # 1. Fresh EMA Cross (Initiation Alpha)
         df["SIGNAL_EMA_CROSS"] = (
             (ema5 > ema13) & (ema5.shift(1) <= ema13.shift(1))
         ).fillna(False)
 
-        # 2. Pullback to EMA 20
-        df["SIGNAL_PULLBACK_20"] = (
-            (ema5 > ema13) & (ema13 > ema26) & (abs(price - ema20) / ema20 < 0.04)
+        # 2. Pullback to EMA 21 (Mean Reversion in Trend)
+        df["SIGNAL_PULLBACK_21"] = (
+            (ema5 > ema13) & (price > ema21) & (abs(price - ema21) / ema21 < 0.04)
         ).fillna(False)
 
         # 3. MACD Signal
@@ -115,19 +111,19 @@ class TechnicalStrategy:
             False
         )
 
-        # 5. is_bullish (Vectorized version of the logic in evaluate)
+        # 5. is_bullish
         if timeframe == "D":
             df["IS_BULLISH"] = (
                 (
                     df["SIGNAL_EMA_CROSS"]
-                    | df["SIGNAL_PULLBACK_20"]
-                    | ((ema5 > ema13) & (ema13 > ema26))
+                    | df["SIGNAL_PULLBACK_21"]
+                    | ((ema5 > ema13) & (ema13 > ema21))
                 )
                 & df["SIGNAL_MACD_BULLISH"]
                 & (rsi > self.config.rsi_min)
             ).fillna(False)
 
-            # Hard Filters (Must match evaluate)
+            # Hard Filters
             df["IS_BULLISH"] &= rsi <= self.config.rsi_max
 
             if "EMA_200" in df.columns:
@@ -137,18 +133,17 @@ class TechnicalStrategy:
                 df["IS_BULLISH"] &= df["ADX_14"] >= self.config.min_adx
 
         elif timeframe == "W":
-            df["IS_BULLISH"] = ((rsi > 50) & (price > ema26)).fillna(False)
+            df["IS_BULLISH"] = ((rsi > 50) & (price > ema21)).fillna(False)
         elif timeframe == "M":
             df["IS_BULLISH"] = (
-                (rsi > 50) & ((price > ema13) | (price > ema26))
+                (rsi > 50) & ((price > ema13) | (price > ema21))
             ).fillna(False)
         else:
-            # Fallback to Daily logic
             df["IS_BULLISH"] = (
                 (
                     df["SIGNAL_EMA_CROSS"]
-                    | df["SIGNAL_PULLBACK_20"]
-                    | ((ema5 > ema13) & (ema13 > ema26))
+                    | df["SIGNAL_PULLBACK_21"]
+                    | ((ema5 > ema13) & (ema13 > ema21))
                 )
                 & df["SIGNAL_MACD_BULLISH"]
                 & (rsi > self.config.rsi_min)
@@ -161,8 +156,6 @@ class TechnicalStrategy:
     ) -> Dict[str, Any]:
         """
         Calculates technical sub-score (Max 100 pts) based on UnifiedTradingConfig weights.
-        - i: index of the bar to score (default -1 for latest)
-        - skip_ta: if True, assumes indicators are already present in df
         """
         if len(df) < 1:
             return {
@@ -175,8 +168,7 @@ class TechnicalStrategy:
                 "is_bullish": False,
                 "ema5_level": None,
                 "ema13_level": None,
-                "ema20_level": None,
-                "ema26_level": None,
+                "ema21_level": None,
                 "atr": None,
                 "momentum_1m": None,
                 "momentum_3m": None,
@@ -184,7 +176,7 @@ class TechnicalStrategy:
                 "momentum_12m": None,
                 "adx": None,
                 "above_200ema": None,
-                "ema_slope_20": None,
+                "ema_slope_21": None,
                 "week52_high": None,
                 "week52_low": None,
                 "pct_from_52w_high": None,
@@ -200,7 +192,6 @@ class TechnicalStrategy:
         if i < 0:
             i = len(df) + i
 
-        # Safety check
         if i < 0 or i >= len(df):
             return self.evaluate(pd.DataFrame())
 
@@ -216,8 +207,7 @@ class TechnicalStrategy:
 
         ema5 = latest.get("EMA_5")
         ema13 = latest.get("EMA_13")
-        ema20 = latest.get("EMA_20")
-        ema26 = latest.get("EMA_26")
+        ema21 = latest.get("EMA_21")
         ema200 = latest.get("EMA_200")
         price = latest.get("Close")
         macd_line = latest.get("MACD_12_26_9")
@@ -226,9 +216,9 @@ class TechnicalStrategy:
         prev_rsi = prev.get("RSI_14")
         atr = latest.get("ATRr_14")
         adx = latest.get("ADX_14")
-        ema_slope_20 = latest.get("EMA_SLOPE_20")
+        ema_slope_21 = latest.get("EMA_SLOPE_21")
 
-        # Weights from config
+        # Weights
         w_ema = self.config.ema_weight
         w_macd = self.config.macd_weight
         w_rsi = self.config.rsi_weight
@@ -236,35 +226,28 @@ class TechnicalStrategy:
         w_trend = self.config.trend_weight
         w_ema200 = self.config.ema200_weight
 
-        # Momentum (lookback from full df)
         momentum_1m = latest.get("MOMENTUM_1M")
         momentum_3m = latest.get("MOMENTUM_3M")
         momentum_6m = latest.get("MOMENTUM_6M")
         momentum_12m = latest.get("MOMENTUM_12M")
 
-        # Above 200 EMA
         above_200ema = (price > ema200) if pd.notna(ema200) else None
         if above_200ema:
             score += w_ema200
 
-        # 52-Week High/Low and Resistance
         week52_high = latest.get("WEEK52_HIGH")
         week52_low = latest.get("WEEK52_LOW")
-        pct_from_52w_high = None
-        pct_from_52w_low = None
+        pct_from_52w_high = (
+            (price / week52_high - 1) * 100 if pd.notna(week52_high) else None
+        )
+        pct_from_52w_low = (
+            (price / week52_low - 1) * 100 if pd.notna(week52_low) else None
+        )
         resistance_level = latest.get("RESISTANCE_LEVEL")
-        pct_from_resistance = None
+        pct_from_resistance = (
+            (price / resistance_level - 1) * 100 if pd.notna(resistance_level) else None
+        )
 
-        if pd.notna(week52_high):
-            pct_from_52w_high = (price / week52_high - 1) * 100
-        if pd.notna(week52_low):
-            pct_from_52w_low = (price / week52_low - 1) * 100
-
-        # Resistance
-        if pd.notna(resistance_level):
-            pct_from_resistance = (price / resistance_level - 1) * 100
-
-        # Volume Breakout (2x 20-day SMA on green day)
         volume_breakout = False
         volume = latest.get("Volume")
         sma20_vol = latest.get("VOL_SMA_20")
@@ -280,7 +263,7 @@ class TechnicalStrategy:
         min_bars = 24 if timeframe == "M" else 60
         if i >= min_bars - 1:
             if timeframe == "D":
-                # 1. EMA Alignment (Tiered Scoring)
+                # 1. EMA Alignment
                 prev_ema5 = prev.get("EMA_5")
                 prev_ema13 = prev.get("EMA_13")
 
@@ -293,43 +276,42 @@ class TechnicalStrategy:
                     and prev_ema5 <= prev_ema13
                 )
 
-                pullback_to_ema20 = (
-                    pd.notna(ema20)
+                pullback_to_ema21 = (
+                    pd.notna(ema21)
                     and pd.notna(price)
                     and pd.notna(ema5)
                     and pd.notna(ema13)
-                    and pd.notna(ema26)
-                    and ema5 > ema13 > ema26
-                    and abs(price - ema20) / ema20 < 0.02
+                    and ema5 > ema13
+                    and price > ema21
+                    and abs(price - ema21) / ema21 < 0.02
                 )
 
                 if fresh_ema_cross:
                     score += w_ema
                     ema_signal = "bullish_cross"
-                elif pullback_to_ema20:
+                elif pullback_to_ema21:
                     score += w_ema * (21.5 / 28.5)
                     ema_signal = "bullish_pullback"
                 elif (
                     pd.notna(ema5)
                     and pd.notna(ema13)
-                    and pd.notna(ema26)
-                    and ema5 > ema13 > ema26
-                    and price > ema26
+                    and pd.notna(ema21)
+                    and ema5 > ema13 > ema21
+                    and price > ema21
                 ):
                     score += w_ema * (11.5 / 28.5)
                     ema_signal = "bullish"
                 elif (
                     pd.notna(ema5)
                     and pd.notna(ema13)
-                    and pd.notna(ema26)
-                    and ema5 < ema13 < ema26
+                    and pd.notna(ema21)
+                    and ema5 < ema13 < ema21
                 ):
                     ema_signal = "bearish"
 
-                # 2. MACD (decoupled from EMA cross)
+                # 2. MACD
                 prev_macd = prev.get("MACD_12_26_9")
                 prev_signal_line = prev.get("MACDs_12_26_9")
-
                 if pd.notna(macd_line) and pd.notna(signal_line):
                     fresh_macd_cross = (
                         pd.notna(prev_macd)
@@ -338,7 +320,6 @@ class TechnicalStrategy:
                         and prev_macd <= prev_signal_line
                     )
                     if fresh_macd_cross and fresh_ema_cross:
-                        # Correlated same-day event: award partial credit only
                         score += w_macd * (11.5 / 21.5)
                     elif fresh_macd_cross:
                         score += w_macd
@@ -347,15 +328,13 @@ class TechnicalStrategy:
                     elif macd_line > signal_line and macd_line < 0:
                         score += w_macd * (7.0 / 21.5)
 
-                # 3. RSI 14
+                # 3. RSI
                 if pd.notna(rsi) and pd.notna(prev_rsi):
-                    # Check for recovery in last N days
                     lookback = self.config.rsi_recovery_lookback
                     recent_rsi = df["RSI_14"].iloc[max(0, i - (lookback - 1)) : i + 1]
                     was_oversold = any(recent_rsi < 30)
-
                     recovering = (
-                        was_oversold and rsi > 30 and pd.notna(ema20) and price > ema20
+                        was_oversold and rsi > 30 and pd.notna(ema21) and price > ema21
                     )
                     crossing_50 = prev_rsi <= 50 and rsi > 50
 
@@ -379,7 +358,7 @@ class TechnicalStrategy:
                     score += w_volume
                     volume_signal = "bullish"
 
-                # 5. Trend Quality: ADX + 3-Month Momentum
+                # 5. Trend Quality
                 trend_pts = 0
                 if pd.notna(adx):
                     if adx >= 35:
@@ -395,16 +374,16 @@ class TechnicalStrategy:
                         trend_pts += w_trend * (1.5 / 7.0)
                 score += min(trend_pts, w_trend)
 
-                # Define is_bullish for D
+                # Bullish definition
                 is_bullish = (
                     (
                         fresh_ema_cross
-                        or pullback_to_ema20
+                        or pullback_to_ema21
                         or (
                             pd.notna(ema5)
                             and pd.notna(ema13)
-                            and pd.notna(ema26)
-                            and ema5 > ema13 > ema26
+                            and pd.notna(ema21)
+                            and ema5 > ema13 > ema21
                         )
                     )
                     and pd.notna(macd_line)
@@ -417,25 +396,20 @@ class TechnicalStrategy:
                 if pd.notna(rsi) and rsi > self.config.rsi_overbought_threshold:
                     is_overextended = True
 
-                # Hard Filters (Task 2 Enhancements)
                 if pd.notna(rsi) and rsi > self.config.rsi_max:
-                    score = 0.0
-                    is_bullish = False
-
+                    score, is_bullish = 0.0, False
                 if pd.notna(ema200) and price < ema200:
-                    score = 0.0
-                    is_bullish = False
-
+                    score, is_bullish = 0.0, False
                 if pd.notna(adx) and adx < self.config.min_adx:
-                    score = 0.0
-                    is_bullish = False
+                    score, is_bullish = 0.0, False
 
             elif timeframe == "W":
                 is_bullish = (
-                    pd.notna(rsi) and rsi > 50 and pd.notna(ema26) and price > ema26
+                    pd.notna(rsi) and rsi > 50 and pd.notna(ema21) and price > ema21
                 )
-                score = 100.0 if is_bullish else 0.0
-                ema_signal = "bullish" if is_bullish else "neutral"
+                score, ema_signal = (
+                    (100.0, "bullish") if is_bullish else (0.0, "neutral")
+                )
 
             elif timeframe == "M":
                 is_bullish = (
@@ -443,13 +417,13 @@ class TechnicalStrategy:
                     and rsi > 50
                     and (
                         (pd.notna(ema13) and price > ema13)
-                        or (pd.notna(ema26) and price > ema26)
+                        or (pd.notna(ema21) and price > ema21)
                     )
                 )
-                score = 100.0 if is_bullish else 0.0
-                ema_signal = "bullish" if is_bullish else "neutral"
+                score, ema_signal = (
+                    (100.0, "bullish") if is_bullish else (0.0, "neutral")
+                )
 
-        # Ensure final score is in range 0-100
         score = max(0.0, min(100.0, score))
 
         return {
@@ -463,8 +437,7 @@ class TechnicalStrategy:
             "is_bullish": bool(is_bullish),
             "ema5_level": float(ema5) if pd.notna(ema5) else None,
             "ema13_level": float(ema13) if pd.notna(ema13) else None,
-            "ema20_level": float(ema20) if pd.notna(ema20) else None,
-            "ema26_level": float(ema26) if pd.notna(ema26) else None,
+            "ema21_level": float(ema21) if pd.notna(ema21) else None,
             "atr": float(atr) if pd.notna(atr) else None,
             "momentum_1m": float(momentum_1m) if momentum_1m is not None else None,
             "momentum_3m": float(momentum_3m) if momentum_3m is not None else None,
@@ -472,7 +445,7 @@ class TechnicalStrategy:
             "momentum_12m": float(momentum_12m) if momentum_12m is not None else None,
             "adx": float(adx) if pd.notna(adx) else None,
             "above_200ema": bool(above_200ema) if above_200ema is not None else None,
-            "ema_slope_20": float(ema_slope_20) if ema_slope_20 is not None else None,
+            "ema_slope_21": float(ema_slope_21) if ema_slope_21 is not None else None,
             "week52_high": week52_high,
             "week52_low": week52_low,
             "pct_from_52w_high": float(pct_from_52w_high)

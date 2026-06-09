@@ -121,7 +121,7 @@ def generate_signal_digest(
                     "ema_signal": sig.ema_signal,
                     "volume_breakout": sig.volume_breakout,
                     "momentum_12m": sig.momentum_12m,
-                    "ema20": sig.ema20_level,
+                    "ema21": sig.ema21_level,
                     "close": sig.close_price,
                     "tier": tier,
                     "strategy_tags": [config.strategy_id],

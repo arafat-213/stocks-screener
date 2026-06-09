@@ -116,10 +116,10 @@ def generate_signals(df: pd.DataFrame, symbol: str, timeframe: str) -> list:
     """
     signals = []
 
-    if "EMA_26" not in df.columns:
+    if "EMA_21" not in df.columns:
         return signals
 
-    valid_df = df[df["EMA_26"].notna()].copy()
+    valid_df = df[df["EMA_21"].notna()].copy()
 
     if valid_df.empty:
         return signals
@@ -138,7 +138,7 @@ def generate_signals(df: pd.DataFrame, symbol: str, timeframe: str) -> list:
         ema5 = row.get("EMA_5")
         ema13 = row.get("EMA_13")
         ema20 = row.get("EMA_20")
-        ema26 = row.get("EMA_26")
+        ema26 = row.get("EMA_21")
         price = row.get("Close")
         macd_line = row.get("MACD_12_26_9")
         signal_line = row.get("MACDs_12_26_9")

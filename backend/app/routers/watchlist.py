@@ -46,7 +46,7 @@ class WatchlistResponse(BaseModel):
 class WatchlistLiveResponse(WatchlistResponse):
     days_elapsed: int
     current_price: float
-    vs_ema20_pct: float
+    vs_ema21_pct: float
     in_zone: bool
 
 
@@ -139,23 +139,23 @@ def _calculate_live_metrics(entry: Watchlist, df: pd.DataFrame):
     # 2. Current price
     current_price = df["Close"].iloc[-1]
 
-    # 3. EMA20 calculation
-    # We need enough data for EMA20, pandas_ta_classic handles it
-    ema20_output = df.ta.ema(length=20)
-    current_ema20 = None
-    if ema20_output is not None and not ema20_output.empty:
+    # 3. EMA21 calculation
+    # We need enough data for EMA21, pandas_ta_classic handles it
+    ema21_output = df.ta.ema(length=21)
+    current_ema21 = None
+    if ema21_output is not None and not ema21_output.empty:
         # If multiple columns (DataFrame), take the first one
-        if isinstance(ema20_output, pd.DataFrame):
-            val = ema20_output.iloc[-1, 0]
+        if isinstance(ema21_output, pd.DataFrame):
+            val = ema21_output.iloc[-1, 0]
         else:
-            val = ema20_output.iloc[-1]
+            val = ema21_output.iloc[-1]
 
         if pd.notnull(val):
-            current_ema20 = float(val)
+            current_ema21 = float(val)
 
-    vs_ema20_pct = 0.0
-    if current_ema20 is not None:
-        vs_ema20_pct = ((current_price - current_ema20) / current_ema20) * 100
+    vs_ema21_pct = 0.0
+    if current_ema21 is not None:
+        vs_ema21_pct = ((current_price - current_ema21) / current_ema21) * 100
 
     # 4. In Zone detection
     in_zone = False
@@ -165,7 +165,7 @@ def _calculate_live_metrics(entry: Watchlist, df: pd.DataFrame):
     return {
         "days_elapsed": days_elapsed,
         "current_price": current_price,
-        "vs_ema20_pct": round(float(vs_ema20_pct), 2),
+        "vs_ema21_pct": round(float(vs_ema21_pct), 2),
         "in_zone": in_zone,
     }
 
@@ -206,7 +206,7 @@ def get_watchlist(db: Session = Depends(get_db)):
             "status": entry.status,
             "days_elapsed": metrics["days_elapsed"],
             "current_price": metrics["current_price"],
-            "vs_ema20_pct": metrics["vs_ema20_pct"],
+            "vs_ema21_pct": metrics["vs_ema21_pct"],
             "in_zone": metrics["in_zone"],
         }
 

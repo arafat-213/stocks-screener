@@ -58,13 +58,12 @@ class TechnicalSignal(Base):
     # Technical Indicators
     adx = Column(Float, nullable=True)
     above_200ema = Column(Boolean, nullable=True)
-    ema_slope_20 = Column(Float, nullable=True)
+    ema_slope_21 = Column(Float, nullable=True)
 
     # EMA Levels
     ema5_level = Column(Float, nullable=True)
     ema13_level = Column(Float, nullable=True)
-    ema20_level = Column(Float, nullable=True)
-    ema26_level = Column(Float, nullable=True)
+    ema21_level = Column(Float, nullable=True)
 
     # 52-Week Range and Resistance
     pct_from_52w_high = Column(Float, nullable=True)
@@ -86,11 +85,8 @@ class TechnicalSignal(Base):
     )
     __table_args__ = (
         UniqueConstraint("symbol", "date", "timeframe"),
-        # Covers every screen query: WHERE timeframe='D' AND date(date)=X
         Index("ix_ts_timeframe_date", "timeframe", "date"),
-        # Covers per-symbol history queries and stock detail page
         Index("ix_ts_symbol_timeframe_date", "symbol", "timeframe", "date"),
-        # Covers above_200ema + is_bullish filter combos used in most screens
         Index(
             "ix_ts_screener_core",
             "timeframe",
@@ -99,9 +95,7 @@ class TechnicalSignal(Base):
             "is_bullish",
             "is_consolidating",
         ),
-        # Momentum/RS screens (from feature branch)
         Index("ix_ts_rs_score", "rs_score"),
-        # Regime-dependent screens (from feature branch)
         Index("ix_ts_above_200ema", "above_200ema"),
     )
 
@@ -125,12 +119,6 @@ class FundamentalData(Base):
 
 
 class FundamentalCache(Base):
-    """
-    [STALE/LEGACY] Cache for advanced fundamental metrics.
-    NOTE: This table is currently NOT being refreshed by the pipeline.
-    Data is preserved for legacy screens but may be out of date.
-    """
-
     __tablename__ = "fundamental_cache"
     symbol = Column(String, primary_key=True)
     profitability_streak_passed = Column(Boolean)
@@ -139,7 +127,6 @@ class FundamentalCache(Base):
     pledged_data_missing = Column(Boolean, default=False)
     sector = Column(String)
 
-    # Advanced Fundamental Metrics
     roce = Column(Float, nullable=True)
     roe = Column(Float, nullable=True)
     peg_ratio = Column(Float, nullable=True)
@@ -234,10 +221,8 @@ class BacktestRun(Base):
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
-    status = Column(
-        String, nullable=False
-    )  # 'pending', 'running', 'complete', 'failed'
-    config = Column(Text, nullable=False)  # JSON string
+    status = Column(String, nullable=False)
+    config = Column(Text, nullable=False)
     symbols_total = Column(Integer, default=0)
     symbols_done = Column(Integer, default=0)
     error_message = Column(Text, nullable=True)
@@ -276,9 +261,7 @@ class BacktestTrade(Base):
     signal_date = Column(Date, nullable=False)
     entry_date = Column(Date, nullable=False)
     exit_date = Column(Date, nullable=False)
-    exit_reason = Column(
-        String, nullable=False
-    )  # 'holding_period', 'stop_loss', 'target'
+    exit_reason = Column(String, nullable=False)
     signal_score = Column(Float, nullable=False)
     entry_price = Column(Float, nullable=False)
     exit_price = Column(Float, nullable=False)
@@ -288,7 +271,6 @@ class BacktestTrade(Base):
     ema_signal = Column(String, nullable=True)
     position_size = Column(Float, nullable=True)
 
-    # Statistical and Regime Fields
     regime_at_signal = Column(Integer, nullable=True)
     regime_at_entry = Column(Integer, nullable=True)
     regime_at_exit = Column(Integer, nullable=True)
@@ -297,7 +279,6 @@ class BacktestTrade(Base):
     pullback_depth_pct = Column(Float, nullable=True)
 
     __table_args__ = (
-        # Every trade fetch is filtered by run_id — this index is critical
         Index("ix_bt_run_id", "run_id"),
         Index("ix_bt_run_id_exit_reason", "run_id", "exit_reason"),
     )
@@ -308,9 +289,9 @@ class SectorSnapshot(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     date = Column(Date, nullable=False)
     sector = Column(String, nullable=False)
-    avg_rs = Column(Float, nullable=True)  # average RS percentile in sector
+    avg_rs = Column(Float, nullable=True)
     avg_momentum_3m = Column(Float, nullable=True)
-    bullish_pct = Column(Float, nullable=True)  # % of stocks in sector that are bullish
+    bullish_pct = Column(Float, nullable=True)
     stock_count = Column(Integer, nullable=True)
     __table_args__ = (UniqueConstraint("date", "sector"),)
 
@@ -328,11 +309,6 @@ class PaperPortfolio(Base):
 
 
 class PaperPosition(Base):
-    """
-    A virtual position tracking state from signal (pending) to entry (open) to exit (closed).
-    States: 'pending' | 'open' | 'closed' | 'expired'
-    """
-
     __tablename__ = "paper_positions"
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(Integer, ForeignKey("paper_portfolio.id"), nullable=False)
@@ -340,32 +316,25 @@ class PaperPosition(Base):
     sector = Column(String, nullable=True)
     strategy_tags = Column(MutableList.as_mutable(JSON), default=[])
 
-    # Discovery state
     signal_date = Column(Date, nullable=False)
     signal_score = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
     atr_at_signal = Column(Float, nullable=True)
-    ema20_at_signal = Column(Float, nullable=True)
+    ema21_at_signal = Column(Float, nullable=True)
 
-    # Pullback tracking (for 'pending' state)
     status = Column(String, nullable=False, default="pending")
     wait_days_elapsed = Column(Integer, default=0)
-    pending_highest_closeness_pct = Column(
-        Float, default=999.0
-    )  # How close we got to EMA20
+    pending_highest_closeness_pct = Column(Float, default=999.0)
     is_invalidated = Column(Boolean, default=False)
 
-    # Active state (for 'open' state)
     entry_date = Column(Date, nullable=True)
     entry_price = Column(Float, nullable=True)
-    entry_type = Column(
-        String, nullable=True
-    )  # 'pullback_a' | 'momentum_b' | 'immediate'
-    position_size = Column(Float, nullable=True)  # rupee value
+    entry_type = Column(String, nullable=True)
+    position_size = Column(Float, nullable=True)
     shares = Column(Float, nullable=True)
     stop_loss_price = Column(Float, nullable=True)
     target_price = Column(Float, nullable=True)
-    highest_price = Column(Float, nullable=True)  # updated daily for trailing stop
+    highest_price = Column(Float, nullable=True)
     atr_trail_active = Column(Boolean, default=False)
 
     opened_at = Column(
@@ -383,8 +352,6 @@ class PaperPosition(Base):
 
 
 class PaperTrade(Base):
-    """A completed paper trade record."""
-
     __tablename__ = "paper_trades"
     id = Column(Integer, primary_key=True, autoincrement=True)
     portfolio_id = Column(Integer, ForeignKey("paper_portfolio.id"), nullable=False)
@@ -398,7 +365,7 @@ class PaperTrade(Base):
     shares = Column(Float, nullable=False)
     position_size = Column(Float, nullable=False)
     return_pct = Column(Float, nullable=False)
-    pnl = Column(Float, nullable=False)  # rupees
+    pnl = Column(Float, nullable=False)
     exit_reason = Column(String, nullable=False)
     signal_score = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
@@ -417,19 +384,16 @@ class AlertLog(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     symbol = Column(String, nullable=False)
     signal_date = Column(Date, nullable=False)
-    alert_type = Column(
-        String, nullable=False
-    )  # 'tier1_entry', 'tier2_entry', 'regime_change'
-    quality_tier = Column(String(1), nullable=True)  # 'A', 'B', 'C'
+    alert_type = Column(String, nullable=False)
+    quality_tier = Column(String(1), nullable=True)
     entry_score = Column(Float, nullable=True)
     sent_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),
     )
-    email_id = Column(String, nullable=True)  # Resend message ID for debugging
+    email_id = Column(String, nullable=True)
 
     __table_args__ = (
-        # Prevent duplicate alerts for same symbol+date+type
         UniqueConstraint("symbol", "signal_date", "alert_type"),
         Index("ix_alert_logs_sent_at", "sent_at"),
     )
@@ -451,9 +415,7 @@ class Watchlist(Base):
     target = Column(Float, nullable=True)
 
     notes = Column(Text, nullable=True)
-    status = Column(
-        String, nullable=False, default="watching"
-    )  # 'watching', 'entered', 'skipped', 'expired'
+    status = Column(String, nullable=False, default="watching")
 
     __table_args__ = (
         UniqueConstraint("symbol", "signal_date"),
@@ -467,35 +429,30 @@ class TradeJournal(Base):
     symbol = Column(String, nullable=False)
     watchlist_id = Column(Integer, ForeignKey("watchlist.id"), nullable=True)
 
-    # Entry
     signal_date = Column(Date, nullable=True)
     entry_date = Column(Date, nullable=False, default=datetime.date.today)
     entry_price = Column(Float, nullable=False)
     shares = Column(Integer, nullable=False)
     position_value = Column(Float, nullable=False)
 
-    # Risk Management
     stop_loss = Column(Float, nullable=True)
     target = Column(Float, nullable=True)
     quality_tier = Column(String(1), nullable=True)
     signal_score = Column(Float, nullable=True)
 
-    # Exit
     exit_date = Column(Date, nullable=True)
     exit_price = Column(Float, nullable=True)
-    exit_reason = Column(String, nullable=True)  # 'stop', 'target', 'manual', 'trail'
+    exit_reason = Column(String, nullable=True)
     pnl = Column(Float, nullable=True)
     return_pct = Column(Float, nullable=True)
     holding_days = Column(Integer, nullable=True)
 
-    status = Column(String, nullable=False, default="open")  # 'open' | 'closed'
+    status = Column(String, nullable=False, default="open")
     notes = Column(Text, nullable=True)
-    source = Column(String, nullable=False, default="manual")  # 'manual' | 'paper'
-    external_id = Column(Integer, nullable=True)  # Links to PaperPosition.id
-    # Strategy context
+    source = Column(String, nullable=False, default="manual")
+    external_id = Column(Integer, nullable=True)
     strategy_tags = Column(MutableList.as_mutable(JSON), default=[])
 
-    # Time tracking
     created_at = Column(
         DateTime(timezone=True),
         default=lambda: datetime.datetime.now(datetime.timezone.utc),

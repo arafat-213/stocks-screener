@@ -180,8 +180,7 @@ def process_symbol(
         # EMA Levels
         signal.ema5_level = to_float(ta_data.get("ema5_level"))
         signal.ema13_level = to_float(ta_data.get("ema13_level"))
-        signal.ema20_level = to_float(ta_data.get("ema20_level"))
-        signal.ema26_level = to_float(ta_data.get("ema26_level"))
+        signal.ema21_level = to_float(ta_data.get("ema21_level"))
 
         # Momentum and New Technical Fields
         signal.momentum_1m = to_float(ta_data.get("momentum_1m"))

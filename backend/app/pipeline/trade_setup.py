@@ -29,7 +29,7 @@ def compute_trade_setup(
     target_r_levels = config.target_r_levels if config else DEFAULT_TARGET_R_LEVELS
 
     ema_signal = signal.ema_signal or "neutral"
-    ema20 = signal.ema20_level
+    ema21 = signal.ema21_level
     resistance = signal.resistance_level
     pct_from_res = signal.pct_from_resistance
 
@@ -37,10 +37,10 @@ def compute_trade_setup(
         setup_type = "ema_crossover"
         entry_low = price * 0.995
         entry_high = price * 1.005
-    elif ema_signal in ("bullish_pullback",) and ema20:
-        setup_type = "pullback_to_ema20"
-        entry_low = ema20 * 0.99
-        entry_high = ema20 * 1.01
+    elif ema_signal in ("bullish_pullback",) and ema21:
+        setup_type = "pullback_to_ema21"
+        entry_low = ema21 * 0.99
+        entry_high = ema21 * 1.01
     elif resistance and pct_from_res is not None and -3.0 <= pct_from_res <= 0.0:
         setup_type = "resistance_breakout"
         entry_low = resistance * 1.002

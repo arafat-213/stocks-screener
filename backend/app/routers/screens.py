@@ -44,7 +44,7 @@ def _build_screen_response(
         "momentum_1m": tech.momentum_1m if tech else None,
         "momentum_3m": tech.momentum_3m if tech else None,
         "adx": tech.adx if tech else None,
-        "ema_slope": tech.ema_slope_20 if tech else None,
+        "ema_slope": tech.ema_slope_21 if tech else None,
         "pct_from_52w_high": tech.pct_from_52w_high if tech else None,
         "pct_from_52w_low": tech.pct_from_52w_low if tech else None,
         "week52_high": tech.week52_high if tech else None,

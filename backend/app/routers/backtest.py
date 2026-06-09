@@ -135,7 +135,7 @@ class BacktestRequest(BaseModel):
     use_pullback_entry: bool = Field(
         default=True,
         description=(
-            "For bullish_pullback signals: wait up to 8 bars for price to pull back to EMA20 "
+            "For bullish_pullback signals: wait up to 8 bars for price to pull back to EMA21 "
             "before entering. Dramatically improves entry price vs. buying immediately at next-day open. "
             "Signals that don't pull back within 8 bars are skipped."
         ),
@@ -145,7 +145,7 @@ class BacktestRequest(BaseModel):
         default=3.0,  # was 2.0 — 2% is too tight for NSE mid/smallcap volatility
         ge=0.5,
         le=5.0,
-        description="How close to EMA20 price must come to trigger pullback entry (%).",
+        description="How close to EMA21 price must come to trigger pullback entry (%).",
     )
     screen_signal_mode: bool = Field(
         default=False,
