@@ -23,7 +23,9 @@ def compute_trade_setup(
         return None
 
     # Use config values or fallbacks
-    atr_multiplier = config.atr_multiplier if config else DEFAULT_ATR_STOP_MULTIPLIER
+    atr_multiplier = (
+        config.initial_stop_atr_multiplier if config else DEFAULT_ATR_STOP_MULTIPLIER
+    )
     target_r_levels = config.target_r_levels if config else DEFAULT_TARGET_R_LEVELS
 
     ema_signal = signal.ema_signal or "neutral"
@@ -50,12 +52,12 @@ def compute_trade_setup(
 
     entry_mid = (entry_low + entry_high) / 2
     stop = entry_mid - (atr_multiplier * atr)
-    
+
     # Enforce hard cap based on config.stop_loss_pct
     if config:
         hard_stop = entry_mid * (1 - config.stop_loss_pct / 100)
         stop = max(stop, hard_stop)
-    
+
     risk = entry_mid - stop
 
     if risk <= 0:

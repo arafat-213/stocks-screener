@@ -85,6 +85,7 @@ class TestPositionSizing:
             starting_capital=1_000_000.0,
             position_size=10_000.0,
             atr_multiplier=2.0,
+            initial_stop_atr_multiplier=2.0,
             require_consolidation=False,
             use_pullback_entry=False,
         )
@@ -107,7 +108,7 @@ class TestPositionSizing:
             use_volatility_sizing=True,
             risk_per_trade_pct=1.0,
             max_position_pct=20.0,
-            atr_multiplier=2.0,
+            initial_stop_atr_multiplier=2.0,
         )
         result = _compute_position_size(config, entry_price=500.0, atr=10.0)
         assert result == pytest.approx(200_000.0)  # capped at 20%
@@ -122,7 +123,7 @@ class TestPositionSizing:
             use_volatility_sizing=True,
             risk_per_trade_pct=1.0,
             max_position_pct=10.0,
-            atr_multiplier=2.0,
+            initial_stop_atr_multiplier=2.0,
         )
         result = _compute_position_size(config, entry_price=100.0, atr=5.0)
         assert result == pytest.approx(10_000.0)

@@ -112,6 +112,7 @@ TREND_INITIATION = UnifiedTradingConfig(
     use_pullback_entry=True,
     holding_days=45,
     atr_multiplier=2.0,
+    initial_stop_atr_multiplier=2.0,
     risk_reward_ratio=2.5,
 )
 
@@ -123,6 +124,7 @@ TREND_CONTINUATION = UnifiedTradingConfig(
     use_pullback_entry=False,
     holding_days=30,
     atr_multiplier=2.5,
+    initial_stop_atr_multiplier=2.5,
     risk_reward_ratio=2.0,
     screen_signal_mode=True,
     screen_slug="momentum-monsters",

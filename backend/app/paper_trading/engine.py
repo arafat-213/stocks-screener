@@ -328,7 +328,11 @@ def _convert_to_open(
     structural_stop = consol_low * 0.98 if consol_low > 0 else None
 
     atr_val = pos.atr_at_signal
-    atr_stop = (entry_price - config.atr_multiplier * atr_val) if atr_val else None
+    atr_stop = (
+        (entry_price - config.initial_stop_atr_multiplier * atr_val)
+        if atr_val
+        else None
+    )
 
     if structural_stop and atr_stop:
         base_stop = max(structural_stop, atr_stop)

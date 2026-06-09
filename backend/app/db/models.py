@@ -249,6 +249,7 @@ class BacktestRun(Base):
     best_trade_pct = Column(Float, nullable=True)
     worst_trade_pct = Column(Float, nullable=True)
     max_drawdown_pct = Column(Float, nullable=True)
+    max_drawdown_duration = Column(Integer, nullable=True)
     sharpe_ratio = Column(Float, nullable=True)
     total_return_pct = Column(Float, nullable=True)
     gross_return_pct = Column(Float, nullable=True)
@@ -285,7 +286,8 @@ class BacktestTrade(Base):
     rsi_at_signal = Column(Float, nullable=True)
     adx_at_signal = Column(Float, nullable=True)
     ema_signal = Column(String, nullable=True)
-    
+    position_size = Column(Float, nullable=True)
+
     # Statistical and Regime Fields
     regime_at_signal = Column(Integer, nullable=True)
     regime_at_entry = Column(Integer, nullable=True)
@@ -503,6 +505,7 @@ class TradeJournal(Base):
         Index("ix_tj_symbol", "symbol"),
     )
 
+
 class DailyDigestLog(Base):
     __tablename__ = "daily_digest_logs"
 
@@ -514,4 +517,6 @@ class DailyDigestLog(Base):
     closed_positions = Column(JSON, default=list)
     trail_moved = Column(JSON, default=list)
     warnings = Column(JSON, default=list)
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc))
+    created_at = Column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )

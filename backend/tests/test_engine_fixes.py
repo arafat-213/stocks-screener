@@ -174,7 +174,7 @@ class TestConfigDefaults:
         )
 
 
-class TestSignalVolatilityFilter:
+class TestSignalBarQualityFilter:
     def _base_config(self) -> BacktestConfig:
         return BacktestConfig(
             score_threshold=10.0,
@@ -185,15 +185,12 @@ class TestSignalVolatilityFilter:
             require_consolidation=False,
         )
 
-    def test_extreme_volatility_signal_skipped(self):
+    def test_weak_close_signal_skipped(self):
         """
-        Signal bar range = 20%.
-        Intended stop = min(ATR stop, hard stop).
-        ATR = 1.0, close = 100.0, atr_mult = 2.0 -> atr_stop_pct = 2.0%.
-        Hard stop = 10.0%.
-        Intended stop = 2.0%.
-        Threshold = 2.0 * 1.5 = 3.0%.
-        Signal bar range (20%) > Threshold (3.0%) -> Skip.
+        Signal bar: High=110, Low=90, Close=95.
+        Range = 20.
+        Close position = (95 - 90) / 20 = 5 / 20 = 0.25 (25%).
+        0.25 < 0.3 -> Skip.
         """
         n = 300
         closes = np.linspace(100, 200, n)
@@ -208,12 +205,10 @@ class TestSignalVolatilityFilter:
             index=pd.date_range("2020-01-01", periods=n, freq="B"),
         )
 
-        # Inject extreme volatility at signal index
         signal_idx = 250
         df.iloc[signal_idx, df.columns.get_loc("High")] = 110.0
         df.iloc[signal_idx, df.columns.get_loc("Low")] = 90.0
-        df.iloc[signal_idx, df.columns.get_loc("Close")] = 100.0
-        # Range = (110 - 90) / 100 * 100 = 20%
+        df.iloc[signal_idx, df.columns.get_loc("Close")] = 95.0
 
         signal = {
             "date": df.index[signal_idx],
@@ -223,10 +218,51 @@ class TestSignalVolatilityFilter:
             "adx": 25.0,
             "ema_signal": "bullish_cross",
             "atr": 1.0,
-            "close": 100.0,
+            "close": 95.0,
         }
 
         trades = simulate_trades("TEST", "Tech", df, [signal], self._base_config())
         assert trades == [], (
-            f"Expected signal to be skipped due to volatility, but got {len(trades)} trades"
+            f"Expected weak close signal to be skipped, but got {len(trades)} trades"
+        )
+
+    def test_strong_close_large_bar_accepted(self):
+        """
+        Signal bar: High=120, Low=100, Close=115.
+        Range = 20.
+        Close position = (115 - 100) / 20 = 15 / 20 = 0.75 (75%).
+        0.75 > 0.3 -> Accept.
+        """
+        n = 300
+        closes = np.linspace(100, 200, n)
+        df = pd.DataFrame(
+            {
+                "Open": closes * 0.99,
+                "High": closes * 1.01,
+                "Low": closes * 0.99,
+                "Close": closes,
+                "Volume": 2_000_000.0,
+            },
+            index=pd.date_range("2020-01-01", periods=n, freq="B"),
+        )
+
+        signal_idx = 250
+        df.iloc[signal_idx, df.columns.get_loc("High")] = 120.0
+        df.iloc[signal_idx, df.columns.get_loc("Low")] = 100.0
+        df.iloc[signal_idx, df.columns.get_loc("Close")] = 115.0
+
+        signal = {
+            "date": df.index[signal_idx],
+            "score": 80.0,
+            "above_200ema": True,
+            "rsi": 55.0,
+            "adx": 25.0,
+            "ema_signal": "bullish_cross",
+            "atr": 1.0,
+            "close": 115.0,
+        }
+
+        trades = simulate_trades("TEST", "Tech", df, [signal], self._base_config())
+        assert len(trades) == 1, (
+            f"Expected strong close signal to be accepted, but got {len(trades)} trades"
         )

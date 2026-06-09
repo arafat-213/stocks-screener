@@ -204,7 +204,7 @@ class BacktestRequest(BaseModel):
         le=2,
         description="1: Strict (Both Vol + ADX), 2: Relaxed (Either).",
     )
-    symbol_limit: Optional[int] = Field(default=None, ge=1, le=500)
+    symbol_limit: Optional[int] = Field(default=None, ge=1, le=2500)
     screen_slug: Optional[str] = Field(
         default=None, description="Slug of the screen to filter symbols by."
     )
@@ -287,6 +287,7 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
             "best_trade_pct": run.best_trade_pct,
             "worst_trade_pct": run.worst_trade_pct,
             "max_drawdown_pct": run.max_drawdown_pct,
+            "max_drawdown_duration": run.max_drawdown_duration,
             "sharpe_ratio": run.sharpe_ratio,
             "total_return_pct": run.total_return_pct,
             "gross_return_pct": run.gross_return_pct,

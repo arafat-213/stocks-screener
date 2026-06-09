@@ -27,21 +27,21 @@ def test_regime_map_breadth_overrides():
         regime_confirmation_days=1,  # Set to 1 for immediate switch in test
     )
 
-    # Case 1: Low ADX + High Breadth (70) -> BULL (12%)
+    # Case 1: Low ADX + High Breadth (70) -> BULL (2)
     breadth_map = {d.date(): 70.0 for d in dates}
     rmap = _build_regime_map(bench_df, config, breadth_map=breadth_map)
     # Check index 1 because index 0 might still be the start state
-    assert rmap[dates[1].date()] == 12.0
+    assert rmap[dates[1].date()] == 2
 
-    # Case 2: Low ADX + Low Breadth (30) -> BEAR (0%)
+    # Case 2: Low ADX + Low Breadth (30) -> BEAR (0)
     breadth_map = {d.date(): 30.0 for d in dates}
     rmap = _build_regime_map(bench_df, config, breadth_map=breadth_map)
-    assert rmap[dates[1].date()] == 0.0
+    assert rmap[dates[1].date()] == 0
 
-    # Case 3: Low ADX + Mid Breadth (50) -> NEUTRAL (7%)
+    # Case 3: Low ADX + Mid Breadth (50) -> NEUTRAL (1)
     breadth_map = {d.date(): 50.0 for d in dates}
     rmap = _build_regime_map(bench_df, config, breadth_map=breadth_map)
-    assert rmap[dates[1].date()] == 7.0
+    assert rmap[dates[1].date()] == 1
 
 
 if __name__ == "__main__":

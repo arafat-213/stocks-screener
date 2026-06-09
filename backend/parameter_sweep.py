@@ -86,6 +86,7 @@ def main():
                         "sharpe_ratio": result["sharpe_ratio"],
                         "win_rate": result["win_rate"],
                         "max_drawdown_pct": result["max_drawdown_pct"],
+                        "max_drawdown_duration": result["max_drawdown_duration"],
                         "total_trades": result["total_trades"],
                         "profit_factor": result["profit_factor"],
                         "expectancy": result["expectancy"],
@@ -119,25 +120,33 @@ def generate_report(results):
         f.write(f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
 
         f.write("## Top 5 Configurations (by Sharpe Ratio)\n")
-        f.write("| Rank | Sharpe | Return % | DD % | Win Rate % | Trades | Config |\n")
-        f.write("|------|--------|----------|------|------------|--------|--------|\n")
+        f.write(
+            "| Rank | Sharpe | Return % | DD % | DD Days | Win Rate % | Trades | Config |\n"
+        )
+        f.write(
+            "|------|--------|----------|------|---------|------------|--------|--------|\n"
+        )
         for i, res in enumerate(best_sharpe[:5]):
             m = res["metrics"]
             p = res["params"]
             p_str = ", ".join([f"{k}: {v}" for k, v in p.items()])
             f.write(
-                f"| {i + 1} | {m['sharpe_ratio']:.2f} | {m['total_return_pct']:.2f}% | {m['max_drawdown_pct']:.2f}% | {m['win_rate']:.2f}% | {m['total_trades']} | {p_str} |\n"
+                f"| {i + 1} | {m['sharpe_ratio']:.2f} | {m['total_return_pct']:.2f}% | {m['max_drawdown_pct']:.2f}% | {m.get('max_drawdown_duration', 0)} | {m['win_rate']:.2f}% | {m['total_trades']} | {p_str} |\n"
             )
 
         f.write("\n## Top 5 Configurations (by Total Return)\n")
-        f.write("| Rank | Return % | Sharpe | DD % | Win Rate % | Trades | Config |\n")
-        f.write("|------|----------|--------|------|------------|--------|--------|\n")
+        f.write(
+            "| Rank | Return % | Sharpe | DD % | DD Days | Win Rate % | Trades | Config |\n"
+        )
+        f.write(
+            "|------|----------|--------|------|---------|------------|--------|--------|\n"
+        )
         for i, res in enumerate(best_return[:5]):
             m = res["metrics"]
             p = res["params"]
             p_str = ", ".join([f"{k}: {v}" for k, v in p.items()])
             f.write(
-                f"| {i + 1} | {m['total_return_pct']:.2f}% | {m['sharpe_ratio']:.2f} | {m['max_drawdown_pct']:.2f}% | {m['win_rate']:.2f}% | {m['total_trades']} | {p_str} |\n"
+                f"| {i + 1} | {m['total_return_pct']:.2f}% | {m['sharpe_ratio']:.2f} | {m['max_drawdown_pct']:.2f}% | {m.get('max_drawdown_duration', 0)} | {m['win_rate']:.2f}% | {m['total_trades']} | {p_str} |\n"
             )
 
     print(f"\nReport generated: {REPORT_FILE}")

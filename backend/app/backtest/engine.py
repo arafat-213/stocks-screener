@@ -77,6 +77,10 @@ def _signal_cache_key(config: BacktestConfig, n_symbols: int) -> str:
             f"consol={config.require_consolidation}",
             f"consol_bars={config.consolidation_bars}",
             f"tier1_adx={config.tier1_adx_threshold}",
+            f"rsi_max_screen={config.screen_driven_rsi_max}",
+            f"consol_range={config.consolidation_max_range_pct}",
+            f"pullback={config.use_pullback_entry}",
+            f"min_tier={config.min_signal_tier}",
         ]
     )
 
@@ -365,7 +369,7 @@ def _compute_position_size(
         return config.position_size
 
     risk_amount = config.starting_capital * (config.risk_per_trade_pct / 100.0)
-    stop_distance = config.atr_multiplier * atr
+    stop_distance = config.initial_stop_atr_multiplier * atr
     if stop_distance <= 0:
         return config.position_size
 
@@ -560,6 +564,7 @@ def simulate_trades(
     is_screen_driven: bool = False,
     regime_scaling_map: dict = None,
     breadth_map: dict = None,
+    all_portfolio_trades: list[TradeResult] = None,
 ):
     if strategy is None:
         strategy = TechnicalStrategy(config)
@@ -816,7 +821,6 @@ def simulate_trades(
         pos_size = _compute_position_size(
             config, entry_price, atr=eff_atr, regime_max_pct=regime_max_pct
         )
-        # ─────────────────────────────────────────────────────────────────────
 
         # Robust Stop Anchoring (Task 3)
         # 1. Structural Stop (Pre-signal consolidation)
@@ -1012,6 +1016,76 @@ def simulate_trades(
     return trades
 
 
+def _is_portfolio_valid(
+    candidate_trades: list[TradeResult],
+    existing_trades: list[TradeResult],
+    config: BacktestConfig,
+    stocks_info: dict[str, str],
+) -> bool:
+    """
+    Robustly validates portfolio-level constraints (capital, concurrency, sector)
+    across the entire lifespan of the candidate trade to prevent race conditions
+    caused by delayed entries (pullbacks).
+    """
+    if not candidate_trades:
+        return True
+
+    start_date = candidate_trades[0].entry_date
+    end_date = candidate_trades[-1].exit_date
+
+    # Event dates: points in time where utilization changes
+    check_dates = {start_date}
+    for t in existing_trades + candidate_trades:
+        if start_date <= t.entry_date <= end_date:
+            check_dates.add(t.entry_date)
+        if start_date <= t.exit_date <= end_date:
+            check_dates.add(t.exit_date)
+
+    for d in sorted(check_dates):
+        # A trade is active if d is within [entry, exit)
+        active_existing = [
+            t for t in existing_trades if t.entry_date <= d < t.exit_date
+        ]
+        active_candidate = [
+            t for t in candidate_trades if t.entry_date <= d < t.exit_date
+        ]
+
+        if not active_candidate:
+            continue
+
+        # 1. Capital utilization (Hard Cap)
+        total_used = sum(t.position_size_used for t in active_existing) + sum(
+            t.position_size_used for t in active_candidate
+        )
+        if total_used > config.starting_capital + 0.01:
+            return False
+
+        # 2. Max Concurrent Positions
+        if config.max_concurrent_positions > 0:
+            active_syms = {t.symbol for t in active_existing} | {
+                t.symbol for t in active_candidate
+            }
+            if len(active_syms) > config.max_concurrent_positions:
+                return False
+
+        # 3. Max Sector Positions
+        if config.max_sector_positions > 0:
+            sector_counts = Counter()
+            for t in active_existing:
+                s = stocks_info.get(t.symbol, "Unknown")
+                sector_counts[s] += 1
+            for t in active_candidate:
+                s = stocks_info.get(t.symbol, "Unknown")
+                sector_counts[s] += 1
+
+            if any(
+                count > config.max_sector_positions for count in sector_counts.values()
+            ):
+                return False
+
+    return True
+
+
 def simulate_portfolio(
     all_signals: dict[str, list[dict]],
     all_dfs: dict[str, pd.DataFrame],
@@ -1023,7 +1097,7 @@ def simulate_portfolio(
     monthly_state_maps: dict = None,
     screen_dates_map: dict = None,
     is_screen_driven: bool = False,
-    regime_scaling_map: dict = None,  # Mapping from date to max_position_pct
+    regime_scaling_map: dict = None,
     breadth_map: dict = None,
 ) -> list[TradeResult]:
     if strategy is None:
@@ -1039,15 +1113,18 @@ def simulate_portfolio(
 
     all_trades, open_pos = [], {}
     for date, sym, sig in timeline:
+        # Fast Filter 1: Don't allow overlapping trades in the same symbol
         if sym in open_pos and open_pos[sym] > date:
             continue
 
-        if config.max_concurrent_positions:
+        # Fast Filter 2: Heuristic check for concurrency at signal date
+        if config.max_concurrent_positions > 0:
             active_count = sum(1 for d in open_pos.values() if d > date)
             if active_count >= config.max_concurrent_positions:
                 continue
 
-        if config.max_sector_positions:
+        # Fast Filter 3: Heuristic check for sector limits at signal date
+        if config.max_sector_positions > 0:
             sector = stocks_info.get(sym, "Unknown")
             sector_active = sum(
                 1
@@ -1060,7 +1137,8 @@ def simulate_portfolio(
         df = all_dfs.get(sym)
         if df is None:
             continue
-        trades = simulate_trades(
+
+        candidate_trades = simulate_trades(
             sym,
             stocks_info.get(sym, "Unknown"),
             df,
@@ -1074,10 +1152,15 @@ def simulate_portfolio(
             is_screen_driven,
             regime_scaling_map=regime_scaling_map,
             breadth_map=breadth_map,
+            all_portfolio_trades=all_trades,
         )
-        if trades:
-            open_pos[sym] = trades[-1].exit_date
-            all_trades.extend(trades)
+
+        if candidate_trades:
+            # Robust Check: Validate entire lifespan (fixes race condition)
+            if _is_portfolio_valid(candidate_trades, all_trades, config, stocks_info):
+                open_pos[sym] = candidate_trades[-1].exit_date
+                all_trades.extend(candidate_trades)
+
     return all_trades
 
 
@@ -1099,6 +1182,7 @@ def compute_metrics(
             "expectancy": 0.0,
             "profit_factor": 0.0,
             "max_drawdown_pct": 0.0,
+            "max_drawdown_duration": 0,
             "sharpe_ratio": 0.0,
             "benchmark_return_pct": 0.0,
             "avg_win_pct": 0.0,
@@ -1109,18 +1193,27 @@ def compute_metrics(
 
     rets = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
     psizes = [t.position_size_used or config.position_size for t in trades]
-    total_deployed = sum(psizes)
+    # total_deployed = sum(psizes)
     win_mask = [r > 0 for r in rets]
-    win_weight = sum(p for r, p in zip(rets, psizes) if r > 0)
-    win_rate = win_weight / total_deployed if total_deployed > 0 else 0.0
+    win_count = sum(win_mask)
+    win_rate = win_count / len(trades) if trades else 0.0
 
-    avg_win = (
+    wins = [r for r in rets if r > 0]
+    losses = [r for r in rets if r <= 0]
+
+    avg_win = sum(wins) / len(wins) if wins else 0.0
+    avg_loss = sum(losses) / len(losses) if losses else 0.0
+
+    # Weighted versions for financial metrics like Profit Factor
+    win_weight = sum(p for r, p in zip(rets, psizes) if r > 0)
+    loss_weight = sum(p for r, p in zip(rets, psizes) if r <= 0)
+
+    weighted_avg_win = (
         sum(r * p for r, p in zip(rets, psizes) if r > 0) / win_weight
         if win_weight > 0
         else 0.0
     )
-    loss_weight = sum(p for r, p in zip(rets, psizes) if r <= 0)
-    avg_loss = (
+    weighted_avg_loss = (
         sum(r * p for r, p in zip(rets, psizes) if r <= 0) / loss_weight
         if loss_weight > 0
         else 0.0
@@ -1136,6 +1229,7 @@ def compute_metrics(
 
     equity_curve = []
     max_dd = 0.0
+    max_dd_duration = 0
     sharpe = 0.0
     bench_ret = 0.0
 
@@ -1170,6 +1264,7 @@ def compute_metrics(
             max_equity = config.starting_capital
             daily_returns = []
             prev_equity = config.starting_capital
+            current_dd_duration = 0
 
             for d, row in benchmark_data.iterrows():
                 date_only = d.date() if hasattr(d, "date") else d
@@ -1177,7 +1272,14 @@ def compute_metrics(
                 current_equity = config.starting_capital + cum_pl
 
                 # Stats
-                max_equity = max(max_equity, current_equity)
+                if current_equity > max_equity:
+                    max_equity = current_equity
+                    current_dd_duration = 0
+                else:
+                    current_dd_duration += 1
+
+                max_dd_duration = max(max_dd_duration, current_dd_duration)
+
                 dd = (max_equity - current_equity) / max_equity * 100
                 max_dd = max(max_dd, dd)
 
@@ -1213,10 +1315,12 @@ def compute_metrics(
         "gross_return_pct": gross_ret,
         "total_cost_drag_pct": gross_ret - total_ret,
         "expectancy": (win_rate * avg_win) + ((1 - win_rate) * avg_loss),
-        "profit_factor": (win_weight * avg_win) / (abs(loss_weight * avg_loss))
-        if loss_weight and avg_loss != 0
+        "profit_factor": (win_weight * weighted_avg_win)
+        / (abs(loss_weight * weighted_avg_loss))
+        if loss_weight and weighted_avg_loss != 0
         else 0.0,
         "max_drawdown_pct": max_dd,
+        "max_drawdown_duration": max_dd_duration,
         "sharpe_ratio": sharpe,
         "benchmark_return_pct": bench_ret,
         "avg_win_pct": avg_win,
@@ -1279,7 +1383,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 )
             symbols = list(screen_dates_map.keys())
         else:
-            symbols = [s.symbol for s in db.query(Stock).limit(500).all()]
+            symbols = [s.symbol for s in db.query(Stock).limit(2500).all()]
 
         if config.symbol_limit:
             symbols = symbols[: config.symbol_limit]
@@ -1403,6 +1507,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         run.expectancy = float(_clean(metrics["expectancy"]))
         run.profit_factor = float(_clean(metrics["profit_factor"]))
         run.max_drawdown_pct = float(_clean(metrics["max_drawdown_pct"]))
+        run.max_drawdown_duration = int(_clean(metrics["max_drawdown_duration"]))
         run.sharpe_ratio = float(_clean(metrics["sharpe_ratio"]))
         run.benchmark_return_pct = float(_clean(metrics["benchmark_return_pct"]))
         run.avg_win_pct = float(_clean(metrics["avg_win_pct"]))
@@ -1446,6 +1551,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     if t.adx_at_signal is not None
                     else None,
                     "ema_signal": t.ema_signal,
+                    "position_size": float(_clean(t.position_size_used))
+                    if t.position_size_used is not None
+                    else None,
                     "regime_at_signal": t.regime_at_signal,
                     "regime_at_entry": t.regime_at_entry,
                     "regime_at_exit": t.regime_at_exit,
