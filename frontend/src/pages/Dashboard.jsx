@@ -6,7 +6,7 @@ import AlertCircle from 'lucide-react/dist/esm/icons/alert-circle';
 import LayoutGrid from 'lucide-react/dist/esm/icons/layout-grid';
 import List from 'lucide-react/dist/esm/icons/list';
 import RefreshCcw from 'lucide-react/dist/esm/icons/refresh-ccw';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import map from 'lodash/fp/map';
 import size from 'lodash/fp/size';
 import times from 'lodash/fp/times';
@@ -21,6 +21,7 @@ import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
 import { useMarketData } from '../hooks/useMarketData';
 import { useWatchlist } from '../hooks/useWatchlist';
+import { useActionCenter } from '../hooks/useActionCenter';
 import StockCard from '../components/StockCard';
 import StockCardSkeleton from '../components/StockCardSkeleton';
 import FilterBottomSheet from '../components/FilterBottomSheet';
@@ -34,10 +35,12 @@ import WatchlistStar from '../components/WatchlistStar';
 import PipelineProgress from '../components/PipelineProgress';
 import SetupBadge from '../components/SetupBadge';
 import HighConvictionDigest from '../components/HighConvictionDigest';
+import ActionCenter from '../components/ActionCenter';
 
 const DEFAULT_SORT = { key: 'score', direction: 'desc' };
 
 const Dashboard = () => {
+  const navigate = useNavigate();
   // Data Fetching Hooks
   const [stocks, setStocks] = useState([]);
   const [offset, setOffset] = useState(0);
@@ -62,6 +65,23 @@ const Dashboard = () => {
 
   const { market_context, error: marketError } = useMarketData();
   const { watchlist, toggle, isWatched, count } = useWatchlist();
+  const {
+    entry_candidates,
+    sl_risk,
+    target_near,
+    loading: actionCenterLoading,
+    error: actionCenterError,
+  } = useActionCenter();
+
+  const handleExecute = (item) => {
+    navigate(
+      `/portfolio?action=new&symbol=${item.symbol}&price=${item.current_price}&wl_id=${item.watchlist_id}&sl=${item.stop_loss || ''}&target=${item.target || ''}`
+    );
+  };
+
+  const handleExit = (item) => {
+    navigate(`/portfolio?action=exit&trade_id=${item.id}`);
+  };
 
   const handleToggleWatchlist = useCallback(
     async (row) => {
@@ -424,8 +444,10 @@ const Dashboard = () => {
 
   return (
     <div className='w-full animate-fade-in'>
-      {error || pipelineError || marketError ? (
-        <ErrorBanner message={error || pipelineError || marketError} />
+      {error || pipelineError || marketError || actionCenterError ? (
+        <ErrorBanner
+          message={error || pipelineError || marketError || actionCenterError}
+        />
       ) : null}
 
       {pipeline?.is_stale ? (
@@ -534,6 +556,16 @@ const Dashboard = () => {
               </div>
             </div>
           </div>
+
+          {!actionCenterLoading && (
+            <ActionCenter
+              entry_candidates={entry_candidates}
+              sl_risk={sl_risk}
+              target_near={target_near}
+              onExecute={handleExecute}
+              onExit={handleExit}
+            />
+          )}
 
           <HighConvictionDigest />
 

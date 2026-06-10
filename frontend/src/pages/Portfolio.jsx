@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getISTDateString, formatDisplayDate } from '../utils/dateUtils';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { get, getOr, size, isEmpty, map, filter } from 'lodash/fp';
@@ -91,14 +91,31 @@ const Portfolio = () => {
     return () => clearTimeout(timer);
   }, []);
 
-  const handleCloseClick = (trade) => {
+  const handleCloseClick = useCallback((trade) => {
     setSelectedTrade(trade);
     setExitPrice(
       get('current_price')(trade) || get('entry_price')(trade) || ''
     );
     setExitReason('target');
     setModalOpen(true);
-  };
+  }, []);
+
+  // Handle exit from URL params (e.g. from Dashboard Action Center)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('action') === 'exit') {
+      const tradeId = params.get('trade_id');
+      const trade = openPositions.find((p) => p.id.toString() === tradeId);
+      if (trade) {
+        const timer = setTimeout(() => {
+          handleCloseClick(trade);
+          // Clean up URL after opening modal
+          navigate('/portfolio', { replace: true });
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [location.search, openPositions, navigate, handleCloseClick]);
 
   const handleCloseSubmit = async (e) => {
     e.preventDefault();

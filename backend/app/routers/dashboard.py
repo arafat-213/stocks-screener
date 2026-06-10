@@ -2,6 +2,7 @@ import asyncio
 import datetime
 
 from fastapi import APIRouter, Depends, Response
+from pydantic import BaseModel
 from sqlalchemy import case, func, or_
 from sqlalchemy.engine import Row
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from app.db.models import (
     PipelineRun,
     Stock,
     TechnicalSignal,
+    TradeJournal,
+    Watchlist,
 )
 from app.db.session import get_db
 from app.pipeline.fetcher import fetch_market_snapshots
@@ -21,6 +24,111 @@ from app.screens.base import get_latest_signal_date
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 market_lock = asyncio.Lock()
+
+
+class ActionCenterEntry(BaseModel):
+    symbol: str
+    current_price: float
+    entry_low: float
+    entry_high: float
+    watchlist_id: int
+    stop_loss: float | None = None
+    target: float | None = None
+
+
+class ActionCenterTrade(BaseModel):
+    id: int
+    symbol: str
+    current_price: float
+    stop_loss: float | None = None
+    target: float | None = None
+    dist_pct: float
+
+
+class ActionCenterResponse(BaseModel):
+    entry_candidates: list[ActionCenterEntry]
+    sl_risk: list[ActionCenterTrade]
+    target_near: list[ActionCenterTrade]
+
+
+@router.get("/action-center", response_model=ActionCenterResponse)
+def get_action_center(db: Session = Depends(get_db)):
+    """
+    Action Center identifies immediate actions:
+    1. entry_candidates: Watchlist items currently in their planned entry zone.
+    2. sl_risk: Open trades within 1.0% of their stop loss.
+    3. target_near: Open trades within 1.0% of their target.
+    """
+    # 1. Fetch relevant data
+    watching = db.query(Watchlist).filter(Watchlist.status == "watching").all()
+    open_trades = db.query(TradeJournal).filter(TradeJournal.status == "open").all()
+
+    # 2. Get live prices
+    symbols = list(set([w.symbol for w in watching] + [t.symbol for t in open_trades]))
+    if not symbols:
+        return {"entry_candidates": [], "sl_risk": [], "target_near": []}
+
+    snapshots = fetch_market_snapshots(symbols)
+    price_map = {s["symbol"]: s["close"] for s in snapshots}
+
+    # 3. Categorize
+    entry_candidates = []
+    for w in watching:
+        price = price_map.get(w.symbol)
+        if price and w.planned_entry_low and w.planned_entry_high:
+            if w.planned_entry_low <= price <= w.planned_entry_high:
+                entry_candidates.append(
+                    {
+                        "symbol": w.symbol,
+                        "current_price": price,
+                        "entry_low": w.planned_entry_low,
+                        "entry_high": w.planned_entry_high,
+                        "watchlist_id": w.id,
+                        "stop_loss": w.stop_loss,
+                        "target": w.target,
+                    }
+                )
+
+    sl_risk = []
+    target_near = []
+    for t in open_trades:
+        price = price_map.get(t.symbol)
+        if not price:
+            continue
+
+        if t.stop_loss:
+            # (price - stop_loss) / stop_loss * 100 <= 1.0
+            dist_pct = ((price - t.stop_loss) / t.stop_loss) * 100
+            if dist_pct <= 1.0:
+                sl_risk.append(
+                    {
+                        "id": t.id,
+                        "symbol": t.symbol,
+                        "current_price": price,
+                        "stop_loss": t.stop_loss,
+                        "dist_pct": round(dist_pct, 2),
+                    }
+                )
+
+        if t.target:
+            # (target - price) / price * 100 <= 1.0
+            dist_pct = ((t.target - price) / price) * 100
+            if dist_pct <= 1.0:
+                target_near.append(
+                    {
+                        "id": t.id,
+                        "symbol": t.symbol,
+                        "current_price": price,
+                        "target": t.target,
+                        "dist_pct": round(dist_pct, 2),
+                    }
+                )
+
+    return {
+        "entry_candidates": entry_candidates,
+        "sl_risk": sl_risk,
+        "target_near": target_near,
+    }
 
 
 def get_live_market_data():
@@ -212,7 +320,7 @@ def get_market_cap_category(mcap_float: float | None) -> str:
     return "smallcap"
 
 
-@router.get("/changes")
+@router.get("/screener/results")
 def get_dashboard_results(
     response: Response,
     db: Session = Depends(get_db),

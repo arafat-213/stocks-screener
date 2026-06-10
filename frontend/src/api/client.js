@@ -36,6 +36,8 @@ export const getTopStocks = () =>
   apiClient.get('/stocks/top').then((res) => res.data);
 export const getDashboardChanges = () =>
   apiClient.get('/dashboard/changes').then((res) => res.data);
+export const getActionCenter = () =>
+  apiClient.get('/dashboard/action-center').then((res) => res.data);
 export const getStatus = () =>
   apiClient.get('/pipeline/status').then((res) => res.data);
 export const searchStocks = (q) =>
