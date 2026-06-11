@@ -750,12 +750,14 @@ class TestBreadthGateTiming:
 
         signal_date = df.index[signal_idx].date()
         wait1_date = df.index[signal_idx + 1].date()
-        entry_date = df.index[signal_idx + 2].date()
+        touch_date = df.index[signal_idx + 2].date()
+        entry_date = df.index[signal_idx + 3].date()
 
         # Scenario 1: Breadth collapses on entry date
         breadth_map_fail = {
             signal_date: 80.0,
             wait1_date: 80.0,
+            touch_date: 80.0,
             entry_date: 5.0,  # Fails gate
         }
         trades_fail = simulate_trades(
@@ -769,6 +771,7 @@ class TestBreadthGateTiming:
         breadth_map_pass = {
             signal_date: 80.0,
             wait1_date: 80.0,
+            touch_date: 80.0,
             entry_date: 80.0,  # Passes gate
         }
         trades_pass = simulate_trades(

@@ -684,22 +684,45 @@ def simulate_trades(
                     break
 
                 low, close = df.iloc[wait_k]["Low"], df.iloc[wait_k]["Close"]
+                # Fix: Use the contemporary EMA 21 value, not the signal-day reference
+                # Ensure we handle NaN correctly by falling back to signal_ema21
+                current_ema21 = df.iloc[wait_k].get("EMA_21")
+                if pd.isna(current_ema21) or not current_ema21:
+                    current_ema21 = signal_ema21
 
-                # Bearish invalidation: price drops >5% below signal close (Issue 7)
-                if close < signal_close * 0.95:
+                # Bearish invalidation: price drops below threshold (linked to SL)
+                # Fix: Replaced hardcoded 5% with strategy's stop loss percentage (Issue 7)
+                invalidation_limit = 1.0 - (config.stop_loss_pct / 100.0)
+                if close < signal_close * invalidation_limit:
                     all_bars_above = False
                     break
 
-                approach = (low - signal_ema21) / signal_ema21 * 100
-                closest_approach = min(closest_approach, approach)
-                if low <= signal_ema21 * (1 + tol) and close >= signal_ema21 * 0.995:
-                    entry_idx, entry_date, entry_price = (
-                        wait_k,
-                        df.index[wait_k],
-                        float(close),
-                    )
-                    entered_at_close = True
-                    break
+                if current_ema21 and current_ema21 > 0:
+                    approach = (low - current_ema21) / current_ema21 * 100
+                    closest_approach = min(closest_approach, approach)
+                    if (
+                        low <= current_ema21 * (1 + tol)
+                        and close >= current_ema21 * 0.995
+                    ):
+                        # Fix: Entry happens on the NEXT bar Open to avoid lookahead/execution bias
+                        entry_idx = wait_k + 1
+                        if entry_idx < len(df):
+                            entry_date = df.index[entry_idx]
+
+                            # Verify breadth on the actual entry day
+                            entry_breadth = (breadth_map or {}).get(
+                                entry_date.date(), 100.0
+                            )
+                            if entry_breadth < config.min_market_breadth_pct:
+                                entry_idx = None
+                                break
+
+                            entry_price = float(df.iloc[entry_idx]["Open"])
+                            entered_at_close = False
+                            break
+                        else:
+                            entry_idx = None
+                            break
             if (
                 config.use_pullback_fallback
                 and entry_idx is None
