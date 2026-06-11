@@ -2,7 +2,6 @@ import bisect
 import datetime
 import json
 import logging
-import threading
 import traceback
 from collections import Counter
 from dataclasses import dataclass
@@ -50,39 +49,10 @@ _ohlcv_cache = OHLCVCache()
 # Stores {symbol: DataFrame} where DataFrame contains all precomputed indicators.
 # Metadata tracks the latest date in the cached DataFrame to ensure freshness.
 _TA_CACHE = {}
-_TA_METADATA = {}  # {symbol: latest_date}
+_TA_METADATA = {}  # {symbol: {"latest_date": date, "config_hash": int}}
 
 # Cache for raw OHLCV data to avoid redundant Parquet reads during sequential runs.
 _OHLCV_CACHE = {}  # {symbol: DataFrame}
-
-_SIGNAL_RUN_CACHE: dict[str, dict] = {}
-_SIGNAL_CACHE_LOCK = threading.Lock()
-_MAX_SIGNAL_CACHE_ENTRIES = 4
-
-
-def _signal_cache_key(config: BacktestConfig, n_symbols: int) -> str:
-    """Key covers only signal-generation parameters so Grid 2 sweeps share cache."""
-    return "|".join(
-        [
-            f"n={n_symbols}",
-            f"from={config.date_from}",
-            f"to={config.date_to}",
-            f"slug={config.screen_slug}",
-            f"screen_mode={config.screen_signal_mode}",
-            f"weekly={config.require_weekly_confirmation}",
-            f"monthly={config.require_monthly_confirmation}",
-            f"rsi={config.rsi_min}-{config.rsi_max}",
-            f"rsi_ob={config.rsi_overbought_threshold}",
-            f"min_adx={config.min_adx}",
-            f"consol={config.require_consolidation}",
-            f"consol_bars={config.consolidation_bars}",
-            f"tier1_adx={config.tier1_adx_threshold}",
-            f"rsi_max_screen={config.screen_driven_rsi_max}",
-            f"consol_range={config.consolidation_max_range_pct}",
-            f"pullback={config.use_pullback_entry}",
-            f"min_tier={config.min_signal_tier}",
-        ]
-    )
 
 
 ROUND_TRIP_COST_PCT = (
@@ -186,11 +156,12 @@ def _compute_all_indicators(
     if symbol and symbol in _TA_CACHE:
         latest_date = df.index[-1]
         cached_meta = _TA_METADATA.get(symbol)
+        current_config_hash = hash(str(tuple(sorted(vars(strategy.config).items()))))
+
         if (
             isinstance(cached_meta, dict)
             and cached_meta.get("latest_date") == latest_date
-            and cached_meta.get("rsi_ob") == strategy.config.rsi_overbought_threshold
-            and cached_meta.get("min_adx") == strategy.config.min_adx
+            and cached_meta.get("config_hash") == current_config_hash
         ):
             return _TA_CACHE[symbol]
 
@@ -198,11 +169,11 @@ def _compute_all_indicators(
     df = strategy.calculate_signals(df)
 
     if symbol:
+        current_config_hash = hash(str(tuple(sorted(vars(strategy.config).items()))))
         _TA_CACHE[symbol] = df
         _TA_METADATA[symbol] = {
             "latest_date": df.index[-1],
-            "rsi_ob": strategy.config.rsi_overbought_threshold,
-            "min_adx": strategy.config.min_adx,
+            "config_hash": current_config_hash,
         }
 
     return df
@@ -1372,81 +1343,41 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         run.symbols_total = len(symbols)
         db.commit()
 
-        # ── SIGNAL CACHE CHECK ────────────────────────────────────────────────
-        signal_key = _signal_cache_key(config, len(symbols))
-        with _SIGNAL_CACHE_LOCK:
-            cached_signals = _SIGNAL_RUN_CACHE.get(signal_key)
+        all_dfs, all_signals = {}, {}
+        weekly_state_maps, monthly_state_maps = {}, {}
+        symbols_processed = 0
+        stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
 
-        if cached_signals:
-            logger.info("run_backtest: signal cache HIT for key=%s", signal_key)
-            all_signals = cached_signals["all_signals"]
-            all_dfs = cached_signals["all_dfs"]
-            weekly_state_maps = cached_signals["weekly_state_maps"]
-            monthly_state_maps = cached_signals["monthly_state_maps"]
-            screen_dates_map = cached_signals["screen_dates_map"]
-            stocks_info = cached_signals["stocks_info"]
-            bench_df = cached_signals["bench_df"]
-            breadth_map = cached_signals.get("breadth_map", {})
-            if not breadth_map and all_dfs:
-                breadth_map = _calculate_breadth_map(all_dfs)
-
-            run.symbols_done = len(symbols)
-            db.commit()
-        else:
-            all_dfs, all_signals = {}, {}
-            weekly_state_maps, monthly_state_maps = {}, {}
-            symbols_processed = 0
-            stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
-
-            for sym in symbols:
-                try:
-                    df = _get_cached_ohlcv(sym, period=lookback_period)
-                    if df is None or df.empty:
-                        continue
-                    df = _compute_all_indicators(df, strategy, symbol=sym)
-                    all_dfs[sym] = df
-                    if config.require_weekly_confirmation:
-                        weekly_state_maps[sym] = build_mtf_state_map(df, "W", strategy)
-                    if config.require_monthly_confirmation:
-                        monthly_state_maps[sym] = build_mtf_state_map(df, "M", strategy)
-                    if config.screen_signal_mode and is_filtered:
-                        sigs = _build_screen_driven_signals(
-                            sym, screen_dates_map.get(sym, []), df, config, strategy
-                        )
-                    else:
-                        sigs = score_series(
-                            df, strategy=strategy, symbol=sym, config=config
-                        )
-                    all_signals[sym] = sigs
-                    symbols_processed += 1
-                    if symbols_processed % 10 == 0:
-                        run.symbols_done = symbols_processed
-                        db.commit()
-                except Exception as e:
-                    logger.error(f"Error processing {sym}: {e}")
+        for sym in symbols:
+            try:
+                df = _get_cached_ohlcv(sym, period=lookback_period)
+                if df is None or df.empty:
                     continue
+                df = _compute_all_indicators(df, strategy, symbol=sym)
+                all_dfs[sym] = df
+                if config.require_weekly_confirmation:
+                    weekly_state_maps[sym] = build_mtf_state_map(df, "W", strategy)
+                if config.require_monthly_confirmation:
+                    monthly_state_maps[sym] = build_mtf_state_map(df, "M", strategy)
+                if config.screen_signal_mode and is_filtered:
+                    sigs = _build_screen_driven_signals(
+                        sym, screen_dates_map.get(sym, []), df, config, strategy
+                    )
+                else:
+                    sigs = score_series(
+                        df, strategy=strategy, symbol=sym, config=config
+                    )
+                all_signals[sym] = sigs
+                symbols_processed += 1
+                if symbols_processed % 10 == 0:
+                    run.symbols_done = symbols_processed
+                    db.commit()
+            except Exception as e:
+                logger.error(f"Error processing {sym}: {e}")
+                continue
 
-            # Calculate breadth based on fully populated all_dfs
-            breadth_map = _calculate_breadth_map(all_dfs)
-
-            payload = dict(
-                all_signals=all_signals,
-                all_dfs=all_dfs,
-                weekly_state_maps=weekly_state_maps,
-                monthly_state_maps=monthly_state_maps,
-                screen_dates_map=screen_dates_map,
-                stocks_info=stocks_info,
-                bench_df=bench_df,
-                breadth_map=breadth_map,
-            )
-            with _SIGNAL_CACHE_LOCK:
-                if len(_SIGNAL_RUN_CACHE) >= _MAX_SIGNAL_CACHE_ENTRIES:
-                    _SIGNAL_RUN_CACHE.pop(next(iter(_SIGNAL_RUN_CACHE)))
-                _SIGNAL_RUN_CACHE[signal_key] = payload
-            logger.info(
-                "run_backtest: signal cache MISS — populated key=%s", signal_key
-            )
-        # ── END SIGNAL CACHE BLOCK ────────────────────────────────────────────
+        # Calculate breadth based on fully populated all_dfs
+        breadth_map = _calculate_breadth_map(all_dfs)
 
         regime_scaling_map = {}
         if bench_df is not None:
