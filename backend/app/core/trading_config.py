@@ -15,6 +15,9 @@ class UnifiedTradingConfig:
     trailing_stop_pct: float = 0.0
     require_volume_breakout: bool = False
     use_regime_filter: bool = True
+    max_pct_from_52w_high: float = (
+        0.0  # 0.0 = disabled. Negative values = max distance below 52w high.
+    )
     require_weekly_confirmation: bool = False
     require_monthly_confirmation: bool = False
     atr_multiplier: float = 2.0

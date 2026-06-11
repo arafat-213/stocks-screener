@@ -64,6 +64,9 @@ def analyze_trades(run_ids):
     exposure_over_time = []
     capital_exposure_over_time = []
 
+    if "position_size" not in df.columns or df["position_size"].isnull().all():
+        print("CRITICAL: position_size missing from DB. Capital audit will be inaccurate.")
+
     # OPTIMIZATION: Use a more efficient way to calculate exposure if all_dates is large
     # For now, keeping it simple as per original logic but aware it might be slow for many years.
     for d in all_dates:

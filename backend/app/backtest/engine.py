@@ -511,6 +511,17 @@ def score_series(
         mask &= (df_ind["Close"] > df_ind["EMA_200"]).fillna(False).to_numpy(dtype=bool)
     if "MOMENTUM_12M" in df_ind.columns:
         mask &= (df_ind["MOMENTUM_12M"] > 0).fillna(False).to_numpy(dtype=bool)
+
+    if config and config.max_pct_from_52w_high < 0 and "WEEK52_HIGH" in df_ind.columns:
+        week52_high = df_ind["WEEK52_HIGH"].to_numpy(dtype=float)
+        close_arr = df_ind["Close"].to_numpy(dtype=float)
+        # pct_from_high is negative when below 52w high
+        pct_from_high = np.where(
+            week52_high > 0, (close_arr / week52_high - 1) * 100, 0.0
+        )
+        mask &= pct_from_high >= config.max_pct_from_52w_high
+        mask &= ~np.isnan(pct_from_high)
+
     if config and "RSI_14" in df_ind.columns:
         rsi_arr = df_ind["RSI_14"].to_numpy(dtype=float)
         mask &= (
@@ -557,7 +568,6 @@ def simulate_trades(
     scored_dates: list[dict],
     config: BacktestConfig,
     strategy: Optional[TechnicalStrategy] = None,
-    regime_dict: dict = None,
     weekly_state_map: dict = None,
     monthly_state_map: dict = None,
     screen_dates: list[datetime.date] | None = None,
@@ -578,7 +588,6 @@ def simulate_trades(
     _sorted_screen_dates = sorted(screen_dates) if screen_dates else None
 
     # Pre-sort map keys for robust and fast lookups
-    sorted_regime_keys = sorted(regime_dict.keys()) if regime_dict else []
     sorted_scaling_keys = (
         sorted(regime_scaling_map.keys()) if regime_scaling_map else []
     )
@@ -709,11 +718,6 @@ def simulate_trades(
                 min(signal_idx + config.pullback_max_wait_bars + 1, len(df)),
             ):
                 wait_compare = df.index[wait_k].date()
-                if config.use_regime_filter and regime_dict:
-                    r_idx = bisect.bisect_right(sorted_regime_keys, wait_compare)
-                    if r_idx == 0 or not regime_dict[sorted_regime_keys[r_idx - 1]]:
-                        all_bars_above = False
-                        break
 
                 current_breadth = (breadth_map or {}).get(wait_compare, 100.0)
                 if current_breadth < config.min_market_breadth_pct:
@@ -747,10 +751,6 @@ def simulate_trades(
             entry_idx = signal_idx + 1
             if entry_idx < len(df):
                 entry_date = df.index[entry_idx]
-                if config.use_regime_filter and regime_dict:
-                    r_idx = bisect.bisect_right(sorted_regime_keys, entry_date.date())
-                    if r_idx == 0 or not regime_dict[sorted_regime_keys[r_idx - 1]]:
-                        continue
 
                 current_breadth = (breadth_map or {}).get(entry_date.date(), 100.0)
                 if current_breadth < config.min_market_breadth_pct:
@@ -1092,7 +1092,6 @@ def simulate_portfolio(
     stocks_info: dict[str, str],
     config: BacktestConfig,
     strategy: Optional[TechnicalStrategy] = None,
-    regime_dict: dict = None,
     weekly_state_maps: dict = None,
     monthly_state_maps: dict = None,
     screen_dates_map: dict = None,
@@ -1145,7 +1144,6 @@ def simulate_portfolio(
             [sig],
             config,
             strategy,
-            regime_dict,
             (weekly_state_maps or {}).get(sym),
             (monthly_state_maps or {}).get(sym),
             (screen_dates_map or {}).get(sym),
@@ -1347,23 +1345,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             lookback_period = f"{int(years_diff + 2)}y"
 
         bench_df = _get_cached_ohlcv("^NSEI", period=lookback_period)
-        regime_dict = {}
-        if bench_df is not None:
-            # We use the strategy instance to calculate indicators for benchmark too
-            # (though EMA 50/200 are standard, strategy.calculate_indicators includes EMA200)
-            bench_df = strategy.calculate_indicators(bench_df)
-            # Ensure EMA50 is present as calculate_indicators might not have it
-            if "EMA_50" not in bench_df.columns:
-                bench_df.ta.ema(length=50, append=True)
-            v = bench_df.dropna(subset=["EMA_50", "EMA_200"])
-            regime_dict = dict(
-                zip(
-                    v.index.date,
-                    (v["Close"] > v["EMA_50"])
-                    & (v["Close"] > v["EMA_200"])
-                    & (v["EMA_50"] > v["EMA_200"]),
-                )
-            )
 
         is_filtered = config.screen_slug and config.screen_slug != "all"
         screen_dates_map = {}
@@ -1405,7 +1386,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             screen_dates_map = cached_signals["screen_dates_map"]
             stocks_info = cached_signals["stocks_info"]
             bench_df = cached_signals["bench_df"]
-            regime_dict = cached_signals["regime_dict"]
             breadth_map = cached_signals.get("breadth_map", {})
             if not breadth_map and all_dfs:
                 breadth_map = _calculate_breadth_map(all_dfs)
@@ -1413,7 +1393,7 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             run.symbols_done = len(symbols)
             db.commit()
         else:
-            all_signals, all_dfs = {}, {}
+            all_dfs, all_signals = {}, {}
             weekly_state_maps, monthly_state_maps = {}, {}
             symbols_processed = 0
             stocks_info = {s.symbol: s.sector for s in db.query(Stock).all()}
@@ -1457,7 +1437,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                 screen_dates_map=screen_dates_map,
                 stocks_info=stocks_info,
                 bench_df=bench_df,
-                regime_dict=regime_dict,
                 breadth_map=breadth_map,
             )
             with _SIGNAL_CACHE_LOCK:
@@ -1482,7 +1461,6 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
             stocks_info,
             config,
             strategy,
-            regime_dict,
             weekly_state_maps=weekly_state_maps,
             monthly_state_maps=monthly_state_maps,
             screen_dates_map=screen_dates_map,
