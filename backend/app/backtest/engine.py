@@ -684,6 +684,7 @@ def simulate_trades(
         entry_idx = None
         entry_price = None
         entry_date = None
+        entered_at_close = False
 
         use_pullback = (
             config.use_pullback_entry
@@ -724,6 +725,7 @@ def simulate_trades(
                         df.index[wait_k],
                         float(close),
                     )
+                    entered_at_close = True
                     break
             if (
                 config.use_pullback_fallback
@@ -845,12 +847,6 @@ def simulate_trades(
         # Sanity Clamp: Stop must be at least 1% below entry
         stop_price = min(stop_price, entry_price * 0.99)
 
-        # Falling Knife Filter (Task 3)
-        # Prevents entering if the stock is crashing through the stop on the same day
-        entry_day_low = df.iloc[entry_idx]["Low"]
-        if entry_day_low <= stop_price:
-            continue
-
         actual_risk = max(entry_price - stop_price, entry_price * 0.01)
         target_price = (
             entry_price * (1 + config.target_pct / 100)
@@ -873,6 +869,13 @@ def simulate_trades(
                 df.iloc[k]["High"],
                 df.iloc[k]["Close"],
             )
+
+            if entered_at_close and k == entry_idx:
+                if k == final_idx:
+                    exit_price, exit_date = close, df.index[k]
+                    break
+                continue
+
             peak_price = max(peak_price, high)
 
             # Staged De-risking Logic
