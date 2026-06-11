@@ -92,6 +92,7 @@ class TechnicalStrategy:
         macd = df["MACD_12_26_9"]
         signal = df["MACDs_12_26_9"]
         rsi = df["RSI_14"]
+        pullback_threshold = self.config.pullback_ema21_threshold_pct / 100.0
 
         # 1. Fresh EMA Cross (Initiation Alpha)
         df["SIGNAL_EMA_CROSS"] = (
@@ -100,7 +101,9 @@ class TechnicalStrategy:
 
         # 2. Pullback to EMA 21 (Mean Reversion in Trend)
         df["SIGNAL_PULLBACK_21"] = (
-            (ema5 > ema13) & (price > ema21) & (abs(price - ema21) / ema21 < 0.04)
+            (ema5 > ema13)
+            & (price > ema21)
+            & (abs(price - ema21) / ema21 < pullback_threshold)
         ).fillna(False)
 
         # 3. MACD Signal
@@ -226,6 +229,8 @@ class TechnicalStrategy:
         w_trend = self.config.trend_weight
         w_ema200 = self.config.ema200_weight
 
+        pullback_threshold = self.config.pullback_ema21_threshold_pct / 100.0
+
         momentum_1m = latest.get("MOMENTUM_1M")
         momentum_3m = latest.get("MOMENTUM_3M")
         momentum_6m = latest.get("MOMENTUM_6M")
@@ -283,7 +288,7 @@ class TechnicalStrategy:
                     and pd.notna(ema13)
                     and ema5 > ema13
                     and price > ema21
-                    and abs(price - ema21) / ema21 < 0.02
+                    and abs(price - ema21) / ema21 < pullback_threshold
                 )
 
                 if fresh_ema_cross:

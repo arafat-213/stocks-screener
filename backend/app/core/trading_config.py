@@ -55,6 +55,7 @@ class UnifiedTradingConfig:
     use_pullback_entry: bool = True
     pullback_max_wait_bars: int = 8
     pullback_tolerance_pct: float = 3.0
+    pullback_ema21_threshold_pct: float = 3.0
 
     # Indicator Weights (Phase 3 & 4 Architectural Unification)
     ema_weight: float = 28.5
