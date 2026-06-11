@@ -31,7 +31,9 @@ def create_dummy_df(n=400):
 
 def test_score_series_returns_list():
     df = create_dummy_df(400)
-    config = BacktestConfig(score_threshold=0.0, use_regime_filter=False)
+    config = BacktestConfig(
+        score_threshold=0.0,
+    )
     results = score_series(df, config=config)
     assert isinstance(results, list)
     # MIN_BARS = 260, so for 400 bars we expect up to 140 results
@@ -52,7 +54,9 @@ def test_score_series_returns_list():
 def test_score_series_no_future_leak():
     # Use more bars to let indicators stabilize a bit
     df = create_dummy_df(500)
-    config = BacktestConfig(score_threshold=0.0, use_regime_filter=False)
+    config = BacktestConfig(
+        score_threshold=0.0,
+    )
     results_full = score_series(df, config=config)
     assert len(results_full) > 0
 
@@ -337,7 +341,6 @@ def test_backtest_config_new_defaults():
     assert config.score_threshold == 55.0
     assert config.trailing_stop_pct == 0.0
     assert config.require_volume_breakout is False
-    assert config.use_regime_filter is True
     assert config.atr_multiplier == 2.0
     assert config.risk_reward_ratio == 2.5
     assert config.use_atr_stops is True
@@ -461,7 +464,6 @@ def test_score_series_to_simulate_trades_produces_trades():
         score_threshold=0.0,  # accept any score
         min_adx=0,  # disable ADX gate
         require_volume_breakout=False,
-        use_regime_filter=False,
         stop_loss_pct=0.0,
         target_pct=0.0,
         holding_days=5,

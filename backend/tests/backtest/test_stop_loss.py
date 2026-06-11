@@ -53,7 +53,6 @@ def test_stop_loss_selection_logic():
     config = BacktestConfig(
         stop_loss_pct=7.0,  # 150 * 0.93 = 139.5
         use_pullback_entry=False,
-        use_regime_filter=False,
         require_consolidation=False,
         holding_days=10,
     )
@@ -108,7 +107,6 @@ def test_hard_cap_stop_loss():
     config = BacktestConfig(
         stop_loss_pct=7.0,  # hard_stop = 93.0
         use_pullback_entry=False,
-        use_regime_filter=False,
         holding_days=10,
         require_consolidation=False,
     )

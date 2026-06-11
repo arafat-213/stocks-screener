@@ -69,7 +69,6 @@ def test_portfolio_hard_capital_cap():
         stocks_info,
         config,
         strategy=TechnicalStrategy(config),
-        regime_dict={signal_date: True},
         regime_scaling_map={signal_date: 1},
     )
 

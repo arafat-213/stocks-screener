@@ -56,7 +56,6 @@ class TestAbove200EMAGate:
             stop_loss_pct=0.0,
             target_pct=0.0,
             holding_days=5,
-            use_regime_filter=False,
             require_volume_breakout=False,
             require_consolidation=False,
             use_pullback_entry=False,
@@ -105,7 +104,6 @@ class TestADXGate:
             stop_loss_pct=0.0,
             target_pct=0.0,
             holding_days=5,
-            use_regime_filter=False,
             require_volume_breakout=False,
             min_adx=min_adx,
             require_consolidation=False,
@@ -181,7 +179,6 @@ class TestSignalBarQualityFilter:
             stop_loss_pct=10.0,
             atr_multiplier=2.0,
             use_pullback_entry=False,
-            use_regime_filter=False,
             require_consolidation=False,
         )
 
@@ -258,11 +255,14 @@ class TestSignalBarQualityFilter:
             "rsi": 55.0,
             "adx": 25.0,
             "ema_signal": "bullish_cross",
-            "atr": 1.0,
+            "atr": 10.0,  # Increased to pass volatility filter
             "close": 115.0,
         }
 
-        trades = simulate_trades("TEST", "Tech", df, [signal], self._base_config())
+        config = self._base_config()
+        config.stop_loss_pct = 20.0
+
+        trades = simulate_trades("TEST", "Tech", df, [signal], config)
         assert len(trades) == 1, (
             f"Expected strong close signal to be accepted, but got {len(trades)} trades"
         )

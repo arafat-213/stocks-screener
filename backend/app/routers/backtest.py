@@ -48,7 +48,6 @@ class BacktestRequest(BaseModel):
         default=False,
         description="Requires volume > 2x SMA20 for entry. The tier gate (EMA cross/pullback) already enforces signal quality.",
     )
-    use_regime_filter: bool = True
     use_regime_position_scaling: bool = True
     regime_bull_rsi_threshold: float = Field(default=60.0, ge=50.0, le=90.0)
     regime_bear_rsi_threshold: float = Field(default=45.0, ge=30.0, le=60.0)

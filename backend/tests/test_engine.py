@@ -38,7 +38,6 @@ class TestEffectiveScoreThreshold:
         config = BacktestConfig(
             score_threshold=60.0,
             require_volume_breakout=False,
-            use_regime_filter=False,
             require_weekly_confirmation=False,
             stop_loss_pct=7.0,
             target_pct=0.0,
@@ -57,7 +56,6 @@ class TestEffectiveScoreThreshold:
         config = BacktestConfig(
             score_threshold=60.0,
             require_volume_breakout=False,
-            use_regime_filter=False,
             require_weekly_confirmation=False,
             stop_loss_pct=7.0,
             target_pct=0.0,
@@ -76,7 +74,6 @@ class TestPositionSizing:
         defaults = dict(
             score_threshold=60.0,
             require_volume_breakout=False,
-            use_regime_filter=False,
             require_weekly_confirmation=False,
             stop_loss_pct=7.0,
             target_pct=0.0,
@@ -228,7 +225,6 @@ class TestPortfolioSimulation:
         return BacktestConfig(
             score_threshold=60.0,
             require_volume_breakout=False,
-            use_regime_filter=False,
             require_weekly_confirmation=False,
             stop_loss_pct=7.0,
             target_pct=0.0,
@@ -466,7 +462,6 @@ def test_high_rsi_signal_not_entered():
     config = BacktestConfig(
         score_threshold=40.0,
         require_volume_breakout=False,
-        use_regime_filter=False,
         min_adx=0.0,
     )
     trades = simulate_trades("TEST", "Tech", df, [signal], config)
@@ -525,7 +520,6 @@ def test_atr_trailing_stop_locks_in_profit():
         risk_reward_ratio=2.5,
         use_atr_trailing_stop=True,
         require_volume_breakout=False,
-        use_regime_filter=False,
         min_adx=0.0,
         stop_loss_pct=0.0,
         target_pct=0.0,
@@ -589,7 +583,6 @@ def test_partial_exit_produces_two_trade_records():
         use_partial_exits=True,
         use_atr_trailing_stop=False,
         require_volume_breakout=False,
-        use_regime_filter=False,
         min_adx=0.0,
         stop_loss_pct=0.0,
         target_pct=0.0,
@@ -668,7 +661,6 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
         use_atr_trailing_stop=False,
         use_signal_invalidation_exit=True,
         require_volume_breakout=False,
-        use_regime_filter=False,
         min_adx=0.0,
         target_pct=20.0,
         invalidation_threshold_pct=3.0,
@@ -750,7 +742,6 @@ class TestBreadthGateTiming:
             pullback_max_wait_bars=5,
             pullback_tolerance_pct=1.0,
             min_market_breadth_pct=20.0,
-            use_regime_filter=False,
             min_signal_tier=3,
             min_adx=0.0,
             tier1_adx_threshold=0.0,
@@ -813,7 +804,6 @@ class TestBreadthGateTiming:
             score_threshold=60.0,
             use_pullback_entry=False,  # Standard entry
             min_market_breadth_pct=20.0,
-            use_regime_filter=False,
             min_signal_tier=3,
             min_adx=0.0,
             tier1_adx_threshold=0.0,

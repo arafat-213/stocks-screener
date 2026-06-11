@@ -151,7 +151,6 @@ class TestMTFGates:
             min_adx=25.0,
             require_weekly_confirmation=False,
             require_monthly_confirmation=False,
-            use_regime_filter=False,
             require_consolidation=False,
             use_pullback_entry=False,
             use_state_based_exits=False,

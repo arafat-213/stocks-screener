@@ -32,7 +32,6 @@ def test_falling_knife_entry_skipped():
         score_threshold=10.0,
         stop_loss_pct=5.0,  # Hard stop = 95
         use_pullback_entry=False,
-        use_regime_filter=False,
         require_consolidation=False,
         initial_stop_atr_multiplier=2.0,
     )
@@ -97,7 +96,6 @@ def test_zombie_stop_anchoring():
         score_threshold=10.0,
         stop_loss_pct=7.0,  # 7% hard stop
         use_pullback_entry=False,
-        use_regime_filter=False,
         require_consolidation=False,
         use_atr_trailing_stop=False,  # Disable trailing stop
         initial_stop_atr_multiplier=10.0,  # Make vol stop very deep so hard stop wins

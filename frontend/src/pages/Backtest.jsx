@@ -493,7 +493,6 @@ const Backtest = () => {
     use_partial_exits: false,
     use_signal_invalidation_exit: false,
     invalidation_threshold_pct: 3.0,
-    use_regime_filter: true,
     require_volume_breakout: false,
     require_weekly_confirmation: true,
     require_monthly_confirmation: false,
@@ -603,7 +602,6 @@ const Backtest = () => {
       use_partial_exits: false,
       use_signal_invalidation_exit: false,
       invalidation_threshold_pct: 3.0,
-      use_regime_filter: true,
       require_volume_breakout: true,
       require_weekly_confirmation: true,
       require_monthly_confirmation: false,
@@ -888,13 +886,6 @@ const Backtest = () => {
                       Strategy Filters
                     </h3>
                     <div className='space-y-4'>
-                      <Toggle
-                        label='Market Regime'
-                        checked={config.use_regime_filter}
-                        onChange={(v) =>
-                          handleConfigChange('use_regime_filter', v)
-                        }
-                      />
                       <Toggle
                         label='Volume Breakout'
                         checked={config.require_volume_breakout}
