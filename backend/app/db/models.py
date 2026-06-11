@@ -477,3 +477,13 @@ class DailyDigestLog(Base):
     created_at = Column(
         DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
     )
+
+
+class MarketBreadth(Base):
+    __tablename__ = "market_breadth"
+    date = Column(Date, primary_key=True)
+    breadth_pct = Column(Float, nullable=False)
+    stock_count = Column(Integer, nullable=False)
+    created_at = Column(
+        DateTime, default=lambda: datetime.datetime.now(datetime.timezone.utc)
+    )

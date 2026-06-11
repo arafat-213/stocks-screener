@@ -25,7 +25,7 @@ def get_latest_digest(db: Session = Depends(get_db)):
             return json.loads(digests[0].read_text())
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
-    
+
     return {
         "date": latest_digest.date.isoformat(),
         "regime_bullish": latest_digest.regime_bullish,
@@ -34,7 +34,7 @@ def get_latest_digest(db: Session = Depends(get_db)):
         "closed_positions": latest_digest.closed_positions,
         "trail_moved": latest_digest.trail_moved,
         "warnings": latest_digest.warnings,
-        "actionable": latest_digest.new_signals, # Fallback for old UI format if needed
+        "actionable": latest_digest.new_signals,  # Fallback for old UI format if needed
     }
 
 
@@ -46,12 +46,14 @@ def get_digest_by_date(date: str, db: Session = Depends(get_db)):
         reports_dir = Path(__file__).resolve().parent.parent.parent / "reports"
         path = reports_dir / f"digest_{date}.json"
         if not path.exists():
-            raise HTTPException(status_code=404, detail="Digest not found for this date")
+            raise HTTPException(
+                status_code=404, detail="Digest not found for this date"
+            )
         try:
             return json.loads(path.read_text())
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error reading digest: {e}")
-    
+
     return {
         "date": digest_log.date.isoformat(),
         "regime_bullish": digest_log.regime_bullish,
@@ -60,7 +62,7 @@ def get_digest_by_date(date: str, db: Session = Depends(get_db)):
         "closed_positions": digest_log.closed_positions,
         "trail_moved": digest_log.trail_moved,
         "warnings": digest_log.warnings,
-        "actionable": digest_log.new_signals, # Fallback for old UI format if needed
+        "actionable": digest_log.new_signals,  # Fallback for old UI format if needed
     }
 
 

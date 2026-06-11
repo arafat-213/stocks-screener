@@ -10,7 +10,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   TrendingUp as MoveUp,
-  XCircle
+  XCircle,
 } from 'lucide-react';
 import { getLatestDigest } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
@@ -143,7 +143,6 @@ const HighConvictionDigest = () => {
   return (
     <section className='flex flex-col gap-6 animate-fade-in mb-12'>
       <div className='bg-bg-secondary border-2 border-border rounded-3xl overflow-hidden shadow-md transition-all hover:shadow-xl hover:border-blue-500/30'>
-        
         {/* Header - Premium Redesign */}
         <div className='px-8 py-6 border-b-2 border-border flex flex-col md:flex-row md:justify-between md:items-center gap-4 bg-gradient-to-r from-blue-600 to-indigo-700 text-white relative overflow-hidden'>
           <div className='absolute -right-10 -top-10 w-40 h-40 bg-white/10 rounded-full blur-3xl'></div>
@@ -202,15 +201,28 @@ const HighConvictionDigest = () => {
             </h3>
             <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
               {exits.map((p, idx) => (
-                <div key={idx} className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-red-100 dark:border-red-900/30'>
+                <div
+                  key={idx}
+                  className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-red-100 dark:border-red-900/30'
+                >
                   <div className='flex justify-between items-center mb-2'>
-                    <span className='font-black text-sm'>{p.symbol.replace('.NS', '')}</span>
-                    <span className={`text-xs font-black px-2 py-0.5 rounded ${p.return_pct > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                      {p.return_pct > 0 ? '+' : ''}{p.return_pct.toFixed(2)}%
+                    <span className='font-black text-sm'>
+                      {p.symbol.replace('.NS', '')}
+                    </span>
+                    <span
+                      className={`text-xs font-black px-2 py-0.5 rounded ${p.return_pct > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}
+                    >
+                      {p.return_pct > 0 ? '+' : ''}
+                      {p.return_pct.toFixed(2)}%
                     </span>
                   </div>
                   <div className='text-xs text-text-muted space-y-1'>
-                    <div>Reason: <span className='font-bold text-text'>{p.reason.replace('_', ' ')}</span></div>
+                    <div>
+                      Reason:{' '}
+                      <span className='font-bold text-text'>
+                        {p.reason.replace('_', ' ')}
+                      </span>
+                    </div>
                     <div>Exit Price: ₹{p.exit_price?.toFixed(2)}</div>
                     <div>Days Held: {p.holding_days}</div>
                   </div>
@@ -228,15 +240,25 @@ const HighConvictionDigest = () => {
             </h3>
             <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
               {entries.map((p, idx) => (
-                <div key={idx} className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-green-100 dark:border-green-900/30'>
+                <div
+                  key={idx}
+                  className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-green-100 dark:border-green-900/30'
+                >
                   <div className='flex justify-between items-center mb-2'>
-                    <span className='font-black text-sm'>{p.symbol?.replace('.NS', '')}</span>
+                    <span className='font-black text-sm'>
+                      {p.symbol?.replace('.NS', '')}
+                    </span>
                     <span className='text-xs font-black text-green-600 bg-green-100 px-2 py-0.5 rounded uppercase'>
                       {p.entry_type?.replace('_', ' ')}
                     </span>
                   </div>
                   <div className='text-xs text-text-muted space-y-1'>
-                    <div>Filled: <span className='font-bold text-text'>₹{p.entry_price?.toFixed(2)}</span></div>
+                    <div>
+                      Filled:{' '}
+                      <span className='font-bold text-text'>
+                        ₹{p.entry_price?.toFixed(2)}
+                      </span>
+                    </div>
                     <div>Initial SL: ₹{p.stop_loss?.toFixed(2)}</div>
                     <div>Target: ₹{p.target?.toFixed(2)}</div>
                   </div>
@@ -250,33 +272,64 @@ const HighConvictionDigest = () => {
         {(trails.length > 0 || warnings.length > 0) && (
           <div className='p-6 border-b border-border'>
             <h3 className='text-sm font-black text-amber-600 dark:text-amber-500 uppercase tracking-tight mb-4 flex items-center gap-2'>
-              <AlertTriangle size={16} /> Position Updates ({trails.length + warnings.length})
+              <AlertTriangle size={16} /> Position Updates (
+              {trails.length + warnings.length})
             </h3>
             <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
               {warnings.map((w, idx) => (
-                <div key={`w-${idx}`} className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30'>
+                <div
+                  key={`w-${idx}`}
+                  className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-amber-100 dark:border-amber-900/30'
+                >
                   <div className='flex justify-between items-center mb-2'>
-                    <span className='font-black text-sm'>{w.symbol.replace('.NS', '')}</span>
-                    <span className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${w.alert_type.includes('target') ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}>
-                      {w.alert_type.includes('target') ? 'Near Target' : 'Near Stop'}
+                    <span className='font-black text-sm'>
+                      {w.symbol.replace('.NS', '')}
+                    </span>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded uppercase ${w.alert_type.includes('target') ? 'bg-blue-100 text-blue-700' : 'bg-orange-100 text-orange-700'}`}
+                    >
+                      {w.alert_type.includes('target')
+                        ? 'Near Target'
+                        : 'Near Stop'}
                     </span>
                   </div>
                   <div className='text-xs text-text-muted space-y-1'>
-                    <div>CMP: <span className='font-bold text-text'>₹{w.current_price?.toFixed(2)}</span></div>
-                    <div>Level: ₹{(w.alert_type.includes('target') ? w.target : w.stop_loss)?.toFixed(2)}</div>
+                    <div>
+                      CMP:{' '}
+                      <span className='font-bold text-text'>
+                        ₹{w.current_price?.toFixed(2)}
+                      </span>
+                    </div>
+                    <div>
+                      Level: ₹
+                      {(w.alert_type.includes('target')
+                        ? w.target
+                        : w.stop_loss
+                      )?.toFixed(2)}
+                    </div>
                   </div>
                 </div>
               ))}
               {trails.map((t, idx) => (
-                <div key={`t-${idx}`} className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30'>
+                <div
+                  key={`t-${idx}`}
+                  className='bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-blue-100 dark:border-blue-900/30'
+                >
                   <div className='flex justify-between items-center mb-2'>
-                    <span className='font-black text-sm'>{t.symbol.replace('.NS', '')}</span>
+                    <span className='font-black text-sm'>
+                      {t.symbol.replace('.NS', '')}
+                    </span>
                     <span className='text-[10px] font-black px-2 py-0.5 rounded uppercase bg-blue-100 text-blue-700 flex items-center gap-1'>
                       <MoveUp size={10} /> Trail SL
                     </span>
                   </div>
                   <div className='text-xs text-text-muted space-y-1'>
-                    <div>CMP: <span className='font-bold text-text'>₹{t.current_price?.toFixed(2)}</span></div>
+                    <div>
+                      CMP:{' '}
+                      <span className='font-bold text-text'>
+                        ₹{t.current_price?.toFixed(2)}
+                      </span>
+                    </div>
                     <div>New SL: ₹{t.new_trail_stop?.toFixed(2)}</div>
                   </div>
                 </div>
@@ -300,10 +353,11 @@ const HighConvictionDigest = () => {
               />
             </div>
           ) : (
-             <div className='text-sm text-text-muted italic py-4'>No actionable signals today.</div>
+            <div className='text-sm text-text-muted italic py-4'>
+              No actionable signals today.
+            </div>
           )}
         </div>
-
       </div>
     </section>
   );

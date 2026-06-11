@@ -1,5 +1,6 @@
-import pytest
 from unittest.mock import MagicMock, patch
+
+import pytest
 
 from app.db.models import ScreenResult
 from app.screens.materializer import materialize_all_screens
@@ -76,23 +77,26 @@ def test_materialize_all_screens_default_score():
     for res in added_objs:
         assert res.score_used == 0.0
 
+
 def test_materialize_all_screens_transaction_safety():
     """
     Verifies that the materializer behaves atomically.
     If any screen fails, the entire day's materialization (including delete) is rolled back.
     """
     db = MagicMock()
-    
+
     # Mock registry with two screens, the second one will fail
     mock_results = {
         "success-screen": [("RELIANCE.NS", 85.5)],
     }
-    
+
     def fail_fn(db, target_date=None):
         raise Exception("Boom!")
 
     mock_registry = {
-        "success-screen": {"fn": lambda db, target_date=None: mock_results["success-screen"]},
+        "success-screen": {
+            "fn": lambda db, target_date=None: mock_results["success-screen"]
+        },
         "fail-screen": {"fn": fail_fn},
     }
 

@@ -4,29 +4,31 @@ parameter_sweep.py — Staged WFO Parameter Sweep for NSE Backtesting Engine
 
 HOW TO RUN
 ----------
-This sweep runs in 4 sequential stages. You do NOT set it and forget it for all 4 stages
+This sweep runs in 5 sequential stages. You do NOT set it and forget it for all 5 stages
 in one go — you review results between stages and confirm before proceeding.
 
-STAGE 1 (Signal Quality Gate) — ~324 combos, ~3 folds each → ~972 backtest runs
+STAGE 1 (Signal Quality Gate) — ~1728 combos, ~6 folds each
     python parameter_sweep.py --stage 1
 
     After it finishes, open sweep_stage1_report.md and inspect the top configs.
     The script auto-selects the top 3 by robustness score as Stage 2 seeds.
     You can override by editing TOP_N_FANOUT_OVERRIDE at the top of this file.
 
-STAGE 2 (Entry Execution) — 36 combos × 3 Stage-1 seeds → ~108 runs
+STAGE 2 (Regime Filter) — 81 combos × 3 seeds → ~243 runs
     python parameter_sweep.py --stage 2
 
-    Reads stage1_top3.json automatically. Produces stage2_report.md.
-    Again, top 3 advance.
+    Fine-tunes market breadth and regime detection parameters.
 
-STAGE 3 (Exit Management) — 243 combos × 3 Stage-2 seeds → ~729 runs
+STAGE 3 (Entry Execution) — 36 combos × 3 seeds → ~108 runs
     python parameter_sweep.py --stage 3
 
-STAGE 4 (Position Sizing) — 81 combos × 3 Stage-3 seeds → ~243 runs
+STAGE 4 (Exit Management) — 243 combos × 3 seeds → ~729 runs
     python parameter_sweep.py --stage 4
 
-VALIDATION + STRESS TEST (runs automatically after Stage 4)
+STAGE 5 (Position Sizing) — 243 combos × 3 seeds → ~729 runs
+    python parameter_sweep.py --stage 5
+
+VALIDATION + STRESS TEST (runs automatically after Stage 5)
     The script picks the top 5 configs by robustness score, runs them through
     all 3 validation folds (OOS, strictly after all discovery data), and then
     runs a 6-year continuous stress test (2020-2026).
@@ -39,11 +41,10 @@ RESUMING AFTER A CRASH
 CONCURRENCY NOTES
     - Stage 1: MAX_CONCURRENT=4 (parallel, no cache benefit anyway since signal
       params differ per combo)
-    - Stages 2/3/4: MAX_CONCURRENT=1 (serialized to a single worker so the
-      signal cache hits for identical signal params, cutting runtime ~80%)
-    - With 4 Celery workers in Docker, each worker has isolated memory, so
-      cross-worker cache sharing is not possible. Serializing to one worker
-      is the correct strategy for Stage 2+.
+    - Stages 2-5: MAX_CONCURRENT=4 (parallelized for speed; while serialized
+      execution cuts runtime via signal cache, Stage 2+ still benefits from
+      parallelization in high-core environments).
+    - With 4 Celery workers in Docker, each worker has isolated memory.
 
 TUNING BETWEEN STAGES
     You don't need to modify this file between stages — seeds are read from
@@ -852,7 +853,7 @@ def main():
         type=int,
         required=True,
         choices=[1, 2, 3, 4, 5],
-        help="Which stage to run (1-4). Run in order.",
+        help="Which stage to run (1-5). Run in order.",
     )
     args = parser.parse_args()
     stage = args.stage
