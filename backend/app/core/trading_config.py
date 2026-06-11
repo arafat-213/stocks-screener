@@ -54,6 +54,7 @@ class UnifiedTradingConfig:
     require_consolidation: bool = True
     consolidation_bars: int = 15
     consolidation_max_range_pct: float = 12.0
+    max_signal_volatility_mult: float = 1.5  # Rejects signals if range > mult * stop
     use_pullback_entry: bool = True
     use_pullback_fallback: bool = False
     pullback_max_wait_bars: int = 8

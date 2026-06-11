@@ -506,8 +506,11 @@ def score_series(
         if bar_score.get("score", 0.0) <= 0.0:
             continue
         bar_score["is_consolidating"] = bool(is_consolidating_arr[i])
-        # Soft penalty for non-consolidating entries
-        if not bar_score["is_consolidating"]:
+        # Soft penalty for non-consolidating entries ONLY if not using the hard gate
+        # (If require_consolidation is True, simulate_trades skips the trade entirely)
+        if not bar_score["is_consolidating"] and not (
+            config and config.require_consolidation
+        ):
             bar_score["score"] *= 0.85
         scored_dates.append(bar_score)
 
@@ -614,7 +617,9 @@ def simulate_trades(
             else:
                 intended_stop_pct = atr_stop_pct or hard_stop_pct
 
-            if intended_stop_pct > 0 and sig_range_pct > (intended_stop_pct * 1.5):
+            if intended_stop_pct > 0 and sig_range_pct > (
+                intended_stop_pct * config.max_signal_volatility_mult
+            ):
                 continue
 
         if signal.get("above_200ema") in [False, None]:
