@@ -139,12 +139,24 @@ class BacktestRequest(BaseModel):
             "Signals that don't pull back within 8 bars are skipped."
         ),
     )
+    use_pullback_fallback: bool = Field(
+        default=False,
+        description=(
+            "If true, enter on the open of the last wait bar if price got within 8% of EMA21 but never touched it."
+        ),
+    )
     pullback_max_wait_bars: int = Field(default=8, ge=1, le=15)
     pullback_tolerance_pct: float = Field(
         default=3.0,  # was 2.0 — 2% is too tight for NSE mid/smallcap volatility
         ge=0.5,
         le=5.0,
         description="How close to EMA21 price must come to trigger pullback entry (%).",
+    )
+    pullback_ema21_threshold_pct: float = Field(
+        default=3.0,
+        ge=1.0,
+        le=5.0,
+        description="Distance from EMA21 to qualify as a 'bullish_pullback' signal (%).",
     )
     screen_signal_mode: bool = Field(
         default=False,

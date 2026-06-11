@@ -454,11 +454,12 @@ def score_series(
 
     df_ind = _compute_all_indicators(df, strategy, symbol=symbol)
 
-    # Precompute consolidation (vectorized)
+    # Precompute consolidation (vectorized) - EXCLUDE current bar to match live pipeline
+    # The live pipeline calls _is_consolidating(df, idx) which uses df.iloc[idx-15:idx]
     consol_window = config.consolidation_bars if config else 15
     max_range_pct = config.consolidation_max_range_pct if config else 12.0
-    rolling_max = df_ind["High"].rolling(window=consol_window).max()
-    rolling_min = df_ind["Low"].rolling(window=consol_window).min()
+    rolling_max = df_ind["High"].shift(1).rolling(window=consol_window).max()
+    rolling_min = df_ind["Low"].shift(1).rolling(window=consol_window).min()
     consol_range = (rolling_max / rolling_min - 1) * 100
     is_consolidating_arr = (consol_range <= max_range_pct).to_numpy(dtype=bool)
 
@@ -711,7 +712,12 @@ def simulate_trades(
                         float(close),
                     )
                     break
-            if entry_idx is None and all_bars_above and closest_approach <= 8.0:
+            if (
+                config.use_pullback_fallback
+                and entry_idx is None
+                and all_bars_above
+                and closest_approach <= 8.0
+            ):
                 last_k = min(signal_idx + config.pullback_max_wait_bars, len(df) - 1)
                 entry_idx, entry_date, entry_price = (
                     last_k,
@@ -794,9 +800,17 @@ def simulate_trades(
         )
 
         # Robust Stop Anchoring (Task 3)
-        # 1. Structural Stop (Pre-signal consolidation)
+        # 1. Structural Stop (Tighter of pre-signal or pre-entry consolidation)
         consol_bars = signal.get("consolidation_bars") or config.consolidation_bars
-        consol_low = df.iloc[max(0, signal_idx - consol_bars) : signal_idx]["Low"].min()
+        pre_signal_low = df.iloc[max(0, signal_idx - consol_bars) : signal_idx][
+            "Low"
+        ].min()
+        pre_entry_low = df.iloc[max(0, entry_idx - consol_bars) : entry_idx][
+            "Low"
+        ].min()
+
+        # Use the tighter (higher) of the two lows to reduce risk
+        consol_low = np.nanmax([pre_signal_low, pre_entry_low])
         struct_stop = consol_low * 0.98 if pd.notna(consol_low) else 0.0
 
         # 2. Volatility Stop

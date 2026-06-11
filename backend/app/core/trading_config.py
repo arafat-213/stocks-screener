@@ -55,6 +55,7 @@ class UnifiedTradingConfig:
     consolidation_bars: int = 15
     consolidation_max_range_pct: float = 12.0
     use_pullback_entry: bool = True
+    use_pullback_fallback: bool = False
     pullback_max_wait_bars: int = 8
     pullback_tolerance_pct: float = 3.0
     pullback_ema21_threshold_pct: float = 3.0

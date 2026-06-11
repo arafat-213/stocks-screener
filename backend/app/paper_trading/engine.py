@@ -1,6 +1,7 @@
 import datetime
 import logging
 
+import numpy as np
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
@@ -323,8 +324,21 @@ def _convert_to_open(
     matching = df.index[df.index.date <= today]
     idx = len(matching) - 1
 
-    consol_start = max(0, idx - config.consolidation_bars)
-    consol_low = float(df.iloc[consol_start:idx]["Low"].min())
+    # Calculate Stop Loss (Re-using backtest logic)
+    # Tighter of pre-signal and pre-entry consolidation
+    consol_start_entry = max(0, idx - config.consolidation_bars)
+    low_pre_entry = float(df.iloc[consol_start_entry:idx]["Low"].min())
+
+    signal_date = pos.signal_date
+    matching_signal = df.index[df.index.date <= signal_date]
+    if len(matching_signal) > 0:
+        sig_idx = len(matching_signal) - 1
+        consol_start_sig = max(0, sig_idx - config.consolidation_bars)
+        low_pre_signal = float(df.iloc[consol_start_sig:sig_idx]["Low"].min())
+        consol_low = np.nanmax([low_pre_entry, low_pre_signal])
+    else:
+        consol_low = low_pre_entry
+
     structural_stop = consol_low * 0.98 if consol_low > 0 else None
 
     atr_val = pos.atr_at_signal

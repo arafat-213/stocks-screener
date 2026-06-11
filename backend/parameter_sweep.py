@@ -187,6 +187,7 @@ GRID_1 = {
 # 2 × 3 × 3 × 2 = 36 combos
 GRID_2 = {
     "use_pullback_entry": [True, False],
+    "use_pullback_fallback": [False],
     "pullback_tolerance_pct": [2.0, 3.0, 4.0],
     "pullback_max_wait_bars": [6, 8, 10],
     "require_weekly_confirmation": [True, False],
@@ -213,7 +214,7 @@ GRID_4 = {
 }
 
 STAGE_GRIDS = {1: GRID_1, 2: GRID_2, 3: GRID_3, 4: GRID_4}
-STAGE_CONCURRENT = {1: 4, 2: 1, 3: 1, 4: 1}
+STAGE_CONCURRENT = {1: 4, 2: 4, 3: 4, 4: 4}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHECKPOINT / RESUME
