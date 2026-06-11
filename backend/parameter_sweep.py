@@ -65,6 +65,9 @@ from pathlib import Path
 import numpy as np
 import requests
 
+# Module-level lock for checkpoint file synchronization (prevents TOCTOU race)
+_checkpoint_lock = threading.RLock()
+
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
@@ -90,6 +93,12 @@ FOLD_MIN_TRADES = {
     "V3_Recent": 30,
 }
 LOW_SAMPLE_SHARPE_PENALTY = 0.7  # Multiply Sharpe by this if below min trades
+
+FOLD_WEIGHTS = {
+    "D1_Crash_Recovery": 1.2,  # High weight — tests drawdown control
+    "D2_Post_COVID_Bull": 0.8,  # Lower weight — most strategies look good here
+    "D3_Bear_Chop": 2.0,  # Double weight — survival here is rare and valuable
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FOLD DEFINITIONS
@@ -151,11 +160,14 @@ CONTINUOUS_STRESS = {"date_from": "2020-03-01", "date_to": "2026-06-09"}
 # ─────────────────────────────────────────────────────────────────────────────
 
 DEFAULTS = {
-    "symbol_limit": None,  # Full universe
+    "symbol_limit": None,
     "use_volatility_sizing": True,
     "use_state_based_exits": True,
     "starting_capital": 1000000.0,
     "position_size": 20000.0,
+    "regime_bull_rsi_threshold": 60.0,  # Fixed — only affects bull vs neutral sizing
+    "regime_adx_threshold": 20.0,  # Fixed — only affects bull vs neutral sizing
+    "use_pullback_fallback": False,  # Fixed — disabled as per Issue 2 fix
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -170,7 +182,7 @@ RSI_RANGES = [
     {"rsi_min": 45.0, "rsi_max": 75.0},  # Continuation / high-tight flag
 ]
 
-# Stage 1: Signal Quality Gate (what enters the funnel)
+# Stage 1: Signal Quality Gate
 # 4 × 3 × 2 × 3 × 2 × 4 × 3 = 1728 combos
 GRID_1 = {
     "score_threshold": [55.0, 60.0, 65.0, 70.0],
@@ -178,24 +190,31 @@ GRID_1 = {
     "require_consolidation": [True, False],
     "consolidation_max_range_pct": [10.0, 12.0, 15.0],
     "min_signal_tier": [1, 2],
-    # rsi_range is a compound key — expanded in expand_params()
-    "rsi_range": [0, 1, 2, 3],  # indices into RSI_RANGES
+    "rsi_range": [0, 1, 2, 3],
     "max_pct_from_52w_high": [0.0, -15.0, -25.0],
 }
 
-# Stage 2: Entry Execution
-# 2 × 3 × 3 × 2 = 36 combos
+# Stage 2: Regime Filter (NEW)
+# 3 × 3 × 3 × 3 = 81 combos × 3 seeds = 243 configs
 GRID_2 = {
+    "min_market_breadth_pct": [35.0, 40.0, 50.0],
+    "regime_bear_rsi_threshold": [40.0, 45.0, 50.0],
+    "regime_confirmation_days": [3, 5, 7],
+    "regime_adx_floor": [12.0, 15.0, 18.0],
+}
+
+# Stage 3: Entry Execution (was Stage 2)
+# 2 × 3 × 3 × 2 = 36 combos × 3 seeds = 108 configs
+GRID_3 = {
     "use_pullback_entry": [True, False],
-    "use_pullback_fallback": [False],
     "pullback_tolerance_pct": [2.0, 3.0, 4.0],
     "pullback_max_wait_bars": [6, 8, 10],
     "require_weekly_confirmation": [True, False],
 }
 
-# Stage 3: Exit Management
-# 3 × 3 × 3 × 3 × 3 = 243 combos
-GRID_3 = {
+# Stage 4: Exit Management (was Stage 3)
+# 3 × 3 × 3 × 3 × 3 = 243 combos × 3 seeds = 729 configs
+GRID_4 = {
     "holding_days": [30, 45, 60],
     "initial_stop_atr_multiplier": [1.5, 2.0, 2.5],
     "atr_trailing_activation": [2.0, 2.5, 3.0],
@@ -203,9 +222,9 @@ GRID_3 = {
     "risk_reward_ratio": [2.0, 2.5, 3.0],
 }
 
-# Stage 4: Position Sizing
-# 3 × 3 × 3 × 3 × 3 = 243 combos
-GRID_4 = {
+# Stage 5: Position Sizing (was Stage 4)
+# 3 × 3 × 3 × 3 × 3 = 243 combos × 3 seeds = 729 configs
+GRID_5 = {
     "risk_per_trade_pct": [2.0, 3.0, 4.0],
     "regime_bull_position_pct": [10.0, 12.0, 15.0],
     "regime_neutral_position_pct": [5.0, 7.0, 9.0],
@@ -213,24 +232,12 @@ GRID_4 = {
     "max_sector_positions": [2, 3, 5],
 }
 
-STAGE_GRIDS = {1: GRID_1, 2: GRID_2, 3: GRID_3, 4: GRID_4}
-STAGE_CONCURRENT = {1: 4, 2: 4, 3: 4, 4: 4}
+STAGE_GRIDS = {1: GRID_1, 2: GRID_2, 3: GRID_3, 4: GRID_4, 5: GRID_5}
+STAGE_CONCURRENT = {1: 4, 2: 4, 3: 4, 4: 4, 5: 4}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHECKPOINT / RESUME
 # ─────────────────────────────────────────────────────────────────────────────
-
-
-def checkpoint_file(stage):
-    return Path(f"sweep_completed_stage{stage}.json")
-
-
-def load_completed(stage):
-    p = checkpoint_file(stage)
-    try:
-        return set(p.read_text())  # won't work — fix below
-    except FileNotFoundError:
-        return set()
 
 
 def _cp_path(stage):
@@ -238,19 +245,21 @@ def _cp_path(stage):
 
 
 def load_completed_keys(stage):
-    p = _cp_path(stage)
-    if not p.exists():
-        return set()
-    try:
-        return set(json.loads(p.read_text()))
-    except Exception:
-        return set()
+    with _checkpoint_lock:
+        p = _cp_path(stage)
+        if not p.exists():
+            return set()
+        try:
+            return set(json.loads(p.read_text()))
+        except Exception:
+            return set()
 
 
 def mark_completed_key(stage, key):
-    completed = load_completed_keys(stage)
-    completed.add(key)
-    _cp_path(stage).write_text(json.dumps(list(completed), indent=2))
+    with _checkpoint_lock:
+        completed = load_completed_keys(stage)
+        completed.add(key)
+        _cp_path(stage).write_text(json.dumps(list(completed), indent=2))
 
 
 def params_to_key(params):
@@ -319,8 +328,10 @@ def run_backtest(params, date_from, date_to):
         return None
 
 
-def wait_for_run(run_id, poll_interval=5):
-    while True:
+def wait_for_run(run_id, poll_interval=5, max_wait_minutes=30):
+    start = time.time()
+    deadline = start + max_wait_minutes * 60
+    while time.time() < deadline:
         try:
             response = requests.get(f"{BASE_URL}/{run_id}", timeout=30)
             if response.status_code != 200:
@@ -340,6 +351,9 @@ def wait_for_run(run_id, poll_interval=5):
             print(f"  [{run_id[:8]}] Exception polling: {e}")
             time.sleep(poll_interval)
 
+    print(f"  [{run_id[:8]}] TIMEOUT after {max_wait_minutes}m — treating as failed")
+    return None
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # METRICS
@@ -349,25 +363,32 @@ def wait_for_run(run_id, poll_interval=5):
 def calculate_robustness(fold_metrics):
     """
     Composite robustness score:
-      (Mean Sharpe − StdDev Sharpe) × 0.7  +  Mean Calmar × 0.3
+      (Weighted Mean Sharpe − StdDev Sharpe) × 0.7  +  Weighted Mean Calmar × 0.3
 
-    Penalizes variance across regimes AND high drawdown strategies.
-    Low-sample folds already have Sharpe penalized before this is called.
+    Weights D3 (Bear/Chop) heavily to penalize strategies that blow up in regimes
+    where retail usually fails. Penalizes variance across regimes AND high drawdown.
     """
     if not fold_metrics:
         return -99.0
 
-    sharpes = [m["sharpe_ratio"] for m in fold_metrics]
-    calmars = [
-        m["total_return_pct"] / m["max_drawdown_pct"]
-        if m["max_drawdown_pct"] > 0
-        else 0.0
-        for m in fold_metrics
-    ]
+    weighted_sharpes = []
+    weighted_calmars = []
+    total_weight = 0.0
 
-    mean_sharpe = float(np.mean(sharpes))
-    std_sharpe = float(np.std(sharpes))
-    mean_calmar = float(np.mean(calmars))
+    for m in fold_metrics:
+        w = FOLD_WEIGHTS.get(m["fold"], 1.0)
+        calmar = (
+            m["total_return_pct"] / m["max_drawdown_pct"]
+            if m["max_drawdown_pct"] > 0
+            else 0.0
+        )
+        weighted_sharpes.append(m["sharpe_ratio"] * w)
+        weighted_calmars.append(calmar * w)
+        total_weight += w
+
+    mean_sharpe = sum(weighted_sharpes) / total_weight
+    mean_calmar = sum(weighted_calmars) / total_weight
+    std_sharpe = float(np.std([m["sharpe_ratio"] for m in fold_metrics]))
 
     return (mean_sharpe - std_sharpe) * 0.7 + mean_calmar * 0.3
 
@@ -513,11 +534,11 @@ def run_stage(stage, seed_configs=None):
     def _submit(params):
         key = params_to_key(params)
         result = _run_one(params, stage)
-        if result:
-            with lock:
+        with lock:
+            if result:
                 all_results.append(result)
                 results_path.write_text(json.dumps(all_results, indent=2))
-        mark_completed_key(stage, key)
+            mark_completed_key(stage, key)
         return result
 
     with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
@@ -643,7 +664,10 @@ def generate_stage_report(stage, all_results):
         f.write(f"**Total configs evaluated:** {len(all_results)}\n\n")
 
         f.write("## Robustness Score Formula\n")
-        f.write("`(Mean Sharpe − StdDev Sharpe) × 0.7 + Mean Calmar × 0.3`\n\n")
+        f.write(
+            "`(Weighted Mean Sharpe − StdDev Sharpe) × 0.7 + Weighted Mean Calmar × 0.3`\n\n"
+        )
+        f.write("Weights: D1=1.2 (Crash), D2=0.8 (Bull), D3=2.0 (Bear/Chop).\n\n")
         f.write("Higher = more consistent across regimes AND lower drawdown.\n\n")
 
         f.write("## Top 15 Configurations\n")
@@ -671,6 +695,19 @@ def generate_stage_report(stage, all_results):
         f.write("\n## Fold Breakdown for Top 5\n")
         for i, res in enumerate(ranked[:5]):
             f.write(f"\n### #{i + 1} — `{res['params']}`\n")
+
+            if stage == 2:
+                params = res["params"]
+                adx_floor = params.get("regime_adx_floor", 0.0)
+                breadth_pct = params.get("min_market_breadth_pct", 0.0)
+                if adx_floor >= 18.0 and breadth_pct >= 50.0:
+                    f.write(
+                        "> **Note on Restricted Trades:** This config combines a high `regime_adx_floor` (>= 18.0) "
+                        "with a high `min_market_breadth_pct` (>= 50.0). On the NSE, this leads to frequent bear/cash mode "
+                        "during prolonged sideways periods (e.g., 2022-2023), resulting in very low trade counts that often trigger "
+                        "the `LOW_SAMPLE_SHARPE_PENALTY` (like in D3). Verify if this strictness is intended.\n\n"
+                    )
+
             f.write(
                 "| Fold | Sharpe | Return% | DD% | DD Days | Win Rate% | "
                 "Trades | Low Sample? | Run ID |\n"
@@ -814,7 +851,7 @@ def main():
         "--stage",
         type=int,
         required=True,
-        choices=[1, 2, 3, 4],
+        choices=[1, 2, 3, 4, 5],
         help="Which stage to run (1-4). Run in order.",
     )
     args = parser.parse_args()
@@ -845,12 +882,12 @@ def main():
     top_file.write_text(json.dumps(top_configs, indent=2))
     print(f"\nTop {len(top_configs)} configs saved to {top_file}")
 
-    # ── If Stage 4, run finalization ──────────────────────────────────────────
-    if stage == 4:
+    # ── If Stage 5, run finalization ──────────────────────────────────────────
+    if stage == 5:
         run_finalization(all_results)
 
     print(f"\nStage {stage} complete.")
-    if stage < 4:
+    if stage < 5:
         print(f"\nNext step: review sweep_stage{stage}_report.md, then run:")
         print(f"  python parameter_sweep.py --stage {stage + 1}")
     else:
