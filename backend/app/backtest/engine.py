@@ -823,7 +823,10 @@ def simulate_trades(
         ].min()
 
         # Use the tighter (higher) of the two lows to reduce risk
-        consol_low = np.nanmax([pre_signal_low, pre_entry_low])
+        if pd.isna(pre_signal_low) and pd.isna(pre_entry_low):
+            consol_low = np.nan
+        else:
+            consol_low = np.nanmax([pre_signal_low, pre_entry_low])
         struct_stop = consol_low * 0.98 if pd.notna(consol_low) else 0.0
 
         # 2. Volatility Stop

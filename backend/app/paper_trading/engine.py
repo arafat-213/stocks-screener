@@ -2,6 +2,7 @@ import datetime
 import logging
 
 import numpy as np
+import pandas as pd
 from sqlalchemy import and_
 from sqlalchemy.orm import Session
 
@@ -335,7 +336,10 @@ def _convert_to_open(
         sig_idx = len(matching_signal) - 1
         consol_start_sig = max(0, sig_idx - config.consolidation_bars)
         low_pre_signal = float(df.iloc[consol_start_sig:sig_idx]["Low"].min())
-        consol_low = np.nanmax([low_pre_entry, low_pre_signal])
+        if pd.isna(low_pre_entry) and pd.isna(low_pre_signal):
+            consol_low = np.nan
+        else:
+            consol_low = np.nanmax([low_pre_entry, low_pre_signal])
     else:
         consol_low = low_pre_entry
 
