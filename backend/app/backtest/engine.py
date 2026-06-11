@@ -51,6 +51,16 @@ _ohlcv_cache = OHLCVCache()
 _TA_CACHE = {}
 _TA_METADATA = {}  # {symbol: {"latest_date": date, "config_hash": int}}
 
+# Parameters that actually affect calculate_indicators and calculate_signals.
+# Changes to other params (like holding_days or risk_per_trade_pct) should not invalidate the TA cache.
+_TA_RELEVANT_PARAMS = {
+    "rsi_min",
+    "rsi_max",
+    "min_adx",
+    "pullback_ema21_threshold_pct",
+    "rsi_overbought_threshold",
+}
+
 # Cache for raw OHLCV data to avoid redundant Parquet reads during sequential runs.
 _OHLCV_CACHE = {}  # {symbol: DataFrame}
 
@@ -153,10 +163,14 @@ def _compute_all_indicators(
     if strategy is None:
         strategy = TechnicalStrategy()
 
+    # Hash only the params that actually affect TA output
+    config_dict = vars(strategy.config)
+    ta_relevant = {k: config_dict[k] for k in _TA_RELEVANT_PARAMS if k in config_dict}
+    current_config_hash = hash(str(tuple(sorted(ta_relevant.items()))))
+
     if symbol and symbol in _TA_CACHE:
         latest_date = df.index[-1]
         cached_meta = _TA_METADATA.get(symbol)
-        current_config_hash = hash(str(tuple(sorted(vars(strategy.config).items()))))
 
         if (
             isinstance(cached_meta, dict)
@@ -169,7 +183,6 @@ def _compute_all_indicators(
     df = strategy.calculate_signals(df)
 
     if symbol:
-        current_config_hash = hash(str(tuple(sorted(vars(strategy.config).items()))))
         _TA_CACHE[symbol] = df
         _TA_METADATA[symbol] = {
             "latest_date": df.index[-1],
