@@ -1336,15 +1336,15 @@ def compute_metrics(
         # (run_backtest fetches extra lookback for indicators which we must exclude here)
         if config.date_from:
             benchmark_data = benchmark_data[
-                benchmark_data.index.date >= config.date_from
+                benchmark_data.index >= pd.Timestamp(config.date_from)
             ]
         if config.date_to:
-            benchmark_data = benchmark_data[benchmark_data.index.date <= config.date_to]
+            benchmark_data = benchmark_data[
+                benchmark_data.index <= pd.Timestamp(config.date_to)
+            ]
 
         if not benchmark_data.empty:
-            bench_dates = [
-                d.date() if hasattr(d, "date") else d for d in benchmark_data.index
-            ]
+            bench_dates = benchmark_data.index.normalize().date
             strat_by_date = {}
             for t, p in zip(trades, psizes):
                 # Map exit_date to next available benchmark date (handles weekends/holidays)
