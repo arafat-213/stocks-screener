@@ -7,7 +7,7 @@ HOW TO RUN
 This sweep runs in 5 sequential stages. You do NOT set it and forget it for all 5 stages
 in one go — you review results between stages and confirm before proceeding.
 
-STAGE 1 (Signal Quality Gate) — ~1728 combos, ~6 folds each
+STAGE 1 (Signal Quality Gate) — ~1728 combos, 3 folds each
     python parameter_sweep.py --stage 1
 
     After it finishes, open sweep_stage1_report.md and inspect the top configs.
@@ -19,7 +19,7 @@ STAGE 2 (Regime Filter) — 81 combos × 3 seeds → ~243 runs
 
     Fine-tunes market breadth and regime detection parameters.
 
-STAGE 3 (Entry Execution) — 36 combos × 3 seeds → ~108 runs
+STAGE 3 (Entry Execution) — 216 combos × 3 seeds → ~648 runs
     python parameter_sweep.py --stage 3
 
 STAGE 4 (Exit Management) — 243 combos × 3 seeds → ~729 runs
@@ -60,7 +60,7 @@ import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import numpy as np
@@ -93,6 +93,17 @@ FOLD_MIN_TRADES = {
     "V2_Late_Cycle_Correction": 25,
     "V3_Recent": 30,
 }
+
+# Fold durations in days for Calmar annualization.
+FOLD_DURATION_DAYS = {
+    "D1_Crash_Recovery": 306,
+    "D2_Post_COVID_Bull": 365,
+    "D3_Bear_Chop": 455,
+    "V1_Bull_Extension": 456,
+    "V2_Late_Cycle_Correction": 274,
+    "V3_Recent": 435,
+}
+
 LOW_SAMPLE_SHARPE_PENALTY = 0.7  # Multiply Sharpe by this if below min trades
 
 FOLD_WEIGHTS = {
@@ -156,7 +167,7 @@ VALIDATION_FOLDS = [
 
 CONTINUOUS_STRESS = {
     "date_from": "2020-03-01",
-    "date_to": datetime.date.today().isoformat(),
+    "date_to": date.today().isoformat(),
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -187,17 +198,15 @@ RSI_RANGES = [
 ]
 
 # Stage 1: Signal Quality Gate
-# 4 × 3 × 2 × 3 × 2 × 4 × 3 = 1728 combos
+# 4 × 3 × 2 × 2 × 3 × 4 × 3 = 1728 combos
 GRID_1 = {
     "score_threshold": [55.0, 60.0, 65.0, 70.0],
     "min_adx": [20.0, 25.0, 30.0],
     "require_consolidation": [True, False],
-    "consolidation_max_range_pct": [10.0, 15.0],
     "min_signal_tier": [1, 2],
     "max_signal_volatility_mult": [1.2, 1.5, 2.0],
     "rsi_range": [0, 1, 2, 3],
     "max_pct_from_52w_high": [0.0, -15.0, -25.0],
-    "consolidation_bars": [10, 15, 20],
 }
 
 # Stage 2: Regime Filter (NEW)
@@ -210,12 +219,14 @@ GRID_2 = {
 }
 
 # Stage 3: Entry Execution (was Stage 2)
-# 2 × 3 × 3 × 2 = 36 combos × 3 seeds = 108 configs
+# 2 × 3 × 3 × 2 × 2 × 3 = 216 combos × 3 seeds = 648 configs
 GRID_3 = {
     "use_pullback_entry": [True, False],
     "pullback_tolerance_pct": [2.0, 3.0, 4.0],
     "pullback_max_wait_bars": [6, 8, 10],
     "require_weekly_confirmation": [True, False],
+    "consolidation_max_range_pct": [10.0, 15.0],
+    "consolidation_bars": [10, 15, 20],
 }
 
 # Stage 4: Exit Management (was Stage 3)
@@ -383,11 +394,11 @@ def calculate_robustness(fold_metrics):
 
     for m in fold_metrics:
         w = FOLD_WEIGHTS.get(m["fold"], 1.0)
-        calmar = (
-            m["total_return_pct"] / m["max_drawdown_pct"]
-            if m["max_drawdown_pct"] > 0
-            else 0.0
-        )
+        days = FOLD_DURATION_DAYS.get(m["fold"], 365)
+        # Annualized return: (1 + r)^(365/days) - 1
+        ann_ret = ((1 + m["total_return_pct"] / 100) ** (365 / days) - 1) * 100
+        calmar = ann_ret / m["max_drawdown_pct"] if m["max_drawdown_pct"] > 0 else 0.0
+
         weighted_sharpes.append(m["sharpe_ratio"] * w)
         weighted_calmars.append(calmar * w)
         total_weight += w
@@ -803,17 +814,17 @@ def generate_master_report(finalists):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# STAGE 4 FINALIZATION (validation + stress test)
+# STAGE 5 FINALIZATION (validation + stress test)
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def run_finalization(all_stage4_results):
+def run_finalization(all_stage5_results):
     print("\n" + "=" * 70)
     print("FINALIZATION: Validation + Continuous Stress Test")
     print("=" * 70)
 
     top_candidates = sorted(
-        all_stage4_results,
+        all_stage5_results,
         key=lambda x: x["wfo_metrics"]["robustness_score"],
         reverse=True,
     )[:5]
