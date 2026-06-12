@@ -1,5 +1,6 @@
 import datetime
 import time
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
@@ -840,3 +841,48 @@ class TestBreadthGateTiming:
         )
         assert len(trades_pass) == 1, "Trade should enter if breadth remains good"
         assert trades_pass[0].entry_date == entry_date
+
+
+class TestScoringOptimization:
+    def test_adx_prefilter_skips_evaluate(self):
+        """
+        Verify that bars with ADX < min_adx are filtered out by the vectorized mask,
+        avoiding calls to _score_bar_from_precomputed.
+        """
+        df = make_trending_df(n=400)
+        # Ensure columns for vectorized pre-filter exist
+        df["EMA_5"] = 110.0
+        df["EMA_13"] = 105.0
+        df["EMA_21"] = 100.0
+        df["SIGNAL_EMA_CROSS"] = False
+        df["SIGNAL_PULLBACK_21"] = False
+        # EMA Continuation will be True (5 > 13 > 21 and Close > 21)
+
+        # Ensure ADX_14 column exists
+        df["ADX_14"] = 30.0
+        # Set ADX < 25 for some bars after the warmup period (260)
+        # We'll set it to 10.0 for bars 300 to 310
+        df.loc[df.index[300:311], "ADX_14"] = 10.0
+
+        config = BacktestConfig(min_adx=25.0)
+
+        # We want to count calls to _score_bar_from_precomputed
+        with patch("app.backtest.engine._compute_all_indicators") as mock_compute:
+            mock_compute.return_value = df
+            with patch("app.backtest.engine._score_bar_from_precomputed") as mock_score:
+                # Mocking it to return a valid-ish score so it doesn't crash
+                mock_score.return_value = {"score": 0.0, "date": df.index[0]}
+
+                score_series(df, config=config)
+
+                # Get all indices that were scored
+                called_indices = [args[1] for args, kwargs in mock_score.call_args_list]
+
+                # Check that none of the indices between 300 and 310 were called
+                for i in range(300, 311):
+                    assert i not in called_indices, (
+                        f"Index {i} should have been skipped by ADX pre-filter"
+                    )
+
+                # Verify some indices WERE called (e.g. 350) to ensure the test is actually running
+                assert 350 in called_indices, "Index 350 should have been scored"

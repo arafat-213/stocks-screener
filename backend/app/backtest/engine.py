@@ -553,6 +553,10 @@ def score_series(
         mask &= pct_from_high >= config.max_pct_from_52w_high
         mask &= ~np.isnan(pct_from_high)
 
+    if config and "ADX_14" in df_ind.columns:
+        adx_arr = df_ind["ADX_14"].to_numpy(dtype=float)
+        mask &= (adx_arr >= config.min_adx) & ~np.isnan(adx_arr)
+
     if config and "RSI_14" in df_ind.columns:
         rsi_arr = df_ind["RSI_14"].to_numpy(dtype=float)
         mask &= (
