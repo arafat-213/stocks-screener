@@ -447,10 +447,23 @@ def score_series(
     # ── VECTORIZED PRE-FILTER ─────────────────────────────────────────────────
     # Only call evaluate() on bars with an actual EMA entry signal.
     # Reduces evaluate() calls by ~97% on a typical 5-year daily series.
-    if "SIGNAL_EMA_CROSS" in df_ind.columns and "SIGNAL_PULLBACK_21" in df_ind.columns:
+    if (
+        "SIGNAL_EMA_CROSS" in df_ind.columns
+        and "SIGNAL_PULLBACK_21" in df_ind.columns
+        and "EMA_5" in df_ind.columns
+        and "EMA_13" in df_ind.columns
+        and "EMA_21" in df_ind.columns
+    ):
+        ema_continuation = (
+            (df_ind["EMA_5"] > df_ind["EMA_13"])
+            & (df_ind["EMA_13"] > df_ind["EMA_21"])
+            & (df_ind["Close"] > df_ind["EMA_21"])
+        ).fillna(False)
+
         mask = (
             df_ind["SIGNAL_EMA_CROSS"].fillna(False)
             | df_ind["SIGNAL_PULLBACK_21"].fillna(False)
+            | ema_continuation
         ).to_numpy(dtype=bool)
     else:
         mask = (
@@ -1185,12 +1198,14 @@ def compute_metrics(
             "benchmark_return_pct": 0.0,
             "avg_win_pct": 0.0,
             "avg_loss_pct": 0.0,
+            "avg_mae_pct": 0.0,
             "equity_curve": [],
             "exit_breakdown": {},
         }
 
     rets = [t.return_pct - ROUND_TRIP_COST_PCT for t in trades]
     psizes = [t.position_size_used or config.position_size for t in trades]
+    maes = [t.max_adverse_excursion_pct or 0.0 for t in trades]
     # total_deployed = sum(psizes)
     win_mask = [r > 0 for r in rets]
     win_count = sum(win_mask)
@@ -1201,6 +1216,7 @@ def compute_metrics(
 
     avg_win = sum(wins) / len(wins) if wins else 0.0
     avg_loss = sum(losses) / len(losses) if losses else 0.0
+    avg_mae = sum(maes) / len(maes) if maes else 0.0
 
     # Weighted versions for financial metrics like Profit Factor
     win_weight = sum(p for r, p in zip(rets, psizes) if r > 0)
@@ -1323,6 +1339,7 @@ def compute_metrics(
         "benchmark_return_pct": bench_ret,
         "avg_win_pct": avg_win,
         "avg_loss_pct": avg_loss,
+        "avg_mae_pct": avg_mae,
         "equity_curve": equity_curve,
         "exit_breakdown": dict(Counter(t.exit_reason for t in trades)),
     }
