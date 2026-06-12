@@ -1028,6 +1028,8 @@ def simulate_trades(
 
             if not t1_hit and t1_price and high >= t1_price:
                 t1_hit = True
+                t1_bar_open = float(df.iloc[k]["Open"])
+                t1_fill = t1_bar_open if t1_bar_open >= t1_price else t1_price
                 t1_exit_date = (
                     df.index[k].date() if hasattr(df.index[k], "date") else df.index[k]
                 )
@@ -1050,8 +1052,8 @@ def simulate_trades(
                     "target_partial",
                     signal.get("score", 0),
                     entry_price,
-                    t1_price,
-                    float((t1_price / entry_price - 1) * 100),
+                    t1_fill,
+                    float((t1_fill / entry_price - 1) * 100),
                     signal.get("rsi", 0),
                     signal.get("adx", 0),
                     signal.get("ema_signal", "neutral"),
@@ -1069,11 +1071,15 @@ def simulate_trades(
                 stop_price, pos_size = entry_price, pos_size * 0.5
 
             if high >= target_price:
-                exit_price, exit_date, exit_reason = target_price, df.index[k], "target"
+                bar_open = float(df.iloc[k]["Open"])
+                actual_fill = bar_open if bar_open >= target_price else target_price
+                exit_price, exit_date, exit_reason = actual_fill, df.index[k], "target"
                 break
             if low <= stop_price:
+                bar_open = float(df.iloc[k]["Open"])
+                actual_fill = bar_open if bar_open <= stop_price else stop_price
                 exit_price, exit_date, exit_reason = (
-                    stop_price,
+                    actual_fill,
                     df.index[k],
                     "atr_trailing_stop" if trail_floor_active else "stop_loss",
                 )
