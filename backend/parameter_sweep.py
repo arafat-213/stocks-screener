@@ -154,7 +154,10 @@ VALIDATION_FOLDS = [
     },
 ]
 
-CONTINUOUS_STRESS = {"date_from": "2020-03-01", "date_to": "2026-06-09"}
+CONTINUOUS_STRESS = {
+    "date_from": "2020-03-01",
+    "date_to": datetime.date.today().isoformat(),
+}
 
 # ─────────────────────────────────────────────────────────────────────────────
 # FIXED DEFAULTS (structural decisions — not swept)
@@ -189,11 +192,12 @@ GRID_1 = {
     "score_threshold": [55.0, 60.0, 65.0, 70.0],
     "min_adx": [20.0, 25.0, 30.0],
     "require_consolidation": [True, False],
-    "consolidation_max_range_pct": [10.0, 12.0, 15.0],
+    "consolidation_max_range_pct": [10.0, 15.0],
     "min_signal_tier": [1, 2],
     "max_signal_volatility_mult": [1.2, 1.5, 2.0],
     "rsi_range": [0, 1, 2, 3],
     "max_pct_from_52w_high": [0.0, -15.0, -25.0],
+    "consolidation_bars": [10, 15, 20],
 }
 
 # Stage 2: Regime Filter (NEW)
