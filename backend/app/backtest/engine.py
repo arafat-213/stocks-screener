@@ -572,6 +572,13 @@ def score_series(
         adx_arr = df_ind["ADX_14"].to_numpy(dtype=float)
         mask &= (adx_arr >= config.min_adx) & ~np.isnan(adx_arr)
 
+    if "MACD_12_26_9" in df_ind.columns and "MACDs_12_26_9" in df_ind.columns:
+        mask &= (
+            (df_ind["MACD_12_26_9"] > df_ind["MACDs_12_26_9"])
+            .fillna(False)
+            .to_numpy(dtype=bool)
+        )
+
     if config and "RSI_14" in df_ind.columns:
         rsi_arr = df_ind["RSI_14"].to_numpy(dtype=float)
         mask &= (
