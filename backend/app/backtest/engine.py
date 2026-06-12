@@ -627,7 +627,6 @@ def simulate_trades(
     is_screen_driven: bool = False,
     regime_scaling_map: dict = None,
     breadth_map: dict = None,
-    all_portfolio_trades: list[TradeResult] = None,
 ):
     if strategy is None:
         strategy = TechnicalStrategy(config)
@@ -1247,7 +1246,6 @@ def simulate_portfolio(
             is_screen_driven,
             regime_scaling_map=regime_scaling_map,
             breadth_map=breadth_map,
-            all_portfolio_trades=all_trades,
         )
 
         if candidate_trades:
