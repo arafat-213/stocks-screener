@@ -50,9 +50,9 @@ def get_portfolio_summary(db: Session = Depends(get_db)):
     avg_win = sum(t.return_pct for t in wins) / len(wins) if wins else 0.0
     avg_loss = sum(t.return_pct for t in losses) / len(losses) if losses else 0.0
     profit_factor = (
-        (len(wins) * avg_win) / (len(losses) * abs(avg_loss))
+        round((len(wins) * avg_win) / (len(losses) * abs(avg_loss)), 4)
         if losses and avg_loss != 0
-        else 0.0
+        else (99.0 if wins else 0.0)
     )
     avg_holding = (
         round(

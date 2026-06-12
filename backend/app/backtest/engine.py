@@ -1402,10 +1402,14 @@ def compute_metrics(
         "gross_return_pct": gross_ret,
         "total_cost_drag_pct": gross_ret - total_ret,
         "expectancy": (win_rate * avg_win) + ((1 - win_rate) * avg_loss),
-        "profit_factor": (win_weight * weighted_avg_win)
-        / (abs(loss_weight * weighted_avg_loss))
-        if loss_weight and weighted_avg_loss != 0
-        else 0.0,
+        "profit_factor": (
+            round(
+                (win_weight * weighted_avg_win) / abs(loss_weight * weighted_avg_loss),
+                4,
+            )
+            if loss_weight > 0 and weighted_avg_loss != 0
+            else (99.0 if win_weight > 0 else 0.0)
+        ),
         "max_drawdown_pct": max_dd,
         "max_drawdown_duration": max_dd_duration,
         "sharpe_ratio": sharpe,

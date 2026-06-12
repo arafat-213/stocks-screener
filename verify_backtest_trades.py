@@ -117,12 +117,12 @@ def analyze_trades(run_ids):
         df["pnl"] = df["position_size"] * (df["return_pct"] / 100)
         total_profit = df[df["pnl"] > 0]["pnl"].sum()
         total_loss = abs(df[df["pnl"] < 0]["pnl"].sum())
-        profit_factor = total_profit / total_loss if total_loss > 0 else float("inf")
+        profit_factor = round(total_profit / total_loss, 4) if total_loss > 0 else (99.0 if total_profit > 0 else 0.0)
     else:
         profit_factor = (
-            (winners["return_pct"].sum()) / abs(losers["return_pct"].sum())
+            round((winners["return_pct"].sum()) / abs(losers["return_pct"].sum()), 4)
             if not losers.empty
-            else float("inf")
+            else (99.0 if not winners.empty else 0.0)
         )
 
     print(f"\n--- Trade Summary ---")
