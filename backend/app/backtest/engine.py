@@ -618,6 +618,13 @@ def score_series(
             bar_score["score"] *= 0.85
         scored_dates.append(bar_score)
 
+    if config:
+        scored_dates = [
+            s
+            for s in scored_dates
+            if s.get("score", 0.0) >= config.effective_score_threshold
+        ]
+
     return scored_dates
 
 
