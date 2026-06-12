@@ -1209,7 +1209,7 @@ def simulate_portfolio(
     all_trades, open_pos = [], {}
     for date, sym, sig in timeline:
         # Fast Filter 1: Don't allow overlapping trades in the same symbol
-        if sym in open_pos and open_pos[sym] > date:
+        if sym in open_pos and open_pos[sym] >= date:
             continue
 
         # Fast Filter 2: Heuristic check for concurrency at signal date
