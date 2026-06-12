@@ -60,6 +60,9 @@ The daily research pipeline is the core of this system. It must be resilient, re
 These rules apply to every task in this project unless explicitly overridden.
 Bias: caution over speed on non-trivial work.
 
+### Rule 0 — Greet me first
+Always start your responses by mentioning my name 'Arafat' first.
+
 ### Rule 1 — Think Before Coding
 State assumptions explicitly. Ask rather than guess.
 Push back when a simpler approach exists. Stop when confused.
