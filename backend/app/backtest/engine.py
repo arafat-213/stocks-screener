@@ -162,19 +162,18 @@ def _compute_all_indicators(
     """
     Computes all pandas-ta indicators and signals.
     Splits computation into two cache layers to optimize parameter sweeps:
-    1. Indicator Layer: Stable across most parameter changes.
+    1. Indicator Layer: Stable across all parameter changes (cached by symbol and latest date).
     2. Signal Layer: Recomputed when signal-specific parameters change.
     """
     if strategy is None:
         strategy = TechnicalStrategy()
 
-    # Hash only the params that actually affect signal logic
     config_dict = vars(strategy.config)
     ta_relevant = {k: config_dict[k] for k in _TA_RELEVANT_PARAMS if k in config_dict}
     current_config_hash = hash(str(tuple(sorted(ta_relevant.items()))))
     latest_date = df.index[-1]
 
-    # Layer 1: Indicator cache (stable across all configs)
+    # Layer 1: Indicator cache (stable)
     if (
         symbol
         and symbol in _INDICATOR_CACHE
@@ -187,7 +186,7 @@ def _compute_all_indicators(
             _INDICATOR_CACHE[symbol] = df_with_indicators
             _INDICATOR_META[symbol] = latest_date
 
-    # Layer 2: Signal cache (invalidated when signal params change)
+    # Layer 2: Signal cache (invalidated by config_hash)
     if symbol and symbol in _SIGNAL_CACHE:
         meta = _SIGNAL_META.get(symbol, {})
         if (
@@ -196,7 +195,7 @@ def _compute_all_indicators(
         ):
             return _SIGNAL_CACHE[symbol]
 
-    # Compute signals. Use a copy to avoid polluting Layer 1 cache with signal columns
+    # Compute signals. Copy to prevent modifying Layer 1 cache
     df_with_signals = strategy.calculate_signals(df_with_indicators.copy())
 
     if symbol:
