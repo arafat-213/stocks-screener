@@ -73,17 +73,19 @@ def generate_market_breadth(lookback_days: int = 2500):
         # 3. Create a combined DataFrame of (Close > EMA200) booleans
         # This is a memory-intensive operation but fast.
         bool_map = {}
+        ema_map = {}
         for sym, df in all_data.items():
-            bool_map[sym] = (df["Close"] > df["EMA_200"]).astype(float)
+            bool_map[sym] = df["Close"] > df["EMA_200"]
+            ema_map[sym] = df["EMA_200"]
 
         combined_bools = pd.DataFrame(bool_map)
+        combined_ema = pd.DataFrame(ema_map)
 
         # Calculate row-wise mean (percentage of stocks above 200 EMA)
-        # count() ignores NaNs, so we only average stocks that had data that day
-        breadth_series = (
-            combined_bools.sum(axis=1) / combined_bools.count(axis=1)
-        ) * 100
-        count_series = combined_bools.count(axis=1)
+        # count() on EMA ensures we only count stocks that have finished warmup
+        active_stocks_count = combined_ema.count(axis=1)
+        breadth_series = (combined_bools.sum(axis=1) / active_stocks_count) * 100
+        count_series = active_stocks_count
 
         # Ensure unique dates (in case of index artifacts)
         breadth_series.index = [

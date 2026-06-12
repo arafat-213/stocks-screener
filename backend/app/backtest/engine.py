@@ -213,6 +213,61 @@ def _score_bar_from_precomputed(
     return res
 
 
+def _calculate_breadth_map(
+    all_dfs: dict[str, pd.DataFrame],
+) -> dict[datetime.date, float]:
+    """
+    Calculates the percentage of stocks above their 200 EMA per day
+    using the already loaded Parquet dataframes.
+
+    Explicitly handles EMA_200 warmup by only including symbols with
+    valid (non-NaN) EMA values in the calculation for each date.
+    """
+    if not all_dfs:
+        return {}
+
+    # Extract Close and EMA200 for all symbols
+    close_series = {}
+    ema_series = {}
+
+    for sym, df in all_dfs.items():
+        if "Close" in df.columns and "EMA_200" in df.columns:
+            # Ensure naive index for consistency
+            idx = df.index
+            if hasattr(idx, "tz") and idx.tz is not None:
+                idx = idx.tz_localize(None)
+
+            # We use the full index but only populate values where we have data
+            close_series[sym] = pd.Series(df["Close"].values, index=idx)
+            ema_series[sym] = pd.Series(df["EMA_200"].values, index=idx)
+
+    if not close_series:
+        return {}
+
+    # Create DataFrames for vectorized comparison
+    close_df = pd.DataFrame(close_series)
+    ema_df = pd.DataFrame(ema_series)
+
+    # Boolean matrix: True if Close > EMA200 (NaN results in False)
+    above_mask = close_df > ema_df
+
+    # Active stocks: Count only those where EMA_200 is NOT NaN (finished warmup)
+    active_stocks = ema_df.notna().sum(axis=1)
+
+    # Calculate breadth: (Sum of stocks above EMA / count of warmed-up stocks) * 100
+    breadth_series = pd.Series(0.0, index=close_df.index)
+    valid_mask = active_stocks > 0
+    breadth_series[valid_mask] = (
+        above_mask[valid_mask].sum(axis=1) / active_stocks[valid_mask]
+    ) * 100
+
+    # Convert to dict with date keys for engine lookup
+    return {
+        d.date() if hasattr(d, "date") else d: float(v)
+        for d, v in breadth_series[valid_mask].items()
+    }
+
+
 def _load_breadth_map(
     db: Session, date_from: datetime.date, date_to: datetime.date
 ) -> dict[datetime.date, float]:
