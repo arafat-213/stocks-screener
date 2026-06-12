@@ -15,6 +15,8 @@ router = APIRouter(prefix="/backtest", tags=["backtest"])
 
 
 class BacktestRequest(BaseModel):
+    rsi_min: float = Field(default=35.0, ge=0, le=100)
+    rsi_max: float = Field(default=65.0, ge=0, le=100)
     score_threshold: float = Field(
         default=55.0,
         ge=0,
@@ -47,6 +49,10 @@ class BacktestRequest(BaseModel):
     require_volume_breakout: bool = Field(
         default=False,
         description="Requires volume > 2x SMA20 for entry. The tier gate (EMA cross/pullback) already enforces signal quality.",
+    )
+    max_pct_from_52w_high: float = Field(
+        default=0.0,
+        description="0.0 = disabled. Negative values = max distance below 52w high.",
     )
     use_regime_position_scaling: bool = True
     regime_bull_rsi_threshold: float = Field(default=60.0, ge=50.0, le=90.0)
@@ -96,7 +102,7 @@ class BacktestRequest(BaseModel):
         description="Re-enabled. Activates at 1R gain, trails 1 ATR below peak.",
     )
     atr_trailing_multiplier: float = Field(
-        default=1.0,  # was 1.5 — tighter trail locks in more profit
+        default=1.0,
         ge=0.5,
         le=5.0,
         description=(
@@ -147,7 +153,7 @@ class BacktestRequest(BaseModel):
     )
     pullback_max_wait_bars: int = Field(default=8, ge=1, le=15)
     pullback_tolerance_pct: float = Field(
-        default=3.0,  # was 2.0 — 2% is too tight for NSE mid/smallcap volatility
+        default=3.0,
         ge=0.5,
         le=5.0,
         description="How close to EMA21 price must come to trigger pullback entry (%).",
@@ -197,6 +203,7 @@ class BacktestRequest(BaseModel):
         ),
     )
     consolidation_max_range_pct: float = Field(default=12.0, ge=5.0, le=25.0)
+    max_signal_volatility_mult: float = Field(default=1.5, ge=0.5, le=5.0)
     min_adx: float = Field(
         default=25.0,
         ge=0,
@@ -212,9 +219,10 @@ class BacktestRequest(BaseModel):
     min_signal_tier: int = Field(
         default=2,
         ge=1,
-        le=2,
+        le=3,
         description="1: Strict (Both Vol + ADX), 2: Relaxed (Either).",
     )
+
     symbol_limit: Optional[int] = Field(default=None, ge=1, le=2500)
     screen_slug: Optional[str] = Field(
         default=None, description="Slug of the screen to filter symbols by."
