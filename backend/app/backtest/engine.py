@@ -47,10 +47,13 @@ logger = logging.getLogger(__name__)
 _ohlcv_cache = OHLCVCache()
 
 # In-memory cache for cross-run optimization.
-# Stores {symbol: DataFrame} where DataFrame contains all precomputed indicators.
-# Metadata tracks the latest date in the cached DataFrame to ensure freshness.
-_TA_CACHE = {}
-_TA_METADATA = {}  # {symbol: {"latest_date": date, "config_hash": int}}
+# Layer 1: Indicator cache (stable across all configs)
+_INDICATOR_CACHE = {}  # {symbol: DataFrame}
+_INDICATOR_META = {}  # {symbol: latest_date}
+
+# Layer 2: Signal cache (invalidated when signal params change)
+_SIGNAL_CACHE = {}  # {symbol: DataFrame}
+_SIGNAL_META = {}  # {symbol: {"latest_date": date, "config_hash": int}}
 
 # Parameters that actually affect calculate_indicators and calculate_signals.
 # Changes to other params (like holding_days or risk_per_trade_pct) should not invalidate the TA cache.
@@ -157,41 +160,53 @@ def _compute_all_indicators(
     df: pd.DataFrame, strategy: Optional[TechnicalStrategy] = None, symbol: str = None
 ) -> pd.DataFrame:
     """
-    Computes all pandas-ta indicators on the full DataFrame in a single pass.
-    Called once per symbol instead of once per bar.
-    Returns a new DataFrame with all indicator columns appended.
-    Utilizes _TA_CACHE if symbol is provided and latest date matches.
+    Computes all pandas-ta indicators and signals.
+    Splits computation into two cache layers to optimize parameter sweeps:
+    1. Indicator Layer: Stable across most parameter changes.
+    2. Signal Layer: Recomputed when signal-specific parameters change.
     """
     if strategy is None:
         strategy = TechnicalStrategy()
 
-    # Hash only the params that actually affect TA output
+    # Hash only the params that actually affect signal logic
     config_dict = vars(strategy.config)
     ta_relevant = {k: config_dict[k] for k in _TA_RELEVANT_PARAMS if k in config_dict}
     current_config_hash = hash(str(tuple(sorted(ta_relevant.items()))))
+    latest_date = df.index[-1]
 
-    if symbol and symbol in _TA_CACHE:
-        latest_date = df.index[-1]
-        cached_meta = _TA_METADATA.get(symbol)
+    # Layer 1: Indicator cache (stable across all configs)
+    if (
+        symbol
+        and symbol in _INDICATOR_CACHE
+        and _INDICATOR_META.get(symbol) == latest_date
+    ):
+        df_with_indicators = _INDICATOR_CACHE[symbol]
+    else:
+        df_with_indicators = strategy.calculate_indicators(df)
+        if symbol:
+            _INDICATOR_CACHE[symbol] = df_with_indicators
+            _INDICATOR_META[symbol] = latest_date
 
+    # Layer 2: Signal cache (invalidated when signal params change)
+    if symbol and symbol in _SIGNAL_CACHE:
+        meta = _SIGNAL_META.get(symbol, {})
         if (
-            isinstance(cached_meta, dict)
-            and cached_meta.get("latest_date") == latest_date
-            and cached_meta.get("config_hash") == current_config_hash
+            meta.get("latest_date") == latest_date
+            and meta.get("config_hash") == current_config_hash
         ):
-            return _TA_CACHE[symbol]
+            return _SIGNAL_CACHE[symbol]
 
-    df = strategy.calculate_indicators(df)
-    df = strategy.calculate_signals(df)
+    # Compute signals. Use a copy to avoid polluting Layer 1 cache with signal columns
+    df_with_signals = strategy.calculate_signals(df_with_indicators.copy())
 
     if symbol:
-        _TA_CACHE[symbol] = df
-        _TA_METADATA[symbol] = {
-            "latest_date": df.index[-1],
+        _SIGNAL_CACHE[symbol] = df_with_signals
+        _SIGNAL_META[symbol] = {
+            "latest_date": latest_date,
             "config_hash": current_config_hash,
         }
 
-    return df
+    return df_with_signals
 
 
 def _score_bar_from_precomputed(
