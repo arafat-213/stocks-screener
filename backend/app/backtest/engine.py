@@ -1521,9 +1521,9 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
                     )
                 all_signals[sym] = sigs
                 symbols_processed += 1
-                if symbols_processed % 10 == 0:
+                if symbols_processed % 250 == 0:
                     run.symbols_done = symbols_processed
-                    db.commit()
+
             except Exception as e:
                 logger.error(f"Error processing {sym}: {e}")
                 continue
