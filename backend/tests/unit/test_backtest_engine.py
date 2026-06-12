@@ -523,6 +523,7 @@ def test_stop_loss_not_clipped():
         use_atr_stops=True,
         stop_loss_pct=0.0,  # Use ATR
         require_consolidation=False,
+        consolidation_bars=0,
     )
 
     trades = simulate_trades("TEST", "Sector", df, [signal], config)

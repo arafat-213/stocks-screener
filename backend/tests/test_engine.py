@@ -524,6 +524,7 @@ def test_atr_trailing_stop_locks_in_profit():
         stop_loss_pct=0.0,
         target_pct=0.0,
         require_consolidation=False,
+        consolidation_bars=0,
         use_pullback_entry=False,
     )
     trades = simulate_trades("TEST", "Tech", df, [signal], config)
@@ -665,6 +666,7 @@ def test_invalidation_exit_triggers_after_two_bearish_bars():
         target_pct=20.0,
         invalidation_threshold_pct=3.0,
         require_consolidation=False,
+        consolidation_bars=0,
         use_pullback_entry=False,
     )
     trades = simulate_trades("TEST", "Tech", df, [signal], config)

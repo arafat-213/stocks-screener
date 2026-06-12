@@ -326,7 +326,8 @@ const Portfolio = () => {
                 >
                   <option value='target'>Target Reached</option>
                   <option value='stop_loss'>Stop Loss Hit</option>
-                  <option value='atr_trailing_stop'>Trailing Stop Hit</option>
+                  <option value='atr_trailing_stop'>ATR Trail Stop</option>
+                  <option value='trailing_stop'>Percentage Trail Stop</option>
                   <option value='holding_period'>Holding Period Expired</option>
                   <option value='manual'>Manual Exit (Custom)</option>
                 </select>
@@ -549,6 +550,8 @@ const TradeHistoryTable = ({ trades }) => {
         return 'bg-bullish/10 text-bullish border-bullish/20';
       case 'atr_trailing_stop':
         return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+      case 'trailing_stop':
+        return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
       case 'holding_period':
         return 'bg-slate-100 dark:bg-slate-800 text-text-muted border-border';
       default:

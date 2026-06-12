@@ -95,6 +95,7 @@ class TradeResult:
     market_breadth_at_entry: Optional[float] = None
     consolidation_bars_at_signal: Optional[int] = None
     pullback_depth_pct: Optional[float] = None
+    max_adverse_excursion_pct: Optional[float] = 0.0
 
 
 def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]:
@@ -868,6 +869,7 @@ def simulate_trades(
         t1_hit, t1_trade = False, None
         final_idx = min(entry_idx + config.holding_days - 1, len(df) - 1)
         peak_price = entry_price
+        trough_price = entry_price
         bear_bars = 0
         inv_floor = entry_price * (1 - config.invalidation_threshold_pct / 100)
         trail_floor_active = False
@@ -886,6 +888,7 @@ def simulate_trades(
                 continue
 
             peak_price = max(peak_price, high)
+            trough_price = min(trough_price, low)
 
             # Staged De-risking Logic
             # 1. At 2.0R: Move stop to Entry (Breakeven) - Highest priority
@@ -972,6 +975,9 @@ def simulate_trades(
                     market_breadth_at_entry=breadth_at_entry,
                     consolidation_bars_at_signal=consolidation_bars,
                     pullback_depth_pct=pullback_depth,
+                    max_adverse_excursion_pct=float(
+                        max(0.0, (entry_price - trough_price) / entry_price * 100)
+                    ),
                 )
                 stop_price, pos_size = entry_price, pos_size * 0.5
 
@@ -1022,6 +1028,9 @@ def simulate_trades(
                 market_breadth_at_entry=breadth_at_entry,
                 consolidation_bars_at_signal=consolidation_bars,
                 pullback_depth_pct=pullback_depth,
+                max_adverse_excursion_pct=float(
+                    max(0.0, (entry_price - trough_price) / entry_price * 100)
+                ),
             )
         )
         last_exit_idx = date_to_idx.get(exit_date, -1)
