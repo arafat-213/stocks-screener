@@ -735,7 +735,6 @@ def simulate_trades(
         entry_idx = None
         entry_price = None
         entry_date = None
-        entered_at_close = False
 
         use_pullback = (
             config.use_pullback_entry
@@ -796,7 +795,6 @@ def simulate_trades(
                                 break
 
                             entry_price = float(df.iloc[entry_idx]["Open"])
-                            entered_at_close = False
                             break
                         else:
                             entry_idx = None
@@ -944,12 +942,6 @@ def simulate_trades(
                 df.iloc[k]["High"],
                 df.iloc[k]["Close"],
             )
-
-            if entered_at_close and k == entry_idx:
-                if k == final_idx:
-                    exit_price, exit_date = close, df.index[k]
-                    break
-                continue
 
             peak_price = max(peak_price, high)
             trough_price = min(trough_price, low)
