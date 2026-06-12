@@ -298,6 +298,15 @@ def _check_mtf_confirmation(date: datetime.date, state_map: dict) -> bool:
     return state_map[sorted_dates[idx - 1]]
 
 
+def _nan_to_default(val, default):
+    """Return default if val is None, NaN, or non-finite."""
+    try:
+        f = float(val)
+        return f if pd.notna(f) else default
+    except (TypeError, ValueError):
+        return default
+
+
 def _build_regime_map(
     bench_df: pd.DataFrame, config: BacktestConfig, breadth_map: dict = None
 ) -> dict[datetime.date, int]:
@@ -329,10 +338,10 @@ def _build_regime_map(
         row = bench_df.iloc[i]
         date = bench_df.index[i].date()
 
-        rsi = row.get("RSI_14", 50.0)
-        adx = row.get("ADX_14", 0.0)
-        close = row.get("Close", 0.0)
-        ema200 = row.get("EMA_200", 0.0)
+        rsi = _nan_to_default(row.get("RSI_14"), 50.0)
+        adx = _nan_to_default(row.get("ADX_14"), 0.0)
+        close = _nan_to_default(row.get("Close"), 0.0)
+        ema200 = _nan_to_default(row.get("EMA_200"), 0.0)
 
         breadth = (breadth_map or {}).get(date, 100.0)
 
