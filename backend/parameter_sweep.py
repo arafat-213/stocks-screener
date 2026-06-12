@@ -551,11 +551,19 @@ def run_stage(stage, seed_configs=None):
     def _submit(params):
         key = params_to_key(params)
         result = _run_one(params, stage)
+
+        snapshot = None
         with lock:
             if result:
                 all_results.append(result)
-                results_path.write_text(json.dumps(all_results, indent=2))
+                snapshot = list(all_results)
             mark_completed_key(stage, key)
+
+        if snapshot:
+            temp_path = results_path.with_suffix(".json.tmp")
+            temp_path.write_text(json.dumps(snapshot, indent=2))
+            temp_path.replace(results_path)
+
         return result
 
     with ThreadPoolExecutor(max_workers=max_concurrent) as pool:
