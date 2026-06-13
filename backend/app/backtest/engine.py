@@ -336,7 +336,7 @@ def _build_regime_map(
 
     # Ensure required indicators are present
     if "RSI_14" not in bench_df.columns:
-        return {}
+        bench_df.ta.rsi(length=14, append=True)
     if "ADX_14" not in bench_df.columns:
         bench_df.ta.adx(length=14, append=True)
     if "EMA_200" not in bench_df.columns:

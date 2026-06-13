@@ -295,6 +295,7 @@ def _serialize_run(run: models.BacktestRun, include_curve: bool) -> dict:
         },
         "error_message": run.error_message,
         "metrics": None,
+        "regime_map_json": run.regime_map_json,
     }
     if run.status == "complete":
         result["metrics"] = {
