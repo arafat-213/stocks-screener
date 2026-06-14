@@ -103,7 +103,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T1 — Scaffold + storage contract (`store.py`, package skeleton)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T0
 - **Goal:** Create the package and the canonical read/write contract everything else
   targets, so later tasks write against a fixed schema instead of inventing one.
@@ -121,11 +121,31 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 - **Deliverable:** importable package; `store.py` with schema constants + read/write fns;
   a one-paragraph "storage layout decision" docstring at the top of `store.py`.
 - **Done-criteria:**
-  - [ ] `from app.data.bhavcopy import store` works; other module stubs import cleanly.
-  - [ ] Round-trip test: write a tiny synthetic frame for each table, read it back,
+  - [x] `from app.data.bhavcopy import store` works; other module stubs import cleanly.
+  - [x] Round-trip test: write a tiny synthetic frame for each table, read it back,
         assert schema + values preserved (mock data, no network — Rule: tests don't hit live).
-  - [ ] Schema constants match `01` §4 exactly (no missing columns).
-- **Session log:** _(empty)_
+  - [x] Schema constants match `01` §4 exactly (no missing columns).
+- **Session log:**
+  - 2026-06-14: Created `backend/app/data/bhavcopy/` package. `__init__.py` documents the
+    build order; `download/parse/corporate_actions/adjust/universe/build/validate.py` are
+    docstring stubs that `raise NotImplementedError` so imports resolve. Also added
+    `backend/app/data/__init__.py`.
+  - Implemented `store.py` (thin, typed I/O only). Schema constants
+    `PRICES_ADJUSTED_SCHEMA` / `UNIVERSE_MEMBERSHIP_SCHEMA` / `ISIN_SYMBOL_MAP_SCHEMA`
+    match `01` §4 (incl. close_raw, close_tr, adj_factor, tr_factor, adv_20, traded_value,
+    series). `_conform()` enforces exact columns + dtypes and fails loud on missing/extra
+    (Rule 12).
+  - **Storage layout decision** (documented in `store.py` module docstring): partitioned
+    Parquet via pyarrow (DuckDB is not a dep; pyarrow is). `prices_adjusted/` partitioned
+    by `isin` (fast "full history for ISIN X"); `universe_membership/` partitioned by
+    derived `year` (fast "all ISINs on date D" without ~2k tiny per-day files);
+    `isin_symbol_map.parquet` single file. Writes use
+    `existing_data_behavior="delete_matching"` for idempotent rewrites (Pipeline Laws).
+  - Tests: `backend/tests/data/test_bhavcopy_store.py` — 7 passing (round-trip ×3, ISIN +
+    date-range filter pushdown, idempotent rewrite/no-dup, typed-empty reads, fail-loud on
+    missing column). Run: `PYTHONPATH=. pytest tests/data/test_bhavcopy_store.py`
+    (mirrors repo convention; conftest needs `app` on path). Offline, no network.
+  - v1 untouched (only new files added).
 
 ---
 

@@ -5,6 +5,117 @@
 
 ---
 
+## Verified findings (T0 research spike — 2026-06-14)
+
+> Resolves the "verify live" items in §2 and §9. Findings confirmed via web research,
+> not a cookie-warmed live pull (NSE blocks naive requests — see wrapper note). Where a
+> verbatim live row could not be fetched without a warmup cookie, the schema is confirmed
+> from multiple independent sources and the verbatim row is flagged for capture at T2.
+
+### ⚠ Correction to §2 — the legacy ISIN-bearing file
+
+§2 says "the full bhavcopy contains ISIN." **This is wrong for `sec_bhavdata_full`.** The
+`sec_bhavdata_full_DDMMYYYY.csv` (security-deliverable) file has **no ISIN column** — its
+columns are `SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE,
+LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, NO_OF_TRADES, DELIV_QTY,
+DELIV_PER`. Since v2 **joins on ISIN** (§2 hazard 2), the correct legacy source is the
+**old CM bhavcopy** (`cm<DD><MMM><YYYY>bhav.csv`), which *does* carry ISIN and OHLCV. We do
+**not** need delivery data for momentum, so `sec_bhavdata_full` is not used. Both chosen
+sources (legacy CM bhavcopy + UDiFF) carry ISIN, so the join key is present across the
+whole 2018→present range.
+
+### 1. Legacy source — old CM bhavcopy (pre-cutover) — HAS ISIN
+
+- **Use for trading dates `< 2024-07-08`.**
+- URL (historical archive):
+  `https://nsearchives.nseindia.com/content/historical/EQUITIES/{YYYY}/{MMM}/cm{DD}{MMM}{YYYY}bhav.csv.zip`
+  (e.g. `.../2020/JAN/cm01JAN2020bhav.csv.zip`). `{MMM}` is uppercase 3-letter month.
+- **Columns (13):** `SYMBOL, SERIES, OPEN, HIGH, LOW, CLOSE, LAST, PREVCLOSE, TOTTRDQTY,
+  TOTTRDVAL, TIMESTAMP, TOTALTRADES, ISIN`.
+- `TOTTRDVAL` is turnover in **₹ (rupees)**, not lakhs → maps directly to `traded_value`.
+- **Verbatim data row: ⚠ deferred to T2.** The historical archive needs a warmup cookie
+  (WebFetch can't set one — see wrapper note), so a verbatim `cm...bhav.csv` row must be
+  pasted into the T2 session log on first successful download. Schema above is confirmed
+  across multiple independent sources. As a *real legacy NSE EOD reference row*, here is a
+  verbatim `sec_bhavdata_full` row (the deliverable variant, header has leading spaces):
+  ```
+  SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, LAST_PRICE, CLOSE_PRICE, AVG_PRICE, TTL_TRD_QNTY, TURNOVER_LACS, NO_OF_TRADES, DELIV_QTY, DELIV_PER
+  20MICRONS, EQ, 07-Jun-2024, 173.15, 175.75, 176.60, 172.00, 175.60, 175.70, 173.99, 77482, 134.81, 3195, 50468, 65.14
+  ```
+
+### 2. New source — UDiFF CM bhavcopy (post-cutover) — HAS ISIN
+
+- **Use for trading dates `>= 2024-07-08`.**
+- URL: `https://nsearchives.nseindia.com/content/cm/BhavCopy_NSE_CM_0_0_0_{YYYYMMDD}_F_0000.csv.zip`
+- **Columns (34):** `TradDt, BizDt, Sgmt, Src, FinInstrmTp, FinInstrmId, ISIN, TckrSymb,
+  SctySrs, XpryDt, FininstrmActlXpryDt, StrkPric, OptnTp, FinInstrmNm, OpnPric, HghPric,
+  LwPric, ClsPric, LastPric, PrvsClsgPric, UndrlygPric, SttlmPric, OpnIntrst,
+  ChngInOpnIntrst, TtlTradgVol, TtlTrfVal, TtlNbOfTxsExctd, SsnId, NewBrdLotQty, Rmks,
+  Rsvd1, Rsvd2, Rsvd3, Rsvd4`.
+- Unified-schema mapping: `ISIN→isin`, `TckrSymb→symbol`, `TradDt→date`, `OpnPric/HghPric/
+  LwPric/ClsPric→o/h/l/c`, `TtlTradgVol→volume`, `TtlTrfVal→traded_value` (already ₹),
+  `SctySrs→series`. Equity rows have `FinInstrmTp=STK` and no `XpryDt`; filter F&O/others.
+- **Verbatim data row** (from `2024-07-25`, real UDiFF file):
+  ```
+  TradDt,BizDt,Sgmt,Src,FinInstrmTp,FinInstrmId,ISIN,TckrSymb,SctySrs,...,OpnPric,HghPric,LwPric,ClsPric,LastPric,PrvsClsgPric,...,TtlTradgVol,TtlTrfVal,TtlNbOfTxsExctd,...
+  2024-07-25,2024-07-25,CM,NSE,STK,368,INE373A01013,BASF,EQ,,,,,BASF INDIA LTD,5898.00,6200.00,5819.50,6172.95,6200.00,5898.35,,6173.05,,,48235,292169028.65,11470,F1,1,,,,,
+  ```
+
+### 3. Cutover date (legacy → UDiFF)
+
+- UDiFF go-live: **2024-06-21** (NSE Circular 62424, 2024-06-12). Old + new ran in
+  **parallel until 2024-07-05**; legacy **discontinued 2024-07-08**.
+- **Decision:** single deterministic cutover constant `BHAVCOPY_UDIFF_CUTOVER =
+  2024-07-08`. Dates `< cutover` → legacy CM bhavcopy; `>= cutover` → UDiFF. (Both formats
+  exist in the late-June→early-July overlap, so the boundary is safe; T2 should verify both
+  files exist for the first UDiFF trading week and fall back to the other format on 404.)
+
+### 4. Corporate-actions feed — HAS ISIN (join key present)
+
+- **Endpoint:** `https://www.nseindia.com/api/corporates-corporateActions`
+  Params: `index=equities` (also sme/debt/mf), optional `symbol`, `from_date`, `to_date`
+  (format `dd-mm-yyyy`). Returns a JSON **list** of action records. Requires a warmup cookie
+  (live fetch timed out without one — confirms NSE blocks naive requests).
+- **Fields (14):** `symbol, series, ind, faceVal, subject, exDate, recDate, bcStartDate,
+  bcEndDate, ndStartDate, comp, isin, ndEndDate, caBroadcastDate`.
+- `subject` is **free text** — split/bonus/dividend ratios are parsed from it (e.g.
+  `"Bonus 2:1"`, `"Face Value Split ... From Rs 10/- To Rs 1/-"`, `"Dividend - Rs 5 ..."`).
+  This is the T4 parsing burden; unparseable subjects → flag as unmatched (§5.3 / T4).
+- **Verbatim record** (real sample from NseIndiaApi `actions.json`):
+  ```json
+  {"symbol":"GENSOL","series":"EQ","ind":"-","faceVal":"10","subject":"Bonus 2:1",
+   "exDate":"17-Oct-2023","recDate":"17-Oct-2023","bcStartDate":"-","bcEndDate":"-",
+   "ndStartDate":"-","comp":"Gensol Engineering Limited","isin":"INE06H201014",
+   "ndEndDate":"-","caBroadcastDate":null}
+  ```
+
+### 5. Index TRI history (needed by `03`, not built here) — EXISTS
+
+- niftyindices.com publishes TRI history (e.g. Nifty200 Momentum 30 TRI). Access via the
+  niftyindices.com "Historical Data / TRI" download (POST form) or the NSE historical-index
+  portal. **Confirmed it exists; build deferred to `03`.**
+
+### 6. Wrapper vs direct HTTP — **DECISION: direct HTTP**
+
+- `jugaad-data` is maintained (last release 2025-05) **but does NOT support UDiFF** (issue
+  #79 open since 2024-06-22). Since v2 spans both formats and the bulk of recent data is
+  UDiFF, a wrapper that can't read post-2024-07 data is a non-starter.
+- We control both URLs (nsearchives) directly. NSE needs browser-like headers + a warmup
+  cookie (hit `https://www.nseindia.com` first to obtain cookies) + polite rate limiting +
+  429/5xx backoff regardless of wrapper. **Go direct HTTP** (borrow jugaad-data's
+  header/cookie approach as reference). This is the T2 contract.
+
+### 7. Policy decisions
+
+- **Series: `EQ` only** (recommended). `BE` is trade-to-trade settlement (surveillance /
+  price-band restricted, often illiquid) — including it risks selecting names in
+  surveillance/price-band jail in a monthly momentum portfolio. Retain non-EQ rows through
+  parse for audit but scope the universe to `EQ`. Revisit only if coverage proves thin.
+- **Liquidity floor default: `adv_20 >= ₹5 crore/day`** — a deliberately conservative
+  placeholder. **To be tuned in `04`, not guessed here** (§6).
+
+---
+
 ## 1. Goal
 
 Produce a **point-in-time, survivorship-free, corporate-action-adjusted** daily OHLCV
