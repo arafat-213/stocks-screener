@@ -307,7 +307,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T5 — Adjust (`adjust.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T3 (raw prices), T4 (factors)
 - **Goal:** Produce fully-adjusted OHLC + `close_tr`, retaining `close_raw` and factors.
 - **Do:**
@@ -317,12 +317,35 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
     `tr_factor`, and keep `close_raw`.
   - Recompute `traded_value` consistency (`01` §5.4).
 - **Done-criteria:**
-  - [ ] On a known split ex-date, adjusted series has **no spurious >40% single-day gap**
+  - [x] On a known split ex-date, adjusted series has **no spurious >40% single-day gap**
         (this is also asserted in T8; here verify on one name).
-  - [ ] `close_tr` cumulative return ≥ split/bonus-adjusted cumulative return on a sample
+        `TestSplitAdjustment::test_no_spurious_gap_at_ex_date` (1:5 split, gap = 0%).
+  - [x] `close_tr` cumulative return ≥ split/bonus-adjusted cumulative return on a sample
         (dividends non-negative — `01` §7.5).
-  - [ ] `close_raw`, `adj_factor`, `tr_factor` all present and reconstructable.
-- **Session log:** _(empty)_
+        `TestTotalReturn::test_tr_cumulative_return_ge_adj_cumulative_with_dividend`.
+  - [x] `close_raw`, `adj_factor`, `tr_factor` all present and reconstructable.
+        `TestReconstructability` — verifies `close_raw × adj_factor = close` and
+        `close_raw × tr_factor = close_tr` for split and bonus events.
+- **Session log:**
+  - 2026-06-14: Implemented `adjust.py`. Public API: `adjust_prices(raw_df, events)`
+    where `raw_df` is the unified raw schema from T3 and `events` is
+    `CorporateActions.events` from T4. Output schema: `ADJUSTED_INTERMEDIATE_COLUMNS`
+    — all of `PRICES_ADJUSTED_SCHEMA` except `adv_20` (T6 appends that).
+  - **Back-adjustment applied per T4 convention:** split/bonus factor multiplied onto
+    all of open/high/low/close and stored as `adj_factor`; TR factor (adds dividend
+    multiplier `1−D/close_cum`) applied to `close_tr` and stored as `tr_factor`.
+    `close_raw` retains the unadjusted traded close throughout.
+  - **traded_value fallback:** null or zero `traded_value` (defensive, should not
+    occur for EQ rows) is filled with `close_raw × volume` per `01` §5.4.
+  - **CA events indexed by ISIN at O(1)** — one `groupby` pass before the ISIN
+    loop; each ISIN's events looked up via `dict.get` (fast for large universes).
+  - Tests: `backend/tests/data/test_bhavcopy_adjust.py` — 19 passing offline.
+    Covers: no-events passthrough, 1:5 split factors + no-gap assertion, OHLC
+    uniform scaling, split/bonus round-trip, TR cumulative ≥ adj cumulative,
+    pre-ex-date TR < adj per-row, traded_value fallback (NaN + zero + valid),
+    empty input, ISIN isolation, schema completeness.
+    Run: `PYTHONPATH=. venv/bin/pytest tests/data/test_bhavcopy_adjust.py`
+  - v1 untouched (new files only). Full `tests/data/` suite: 74 passing.
 
 ---
 
