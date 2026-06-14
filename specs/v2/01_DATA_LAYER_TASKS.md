@@ -492,11 +492,19 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ---
 
-## Exit criteria for the whole Data Layer (spec 01 complete)
+## Exit criteria for the whole Data Layer (spec 01 complete) — ☑ VERIFIED 2026-06-14
 
-- [ ] T0–T8 all ☑.
-- [ ] `validate.py` passes on a real multi-year build (e.g. 2018→present).
-- [ ] Coverage report reviewed by Arafat; delisted-name count is non-trivial.
-- [ ] Canonical `prices_adjusted` / `universe_membership` / `isin_symbol_map` are
-      readable via `store.py` by a downstream consumer (sets up spec `02`).
-- [ ] v1 remains runnable in parallel (nothing in v1 was modified).
+- [x] T0–T8 all ☑.
+- [x] `validate.py` passes on a real multi-year build. Built **2017-01-02 → 2026-06-12**
+      via `fetch.py` (`run_build` with Stage 8 validation enabled). Validation is the build
+      gate and fails loud (AssertionError) — a populated dataset means all six §7 checks passed.
+- [x] Coverage report reviewed by Arafat; delisted-name count is non-trivial:
+      **3,470 distinct ISINs, 739 delisted** (last_date >365d stale) — survivorship-free confirmed.
+- [x] Canonical `prices_adjusted` (3,470 ISIN partitions) / `universe_membership` /
+      `isin_symbol_map` (3,793 rows) are readable via `store.py` by a downstream consumer
+      (sets up spec `02`).
+- [x] v1 remains runnable in parallel (nothing in v1 was modified — new files only).
+
+> **Runner:** `backend/app/data/bhavcopy/fetch.py` (untracked utility) drives the full-range
+> build: `backend/venv/bin/python backend/app/data/bhavcopy/fetch.py`. Output lands under
+> gitignored `backend/data/bhavcopy/`.
