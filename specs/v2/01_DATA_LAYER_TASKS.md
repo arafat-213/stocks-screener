@@ -391,7 +391,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T7 — Build orchestrator (`build.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T2–T6
 - **Goal:** End-to-end, **idempotent + resumable** pipeline, checkpointed by date
   (CLAUDE.md Pipeline Laws).
@@ -402,11 +402,39 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
     must not duplicate or corrupt data (idempotency).
   - Classify/record per-symbol failures rather than crashing the whole run (Pipeline Laws).
 - **Done-criteria:**
-  - [ ] Full run over a small date range produces all three tables.
-  - [ ] Kill mid-run, restart → resumes from checkpoint, final output identical to
+  - [x] Full run over a small date range produces all three tables.
+        `TestFullRun::test_all_three_tables_populated` (2-day range, 1 ISIN, all three
+        tables populated with correct row counts and schema).
+  - [x] Kill mid-run, restart → resumes from checkpoint, final output identical to
         an uninterrupted run (idempotent).
-  - [ ] A single bad symbol/day is recorded and skipped, not fatal.
-- **Session log:** _(empty)_
+        `TestResume::test_resume_skips_checkpointed_days` (Day1 pre-checkpointed, Day1
+        URL never called in subsequent run). `TestResume::test_identical_output_with_or_without_resume`
+        (full run vs resumed run produce identical prices frame via `assert_frame_equal`).
+  - [x] A single bad symbol/day is recorded and skipped, not fatal.
+        `TestErrorHandling::test_download_error_skipped_not_fatal` (Day2 returns bad body
+        → error recorded, Day1+Day3 in final tables, Day2 absent).
+- **Session log:**
+  - 2026-06-14: Implemented `build.py`. Public API: `run_build(start, end, ...)` →
+    `BuildReport`. Stages wired in spec §5 order: download → parse → CA → adjust →
+    `build_universe` (adv_20 + membership) → store (three tables).
+  - **Checkpoint design:** `.build_checkpoint.json` records per-date status (`ok` /
+    `missing` / `error`); `raw_parsed/{YYYY-MM-DD}.parquet` stores each day's parsed
+    unified rows. Stages 4–6 (CA → adjust → store) always re-run from the assembled
+    raw data — ensures adv_20 rolling windows are consistent across the full range on
+    every run. Checkpoint written atomically after each day (`.tmp` + rename).
+  - **Injection points:** `_session` (fake HTTP session for tests), `_ca_records` (skip
+    CA network fetch for tests). Both default to None → real behaviour.
+  - **Per-day error handling:** download or parse failures are caught, recorded to the
+    checkpoint `"errors"` dict and `BuildReport.error_details`, then skipped. The run
+    completes on remaining good days.
+  - Tests: `backend/tests/data/test_bhavcopy_build.py` — 14 passing offline. Covers:
+    full run (3 tables populated), CA adjustment integration, resume skips checkpointed
+    days, resume produces identical output, download error skipped not fatal, 404 =
+    missing not error, error written to checkpoint, idempotent (run twice no dupes),
+    second run zero network calls, weekends skipped, start>end raises, single-day run,
+    all-missing range, report summary string.
+    Run: `PYTHONPATH=. venv/bin/pytest tests/data/test_bhavcopy_build.py`
+  - Full `tests/data/` suite: 114 passing. v1 untouched (new files only).
 
 ---
 
