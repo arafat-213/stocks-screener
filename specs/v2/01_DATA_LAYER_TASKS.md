@@ -202,7 +202,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T3 — Parse layer (`parse.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T2 (sample files), T0 schemas
 - **Goal:** Parse legacy + UDiFF day files into the **unified raw row** schema.
 - **Do:**
@@ -212,12 +212,34 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   - Use `traded_value` from bhavcopy if present, else leave null for `adjust`/`universe`
     to derive (`close_raw × volume`) per `01` §4.
 - **Done-criteria:**
-  - [ ] Legacy and UDiFF sample files both parse to identical unified schema.
-  - [ ] Series filter verified; out-of-scope series excluded.
-  - [ ] Golden-file test: small saved legacy + UDiFF fixtures → expected unified frame
-        (fixtures committed; tests offline).
-  - [ ] ISIN present on every retained row (it is the join key downstream).
-- **Session log:** _(empty)_
+  - [x] Legacy and UDiFF sample files both parse to identical unified schema.
+  - [x] Series filter verified; out-of-scope series excluded.
+  - [x] Golden-file test: small saved legacy + UDiFF fixtures → expected unified frame
+        (fixtures committed as Python strings in the test file; tests offline).
+  - [x] ISIN present on every retained row (it is the join key downstream).
+- **Session log:**
+  - 2026-06-14: Implemented `parse.py` with two public entry points: `parse_file(path,
+    fmt)` (reads a .zip from disk) and `parse_bytes(data, fmt)` (accepts raw CSV bytes,
+    used by tests without disk I/O). Module-level constants `UNIFIED_RAW_COLUMNS` and
+    `IN_SCOPE_SERIES` define the schema contract and the EQ-only policy (T0 §7).
+  - **Legacy parser:** strips column-name whitespace, drops the unnamed trailing column
+    produced by the NSE header's trailing comma, applies series filter, drops NaN/zero-
+    price rows, parses `TIMESTAMP` in `%d-%b-%Y` format (`04-JUL-2024`). Maps
+    `TOTTRDQTY→volume`, `TOTTRDVAL→traded_value` (₹, not lakhs).
+  - **UDiFF parser:** filters `FinInstrmTp == STK` (excludes FUT/OPT/etc.), then
+    `XpryDt` empty/NaN/"-" (excludes warrants), then series filter. Handles
+    `TtlTradgVol` as float-then-int (NSE sometimes writes "48235.0"). Maps
+    `TckrSymb→symbol`, `TradDt→date` (ISO 8601), `TtlTrfVal→traded_value`.
+  - Both parsers return an empty frame with correct columns (not an error) when no
+    in-scope rows survive filtering — downstream stages handle the empty case.
+  - Tests: `backend/tests/data/test_bhavcopy_parse.py` — 23 passing offline.
+    Fixture CSV strings committed in the test file (T0-verified column layouts from
+    01_DATA_LAYER.md §1–§2). Covers: schema + dtype identity across formats, golden
+    values for BASF (verbatim UDiFF row) + RELIANCE + TCS (legacy), series filter,
+    UDiFF FinInstrmTp filter, UDiFF XpryDt filter, zero-price exclusion, ISIN presence,
+    `parse_file` from real .zip, empty-schema return, bad-format error.
+  - Run: `PYTHONPATH=. venv/bin/pytest tests/data/test_bhavcopy_parse.py`
+  - v1 untouched (new files only). T1+T2 tests still pass (41 total).
 
 ---
 
