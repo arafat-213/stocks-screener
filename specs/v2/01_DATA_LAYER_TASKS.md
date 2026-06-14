@@ -245,7 +245,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T4 — Corporate actions (`corporate_actions.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1, T0 (CA feed format)
 - **Goal:** Fetch + parse the CA feed and build, per ISIN, the cumulative back-adjustment
   factor time series (split/bonus) and the dividend series for TR.
@@ -258,11 +258,50 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   - **Prefer the explicit CA feed over price-gap inference.** If a CA has no clean feed
     entry, **flag it** (collect into an unmatched list) — do not silently infer.
 - **Done-criteria:**
-  - [ ] Parsed splits/bonuses/dividends with ex-dates for a sample window.
-  - [ ] Cumulative factor series is correct for one hand-checked split and one bonus
-        (unit test with known ratio).
-  - [ ] Unmatched/flagged CAs are surfaced (returned/logged), not dropped silently.
-- **Session log:** _(empty)_
+  - [x] Parsed splits/bonuses/dividends with ex-dates for a sample window.
+        `test_parse_classifies_and_values` (bonus 2:1, FV split 10→1, dividend Rs 5),
+        `test_dividend_ignores_face_value_mention`,
+        `test_dividend_percentage_fallback_uses_face_value`.
+  - [x] Cumulative factor series is correct for one hand-checked split and one bonus
+        (unit test with known ratio). `test_split_factor_series_hand_checked` (1:5,
+        FV 10→2 → 0.2), `test_bonus_factor_series_hand_checked` (2:1 → 1/3),
+        `test_multiple_events_compound`.
+  - [x] Unmatched/flagged CAs are surfaced (returned/logged), not dropped silently.
+        `test_unmatched_surfaced_not_dropped` (no-keyword / no-amount / missing-ISIN /
+        bad-ex-date all land in `CorporateActions.unmatched` with a reason; also logged).
+- **Session log:**
+  - 2026-06-14: Implemented `corporate_actions.py`. Public API:
+    `fetch_corporate_actions(start, end)` (raw JSON from the NSE CA feed, reusing
+    `download.build_session` for the warmup cookie + browser headers, 429/5xx
+    backoff with injectable `sleep`; tolerates a `{"data":[...]}` envelope),
+    `parse_corporate_actions(records) -> CorporateActions(events, unmatched)`, and
+    the two factor builders `split_bonus_factor_series(events, dates)` /
+    `tr_factor_series(events, dates, close)`. Constants `SPLIT/BONUS/DIVIDEND`,
+    `CA_EVENT_COLUMNS`, `CA_UNMATCHED_COLUMNS`, `CA_API_URL`, `CA_DATE_FMT`.
+  - **Free-text subject parsing** (the T4 burden, `01` §4): classify by keyword
+    with priority handling — when "dividend" is present it is a dividend *unless* an
+    explicit split/bonus keyword also appears (dividend subjects routinely say
+    "X% on face value", so a bare "face value" only implies a split when a concrete
+    `Rs X → Rs Y` change is present). Split → price multiplier `new/old` from the
+    face-value change (ratio-form `a:b` fallback); bonus `a:b` → `b/(a+b)`; dividend
+    → first ₹ amount after each "dividend" token (avoids the trailing "of Rs 10
+    face value"), summed, with a `pct% × faceVal` fallback for legacy records.
+  - **Factor convention** (back-adjustment, latest prices = reference basis):
+    cumulative factor at date `d` = product of per-event multipliers whose ex-date
+    `> d` (vectorised via suffix-product + `searchsorted`). `adj_factor`
+    (split+bonus) feeds signal prices; `tr_factor` (split+bonus+dividend) feeds
+    `close_tr`, dividend multiplier `1 − D/close_cum` using the last close strictly
+    before ex-date. T5 supplies the price/close context; this module only builds
+    events + factors.
+  - **Fail-loud (Rule 12):** anything unclassifiable / unparseable / missing the
+    ISIN or ex-date join keys is collected into `unmatched` (with a `reason`) and a
+    summary count is logged — never silently dropped, never gap-inferred (`01` §5.3).
+  - Tests: `backend/tests/data/test_bhavcopy_corporate_actions.py` — 14 passing,
+    offline (record dicts + fake session, injected sleep). Includes the verbatim
+    GENSOL "Bonus 2:1" record from `01` §4 and a TR ≤ split/bonus monotonicity check
+    that sets up T8 §7.5. Run:
+    `PYTHONPATH=. pytest tests/data/test_bhavcopy_corporate_actions.py`.
+  - v1 untouched (new files only). Full `tests/data/` suite: 55 passing. ruff clean.
 
 ---
 
