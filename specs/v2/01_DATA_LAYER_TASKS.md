@@ -80,11 +80,11 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   implementation"), containing the confirmed URLs, both schemas (column lists),
   cutover date, wrapper decision, and the two policy decisions.
 - **Done-criteria:**
-  - [~] One real sample row of each of: legacy bhavcopy, UDiFF bhavcopy, CA feed —
-        pasted into findings with column names. **UDiFF + CA: real verbatim rows pasted.
-        Legacy: schema confirmed (multi-source) + a real `sec_bhavdata_full` row pasted;
-        verbatim `cm...bhav.csv` row DEFERRED to T2 (needs warmup cookie). Fail-loud note
-        in findings.**
+  - [x] One real sample row of each of: legacy bhavcopy, UDiFF bhavcopy, CA feed —
+        pasted into findings with column names. **UDiFF + CA: real verbatim rows pasted
+        at T0. Legacy verbatim `cm...bhav.csv` row RESOLVED at T2 (live pull, warmup
+        cookie worked) — captured in the T2 session log; both formats confirmed across
+        the 2024-07-08 cutover boundary.**
   - [x] Cutover date stated as an explicit date with a source (2024-07-08; Circular 62424).
   - [x] Wrapper-vs-HTTP decision recorded with rationale (direct HTTP; jugaad-data lacks
         UDiFF support, issue #79).
@@ -151,7 +151,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T2 — Download layer (`download.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1, T0 findings
 - **Goal:** Fetch raw daily bhavcopy files (both formats by date) into a disk cache,
   idempotently and politely.
@@ -163,12 +163,40 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   - Reuse `backend/app/pipeline/ohlcv_cache.py` (`OHLCVCache`) caching ideas where it fits
     (`00` §5), but the source is bhavcopy files, not yfinance.
 - **Done-criteria:**
-  - [ ] Given a date range, downloads missing files and skips present ones (verify by
+  - [x] Given a date range, downloads missing files and skips present ones (verify by
         running twice — second run does zero network calls).
-  - [ ] Picks correct format for a pre-cutover date and a post-cutover date.
-  - [ ] Retry/backoff path unit-tested with a mocked 429 (no live calls in tests).
-  - [ ] Non-trading days / missing files handled without crashing the range.
-- **Session log:** _(empty)_
+        `test_downloads_then_skips_present_files`.
+  - [x] Picks correct format for a pre-cutover date and a post-cutover date.
+        `test_format_selection_by_cutover`, `test_picks_correct_format_per_date`.
+  - [x] Retry/backoff path unit-tested with a mocked 429 (no live calls in tests).
+        `test_retry_then_success_on_429` (asserts exponential backoff sleeps),
+        `test_retry_exhausted_is_error_not_crash`.
+  - [x] Non-trading days / missing files handled without crashing the range.
+        `test_404_both_formats_is_missing`, `test_missing_day_does_not_break_range`,
+        `test_weekends_are_skipped`.
+- **Session log:**
+  - 2026-06-14: Implemented `download.py` (direct HTTP, per T0 §6). Public API:
+    `download_range(start, end)` / `download_day(d)`, plus `bhavcopy_format`,
+    `source_url`, `build_session`, `DownloadResult`. Format chosen by
+    `BHAVCOPY_UDIFF_CUTOVER = 2024-07-08`; on a 404 it falls back to the other
+    format (T0 overlap note). Caches raw `.zip` (unzip is T3) under
+    `data/raw/bhavcopy/` keyed by NSE source basename; present non-empty file →
+    `cached` (zero network). Polite: configurable rate limit, browser headers,
+    warmup-cookie GET to nseindia.com. Explicit 429/5xx + connection
+    retry/backoff loop with injectable `sleep` (testable). 200-with-non-ZIP-body
+    (NSE block page) is treated as error, not cached. Weekends skipped.
+  - **T0 deferred item RESOLVED (live pull, warmup cookie worked):** verbatim
+    legacy `cm...bhav.csv` header captured and both formats confirmed to exist
+    across the cutover boundary:
+    - `cm04JUL2024bhav.csv` (legacy, pre-cutover) header — confirms 13 cols + ISIN:
+      `SYMBOL,SERIES,OPEN,HIGH,LOW,CLOSE,LAST,PREVCLOSE,TOTTRDQTY,TOTTRDVAL,TIMESTAMP,TOTALTRADES,ISIN,`
+      sample row: `0MOFSL27,N3,980,980,980,980,980,991,100,98000,04-JUL-2024,1,INE338I07099,`
+    - `BhavCopy_NSE_CM_0_0_0_20240708_F_0000.csv` (UDiFF, cutover day) exists;
+      sample EQ row: `2024-07-08,...,STK,...,INE488B01017,TASTYBITE,EQ,...,10400.10,10534.50,10191.00,10273.20,...`
+  - Tests: `backend/tests/data/test_bhavcopy_download.py` — 11 passing, offline
+    (fake session, injected sleep, tmp root). Run:
+    `PYTHONPATH=. pytest tests/data/test_bhavcopy_download.py`. Downloaded data
+    lands under gitignored `backend/data/`. v1 untouched (new files only).
 
 ---
 
