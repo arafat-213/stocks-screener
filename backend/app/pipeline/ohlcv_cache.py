@@ -40,6 +40,7 @@ class OHLCVCache:
         append_ns: bool = True,
         period: str = "3y",
         force_refresh: bool = False,
+        allow_fetch: bool = True,
     ) -> pd.DataFrame | None:
         path = self._file_path(symbol)
 
@@ -54,7 +55,9 @@ class OHLCVCache:
                     actual_start = actual_start.tz_convert(None)
 
                 # If requested start is significantly older than actual start, backfill
-                if requested_start < actual_start - pd.Timedelta(days=7):
+                if allow_fetch and requested_start < actual_start - pd.Timedelta(
+                    days=7
+                ):
                     cached_df = self._backfill_fetch(
                         symbol, cached_df, requested_start, append_ns, path
                     )
@@ -63,6 +66,11 @@ class OHLCVCache:
                 if self._is_fresh(cached_df):
                     logger.info("ohlcv_cache: HIT %s (rows=%d)", symbol, len(cached_df))
                     return cached_df
+
+                if not allow_fetch:
+                    logger.info("ohlcv_cache: HIT (STALE) %s - returning as is", symbol)
+                    return cached_df
+
                 # Stale — incremental fetch handled in Task 4
                 return self._incremental_fetch(symbol, cached_df, append_ns, path)
             except Exception as exc:
@@ -70,6 +78,10 @@ class OHLCVCache:
                     "ohlcv_cache: corrupt file for %s (%s), re-fetching", symbol, exc
                 )
                 path.unlink(missing_ok=True)
+
+        if not allow_fetch:
+            logger.info("ohlcv_cache: MISS %s - fetch disabled", symbol)
+            return None
 
         # Cold miss or force_refresh
         return self._full_fetch(symbol, append_ns, period, path)

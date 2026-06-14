@@ -23,7 +23,7 @@ class UnifiedTradingConfig:
     initial_stop_atr_multiplier: float = 2.0
     risk_reward_ratio: float = 2.5
     use_atr_stops: bool = True
-    min_adx: float = 25.0
+    min_adx: float = 20.0  # No changes in sweep stage 1
     tier1_adx_threshold: float = (
         30.0  # ADX required for Tier 1 classification (independent of min_adx)
     )

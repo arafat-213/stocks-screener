@@ -55,6 +55,12 @@ _INDICATOR_META = {}  # {symbol: latest_date}
 _SIGNAL_CACHE = {}  # {symbol: DataFrame}
 _SIGNAL_META = {}  # {symbol: {"latest_date": date, "config_hash": int}}
 
+# Layer 3: MTF State Cache (Weekly/Monthly confirmation maps)
+_MTF_CACHE = {}  # {(symbol, timeframe, config_hash, latest_date): dict}
+
+# Layer 4: Regime Cache (Benchmark map)
+_REGIME_CACHE = {}  # {(config_hash, latest_date, date_from, date_to): dict}
+
 # Parameters that actually affect calculate_indicators and calculate_signals.
 # Changes to other params (like holding_days or risk_per_trade_pct) should not invalidate the TA cache.
 _TA_RELEVANT_PARAMS = {
@@ -63,6 +69,14 @@ _TA_RELEVANT_PARAMS = {
     "min_adx",
     "pullback_ema21_threshold_pct",
     "rsi_overbought_threshold",
+    "require_weekly_confirmation",
+    "require_monthly_confirmation",
+    "regime_bull_rsi_threshold",
+    "regime_bear_rsi_threshold",
+    "regime_adx_threshold",
+    "regime_adx_floor",
+    "min_market_breadth_pct",
+    "regime_confirmation_days",
 }
 
 # Cache for raw OHLCV data to avoid redundant Parquet reads during sequential runs.
@@ -101,7 +115,9 @@ class TradeResult:
     max_adverse_excursion_pct: Optional[float] = 0.0
 
 
-def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]:
+def _get_cached_ohlcv(
+    symbol: str, period: str = "5y", allow_fetch: bool = True
+) -> Optional[pd.DataFrame]:
     """
     Wraps _ohlcv_cache.get with a process-level in-memory cache to avoid
     redundant Parquet deserialization during sequential runs.
@@ -109,7 +125,11 @@ def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]
     if symbol in _OHLCV_CACHE:
         return _OHLCV_CACHE[symbol]
 
-    df = _ohlcv_cache.get(symbol, period=period)
+    # In backtest engine, we usually want to fail fast if data is not cached
+    # to avoid the overhead of live Yahoo Finance calls during massive sweeps.
+    df = _ohlcv_cache.get(
+        symbol, period=period, force_refresh=False, allow_fetch=allow_fetch
+    )
 
     if df is not None and not df.empty:
         if df.index.tz is not None:
@@ -122,13 +142,27 @@ def _get_cached_ohlcv(symbol: str, period: str = "5y") -> Optional[pd.DataFrame]
 
 
 def build_mtf_state_map(
-    df: pd.DataFrame, timeframe: str, strategy: Optional[TechnicalStrategy] = None
+    df: pd.DataFrame,
+    timeframe: str,
+    strategy: Optional[TechnicalStrategy] = None,
+    symbol: str = None,
 ) -> dict:
     if df is None or df.empty:
         return {}
 
     if strategy is None:
         strategy = TechnicalStrategy()
+
+    latest_date = df.index[-1]
+    # Calculate config hash for MTF specific parameters
+    config_dict = vars(strategy.config)
+    ta_relevant = {k: config_dict[k] for k in _TA_RELEVANT_PARAMS if k in config_dict}
+    config_hash = hash(str(tuple(sorted(ta_relevant.items()))))
+
+    # Cache hit check
+    cache_key = (symbol, timeframe, config_hash, latest_date)
+    if symbol and cache_key in _MTF_CACHE:
+        return _MTF_CACHE[cache_key]
 
     freq = "W" if timeframe == "W" else "ME"
     resampled = resample_ohlcv(df, freq=freq, drop_incomplete=True)
@@ -147,11 +181,11 @@ def build_mtf_state_map(
         if (i + 1) < min_bars:
             continue
 
-        bar_date = resampled.index[i]
-        if hasattr(bar_date, "date"):
-            bar_date = bar_date.date()
+        bar_date = resampled.index[i].date()
+        state_map[bar_date] = resampled.iloc[i].to_dict()
 
-        state_map[bar_date] = bool(resampled["IS_BULLISH"].iloc[i])
+    if symbol:
+        _MTF_CACHE[cache_key] = state_map
 
     return state_map
 
@@ -322,17 +356,24 @@ def _nan_to_default(val, default):
 
 
 def _build_regime_map(
-    bench_df: pd.DataFrame, config: BacktestConfig, breadth_map: dict = None
+    bench_df: pd.DataFrame,
+    config: BacktestConfig,
+    breadth_map: dict = None,
+    date_from: datetime.date = None,
+    date_to: datetime.date = None,
 ) -> dict[datetime.date, int]:
-    """
-    Pre-calculates a mapping from date to regime ID.
-    Regimes:
-    - BULL (2): RSI > 60 and ADX > 20 -> Full size (regime_bull_position_pct)
-    - BEAR (0): RSI < 45 or Price < EMA200 -> Cash (regime_bear_position_pct)
-    - NEUTRAL (1): Everything else -> Reduced size (regime_neutral_position_pct)
-    """
     if bench_df is None or bench_df.empty:
         return {}
+
+    latest_date = bench_df.index[-1]
+    config_dict = vars(config)
+    ta_relevant = {k: config_dict[k] for k in _TA_RELEVANT_PARAMS if k in config_dict}
+    config_hash = hash(str(tuple(sorted(ta_relevant.items()))))
+
+    # Cache hit check
+    cache_key = (config_hash, latest_date, date_from, date_to)
+    if cache_key in _REGIME_CACHE:
+        return _REGIME_CACHE[cache_key]
 
     # Ensure required indicators are present
     if "RSI_14" not in bench_df.columns:
@@ -360,19 +401,23 @@ def _build_regime_map(
         breadth = (breadth_map or {}).get(date, 100.0)
 
         # Determine "Potential" Regime with SMART OVERRIDES
-        if adx < config.regime_adx_floor:
+        if close < ema200 or rsi < config.regime_bear_rsi_threshold:
+            potential_regime = 0  # BEAR
+        elif adx < config.regime_adx_floor:
             if breadth > 60.0:
                 potential_regime = 2  # Hidden Bull
             elif breadth < config.min_market_breadth_pct:
                 potential_regime = 0  # Dangerous Sideways
+            elif current_regime == 2 and rsi >= 50.0:
+                potential_regime = 2  # Sticky Bull
             else:
                 potential_regime = 1  # Normal Neutral
-        elif close < ema200 or rsi < config.regime_bear_rsi_threshold:
-            potential_regime = 0  # BEAR
         elif (
             rsi > config.regime_bull_rsi_threshold and adx > config.regime_adx_threshold
         ):
             potential_regime = 2  # BULL
+        elif current_regime == 2 and rsi >= 50.0:
+            potential_regime = 2  # Sticky Bull
         else:
             potential_regime = 1  # NEUTRAL
 
@@ -387,6 +432,7 @@ def _build_regime_map(
 
         regime_map[date] = current_regime
 
+    _REGIME_CACHE[cache_key] = regime_map
     return regime_map
 
 
@@ -1502,15 +1548,20 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
 
         for sym in symbols:
             try:
-                df = _get_cached_ohlcv(sym, period=lookback_period)
+                # Disable live fetches for symbols to avoid I/O storm during sweeps
+                df = _get_cached_ohlcv(sym, period=lookback_period, allow_fetch=False)
                 if df is None or df.empty:
                     continue
                 df = _compute_all_indicators(df, strategy, symbol=sym)
                 all_dfs[sym] = df
                 if config.require_weekly_confirmation:
-                    weekly_state_maps[sym] = build_mtf_state_map(df, "W", strategy)
+                    weekly_state_maps[sym] = build_mtf_state_map(
+                        df, "W", strategy, symbol=sym
+                    )
                 if config.require_monthly_confirmation:
-                    monthly_state_maps[sym] = build_mtf_state_map(df, "M", strategy)
+                    monthly_state_maps[sym] = build_mtf_state_map(
+                        df, "M", strategy, symbol=sym
+                    )
                 if config.screen_signal_mode and is_filtered:
                     sigs = _build_screen_driven_signals(
                         sym, screen_dates_map.get(sym, []), df, config, strategy
@@ -1532,7 +1583,11 @@ def run_backtest(db: Session, run_id: str, config: BacktestConfig):
         if bench_df is not None:
             # We always calculate this for statistical analysis even if use_regime_position_scaling is False
             regime_scaling_map = _build_regime_map(
-                bench_df, config, breadth_map=breadth_map
+                bench_df,
+                config,
+                breadth_map=breadth_map,
+                date_from=config.date_from,
+                date_to=config.date_to,
             )
 
         all_trades = simulate_portfolio(
