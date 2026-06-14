@@ -351,7 +351,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T6 — Universe membership + liquidity (`universe.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T5 (adjusted prices w/ traded_value), T3 (presence)
 - **Goal:** Emit point-in-time `universe_membership` and the `adv_20` liquidity series,
   with **no lookahead**.
@@ -361,11 +361,31 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   - `adv_20`: 20-day rolling **median** of `traded_value` (median, not mean — `01` §5.5).
   - Build `isin_symbol_map` (isin, symbol, first_date, last_date) for renames/reporting.
 - **Done-criteria:**
-  - [ ] `adv_20` and membership on date D use only data **≤ D** (no lookahead — `01` §7.4).
-  - [ ] Rolling window uses median; verified on a synthetic spike (single huge day does
-        not blow up adv_20).
-  - [ ] `isin_symbol_map` spans renames as one continuous ISIN (sets up T8 check 3).
-- **Session log:** _(empty)_
+  - [x] `adv_20` and membership on date D use only data **≤ D** (no lookahead — `01` §7.4).
+        `TestAdv20NoLookahead` — 4 tests: first-row equals own traded_value, second-day
+        is median-of-two, future spike not visible, window rolls correctly at day 20/21.
+  - [x] Rolling window uses median; verified on a synthetic spike (single huge day does
+        not blow up adv_20). `TestAdv20MedianNotMean::test_spike_does_not_blow_up_adv20`:
+        19 × ₹1M + 1 × ₹1B spike → adv_20 stays at ₹1M (not the ₹50M mean would give).
+  - [x] `isin_symbol_map` spans renames as one continuous ISIN (sets up T8 check 3).
+        `TestIsinSymbolMap::test_rename_produces_two_rows_for_same_isin`: OLDNAME→NEWNAME
+        rename produces two rows for the same ISIN with non-overlapping date ranges.
+- **Session log:**
+  - 2026-06-14: Implemented `universe.py`. Public API: `build_universe(adjusted_df)` →
+    `(prices, membership, isin_symbol_map)`. Input is T5's `ADJUSTED_INTERMEDIATE_COLUMNS`
+    frame; output prices match `PRICES_ADJUSTED_SCHEMA` exactly (adv_20 inserted at the
+    correct column position between traded_value and adj_factor).
+  - **adv_20:** `groupby("isin", sort=False)["traded_value"].transform(rolling(20,
+    min_periods=1).median())` — independent per ISIN, causal (data is sorted by date
+    before the transform), resistant to spikes (median not mean).
+  - **membership:** `(isin, date)` pairs from the price rows — no forward projection;
+    gaps (weekends, non-trading days) appear as gaps in the membership table, not filled.
+  - **isin_symbol_map:** `groupby(["isin", "symbol"])["date"].agg(first_date="min",
+    last_date="max")` — one row per (isin, symbol) pair; a rename of the NSE ticker for
+    the same ISIN naturally produces two rows, which T8 criterion 3 checks.
+  - Tests: `backend/tests/data/test_bhavcopy_universe.py` — 26 passing, offline.
+    Run: `PYTHONPATH=. venv/bin/pytest tests/data/test_bhavcopy_universe.py`
+  - Full `tests/data/` suite: 100 passing. v1 untouched (new files only).
 
 ---
 
