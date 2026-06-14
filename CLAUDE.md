@@ -68,11 +68,19 @@ The daily research pipeline is the core of this system. It must be resilient, re
 *   **Theme Consistency:** Adhere strictly to the Tailwind color palette. Custom CSS is a last resort.
 *   **UX Response:** Long-running actions (Triggering pipeline, starting backtest) must have immediate UI feedback (Loaders, Toast notifications).
 
-## 4. Testing & Verification
+## 4. Python Environment
+
+*   **Never create a new venv.** The project venv lives at `backend/venv/`. It is the only venv for this project.
+*   **Always use it:** run scripts as `backend/venv/bin/python <script>` or activate first with `source backend/venv/bin/activate`.
+*   **Never run** `python -m venv`, `virtualenv`, or `uv venv` — if the interpreter or a package seems missing, ask Arafat instead of creating a new environment.
+
+## 5. Testing & Verification
 
 *   **Regression First:** Every bug fix must include a `pytest` case that reproduces the failure.
 *   **Mocking External APIs:** Never run tests against live `yfinance` or NSE servers. Use `unittest.mock` or `pytest-mock` to provide consistent fixtures.
 *   **CI Cleanliness:** Tests must pass before any feature is considered "done."
+
+---
 
 ---
 
