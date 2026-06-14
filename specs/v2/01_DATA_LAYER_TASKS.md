@@ -57,7 +57,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T0 — Research & verification spike (NO production code)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** —
 - **Goal:** Resolve every "verify live" item in `01` §2 and §9 and record findings,
   because the spec forbids writing the loader before these are confirmed.
@@ -80,12 +80,24 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   implementation"), containing the confirmed URLs, both schemas (column lists),
   cutover date, wrapper decision, and the two policy decisions.
 - **Done-criteria:**
-  - [ ] One real sample row of each of: legacy bhavcopy, UDiFF bhavcopy, CA feed —
-        pasted into findings with column names.
-  - [ ] Cutover date stated as an explicit date with a source.
-  - [ ] Wrapper-vs-HTTP decision recorded with rationale.
-  - [ ] `EQ`-vs-`BE` and liquidity-floor placeholder decisions recorded.
-- **Session log:** _(empty)_
+  - [~] One real sample row of each of: legacy bhavcopy, UDiFF bhavcopy, CA feed —
+        pasted into findings with column names. **UDiFF + CA: real verbatim rows pasted.
+        Legacy: schema confirmed (multi-source) + a real `sec_bhavdata_full` row pasted;
+        verbatim `cm...bhav.csv` row DEFERRED to T2 (needs warmup cookie). Fail-loud note
+        in findings.**
+  - [x] Cutover date stated as an explicit date with a source (2024-07-08; Circular 62424).
+  - [x] Wrapper-vs-HTTP decision recorded with rationale (direct HTTP; jugaad-data lacks
+        UDiFF support, issue #79).
+  - [x] `EQ`-vs-`BE` (EQ only) and liquidity-floor placeholder (₹5 cr/day) decisions recorded.
+- **Session log:**
+  - 2026-06-14: Web research spike. Verified legacy CM bhavcopy + UDiFF + CA-feed
+    endpoints/schemas/cutover; wrote `## Verified findings` to top of `01_DATA_LAYER.md`.
+  - **Key correction to §2:** `sec_bhavdata_full` has **no ISIN** → legacy source must be
+    the **old CM bhavcopy** (`cm<DD><MMM><YYYY>bhav.csv`, has ISIN+OHLCV). Both chosen
+    sources carry ISIN across 2018→present.
+  - **Open item for T2:** capture a verbatim live `cm...bhav.csv` row + confirm both
+    formats exist around the 2024-07-05→08 boundary (404-fallback). NSE needs a warmup
+    cookie; WebFetch could not set one (live CA API timed out, archive needs cookie).
 
 ---
 
