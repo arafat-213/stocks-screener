@@ -36,6 +36,10 @@ logger = logging.getLogger(__name__)
 #   Bonus a:b  → b / (a+b)   e.g. Bonus 1:1 → 0.5
 #   FV split old→new → new/old   e.g. Rs2→Re1 → 0.5
 # ---------------------------------------------------------------------------
+# ⚠ build_run start date must be ≤ 2017-01-01 to exercise all five checks.
+# RELIANCE ex-date is 2017-09-28; a 2018→present build excludes it, so check_1
+# silently skips RELIANCE (the other four still fire). Start at 2017-01-01 to
+# test the full set.
 KNOWN_CA_EVENTS: list[dict] = [
     {
         "isin": "INE002A01018",
@@ -278,7 +282,13 @@ def _check_3_isin_rename(isin_map: pd.DataFrame, report: ValidationReport) -> No
 
 
 def _check_4_no_lookahead(prices: pd.DataFrame, report: ValidationReport) -> None:
-    """adv_20 at date D is the causal rolling(20).median() of traded_value ≤ D."""
+    """adv_20 at date D is the causal rolling(20).median() of traded_value ≤ D.
+
+    Note: this check recomputes the same formula universe.py uses, so it is
+    a near-tautology — it catches data corruption or row-reordering after the
+    fact but does not independently prove causality. The real no-lookahead
+    proof is in T6's TestAdv20NoLookahead unit tests (future-spike invisibility).
+    """
     if prices.empty:
         report.checks_skipped.append("4-no-lookahead (empty prices)")
         return

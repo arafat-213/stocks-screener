@@ -29,7 +29,10 @@ adv_20 convention (01_DATA_LAYER.md §5.5):
   * Median resists single-day volume/value spikes (mean would be inflated).
   * min_periods=1: rows early in an ISIN's history use whatever data is
     available rather than emitting NaN. This avoids spurious gaps at the
-    start of newly-listed or newly-appearing ISINs.
+    start of newly-listed or newly-appearing ISINs, but makes the liquidity
+    floor permissive for the first 19 trading days of any ISIN — adv_20
+    reflects fewer than 20 days of history. Downstream (spec 02/04) should
+    require a minimum age before applying the liquidity floor in rebalancing.
 """
 
 import logging

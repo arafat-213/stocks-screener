@@ -37,6 +37,17 @@ Idempotency guarantee
 * Stage 6: ``write_prices_adjusted`` / ``write_universe_membership`` use
   ``existing_data_behavior="delete_matching"`` — safe to overwrite (T1).
 
+⚠ Chunked / incremental invocation caveat
+------------------------------------------
+Always build the **entire date range in a single ``run_build`` call**.
+Calling ``run_build('2019','2020')`` after ``run_build('2018','2019')``
+**silently clobbers the 2018 data**: Stage 2 only assembles ``ok_dates``
+from the current invocation's range, then Stage 6 overwrites all partitions
+for every ISIN seen in that range (``delete_matching`` is per-ISIN, not
+per-date). The 20-day adv_20 rolling window would also be recomputed without
+the earlier history. Resume-after-crash within a single invocation is safe —
+the day loop re-walks start→end and loads checkpointed days from disk.
+
 Per-day error handling
 ----------------------
 A single download or parse failure is recorded and skipped rather than crashing

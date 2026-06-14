@@ -135,7 +135,11 @@ def _parse_split(subject: str) -> float | None:
         old, new = float(m.group(1)), float(m.group(2))
         if old > 0 and new > 0:
             return new / old
-    # Ratio-form fallback ("split 1:5" → 1 new face unit per 5 old → 1/5).
+    # Ratio-form fallback for free-text splits like "Split 1:5".
+    # Interpretation: a:b means a new shares per b old → multiplier = a/b.
+    # This is ambiguous (some sources write new:old, others old:new), but NSE
+    # almost always uses the unambiguous "From Rs X To Rs Y" FV form above, so
+    # this branch is low-risk. Flag any parse-failure caller for manual review.
     m = _RATIO_RE.search(subject)
     if m:
         a, b = float(m.group(1)), float(m.group(2))

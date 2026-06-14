@@ -136,8 +136,11 @@ def _parse_legacy(raw_bytes: bytes) -> pd.DataFrame:
     if df.empty:
         return _empty_unified()
 
-    # TIMESTAMP: "04-JUL-2024" → Timestamp.
-    date_col = pd.to_datetime(df["TIMESTAMP"].str.strip(), format="%d-%b-%Y")
+    # TIMESTAMP is usually "04-JUL-2024" but NSE occasionally emits 2-digit years
+    # (e.g. "13-Jul-20" on 2020-07-13). format="mixed" infers per-row, handling both.
+    date_col = pd.to_datetime(
+        df["TIMESTAMP"].str.strip(), format="mixed", dayfirst=True
+    )
 
     return pd.DataFrame(
         {
