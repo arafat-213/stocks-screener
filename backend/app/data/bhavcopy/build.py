@@ -61,6 +61,7 @@ from app.data.bhavcopy import download as dl_mod
 from app.data.bhavcopy import parse as parse_mod
 from app.data.bhavcopy import store as store_mod
 from app.data.bhavcopy import universe as uni_mod
+from app.data.bhavcopy import validate as val_mod
 
 logger = logging.getLogger(__name__)
 
@@ -241,6 +242,7 @@ def run_build(
     sleep=time.sleep,
     _session: requests.Session | None = None,
     _ca_records: list[dict] | None = None,
+    skip_validation: bool = False,
 ) -> BuildReport:
     """End-to-end bhavcopy pipeline: download → parse → CA → adjust → store.
 
@@ -386,6 +388,17 @@ def run_build(
 
     report.rows_written = len(prices_df)
     report.distinct_isins = prices_df["isin"].nunique()
+
+    # ------------------------------------------------------------------ #
+    # Stage 8: Validate (the gate — 01_DATA_LAYER.md §7)                  #
+    # ------------------------------------------------------------------ #
+    if not skip_validation:
+        logger.info("build: Stage 8 — running validate.py acceptance checks")
+        val_mod.run_validation(
+            root,
+            ca_events_applied=report.ca_events,
+            ca_events_unmatched=report.ca_unmatched,
+        )
 
     logger.info("build: %s", report.summary())
     return report

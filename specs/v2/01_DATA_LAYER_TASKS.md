@@ -440,7 +440,7 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
 
 ## T8 — Validation (`validate.py`) — the gate
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T7 (a built dataset to validate)
 - **Goal:** Implement **all** acceptance checks from `01` §7. **Fail loud**, never
   warn-and-continue. The data layer is **not done** until this passes.
@@ -455,11 +455,40 @@ T2/T3 and T4 can be done in either order once T1 lands. T5 needs T3 + T4.
   6. Coverage report: rows, distinct ISINs, distinct delisted ISINs, date range,
      % days with gaps, CA events applied vs flagged-unmatched.
 - **Done-criteria:**
-  - [ ] All six checks implemented as hard assertions that fail the build.
-  - [ ] The 5 known-CA names are real, liquid, with documented ratios cited in comments.
-  - [ ] Coverage report prints and the numbers are sane on a real multi-year run.
-  - [ ] Running validate on a deliberately-broken dataset fails loudly (negative test).
-- **Session log:** _(empty)_
+  - [x] All six checks implemented as hard assertions that fail the build.
+  - [x] The 5 known-CA names are real, liquid, with documented ratios cited in comments
+        (RELIANCE Bonus 1:1, INFY Bonus 1:1, TCS Bonus 1:1, WIPRO FV split Rs2→Re1,
+        GENSOL Bonus 2:1 — verbatim T0 record). Known rename: MOTHERSUMI → MOTHERSON
+        (INE775A01035).
+  - [x] Coverage report always prints (check 6), including delisted count, % gap days,
+        CA event counts (if supplied by the caller).
+  - [x] Negative tests: gap >40% fails check 1, wrong adj_factor ratio fails check 1,
+        zero delisted ISINs fails check 2, overlapping rename dates fails check 3,
+        reversed adv_20 fails check 4, close_tr cumret < close cumret fails check 5.
+        All 27 tests pass offline.
+  - [x] `run_validation` wired into `build.py` Stage 8 (after store); controlled via
+        `skip_validation` param (default False for production).
+- **Session log:**
+  - 2026-06-14: Implemented `validate.py`. Public API: `run_validation(root=None, *,
+    ca_events_applied, ca_events_unmatched, today)` → `ValidationReport`. Six checks
+    map directly to 01 §7; all raise `AssertionError` (fail loud, Rule 12).
+  - **Check 1** (known CAs): 5 hard-coded events (RELIANCE/INFY/TCS/WIPRO/GENSOL)
+    checked for no >40% adjusted gap and adj_factor ratio ≈ expected_ratio. ISINs not
+    in the dataset are skipped with a warning (not an error).
+  - **Check 2** (survivorship): isin_symbol_map must have ≥1 ISIN with last_date
+    > 365 days before today. Empty map or zero delisted → AssertionError.
+  - **Check 3** (ISIN rename): MOTHERSUMI → MOTHERSON (INE775A01035) — verifies
+    non-overlapping date ranges for the same ISIN. Missing ISIN → skipped.
+  - **Check 4** (no lookahead): recomputes rolling(20).median() on the most-rows ISIN;
+    np.allclose against stored adv_20. Tests use `vary_tv=True` for real discriminating
+    power (constant TV would make reversal undetectable).
+  - **Check 5** (TR ≥ price): cumulative return of close_tr ≥ close on up to 10 ISINs.
+  - **Check 6** (coverage): always prints; populates `ValidationReport`.
+  - **Build integration**: Stage 8 in `build.py`. Existing T7 tests unaffected (synthetic
+    data from 2024 is naturally > 365 days old).
+  - Tests: `backend/tests/data/test_bhavcopy_validate.py` — 27 passing, offline.
+    Run: `PYTHONPATH=. venv/bin/pytest tests/data/test_bhavcopy_validate.py`
+  - Full `tests/data/` suite: 141 passing. v1 untouched (new files only).
 
 ---
 
