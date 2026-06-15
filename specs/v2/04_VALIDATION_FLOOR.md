@@ -1,3 +1,133 @@
+## Locked decisions (T0)
+
+> Locked 2026-06-15. Do not move any boundary here to make a config pass (Rule 12).
+
+### Usable data window
+
+Probed via `store.read_prices_adjusted()` on 2026-06-15:
+
+| Metric | Value |
+|---|---|
+| Raw data start | 2017-01-02 |
+| Raw data end | 2026-06-12 |
+| Distinct ISINs | 3,470 |
+| Trading days on disk | 2,331 |
+| Warmup required | 273 trading days (`momentum_lookback_days=252` + `momentum_skip_days=21`) |
+| **First usable decision date** | **2018-02-06** |
+| **Usable backtest window** | **2018-02-06 → 2026-06-12** (~8.3 years) |
+
+The warmup of 273 trading days maps to ~13 months from the data start (2017-01-02),
+landing the first valid `momentum_12_1` signal on 2018-02-06.
+
+---
+
+### Floor → `MomentumConfig` field map
+
+All `04` §2 prose fields match `MomentumConfig` defaults exactly. **No drift.**
+
+| Spec §2 description | `MomentumConfig` field | Default value | Drift? |
+|---|---|---|---|
+| Hold top 20 | `target_positions` | `20` | None |
+| Buffer sell at 35 | `sell_rank_buffer` | `35` | None |
+| Liquidity floor (₹ crore ADV-20) | `liquidity_floor_cr` | `5.0` | None (spec says "liquidity-floored"; 5cr is the spec 01/02 established value) |
+| Rank: `momentum_12_1` lookback | `momentum_lookback_days` | `252` | None |
+| The "1" skip in `12-1` | `momentum_skip_days` | `21` | None |
+| Vol denominator lookback | `vol_lookback_days` | `126` | None |
+| `close > 200-MA` gate | `trend_ma` | `"EMA_200"` | None |
+| Equal-weight | (no field; engine default) | — | None |
+| Monthly rebalance | `rebalance` | `"monthly"` | None |
+| Regime overlay ON | `use_regime_overlay` | `True` | None |
+| Catastrophic stop 25% | `catastrophic_stop_pct` | `25.0` | None |
+| Costs at base level | `cost_level` (engine param, not config) | `"base"` | None |
+
+The floor config is simply `MomentumConfig(date_from=date(2018, 2, 6), date_to=date(2026, 6, 12))` with all other fields at defaults.
+
+---
+
+### FROZEN date splits
+
+```python
+# Immutable — do not adjust to make a config pass (Rule 12)
+USABLE_START  = date(2018, 2, 6)   # first post-warmup decision date
+USABLE_END    = date(2026, 6, 12)  # last date on disk (2026-06-15 probe)
+
+# T1 floor runs on the FULL usable window (single pre-committed config, no OOS budget spent)
+FLOOR_START   = USABLE_START
+FLOOR_END     = USABLE_END
+
+# Discovery: all §4 iteration runs here only
+DISCOVERY     = (date(2018, 2, 6), date(2023, 6, 30))   # ~5.4 years in-sample
+
+# Final OOS: looked at EXACTLY ONCE in T5, for the chosen config
+FINAL_OOS     = (date(2023, 7, 1), date(2026, 6, 12))   # ~3 years held-out
+```
+
+Non-overlap: confirmed — `DISCOVERY[1]` (2023-06-30) < `FINAL_OOS[0]` (2023-07-01). No shared dates.
+
+Rationale for the 2023-07 split: provides ~3 years of clean OOS covering two distinct market regimes (post-Covid normalization + 2024–25 mid/smallcap correction), while leaving ~5.4 years of discovery for robust walk-forward folding.
+
+---
+
+### Decision-rule predicates (GO / NO-GO)
+
+Let:
+- `C_strat` = strategy Calmar at **base** cost level over the floor window
+- `C_primary` = Nifty200 Momentum 30 TRI Calmar over the same window
+- `C_nifty50` = Nifty 50 TRI Calmar over the same window
+
+**GO predicate** (proceed to T2):
+```
+C_strat >= 0.80 × C_primary
+```
+Interpretation: strategy Calmar at base costs is at least 80% of the primary benchmark's
+Calmar. "Roughly tracks" = within 20% of the benchmark — tight enough to confirm a real
+foundation, loose enough not to demand the floor beats a purpose-built momentum index outright.
+
+**NO-GO predicate** (stop; diagnose data/costs; do not build T2–T5; do not tune):
+```
+C_strat < C_nifty50
+```
+Interpretation: if the strategy can't beat even the plain Nifty 50 on a risk-adjusted basis
+after real costs, the problem is structural (universe quality, cost model, data), not
+parameter choice. Tuning cannot fix a broken foundation.
+
+**Middle zone** (`C_nifty50 ≤ C_strat < 0.80 × C_primary`): beats the floor benchmark but
+falls short of tracking the primary. Treat as a marginal GO — proceed with heightened
+scrutiny; document the gap explicitly in the T1 session log.
+
+---
+
+### Anti-overfit method (T2 implementation target)
+
+**Deflated Sharpe Ratio (DSR):**
+Bailey & López de Prado (2016), *"The Deflated Sharpe Ratio: Correcting for Selection Bias,
+Backtest Overfitting, and Non-Normality"*, Journal of Portfolio Management.
+
+Formula: adjusts the annualized Sharpe for (a) the expected maximum Sharpe under the null
+when `K` configs are tried, (b) non-normality via skewness and excess-kurtosis of the returns
+distribution, and (c) the number of independent trials. Implementation target: apply to each
+walk-forward window's OOS Sharpe, reporting both raw and deflated values.
+
+**PBO (Probability of Backtest Overfitting):**
+Bailey & López de Prado (2014), *"The Probability of Backtest Overfitting"*, Journal of
+Computational Finance. Method: Combinatorially Symmetric Cross-Validation (CSCV). Partition
+the `T` walk-forward OOS sub-periods into all `C(T, T/2)` combinations; for each combination,
+identify the config that ranked best in-sample, observe its OOS rank; PBO = fraction of
+combinations where that config ranked below the median OOS performer. PBO ∈ [0, 1]; values
+> 0.5 indicate near-certain overfitting. T2 must implement this against the walk-forward fold
+set, not a static split.
+
+---
+
+*T0 done-criteria checklist:*
+- [x] Real usable backtest window (post-warmup) recorded from on-disk data.
+- [x] Floor config mapped field-by-field; no prose↔default drift found.
+- [x] `DISCOVERY` and `FINAL_OOS` ranges frozen as explicit values (non-overlapping).
+- [x] Decision-rule GO and NO-GO predicates stated numerically.
+- [x] Deflated-Sharpe + PBO method named with citations.
+
+---
+
 # Spec 04 — Validation Floor & Anti-Overfit Methodology
 
 > Depends on: `00`–`03`. Build step 4 — and the gate for everything after.

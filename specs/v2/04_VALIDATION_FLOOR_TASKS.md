@@ -103,7 +103,7 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T0 — Lock decisions: data span, config map, frozen splits, thresholds (light / no production code)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** specs 01–03 done (they are).
 - **Goal:** Pre-commit every choice that `04` says must be fixed *before* measuring,
   so no later session is tempted to move the measuring stick (the v1 failure mode,
@@ -144,13 +144,13 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
   resolved), the two frozen date ranges, the numeric decision predicates, and the
   chosen deflated-Sharpe/PBO method.
 - **Done-criteria:**
-  - [ ] Real usable backtest window (post-warmup) recorded from on-disk data.
-  - [ ] Floor config mapped field-by-field; any prose↔default drift surfaced + resolved.
-  - [ ] `DISCOVERY` and `FINAL_OOS` ranges frozen as explicit values (non-overlapping).
-  - [ ] Decision-rule GO and NO-GO predicates stated numerically.
-  - [ ] Deflated-Sharpe + PBO method named with a citation.
+  - [x] Real usable backtest window (post-warmup) recorded from on-disk data.
+  - [x] Floor config mapped field-by-field; any prose↔default drift surfaced + resolved.
+  - [x] `DISCOVERY` and `FINAL_OOS` ranges frozen as explicit values (non-overlapping).
+  - [x] Decision-rule GO and NO-GO predicates stated numerically.
+  - [x] Deflated-Sharpe + PBO method named with a citation.
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15. Probed `store.read_prices_adjusted()`: 4,008,497 rows, 3,470 ISINs, 2017-01-02 → 2026-06-12, 2,331 trading days. Post-warmup (273 trad. days) first decision date: 2018-02-06. All `MomentumConfig` defaults match `04` §2 floor exactly — zero drift. Frozen: DISCOVERY = (2018-02-06, 2023-06-30), FINAL_OOS = (2023-07-01, 2026-06-12), non-overlapping. GO predicate: `C_strat >= 0.80 × C_primary`. NO-GO predicate: `C_strat < C_nifty50`. Anti-overfit method: Deflated Sharpe (Bailey & LdP 2016) + PBO via CSCV (Bailey & LdP 2014). Full decisions written to `## Locked decisions (T0)` section prepended to `04_VALIDATION_FLOOR.md`.
 
 ---
 
