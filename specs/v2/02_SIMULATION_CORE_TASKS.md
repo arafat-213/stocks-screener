@@ -153,7 +153,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T2 — Cost interface + trivial default (`costs.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1
 - **Goal:** Define the **cost contract** the engine/portfolio call, plus a deliberately
   trivial default, so v2 runs end-to-end now. **The real model is spec 03 — do not build it
@@ -170,13 +170,16 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
     spec 03 (`03_COST_AND_BENCHMARK.md`). This exists only to make the engine runnable and
     to satisfy `02` §10.2 (Σ per-fill costs == total cost paid)."
 - **Done-criteria:**
-  - [ ] `fill_cost` matches the `03` §1.3 signature (so spec 03 is a drop-in).
-  - [ ] Default cost is deterministic and unit-tested (a known qty×price → known ₹ cost).
-  - [ ] Cost function is injectable (engine/portfolio accept it; not hard-imported).
-  - [ ] Docstring clearly flags this as a placeholder for spec 03 (Rule 12 — no silent
+  - [x] `fill_cost` matches the `03` §1.3 signature (so spec 03 is a drop-in).
+  - [x] Default cost is deterministic and unit-tested (a known qty×price → known ₹ cost).
+  - [x] Cost function is injectable (engine/portfolio accept it; not hard-imported).
+  - [x] Docstring clearly flags this as a placeholder for spec 03 (Rule 12 — no silent
         pretend-real cost model).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `CostConfig` (flat 30 bps RT placeholder) and `fill_cost`
+    (half-bps per leg, adv_20 accepted but ignored for interface parity). `CostFn` type
+    alias defined so T5/T7 can accept it as a callable parameter — one-line swap for spec 03.
+    10/10 unit tests pass offline (`test_t2_costs.py`).
 
 ---
 
