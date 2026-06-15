@@ -439,6 +439,18 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
     below absurd threshold via metrics.turnover_is_absurd; wide buffer reduces turnover vs tight.
     AC6: strong uptrend deploys capital + positive CAGR; flat market stays in cash without loss.
     15/15 pass; 214/214 T1–T9 total pass offline.
+  - 2026-06-15: Exit-criteria pass on REAL spec-01 dataset via new `app/backtest_v2/run_real.py`
+    (out-of-pytest harness — depends on the ~505M bhavcopy parquet, Rule 5). Dataset: 4M rows,
+    3,470 ISINs, 2017→2026. Bug #1 fixed: `precompute_signals` crashed (`KeyError: 'EMA_200'`)
+    on ISINs with <200 rows where pandas_ta appends no EMA_200 column; NaN-fill instead (such
+    names are correctly ineligible — momentum_12_1 also needs 273 rows) + regression test
+    `test_short_isin_no_crash_and_ineligible` (suite now 215 pass). All three literal §10
+    invariants PASS on real data (determinism, cash-conservation identity, no-lookahead cutoff
+    2024-06-12; run_real exits 0). Metrics (WITH the leverage bug present, NOT trustworthy yet):
+    CAGR +11.53%, Sharpe 0.69, MaxDD 44.68%, avg exposure 80.3%, median 104.3%, turnover 800%/yr,
+    1,833 fills, 114 rebalances. Surfaced Bug #2 (implicit leverage — see KNOWN ISSUE below);
+    per Arafat's call, committed the §10 invariants + harness now and deferred the leverage fix
+    to its own follow-up task (criterion #1 left unchecked, Rule 12).
 
 ---
 
@@ -446,10 +458,30 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 - [x] T0–T9 all ☑.
 - [x] The §10 acceptance suite (T9) passes.
-- [ ] An end-to-end run on the **real** spec-01 dataset (2017→present) produces an equity
+- [~] An end-to-end run on the **real** spec-01 dataset (2017→present) produces an equity
       curve + exposure curve + fills log + daily-MTM metrics (with the placeholder cost
       model and an injected synthetic/real price index for regime).
-- [ ] Determinism + cash-conservation + no-lookahead hold on the real-data run.
-- [ ] Clean seams left for spec 03: injectable `costs.fill_cost`, injectable regime price
+      → Harness `app/backtest_v2/run_real.py` runs clean and emits all artifacts, BUT the
+      equity curve is **not yet trustworthy**: see KNOWN ISSUE below (implicit leverage).
+      Left unchecked deliberately until the leverage fix lands (Rule 12).
+- [x] Determinism + cash-conservation + no-lookahead hold on the real-data run.
+      → All three literal §10 invariants PASS on the full 2017→2026 dataset (run_real exits 0).
+- [x] Clean seams left for spec 03: injectable `costs.fill_cost`, injectable regime price
       index, and a metrics module ready for benchmark-relative additions.
-- [ ] v1 remains runnable in parallel (nothing in `backend/app/backtest/` was modified).
+- [x] v1 remains runnable in parallel (nothing in `backend/app/backtest/` was modified).
+
+> **KNOWN ISSUE (follow-up task — blocks "trustworthy equity curve"): implicit leverage.**
+> The real-data run shows **median exposure 104.3%** and ~1,077 *"cash went negative"*
+> warnings (down to ≈ −1.5M on a 1M book). The §10 cash-conservation invariant still PASSES
+> because it checks the accounting identity (`equity == cash + invested`), which holds for any
+> cash *sign* — a levered book is internally consistent. Root cause: `build_rebalance_plan`
+> sizes buy targets to `equity × deployable_fraction / N` at **decision-close** prices
+> (`portfolio.py:299`); buys then fill at **next-day open** with ₹-notional preserved
+> (`_stamp_fills`), but the cash actually available at the open = starting cash + *actual*
+> sell proceeds (sells also gap at open). Nothing caps aggregate buys to available cash.
+> `portfolio.py:212` already documents the missing seam: *"engine should size fills to
+> available capital."* A long-only book must never lever; this inflates returns and must be
+> fixed before the curve feeds spec 03/04. **Fix:** in the engine apply step (`engine.py:174`)
+> apply sells/trims first, then clamp aggregate buy notional to available cash minus a cost
+> reserve before applying buys (leftover stays in cash — §5.3 "never force deployment"); add
+> a regression test asserting cash ≥ 0 and exposure ≤ deployable_fraction on every snapshot.

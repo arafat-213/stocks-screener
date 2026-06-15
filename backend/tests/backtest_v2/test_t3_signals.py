@@ -251,6 +251,26 @@ class TestPrecomputeSignals:
         # pandas_ta_classic EMA with length=200: rows before 200 are NaN
         assert df["EMA_200"].iloc[:199].isna().all()
 
+    def test_short_isin_no_crash_and_ineligible(self):
+        """
+        Regression (real-data run_real bug): an ISIN with < 200 rows produces no
+        EMA_200 column from pandas_ta.  precompute_signals must NOT crash with a
+        KeyError; it fills EMA_200 with NaN, and such a short-lived name is
+        ineligible (NaN in any gate field → entry_gate False).
+        """
+        isin = "INE999Z01099"
+        cfg = _default_cfg()
+        prices = _make_prices(isin=isin, n_days=150)  # < 200 rows
+        store = precompute_signals(prices, cfg)  # must not raise
+
+        df = store._data[isin]
+        assert "EMA_200" in df.columns, "EMA_200 column must exist (NaN-filled)"
+        assert df["EMA_200"].isna().all(), (
+            "EMA_200 must be all-NaN for a < 200-row name"
+        )
+        # Ineligible on every date it traded.
+        assert all(not store.entry_gate(d, isin) for d in df.index)
+
     def test_vol_finite_after_warmup(self):
         """annualized_vol should be finite well after the vol_lookback_days warmup."""
         cfg = _default_cfg()

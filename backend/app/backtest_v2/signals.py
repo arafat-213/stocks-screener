@@ -211,7 +211,14 @@ def precompute_signals(
         # --- EMA_200 (title-case adapter required by calculate_indicators) ---
         df_ta = df.rename(columns=_RENAME_UP)
         df_ta = _strategy.calculate_indicators(df_ta)
-        df["EMA_200"] = df_ta["EMA_200"].values
+        # pandas_ta appends no EMA_200 column when the series has < 200 rows
+        # (short-lived/delisted names). Such names can never pass the entry gate
+        # anyway (momentum_12_1 needs 273 rows → NaN), so fill EMA_200 with NaN
+        # rather than crashing — ineligibility falls out of the NaN check.
+        if "EMA_200" in df_ta.columns:
+            df["EMA_200"] = df_ta["EMA_200"].values
+        else:
+            df["EMA_200"] = np.nan
 
         # --- 12-1 momentum (calendar-aware integer positions, no naive shifts) ---
         close_arr = df["close"].to_numpy(dtype=float)
