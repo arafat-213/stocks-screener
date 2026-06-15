@@ -224,7 +224,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T4 — Regime overlay (`regime.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1
 - **Goal:** A single dumb market-level signal → `deployable_fraction(day) ∈ [0, 1]`
   (`02` §8). Keep it minimal — this is the one drawdown-control layer; it earns its keep in
@@ -238,13 +238,18 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
   - No multi-state hysteresis maze, no breadth/RSI/ADX lattice (`00` §2.6 — adding layers
     made v1 worse).
 - **Done-criteria:**
-  - [ ] `deployable_fraction` = 1.0 above 200-DMA, → floor below, with debounce verified on
+  - [x] `deployable_fraction` = 1.0 above 200-DMA, → floor below, with debounce verified on
         a synthetic index that crosses the line (no single-day whipsaw).
-  - [ ] Index series is a parameter (injected), not fetched — spec 03 wires the real one.
-  - [ ] No-lookahead: the fraction for day D uses index data ≤ D only (asserted).
-  - [ ] Tests offline (synthetic up-trend and down-trend index series).
+  - [x] Index series is a parameter (injected), not fetched — spec 03 wires the real one.
+  - [x] No-lookahead: the fraction for day D uses index data ≤ D only (asserted).
+  - [x] Tests offline (synthetic up-trend and down-trend index series).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `RegimeConfig` (risk_off_floor, debounce_days, dma_period) and
+    `RegimeOverlay` with `_precompute_fractions` (rolling 200-SMA + forward state-machine
+    debounce). Pre-DMA warmup period defaults to risk-on via `where(dma.notna(), other=True)`.
+    `deployable_fraction` is O(1) lookup after O(n) precompute. 16/16 unit tests pass offline
+    (`test_t4_regime.py`): risk-on, debounce-3 flip, anti-whipsaw, recovery, no-lookahead,
+    injection, unsorted-input handling.
 
 ---
 
