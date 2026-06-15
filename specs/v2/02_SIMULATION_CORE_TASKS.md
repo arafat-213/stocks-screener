@@ -85,7 +85,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T0 — Reuse-contract spike (NO production code)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** — (spec 01 done)
 - **Goal:** Pin down the exact interfaces v2 builds on **before** writing the engine, so
   later cold sessions don't guess column names or function signatures.
@@ -107,13 +107,17 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
   `02_SIMULATION_CORE.md` listing the confirmed signatures, indicator output columns, the
   trend-MA decision, and the momentum index-position recipe.
 - **Done-criteria:**
-  - [ ] `calculate_indicators` input + output columns documented (real, copy-pasted from
+  - [x] `calculate_indicators` input + output columns documented (real, copy-pasted from
         the function), incl. the exact trend-MA column name v2 will read.
-  - [ ] `store` read-fn signatures + key columns confirmed against the built parquet.
-  - [ ] Trend-MA choice (EMA_200 vs SMA_200) recorded with reason.
-  - [ ] `momentum_12_1` calendar-position recipe written down (offsets, calendar source).
+  - [x] `store` read-fn signatures + key columns confirmed against the built parquet.
+  - [x] Trend-MA choice (EMA_200 vs SMA_200) recorded with reason.
+  - [x] `momentum_12_1` calendar-position recipe written down (offsets, calendar source).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Read `strategy.py`, `store.py`, `ohlcv_cache.py`. Found critical column-case
+    mismatch (v2 parquet = lowercase; `calculate_indicators` = title-case). Confirmed `EMA_200`
+    is directly available. Confirmed `MOMENTUM_12M` is naive-shift (NOT 12-1) — v2 must compute
+    its own. ATR column name is `ATRr_14`. All contracts written into `02_SIMULATION_CORE.md`
+    `## Verified reuse contracts` section.
 
 ---
 

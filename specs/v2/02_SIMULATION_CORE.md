@@ -5,6 +5,117 @@
 
 ---
 
+## Verified reuse contracts (T0 — 2026-06-15)
+
+> Source of truth for every downstream task. Do not re-derive; read this section.
+
+### 1. `TechnicalStrategy.calculate_indicators` — `backend/app/core/strategy.py:18`
+
+**Input contract:**
+- `df: pd.DataFrame` with **title-case** columns: `Open`, `High`, `Low`, `Close`, `Volume`
+  (yfinance convention — **not** the lowercase names in the v2 parquet).
+- The function copies the input (`df = df.copy()`) — does **not** mutate the caller's frame.
+- Returns the enriched copy.
+
+**Output columns relevant to v2:**
+
+| Column | Source call | Notes |
+|---|---|---|
+| `EMA_200` | `df.ta.ema(length=200, append=True)` | Used as trend gate (`close > EMA_200`) |
+| `EMA_5`, `EMA_13`, `EMA_21` | `df.ta.ema(length=N, append=True)` | Not needed by v2 core |
+| `ATRr_14` | `df.ta.atr(length=14, append=True)` | **Note: `ATRr_14`, not `ATR_14`** |
+| `ADX_14` | `df.ta.adx(length=14, append=True)` | Not needed by v2 core |
+| `RSI_14` | `df.ta.rsi(length=14, append=True)` | Not needed by v2 core |
+| `MACD_12_26_9`, `MACDs_12_26_9` | `df.ta.macd(...)` | Not needed by v2 core |
+| `MOMENTUM_1M/3M/6M/12M` | naive `close / close.shift(N) - 1` | **Do NOT use for v2 ranking** — see §3 below |
+
+**⚠ Column name mismatch — load-bearing adapter required:**
+The v2 parquet schema uses **lowercase** (`open`, `high`, `low`, `close`, `volume`).
+`calculate_indicators` requires **title-case** (`Open`, `High`, `Low`, `Close`, `Volume`).
+`signals.py` (T3) MUST rename columns before calling and rename back (or drop) after:
+```python
+_RENAME_UP   = {"open":"Open","high":"High","low":"Low","close":"Close","volume":"Volume"}
+_RENAME_DOWN = {v: k for k, v in _RENAME_UP.items()}
+df_ta = df.rename(columns=_RENAME_UP)
+df_ta = strategy.calculate_indicators(df_ta)
+ema_200 = df_ta["EMA_200"]
+```
+
+### 2. Trend-MA decision — **use `EMA_200`**
+
+`calculate_indicators` emits `EMA_200` directly via `pandas_ta_classic`. Using it:
+- Requires no extra computation in v2.
+- Preserves live/backtest parity (`00` §5 mandate).
+- `SMA_200` would require a separate `.rolling(200).mean()` call, adding divergence risk.
+
+**Decision: read `EMA_200` from `calculate_indicators` output. Record in `MomentumConfig.trend_ma = "EMA_200"`.**
+
+### 3. `momentum_12_1` — v2 must compute this itself
+
+`calculate_indicators`'s `MOMENTUM_12M` is `close / close.shift(252) - 1` (naive 252-day shift,
+**no 1-month skip**). This is NOT the 12-1 momentum the spec defines. v2 must compute it
+independently with **calendar-aware index positions**:
+
+```
+momentum_12_1[i] = close.iloc[i - 21] / close.iloc[i - 273] - 1
+```
+
+- `i - 21`  : price 1 month ago (the skip; avoids short-term reversal)
+- `i - 273` : price ~13 months ago (12 months of return + the skip = 252 + 21 = 273)
+- `i` is the **integer position in the per-ISIN trading calendar** (sorted distinct dates
+  present in the v2 dataset for that ISIN), not a raw date offset.
+- Requires `i >= 273` for a valid value; earlier rows → `NaN`.
+
+**Calendar source:** distinct sorted `date` values in `prices_adjusted` for each ISIN (i.e. the
+trading days that ISIN actually had data). Do **not** use a global calendar — each ISIN may have
+gaps from suspension. Use `df.reset_index(drop=True)` on the per-ISIN price frame; `iloc` positions
+are then calendar-aware for that instrument.
+
+**Do NOT use `.shift(N)` on a DatetimeIndex** — trading gaps (suspensions, holidays) make naive
+shifts silently wrong.
+
+### 4. `store.py` read-function signatures — `backend/app/data/bhavcopy/store.py`
+
+```python
+read_prices_adjusted(
+    root: str | Path | None = None,   # default: $CACHE_DIR/bhavcopy/ or backend/data/bhavcopy/
+    isins: list[str] | None = None,   # partition-level pushdown; None = all ISINs
+    start: str | pd.Timestamp | None = None,  # inclusive date filter on 'date' column
+    end:   str | pd.Timestamp | None = None,  # inclusive
+) -> pd.DataFrame   # columns: see PRICES_ADJUSTED_SCHEMA below
+
+read_universe_membership(
+    root: str | Path | None = None,
+    date:  str | pd.Timestamp | None = None,  # single trading day
+    start: str | pd.Timestamp | None = None,
+    end:   str | pd.Timestamp | None = None,
+) -> pd.DataFrame   # columns: isin (str), date (datetime64[ns])
+
+read_isin_symbol_map(
+    root: str | Path | None = None,
+    isins: list[str] | None = None,
+) -> pd.DataFrame   # columns: isin, symbol, first_date, last_date
+```
+
+**`PRICES_ADJUSTED_SCHEMA` columns (confirmed from source):**
+`isin`, `symbol`, `date` (datetime64[ns], UTC-naive), `open`, `high`, `low`, `close`,
+`close_raw`, `close_tr`, `volume` (int64), `traded_value`, `adv_20`, `adj_factor`,
+`tr_factor`, `series`.
+
+**Confirmed present:** `adv_20` ✓ and `close_tr` ✓ — both are first-class columns per `01` §4.
+
+### 5. `OHLCVCache` — patterns worth borrowing
+
+- **Atomic writes**: `tempfile.mkstemp` → `os.replace` (prevents corrupt Parquet on crash).
+  Copy this pattern in any v2 module that writes intermediate files.
+- **`CACHE_DIR` env var** with `backend/data/` fallback — already adopted by `store.default_root()`.
+- **Not borrowed:** yfinance fetching, per-symbol file layout, incremental/backfill logic —
+  v2 uses the partitioned parquet dataset exclusively.
+
+---
+
+---
+
 ## 1. Core inversion
 
 v1 simulates each symbol's trades in isolation, then reconciles the portfolio post-hoc.
