@@ -247,7 +247,7 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
 
 ## T3 — Benchmark-relative metrics (`metrics.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T2 (benchmark series), T8/spec-02 absolute metrics (already built)
 - **Goal:** Add the benchmark-relative block to `metrics.py` against the clean seam the
   T8 docstring reserved (`03` §3 "Benchmark-relative", §4.5).
@@ -262,16 +262,27 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
     same functions, then form the ratios.
   - Keep it additive — the absolute block and its 42 tests stay untouched.
 - **Done-criteria:**
-  - [ ] Each benchmark-relative metric unit-tested against a hand-constructed
+  - [x] Each benchmark-relative metric unit-tested against a hand-constructed
         strategy+benchmark pair with a known answer (e.g. strategy = 2× benchmark daily
         returns → beta ≈ 2; known maxDDs → exact max-DD ratio).
-  - [ ] Calmar ratio (strat ÷ bench) and max-DD ratio computed — the pass/fail headline
+  - [x] Calmar ratio (strat ÷ bench) and max-DD ratio computed — the pass/fail headline
         numbers (`03` §4.5). A test asserts they're present and finite.
-  - [ ] IR uses excess return / tracking error; up/down capture split on benchmark sign.
-  - [ ] Absolute-metric math reused (not re-derived) for the benchmark series.
-  - [ ] Tests offline.
+  - [x] IR uses excess return / tracking error; up/down capture split on benchmark sign.
+  - [x] Absolute-metric math reused (not re-derived) for the benchmark series.
+  - [x] Tests offline.
 - **Session log:**
-  - _(fill in at session end)_
+  - 2026-06-15: Added `BenchmarkMetrics` dataclass + `compute_benchmark_metrics()` +
+    `benchmark_summary()` to `metrics.py`. `_cagr_from_equity()` extracted as a shared
+    helper so both absolute and benchmark paths use the same math (no duplication).
+    `_compute_max_drawdown` reused directly for benchmark series. All 6 spec-03 §3
+    metrics implemented: excess CAGR, Calmar ratio (strat/bench), max-DD ratio,
+    information ratio (excess/tracking-error × √252), up/down capture (split on bench
+    sign), correlation + beta. `benchmark_summary()` prints headline ratios prominently
+    with pass/fail flags (> 1, ≤ 0.70). 20 new T3 tests pass (5 test classes:
+    TestBenchmarkMetricsKnownValues, TestHeadlineRatios, TestInformationRatio,
+    TestCapture, TestAbsoluteReuseNotReduplicated, TestEdgeCases).
+    No regressions: 139 pass (was 119 before T3), same 8 pre-existing regime failures,
+    same 4 collection errors (types→schemas rename, pre-existing).
 
 ---
 

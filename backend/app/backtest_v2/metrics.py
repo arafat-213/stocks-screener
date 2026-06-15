@@ -1,5 +1,5 @@
 """
-metrics.py — daily-MTM absolute metrics (T8).
+metrics.py — daily-MTM absolute + benchmark-relative metrics (T8 + spec 03 T3).
 
 Computes from EngineResult:
   - CAGR, Sharpe (daily returns × √252), Sortino, annualized vol
@@ -8,8 +8,15 @@ Computes from EngineResult:
   - Annualized turnover + per-rebalance series (warns if > 1000%)
   - Per-name diagnostics: realized P&L, hold period, hit rate
 
-Benchmark-relative metrics (excess CAGR, IR, benchmark Calmar, capture)
-are spec 03 — not computed here.  Leave the seam clean.
+Benchmark-relative (spec 03 T3, vs Nifty200 Momentum 30 TRI):
+  - Excess CAGR (strategy CAGR − benchmark CAGR)
+  - Calmar ratio = strategy Calmar / benchmark Calmar  (headline; target > 1)
+  - Max-DD ratio = strategy maxDD / benchmark maxDD  (target ≤ 0.70)
+  - Information ratio (excess return / tracking error × √252)
+  - Up / down capture ratios
+  - Correlation + beta to benchmark
+
+T0 verified rates (2026-06-15); benchmark-relative block wired in T3.
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ from datetime import date
 from typing import TYPE_CHECKING
 
 import numpy as np
+import pandas as pd
 
 from app.backtest_v2.schemas import Fill
 
@@ -94,6 +102,38 @@ class BacktestMetrics:
     n_trading_days: int = 0
     start_equity: float = 0.0
     end_equity: float = 0.0
+
+
+@dataclass
+class BenchmarkMetrics:
+    """Benchmark-relative metrics (spec 03 T3, vs aligned/rebased TRI series)."""
+
+    # Headline pass/fail numbers (spec 03 §4.5)
+    calmar_ratio: float  # strategy Calmar / benchmark Calmar  (target > 1)
+    max_dd_ratio: float  # strategy maxDD / benchmark maxDD    (target ≤ 0.70)
+
+    # Return comparison
+    excess_cagr: float  # strategy CAGR − benchmark CAGR
+    strategy_cagr: float
+    benchmark_cagr: float
+    strategy_calmar: float
+    benchmark_calmar: float
+    strategy_max_dd: float
+    benchmark_max_dd: float
+
+    # Risk-adjusted edge
+    information_ratio: float  # mean(excess_ret) / std(excess_ret) × √252
+
+    # Capture ratios
+    up_capture: float  # mean(strat_ret | bench > 0) / mean(bench_ret | bench > 0)
+    down_capture: float  # mean(strat_ret | bench < 0) / mean(bench_ret | bench < 0)
+
+    # Co-movement
+    correlation: float
+    beta: float
+
+    # Diagnostic
+    n_overlap_days: int  # days where both series have a valid return
 
 
 # ---------------------------------------------------------------------------
@@ -253,8 +293,184 @@ def summary(m: BacktestMetrics) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Benchmark-relative entry point
+# ---------------------------------------------------------------------------
+
+
+def compute_benchmark_metrics(
+    strategy_equity: pd.Series,
+    benchmark_equity: pd.Series,
+) -> BenchmarkMetrics:
+    """
+    Compute benchmark-relative metrics from two equity-equivalent daily series.
+
+    Parameters
+    ----------
+    strategy_equity:
+        DatetimeIndex → ₹ daily equity from EngineResult.snapshots.
+        Build via: pd.Series({s.date: s.equity for s in result.snapshots}).
+    benchmark_equity:
+        DatetimeIndex → ₹ rebased TRI series from align_benchmark().
+        Must cover the same window as strategy_equity (pre-aligned by caller).
+
+    Returns
+    -------
+    BenchmarkMetrics with all benchmark-relative statistics.
+    """
+    # Align on common dates; drop any NaNs.
+    df = pd.DataFrame({"strat": strategy_equity, "bench": benchmark_equity}).dropna()
+    if len(df) < 3:
+        raise ValueError(
+            "compute_benchmark_metrics: fewer than 3 overlapping dates between "
+            "strategy and benchmark — extend the benchmark range or check alignment."
+        )
+
+    n_overlap = len(df)
+
+    # Daily returns from equity levels.
+    strat_ret = df["strat"].pct_change().dropna()
+    bench_ret = df["bench"].pct_change().dropna()
+
+    # Re-align after pct_change drops first row.
+    common = strat_ret.index.intersection(bench_ret.index)
+    strat_ret = strat_ret.loc[common]
+    bench_ret = bench_ret.loc[common]
+
+    # ---- CAGR for both series -----------------------------------------
+    strat_cagr = _cagr_from_equity(df["strat"])
+    bench_cagr = _cagr_from_equity(df["bench"])
+    excess_cagr = strat_cagr - bench_cagr
+
+    # ---- MaxDD + Calmar for both series --------------------------------
+    strat_equities = df["strat"].to_numpy(dtype=float)
+    bench_equities = df["bench"].to_numpy(dtype=float)
+    dates_list = [ts.date() for ts in df.index]
+
+    strat_max_dd, _ = _compute_max_drawdown(strat_equities, dates_list)
+    bench_max_dd, _ = _compute_max_drawdown(bench_equities, dates_list)
+
+    strat_calmar = strat_cagr / strat_max_dd if strat_max_dd > 0 else float("nan")
+    bench_calmar = bench_cagr / bench_max_dd if bench_max_dd > 0 else float("nan")
+
+    # Headline ratios.
+    if not math.isnan(bench_calmar) and bench_calmar != 0:
+        calmar_ratio = strat_calmar / bench_calmar
+    else:
+        calmar_ratio = float("nan")
+
+    max_dd_ratio = strat_max_dd / bench_max_dd if bench_max_dd > 0 else float("nan")
+
+    # ---- Information ratio (excess return / tracking error × √252) -----
+    excess_ret = strat_ret - bench_ret
+    mean_excess = float(excess_ret.mean())
+    std_excess = float(excess_ret.std(ddof=1))
+    ir = (
+        (mean_excess / std_excess) * math.sqrt(_TRADING_DAYS_PER_YEAR)
+        if std_excess > 0
+        else 0.0
+    )
+
+    # ---- Up / down capture ratios --------------------------------------
+    up_mask = bench_ret > 0
+    down_mask = bench_ret < 0
+
+    mean_strat_up = float(strat_ret[up_mask].mean()) if up_mask.any() else float("nan")
+    mean_bench_up = float(bench_ret[up_mask].mean()) if up_mask.any() else float("nan")
+    up_capture = mean_strat_up / mean_bench_up if mean_bench_up > 0 else float("nan")
+
+    mean_strat_dn = (
+        float(strat_ret[down_mask].mean()) if down_mask.any() else float("nan")
+    )
+    mean_bench_dn = (
+        float(bench_ret[down_mask].mean()) if down_mask.any() else float("nan")
+    )
+    down_capture = mean_strat_dn / mean_bench_dn if mean_bench_dn < 0 else float("nan")
+
+    # ---- Correlation + beta -------------------------------------------
+    if len(strat_ret) > 1:
+        correlation = float(strat_ret.corr(bench_ret))
+        bench_var = float(bench_ret.var(ddof=1))
+        if bench_var > 0:
+            beta = float(strat_ret.cov(bench_ret, ddof=1) / bench_var)
+        else:
+            beta = float("nan")
+    else:
+        correlation = float("nan")
+        beta = float("nan")
+
+    return BenchmarkMetrics(
+        calmar_ratio=calmar_ratio,
+        max_dd_ratio=max_dd_ratio,
+        excess_cagr=excess_cagr,
+        strategy_cagr=strat_cagr,
+        benchmark_cagr=bench_cagr,
+        strategy_calmar=strat_calmar,
+        benchmark_calmar=bench_calmar,
+        strategy_max_dd=strat_max_dd,
+        benchmark_max_dd=bench_max_dd,
+        information_ratio=ir,
+        up_capture=up_capture,
+        down_capture=down_capture,
+        correlation=correlation,
+        beta=beta,
+        n_overlap_days=n_overlap,
+    )
+
+
+def benchmark_summary(bm: BenchmarkMetrics) -> str:
+    """Return a compact human-readable benchmark-relative metrics block."""
+
+    def _fmt(v: float, fmt: str = ".2f") -> str:
+        return f"{v:{fmt}}" if not math.isnan(v) else "n/a"
+
+    calmar_flag = ""
+    if not math.isnan(bm.calmar_ratio):
+        calmar_flag = "  ✓ > 1" if bm.calmar_ratio > 1.0 else "  ✗ ≤ 1"
+    maxdd_flag = ""
+    if not math.isnan(bm.max_dd_ratio):
+        maxdd_flag = "  ✓ ≤ 0.70" if bm.max_dd_ratio <= 0.70 else "  ✗ > 0.70"
+
+    lines = [
+        "=== v2 Benchmark-Relative Metrics (vs Nifty200 Momentum 30 TRI) ===",
+        f"  Strat CAGR      : {bm.strategy_cagr:+.2%}",
+        f"  Bench CAGR      : {bm.benchmark_cagr:+.2%}",
+        f"  Excess CAGR     : {bm.excess_cagr:+.2%}",
+        "",
+        f"  Strat MaxDD     : {bm.strategy_max_dd:.2%}",
+        f"  Bench MaxDD     : {bm.benchmark_max_dd:.2%}",
+        f"  Max-DD Ratio    : {_fmt(bm.max_dd_ratio)}{maxdd_flag}",
+        "",
+        f"  Strat Calmar    : {_fmt(bm.strategy_calmar)}",
+        f"  Bench Calmar    : {_fmt(bm.benchmark_calmar)}",
+        f"  Calmar Ratio    : {_fmt(bm.calmar_ratio)}{calmar_flag}",
+        "",
+        f"  Info Ratio (IR) : {_fmt(bm.information_ratio)}",
+        f"  Up Capture      : {_fmt(bm.up_capture)}",
+        f"  Down Capture    : {_fmt(bm.down_capture)}",
+        f"  Correlation     : {_fmt(bm.correlation)}",
+        f"  Beta            : {_fmt(bm.beta)}",
+        "",
+        f"  Overlap days    : {bm.n_overlap_days}",
+    ]
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+
+def _cagr_from_equity(equity: pd.Series) -> float:
+    """CAGR from a DatetimeIndex equity series (calendar-time annualized)."""
+    if len(equity) < 2:
+        return 0.0
+    start_val = float(equity.iloc[0])
+    end_val = float(equity.iloc[-1])
+    n_calendar_days = (equity.index[-1] - equity.index[0]).days
+    years = n_calendar_days / _CALENDAR_DAYS_PER_YEAR
+    if years <= 0 or start_val <= 0:
+        return 0.0
+    return (end_val / start_val) ** (1.0 / years) - 1.0
 
 
 def _compute_max_drawdown(equities: np.ndarray, dates: list[date]) -> tuple[float, int]:
