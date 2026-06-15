@@ -145,7 +145,9 @@ def _fetch_tri(index_name: str, start: str, end: str) -> list[dict]:
     sess = _make_session()
     cinfo = json.dumps(
         {
-            "name": "getTotalReturnIndexString",
+            # The API's `name` field is the index name itself, not the method
+            # name — sending the method name returns {"d":"[]"} silently.
+            "name": index_name,
             "startDate": start,
             "endDate": end,
             "indexName": index_name,
@@ -163,7 +165,9 @@ def _fetch_price(index_name: str, start: str, end: str) -> list[dict]:
     sess = _make_session()
     cinfo = json.dumps(
         {
-            "name": "getHistoricaldatatabletoString",
+            # The API's `name` field is the index name itself, not the method
+            # name — sending the method name returns {"d":"[]"} silently.
+            "name": index_name,
             "startDate": start,
             "endDate": end,
             "indexName": index_name,
@@ -270,6 +274,14 @@ def load_tri(
     log.info("benchmark: fetching TRI %s [%s → %s]", index_name, start_str, end_str)
     rows = fetch(index_name, start_str, end_str)
     series = _rows_to_tri_series(rows)
+    if series.empty:
+        # Never persist an empty fetch — a transient failure or a bad index
+        # name would otherwise poison the cache forever (every later load
+        # would hit the empty parquet). Fail loud and retry next time.
+        raise ValueError(
+            f"benchmark: TRI fetch for {index_name!r} [{start_str} → {end_str}] "
+            "returned zero rows — not caching. Check the index name / network."
+        )
     _write_atomic(series, cache_path)
     log.info("benchmark: cached %d TRI rows → %s", len(series), cache_path.name)
     return series
@@ -306,6 +318,12 @@ def load_price_index(
     )
     rows = fetch(index_name, start_str, end_str)
     series = _rows_to_price_series(rows)
+    if series.empty:
+        # Never persist an empty fetch — see load_tri for the rationale.
+        raise ValueError(
+            f"benchmark: price fetch for {index_name!r} [{start_str} → {end_str}] "
+            "returned zero rows — not caching. Check the index name / network."
+        )
     _write_atomic(series, cache_path)
     log.info("benchmark: cached %d price rows → %s", len(series), cache_path.name)
     return series

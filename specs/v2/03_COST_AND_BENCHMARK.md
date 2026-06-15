@@ -67,7 +67,8 @@ slippage_pct   = base_slippage_pct + impact_coeff × participation
 **Required steps:**
 1. GET `https://www.niftyindices.com` first (warm-up — establishes session cookie)
 2. POST with headers: `Content-Type: application/json; charset=utf-8`, `X-Requested-With: XMLHttpRequest`, `Referer: https://www.niftyindices.com/reports/historical-data`
-3. Payload: `{"cinfo": "<JSON-encoded string: {name, startDate, endDate, indexName}>"}` where dates are `"DD-Mon-YYYY"` format (e.g. `"01-Jan-2024"`)
+3. Payload: `{"cinfo": "<JSON-encoded string: {name, startDate, endDate, indexName}>"}` where dates are `"DD-Mon-YYYY"` format (e.g. `"01-Jan-2024"`).
+   **`name` MUST be the index name string, same as `indexName` — NOT the API method name.** Sending the method name (e.g. `"getTotalReturnIndexString"`) returns `{"d":"[]"}` (empty) with HTTP 200, no error. Re-confirmed live 2026-06-15.
 4. Response: JSON `{"d": "<JSON-string array of row objects>"}` — parse `d` as JSON
 
 **Confirmed index name strings (exact, case-sensitive as the API accepts them):**

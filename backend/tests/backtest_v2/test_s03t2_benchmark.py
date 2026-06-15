@@ -222,6 +222,52 @@ class TestLoadTriCache:
 
 
 # ---------------------------------------------------------------------------
+# load_tri / load_price_index: empty-fetch must NOT poison the cache
+# ---------------------------------------------------------------------------
+
+
+class TestEmptyFetchNotCached:
+    """Regression: a transient empty fetch (e.g. wrong index name string, or a
+    throttled API returning {"d":"[]"}) must raise and leave no parquet behind.
+    Otherwise the empty file is read on every later call and benchmark-relative
+    metrics (spec 03 §4 criteria 3 & 5) silently vanish forever. Fail loud."""
+
+    def test_empty_tri_fetch_raises(self, tmp_path):
+        mock_fetch = MagicMock(return_value=[])
+        with pytest.raises(ValueError, match="zero rows"):
+            load_tri(
+                TRI_MOMENTUM_30,
+                "2024-01-01",
+                "2024-01-31",
+                cache_dir=tmp_path,
+                _fetch_fn=mock_fetch,
+            )
+
+    def test_empty_tri_fetch_writes_no_cache_file(self, tmp_path):
+        mock_fetch = MagicMock(return_value=[])
+        with pytest.raises(ValueError):
+            load_tri(
+                TRI_MOMENTUM_30,
+                "2024-01-01",
+                "2024-01-31",
+                cache_dir=tmp_path,
+                _fetch_fn=mock_fetch,
+            )
+        # No poisoned parquet left on disk → next call re-fetches.
+        assert list(Path(tmp_path).glob("*.parquet")) == []
+
+    def test_empty_price_fetch_raises(self, tmp_path):
+        mock_fetch = MagicMock(return_value=[])
+        with pytest.raises(ValueError, match="zero rows"):
+            load_price_index(
+                "2024-01-01",
+                "2024-01-31",
+                cache_dir=tmp_path,
+                _fetch_fn=mock_fetch,
+            )
+
+
+# ---------------------------------------------------------------------------
 # load_tri: all three series
 # ---------------------------------------------------------------------------
 
