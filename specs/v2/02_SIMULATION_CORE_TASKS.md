@@ -185,7 +185,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T3 — Signals: indicator precompute + ranker + entry gate (`signals.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1, T0 contracts; reads spec 01 parquet via `store`
 - **Goal:** Produce the eligibility gate and the ranking score, **kept separate** (`02` §4:
   "do not merge them into a score").
@@ -202,16 +202,23 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
     Keep the interface pluggable (the index-style composite is a later A/B, **do not build
     both now** — `02` §4).
 - **Done-criteria:**
-  - [ ] `entry_gate` returns False if ANY of the three conditions fails; True only when all
+  - [x] `entry_gate` returns False if ANY of the three conditions fails; True only when all
         pass (unit test each branch on synthetic frames).
-  - [ ] `momentum_12_1` uses calendar index positions; a test with a gap-containing calendar
+  - [x] `momentum_12_1` uses calendar index positions; a test with a gap-containing calendar
         proves it picks the right offset rows (not a naive `.shift`).
-  - [ ] `ranker` returns vol-adjusted momentum; higher momentum / lower vol ranks higher
+  - [x] `ranker` returns vol-adjusted momentum; higher momentum / lower vol ranks higher
         (hand-checked test). Interface is `ranker(day, isin) -> float` (pluggable).
-  - [ ] All indicator math uses **`close`** (not `close_tr`); asserted in a test.
-  - [ ] Tests offline (synthetic price frames; no live data, no network).
+  - [x] All indicator math uses **`close`** (not `close_tr`); asserted in a test.
+  - [x] Tests offline (synthetic price frames; no live data, no network).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `signals.py`: `_momentum_12_1` (vectorized numpy helper),
+    `precompute_signals` (per-ISIN groupby loop calling `calculate_indicators` via
+    title-case adapter + calendar-aware momentum + rolling vol), and `SignalStore` with
+    `entry_gate`, `ranker`, `eligible_ranked`. 31/31 unit tests pass offline
+    (`test_t3_signals.py`). Key decisions: (1) close_tr excluded at groupby-select time
+    so no indicator can silently use it; (2) `_momentum_12_1` exposed as module-level
+    function for direct testing; (3) `eligible_ranked` helper combines gate+sort for
+    engine use.
 
 ---
 
