@@ -1,0 +1,323 @@
+# Spec 04 — Validation Floor & Anti-Overfit: Task Breakdown & Build Tracker
+
+> **Purpose.** Decompose `04_VALIDATION_FLOOR.md` into small, resumable,
+> session-sized tasks so no single session has to do the whole validation layer
+> (too expensive in tokens — CLAUDE.md Rule 6). Each task is self-contained: a
+> session loads `00_OVERVIEW.md`, `04_VALIDATION_FLOOR.md`, this file, and the
+> **one task** it is doing — nothing more.
+>
+> **How to use this file each session:**
+> 1. Read the task you are picking up (and its "Depends on").
+> 2. Do only that task. Honor the per-session token budget (Rule 6).
+> 3. Update the task's **Status** and fill its **Session log** at the end.
+> 4. Check off the Done-criteria. Do not mark Done if anything was skipped
+>    (Rule 12 — fail loud).
+>
+> **Status legend:** ☐ not started · ◐ in progress · ☑ done · ⚠ blocked
+>
+> **This spec is different from 01–03.** It is methodology + research discipline,
+> not "build a layer." Two consequences:
+> - There is a **hard GO/NO-GO gate after the floor (T1).** If the floor badly
+>   underperforms even Nifty 50 TRI after costs, the spec says **stop and diagnose
+>   the data/costs — do not tune** (`04` §2). T2–T5 do not happen in that case.
+> - The back half (T3 iteration, T4 robustness) are open-ended research loops, not
+>   deterministic builds. Their exact scope depends on what the floor and each
+>   layer reveal. They are framed here, not fully pre-specified. **Commit firmly to
+>   T0→T1; treat T2→T5 as the conditional second phase.**
+
+---
+
+## What this layer plugs into (already built — specs 01 + 02 + 03)
+
+The engine, cost model, and benchmark wiring are complete and gated by tests.
+Spec 04 **drives** them with discipline; it adds very little new infrastructure.
+
+Confirmed seams (read, do **not** rewrite — `00` §5, Rule 3):
+
+- **`engine.run(prices, config, *, index_prices, cost_level)`** — `cost_level` is
+  already a first-class param: `"optimistic" | "base" | "pessimistic"` (spec 03 T4).
+  The floor does not need to touch the engine to produce the three-cost report.
+- **`app.backtest_v2.run_real`** — already has `_print_three_level_report(...)`,
+  `_try_load_benchmark(...)`, and the `02 §10` invariant checks
+  (`check_cash_conservation`, `check_determinism`, `check_no_lookahead`). The floor
+  runner is a thin, pre-committed-config wrapper on top of this machinery.
+- **`app.backtest_v2.benchmark`** — `load_tri(index_name, ...)`, `align_benchmark(...)`,
+  and the three TRI constants `TRI_MOMENTUM_30` (primary), `TRI_MIDCAP_MOMENTUM_50`
+  (secondary), `TRI_NIFTY_50` (floor). Also `load_price_index(...)` — the **real
+  Nifty 50 price** series for the regime 200-DMA (spec 03 §D).
+- **`app.backtest_v2.metrics`** — absolute + benchmark-relative metrics, incl.
+  Calmar, max-DD ratio, IR, capture, beta (spec 03 T3). These are the pass/fail
+  numbers; the floor just renders them.
+- **`app.data.bhavcopy.store`** — `read_prices_adjusted(...)` over the built dataset
+  (`backend/data/bhavcopy/`, ISIN-partitioned, ~2017-12 → 2025-11 on disk).
+
+### ⚠ Load-bearing integration fact — `run_real.py` feeds the regime a *synthetic* index
+
+`run_real.build_synthetic_index(prices)` is an equal-weighted **placeholder** the
+regime overlay currently reads. `04` §2 mandates the regime overlay be ON, driven by
+the **real price index 200-DMA** (`02 §8`, `03 §2.3 / §D` — Nifty 50 *price*, not
+TRI). **The floor (T1) MUST swap the synthetic index for `benchmark.load_price_index`.**
+A floor measured on a synthetic regime signal is not the spec's floor.
+
+---
+
+## Target module layout (proposed — confirm minimalism per task, Rule 2)
+
+```
+backend/app/backtest_v2/
+  floor.py        # T1 — pre-committed floor config + 3-cost × 3-benchmark report + decision rule
+  validation.py   # T2 — FROZEN date splits, walk-forward windows, config ledger, deflated Sharpe / PBO
+  iterate.py      # T3 — one-layer coarse-grid runner on discovery only + plateau detector
+  robustness.py   # T4 — cost stress, drop-top-N, neighborhood, subperiod, turnover/capacity
+  # T5 reuses floor.py + validation.py for the one-shot OOS gate — no new module expected
+```
+
+These are proposals. Prefer the fewest modules that stay readable; do not create a
+module until its task needs it. Keep **entirely separate** from `backend/app/backtest/`
+(v1) — v1 must stay runnable.
+
+---
+
+## Task graph (dependencies)
+
+```
+T0 (lock decisions: data span, floor→config map, FROZEN date splits, decision thresholds, PBO method — light/no code)
+   └─> T1 (THE FLOOR: pre-committed config, 3 cost levels × 3 benchmarks, real regime index, decision rule)
+            │
+        ╔═══╧═══════════════════════════════════════════════════════════╗
+        ║  GO / NO-GO GATE (04 §2).                                      ║
+        ║  Floor underperforms Nifty 50 TRI after base costs  → STOP.    ║
+        ║  Diagnose data/costs. Do NOT build T2–T5, do NOT tune.        ║
+        ╚═══╤═══════════════════════════════════════════════════════════╝
+            │  (only if floor is sound)
+            ▼
+   T2 (walk-forward + OOS scaffolding: frozen split, rolling windows, config ledger, deflated Sharpe/PBO + unit tests)
+            └─> T3 (controlled-iteration harness: one-layer coarse grid on discovery + plateau detector; layer 1 worked example)
+                     └─> T4 (robustness checks on the chosen candidate: cost stress, drop-top-N, neighborhood, subperiod, turnover/capacity)
+                              └─> T5 (FINAL one-shot OOS gate + Definition of Done — looked at exactly once)
+```
+
+T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 exist.
+
+---
+
+## T0 — Lock decisions: data span, config map, frozen splits, thresholds (light / no production code)
+
+- **Status:** ☐
+- **Depends on:** specs 01–03 done (they are).
+- **Goal:** Pre-commit every choice that `04` says must be fixed *before* measuring,
+  so no later session is tempted to move the measuring stick (the v1 failure mode,
+  `04` §5/§7). Output is decisions, not a runner.
+- **Do:**
+  - **Usable data span.** Confirm from `store.read_prices_adjusted` the first/last
+    trading date actually on disk and the count of distinct ISINs. Subtract the
+    warmup: a valid `momentum_12_1` needs `i >= 273` per-ISIN trading days (`02` §3),
+    so the first *decision* date is ~13 months after data start. Record the real
+    usable backtest window.
+  - **Floor → `MomentumConfig` map.** Write the exact field values for the `04` §2
+    floor and confirm each is already the dataclass default (it should be: N=20,
+    M=35, liquidity 5.0cr, EMA_200, monthly, regime ON, cat-stop 25%). Note any
+    drift between `04` §2 prose and `config.py` defaults and resolve it explicitly
+    (Rule 7 — surface conflicts).
+  - **FREEZE the date splits as code constants** (the load-bearing T0 deliverable):
+    - `DISCOVERY = (start, end)` — in-sample region for *all* §4 iteration, with
+      internal walk-forward folds (`04` §5).
+    - `FINAL_OOS = (start, end)` — one contiguous, recent block, looked at **exactly
+      once** in T5. No overlap with discovery.
+    - Recommended starting points to lock (adjust to the real usable span): discovery
+      ≈ first-usable → 2023-06, final OOS ≈ 2023-07 → last-on-disk. **The floor (T1)
+      itself runs on the *full* usable window** — it is pre-committed/single-config so
+      it burns no OOS; the split governs only the iteration phase (T2+).
+  - **Decision-rule thresholds (make `04` §2 numeric).** Define precisely what
+    "roughly tracks or beats Nifty200 Momentum 30 TRI on Calmar after base costs"
+    means as a computable predicate (e.g. `calmar_ratio_vs_primary >= X`), and the
+    NO-GO trip ("badly underperforms even Nifty 50 TRI") as another (e.g.
+    `calmar_ratio_vs_nifty50 < Y`). These feed T1's `evaluate_decision`.
+  - **Anti-overfit method.** Choose how T2 will compute the **deflated Sharpe ratio**
+    and **PBO** (probability of backtest overfitting) — name the method (e.g. Bailey &
+    López de Prado deflated Sharpe; PBO via combinatorially-symmetric cross-validation
+    / CSCV) so T2 implements a known recipe, not an ad-hoc one.
+  - Throwaway probe code (a one-off `read_prices_adjusted` span check) is allowed; do
+    **not** ship a module.
+- **Deliverable:** a `## Locked decisions (T0)` section appended to the **top** of
+  `04_VALIDATION_FLOOR.md` capturing: usable window, floor→config map (+ any drift
+  resolved), the two frozen date ranges, the numeric decision predicates, and the
+  chosen deflated-Sharpe/PBO method.
+- **Done-criteria:**
+  - [ ] Real usable backtest window (post-warmup) recorded from on-disk data.
+  - [ ] Floor config mapped field-by-field; any prose↔default drift surfaced + resolved.
+  - [ ] `DISCOVERY` and `FINAL_OOS` ranges frozen as explicit values (non-overlapping).
+  - [ ] Decision-rule GO and NO-GO predicates stated numerically.
+  - [ ] Deflated-Sharpe + PBO method named with a citation.
+- **Session log:**
+  - _(fill at end of session)_
+
+---
+
+## T1 — THE FLOOR: pre-committed config, 3 cost levels × 3 benchmarks (the gate)
+
+- **Status:** ☐
+- **Depends on:** T0.
+- **Goal:** Run the single `04` §2 floor config, measured honestly, on the full
+  usable window; render the `04` §2 report (three cost levels × three benchmarks);
+  evaluate the T0 decision predicates and record an explicit **GO / NO-GO verdict**.
+  **No tuning, no search** — exactly one config.
+- **Do:**
+  - Add `floor.py`: build the frozen floor `MomentumConfig` (from T0), run it via the
+    existing engine + `_print_three_level_report` machinery. **Swap the synthetic
+    regime index for `benchmark.load_price_index` (real Nifty 50 price)** — see the
+    load-bearing fact above; without it this is not the spec's floor.
+  - Render benchmark-relative metrics vs **all three** TRI series
+    (`TRI_MOMENTUM_30`, `TRI_MIDCAP_MOMENTUM_50`, `TRI_NIFTY_50`) at each cost level,
+    foregrounding Calmar ratio and max-DD ratio (`03` §4.5 — the pass/fail numbers).
+  - Implement `evaluate_decision(...)` applying T0's GO/NO-GO predicates; print the
+    verdict prominently and write it to the session log.
+  - Reuse `run_real`'s `02 §10` invariant checks (cash conservation, determinism,
+    no-lookahead) as a pre-flight so the floor run is trustworthy before judging it.
+  - If the primary TRI is a cache miss (no network), fail loud — the floor verdict is
+    meaningless without the real benchmark. Do not silently fall back to synthetic.
+- **Deliverable:** `floor.py` + a written **Floor Report** (numbers at all three cost
+  levels vs all three benchmarks) + the recorded GO/NO-GO verdict, in the session log.
+- **Done-criteria:**
+  - [ ] Exactly one config run; regime fed the **real** price index, not synthetic.
+  - [ ] Three cost levels × three benchmarks rendered with Calmar + max-DD ratios.
+  - [ ] `02 §10` invariants pass for the floor run.
+  - [ ] GO/NO-GO verdict computed by the T0 predicates and stated plainly (Rule 12 —
+        no softening a miss into "promising").
+- **Session log:**
+  - _(fill at end of session)_
+
+> ╔══════════════════════════════════════════════════════════════════════════╗
+> ║  GATE — read the T1 verdict before opening T2.                           ║
+> ║  • NO-GO (underperforms Nifty 50 TRI after base costs): STOP. Open a      ║
+> ║    diagnosis note on data/costs/universe. Do not start T2. Do not tune.   ║
+> ║  • GO (tracks/beats primary on Calmar after base costs): proceed to T2.   ║
+> ╚══════════════════════════════════════════════════════════════════════════╝
+
+---
+
+## T2 — Walk-forward & OOS scaffolding (`validation.py`) + unit tests
+
+- **Status:** ☐ — _conditional on T1 = GO._
+- **Depends on:** T1 (GO).
+- **Goal:** Build the honest-measurement infrastructure every iteration session needs,
+  as pure, unit-tested infra with **no research conclusions** in it.
+- **Do:**
+  - `validation.py` exposing: the FROZEN `DISCOVERY` / `FINAL_OOS` constants (from T0);
+    a **walk-forward window generator** (rolling discovery→OOS folds *within*
+    discovery, `04` §5); a **config ledger** that records every config evaluated (so
+    the count of trials is known for deflation, `04` §5); and a **deflated Sharpe** +
+    **PBO** computation per the T0-chosen method.
+  - Unit tests (Rule 9 — encode *why*): walk-forward folds never overlap and never
+    touch `FINAL_OOS`; the ledger monotonically counts trials; deflated Sharpe ≤ raw
+    Sharpe and decreases as trial count rises; PBO is in [0,1] and rises with
+    overfit-prone inputs. Mock any data reads (Rule: no live yfinance/NSE).
+  - Do **not** run any sweep here. This task ships machinery, not findings.
+- **Deliverable:** `validation.py` + its test module, all green.
+- **Done-criteria:**
+  - [ ] Frozen splits importable as constants; `FINAL_OOS` provably untouched by
+        walk-forward folds (test).
+  - [ ] Config ledger counts trials; used by deflation.
+  - [ ] Deflated Sharpe + PBO implemented to the named method, with tests on their
+        defining properties.
+- **Session log:**
+  - _(fill at end of session)_
+
+---
+
+## T3 — Controlled-iteration harness (`iterate.py`) + plateau detector + layer 1
+
+- **Status:** ☐ — _conditional on T1 = GO._
+- **Depends on:** T2.
+- **Goal:** Provide the one-layer-at-a-time, coarse-grid, plateau-based iteration
+  machinery (`04` §4), and demonstrate it on the first candidate layer only.
+- **Do:**
+  - `iterate.py`: run a **coarse** grid over **one** layer while holding all other
+    knobs at floor values, **on `DISCOVERY` only**, logging every config to the T2
+    ledger. No 1700-combo sweeps (`04` §4 — coarse grids only).
+  - **Plateau detector** (the cheapest overfit defense, `04` §4): accept a parameter
+    only if a *contiguous neighborhood* performs similarly; reject lone spiky optima.
+    This is the core reusable primitive.
+  - Run **layer 1 only — regime-overlay calibration** (debounce days, risk-off floor;
+    `04` §4 priority 1) as the worked example. Report whether a plateau exists.
+  - Layers 2–5 (ranker variant, rebalance cadence, N/M, liquidity floor) are
+    **subsequent uses** of this harness, not pre-planned sessions — each is a short
+    follow-up run logged to the ledger. Do not build them all now (Rule 2).
+- **Deliverable:** `iterate.py` + plateau detector + the layer-1 (regime) result with
+  a plateau verdict, in the session log.
+- **Done-criteria:**
+  - [ ] Harness runs a coarse single-layer grid on `DISCOVERY` only; every config hits
+        the ledger.
+  - [ ] Plateau detector implemented + unit-tested (spiky optimum rejected).
+  - [ ] Layer 1 (regime) run; plateau present/absent stated honestly.
+- **Session log:**
+  - _(fill at end of session)_
+
+---
+
+## T4 — Robustness checks (`robustness.py`) on the chosen candidate
+
+- **Status:** ☐ — _conditional on a candidate surviving T3._
+- **Depends on:** T3 (a candidate config exists).
+- **Goal:** Subject the chosen candidate to every `04` §6 survival check before it is
+  allowed near the final OOS block.
+- **Do:** implement and run, on the candidate:
+  - **Cost stress** — still beats benchmark Calmar at the **pessimistic** level (§6.1).
+  - **Universe perturbation** — drop the top-10 contributing names; does the edge
+    persist? Cross-check those names' adjusted data for glitches (§6.2).
+  - **Parameter neighborhood** — reuse the T3 plateau check (§6.3).
+  - **Subperiod stability** — positive-ish across bull / bear / chop subperiods, not
+    one regime carrying everything (the explicit v1 trap — 2021 bull) (§6.4).
+  - **Turnover / capacity** — annualized turnover + average participation vs ADV
+    within tradeable limits at the intended capital (§6.5).
+- **Deliverable:** `robustness.py` + a per-check pass/fail table for the candidate.
+- **Done-criteria:**
+  - [ ] All five §6 checks implemented and run on the candidate.
+  - [ ] Each reported as explicit pass/fail (Rule 12); a failure blocks T5.
+- **Session log:**
+  - _(fill at end of session)_
+
+---
+
+## T5 — Final one-shot OOS gate + Definition of Done (`04` §7)
+
+- **Status:** ☐ — _conditional on the candidate clearing T4._
+- **Depends on:** T4 (all robustness checks pass).
+- **Goal:** Run the **single, pre-committed** config on the FROZEN `FINAL_OOS` block
+  **exactly once**, and assemble the validated / not-validated verdict per `04` §7.
+- **Do:**
+  - Run the candidate on `FINAL_OOS` once. **If it fails, it fails — do not iterate
+    against it** (`04` §5). Record the trial in the ledger.
+  - Assemble the §7 Definition-of-Done checklist: beats Nifty200 Momentum 30 TRI on
+    Calmar after **base** costs with **max DD ≤ 70%** of benchmark on discovery; holds
+    at **pessimistic** costs and across subperiods; passes the one-shot OOS without
+    re-tuning; tradeable on turnover/capacity.
+  - Write the honest verdict — "validated strategy" only if every box is checked;
+    otherwise "research note," reported without softening (Rule 12).
+- **Deliverable:** the final OOS numbers + the completed §7 DoD checklist + the
+  one-line verdict, in the session log.
+- **Done-criteria:**
+  - [ ] `FINAL_OOS` consumed exactly once for the chosen config (ledger shows it).
+  - [ ] §7 checklist filled item-by-item.
+  - [ ] Verdict stated plainly; a miss is reported as a miss.
+- **Session log:**
+  - _(fill at end of session)_
+
+---
+
+## Exit criteria for the whole Validation layer (spec 04 complete)
+
+- [ ] T0 decisions locked (window, floor→config map, frozen splits, predicates, PBO method).
+- [ ] T1 floor run honestly; GO/NO-GO verdict recorded.
+- [ ] **If NO-GO:** diagnosis note written; spec 04 ends here honestly (this is a valid
+      terminal state — the measuring stick found no foundation, exactly what §2 protects).
+- [ ] **If GO:** T2 scaffolding green; T3 iteration ran one layer at a time on discovery
+      with plateau-based selection; T4 robustness checks all pass on the candidate;
+      T5 one-shot OOS consumed once and the §7 DoD checklist completed.
+- [ ] Final artifact is labeled truthfully: "validated, deployable config" only if §7
+      is fully satisfied; otherwise "research note" (Rule 12 — fail loud). No softening.
+
+> Reminder for every session in this spec: the entire point of v2 was honest
+> measurement. The frozen splits, the one-shot OOS, the plateau rule, the trial
+> ledger, and the deflated Sharpe all exist to stop us from re-running v1's mistake
+> of optimizing a biased harness. Do not move a frozen boundary to make a config pass.
