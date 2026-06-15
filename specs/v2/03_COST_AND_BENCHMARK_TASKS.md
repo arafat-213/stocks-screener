@@ -200,7 +200,7 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
 
 ## T2 — Benchmark wiring (`benchmark.py`) — TRI loaders + regime price index
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T0 (download method)
 - **Goal:** Load the benchmark TRIs and the regime price index, calendar-aligned and
   warmup-sliced, rebased to starting capital (`03` §2.1–§2.3).
@@ -221,17 +221,27 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
   - Keep the two roles **distinct**: price index → regime signal; momentum TRI →
     performance benchmark (`03` §2.3). Do not feed the TRI into regime.
 - **Done-criteria:**
-  - [ ] All 3 TRI series load + cache; second call does zero network (idempotent),
+  - [x] All 3 TRI series load + cache; second call does zero network (idempotent),
         tested offline with a mocked/cached fixture (Rule 5 — no live niftyindices in tests).
-  - [ ] Benchmark is calendar-aligned to the run window and **warmup-sliced** — a test
+  - [x] Benchmark is calendar-aligned to the run window and **warmup-sliced** — a test
         asserts the benchmark series starts at `date_from`, not at `start - warmup`.
-  - [ ] Strategy + benchmark both rebased to starting capital at `date_from`; benchmark
+  - [x] Strategy + benchmark both rebased to starting capital at `date_from`; benchmark
         daily returns computed from TRI closes.
-  - [ ] Regime **price** index loader returns a series consumable by
+  - [x] Regime **price** index loader returns a series consumable by
         `engine.run(index_prices=...)` — distinct from the TRI (asserted: different source).
-  - [ ] Tests offline (committed fixture TRI rows; no live network).
+  - [x] Tests offline (committed fixture TRI rows; no live network).
 - **Session log:**
-  - _(fill in at session end)_
+  - 2026-06-15: `benchmark.py` created with `load_tri`, `load_price_index`, `align_benchmark`.
+    All three TRI constants + price index loader implemented using T0-verified niftyindices
+    POST API. Atomic-write cache pattern borrowed from OHLCVCache; parquet files land in
+    `backend/data/niftyindices/` (gitignored). Cache is keyed by (index_name, start, end)
+    so second call hits disk — zero network (verified by mock call count assertion).
+    `align_benchmark` forward-fills TRI onto trading calendar, slices at `date_from`
+    (warmup-dropped), rebases to starting_capital at date_from. `_fetch_fn` injectable
+    for full offline testing. 26 new tests pass (TestDateHelpers, TestParsers, TestLoadTriCache,
+    TestThreeTriSeries, TestLoadPriceIndex, TestAlignBenchmark, TestPriceIndexRegimeCompatibility).
+    Pre-existing failures unchanged: 8 regime tests (regime.py in-flight), 4 collection
+    errors (types→schemas rename). No regressions.
 
 ---
 
