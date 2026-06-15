@@ -255,7 +255,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T5 — Portfolio state + MTM + fills (`portfolio.py`, part 1)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1, T2
 - **Goal:** The core mutable object: cash + positions, marked to market daily, fills applied
   at open (`02` §6).
@@ -270,15 +270,22 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
   - Append a `DailySnapshot` each day (`date, equity, cash, invested_value,
     exposure=invested_value/equity, n_positions`) — the equity + exposure curves (`02` §6, §9).
 - **Done-criteria:**
-  - [ ] **Cash conservation:** after any sequence of fills, `equity == cash + Σ shares*price`
+  - [x] **Cash conservation:** after any sequence of fills, `equity == cash + Σ shares*price`
         to within rounding (`02` §10.2). Unit-tested.
-  - [ ] Total cash paid in costs == Σ per-fill `fill_cost` (no double-count, `02` §10.2).
-  - [ ] Suspension handling: a held ISIN missing on day D carries last price and is flagged,
+  - [x] Total cash paid in costs == Σ per-fill `fill_cost` (no double-count, `02` §10.2).
+  - [x] Suspension handling: a held ISIN missing on day D carries last price and is flagged,
         run continues (unit test).
-  - [ ] MTM uses `close_tr`; a test asserts P&L reflects the TR series, not `close`.
-  - [ ] Tests offline (synthetic positions/fills/prices).
+  - [x] MTM uses `close_tr`; a test asserts P&L reflects the TR series, not `close`.
+  - [x] Tests offline (synthetic positions/fills/prices).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `Portfolio` class with `mark_to_market` (close_tr prices dict,
+    suspension logging), `apply_fills` (injected cost_fn, cost_rupees recomputed not trusted,
+    sell/trim guard for nonexistent positions), `equity` property, and internal helpers.
+    `build_rebalance_plan` stubbed (T6). 35/35 unit tests pass offline (`test_t5_portfolio.py`).
+    Key decisions: (1) incoming Fill.cost_rupees is ignored — apply_fills is the single
+    source of truth for costs; (2) sell/trim of a nonexistent position skips the fill
+    entirely (no cash change, no log entry); (3) cost rolled into weighted-average cost_basis
+    on augment buys.
 
 ---
 
