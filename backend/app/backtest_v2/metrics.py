@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from app.backtest_v2.types import Fill
+from app.backtest_v2.schemas import Fill
 
 if TYPE_CHECKING:
     from app.backtest_v2.engine import EngineResult

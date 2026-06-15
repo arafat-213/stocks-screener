@@ -22,7 +22,7 @@ import pandas as pd
 
 from app.backtest_v2.costs import CostConfig, CostFn
 from app.backtest_v2.costs import fill_cost as _default_fill_cost
-from app.backtest_v2.types import DailySnapshot, Fill, Position, RebalancePlan
+from app.backtest_v2.schemas import DailySnapshot, Fill, Position, RebalancePlan
 
 if TYPE_CHECKING:
     from app.backtest_v2.config import MomentumConfig

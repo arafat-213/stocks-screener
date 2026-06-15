@@ -31,8 +31,8 @@ from app.backtest_v2.costs import CostConfig, CostFn
 from app.backtest_v2.costs import fill_cost as _default_fill_cost
 from app.backtest_v2.portfolio import Portfolio, build_rebalance_plan
 from app.backtest_v2.regime import RegimeConfig, RegimeOverlay
+from app.backtest_v2.schemas import DailySnapshot, Fill, RebalancePlan
 from app.backtest_v2.signals import SignalStore, precompute_signals
-from app.backtest_v2.types import DailySnapshot, Fill, RebalancePlan
 
 log = logging.getLogger(__name__)
 
