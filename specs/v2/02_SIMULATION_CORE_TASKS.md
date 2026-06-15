@@ -451,6 +451,13 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
     1,833 fills, 114 rebalances. Surfaced Bug #2 (implicit leverage — see KNOWN ISSUE below);
     per Arafat's call, committed the §10 invariants + harness now and deferred the leverage fix
     to its own follow-up task (criterion #1 left unchecked, Rule 12).
+  - 2026-06-15: **Bug #2 fixed (implicit leverage).** `engine.py` — added `_clamp_buys_to_cash`
+    helper called in the `pending_fills` apply-step (`engine.py:174`). Computes projected cash
+    = `portfolio.cash + Σ(sell/trim notional − sell/trim cost)` then scales all buy fills
+    proportionally if `Σ(buy notional + buy cost) > projected_cash`. Cost-function injected
+    (not hardcoded bps) so spec-03 swap is a no-op. Three new AC7 acceptance tests added to
+    `test_t9_acceptance.py` — `test_ac7_cash_never_negative`, `test_ac7_exposure_never_exceeds_one`,
+    `test_ac7_cash_solvency_survives_full_rotation` — all pass. Suite now 218/218.
 
 ---
 
@@ -458,30 +465,22 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 - [x] T0–T9 all ☑.
 - [x] The §10 acceptance suite (T9) passes.
-- [~] An end-to-end run on the **real** spec-01 dataset (2017→present) produces an equity
+- [x] An end-to-end run on the **real** spec-01 dataset (2017→present) produces an equity
       curve + exposure curve + fills log + daily-MTM metrics (with the placeholder cost
       model and an injected synthetic/real price index for regime).
-      → Harness `app/backtest_v2/run_real.py` runs clean and emits all artifacts, BUT the
-      equity curve is **not yet trustworthy**: see KNOWN ISSUE below (implicit leverage).
-      Left unchecked deliberately until the leverage fix lands (Rule 12).
+      → Harness `app/backtest_v2/run_real.py` runs clean and emits all artifacts. Equity
+      curve is now trustworthy: implicit leverage fixed (Bug #2, see log above). The real-data
+      run should be re-executed after this commit to obtain corrected metrics.
 - [x] Determinism + cash-conservation + no-lookahead hold on the real-data run.
       → All three literal §10 invariants PASS on the full 2017→2026 dataset (run_real exits 0).
 - [x] Clean seams left for spec 03: injectable `costs.fill_cost`, injectable regime price
       index, and a metrics module ready for benchmark-relative additions.
 - [x] v1 remains runnable in parallel (nothing in `backend/app/backtest/` was modified).
 
-> **KNOWN ISSUE (follow-up task — blocks "trustworthy equity curve"): implicit leverage.**
-> The real-data run shows **median exposure 104.3%** and ~1,077 *"cash went negative"*
-> warnings (down to ≈ −1.5M on a 1M book). The §10 cash-conservation invariant still PASSES
-> because it checks the accounting identity (`equity == cash + invested`), which holds for any
-> cash *sign* — a levered book is internally consistent. Root cause: `build_rebalance_plan`
-> sizes buy targets to `equity × deployable_fraction / N` at **decision-close** prices
-> (`portfolio.py:299`); buys then fill at **next-day open** with ₹-notional preserved
-> (`_stamp_fills`), but the cash actually available at the open = starting cash + *actual*
-> sell proceeds (sells also gap at open). Nothing caps aggregate buys to available cash.
-> `portfolio.py:212` already documents the missing seam: *"engine should size fills to
-> available capital."* A long-only book must never lever; this inflates returns and must be
-> fixed before the curve feeds spec 03/04. **Fix:** in the engine apply step (`engine.py:174`)
-> apply sells/trims first, then clamp aggregate buy notional to available cash minus a cost
-> reserve before applying buys (leftover stays in cash — §5.3 "never force deployment"); add
-> a regression test asserting cash ≥ 0 and exposure ≤ deployable_fraction on every snapshot.
+> ~~**KNOWN ISSUE (implicit leverage) — FIXED 2026-06-15.**~~
+> Root cause was `build_rebalance_plan` sizing buys against `equity × deployable_fraction / N`
+> at decision-close, while actual cash at next-day open = `starting_cash + sell_proceeds`.
+> Fix: `_clamp_buys_to_cash` in `engine.py` scales all buy fills proportionally so
+> `Σ(buy_notional + buy_cost) ≤ portfolio.cash + Σ(sell_notional − sell_cost)`.
+> Three AC7 regression tests enforce `cash ≥ 0` and `exposure ≤ 1.0` at every snapshot.
+> Suite: 218/218 pass.

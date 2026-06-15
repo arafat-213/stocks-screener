@@ -614,3 +614,81 @@ def test_ac6_flat_market_does_not_gain_on_cash():
         f"Flat market final equity {final_equity:.2f} is more than 1% below "
         f"starting capital {start_cap:.2f} — capital is being lost without trades"
     )
+
+
+# ---------------------------------------------------------------------------
+# AC7 — Cash solvency: portfolio never borrows (cash ≥ 0, exposure ≤ 1.0)
+#
+# WHY: build_rebalance_plan sizes buys against portfolio.equity, which includes
+# positions being sold on the same rebalance day.  Without a clamp, aggregate
+# buy notional can exceed actual post-sell cash, producing implicit leverage
+# (exposure > 100%, cash < 0).  The engine must prevent this at the fill-
+# application seam, not just warn about it.
+# ---------------------------------------------------------------------------
+
+
+def test_ac7_cash_never_negative():
+    """
+    Cash must be ≥ -₹1 (rounding tolerance) at every daily snapshot.
+
+    WHY: negative cash means the engine implicitly borrowed money — a
+    fundamental correctness breach, not an edge-case tolerance.
+    """
+    isins = [f"ISIN{i:02d}" for i in range(10)]
+    prices = _make_prices(isins, n_days=500, seed=70, drift=0.0005)
+    result = run(prices, _cfg(), cost_fn=fill_cost, cost_cfg=CostConfig())
+
+    for snap in result.snapshots:
+        assert snap.cash >= -1.0, (
+            f"Cash went negative on {snap.date}: cash={snap.cash:.4f} — "
+            "buys are exceeding available capital (implicit leverage)"
+        )
+
+
+def test_ac7_exposure_never_exceeds_one():
+    """
+    With use_regime_overlay=False (deployable_fraction=1.0), exposure must
+    stay ≤ 1.0 at every snapshot.
+
+    WHY: exposure > 1.0 is only possible with leverage.  Without borrowing,
+    the portfolio cannot deploy more than 100% of its equity.
+    """
+    isins = [f"ISIN{i:02d}" for i in range(10)]
+    prices = _make_prices(isins, n_days=500, seed=71, drift=0.0005)
+    result = run(
+        prices, _cfg(use_regime_overlay=False), cost_fn=fill_cost, cost_cfg=CostConfig()
+    )
+
+    _SLACK = 1e-6  # float arithmetic tolerance
+    for snap in result.snapshots:
+        assert snap.exposure <= 1.0 + _SLACK, (
+            f"Exposure {snap.exposure:.6f} > 1.0 on {snap.date} — "
+            "portfolio is implicitly leveraged; check buy-clamping logic in engine.py"
+        )
+
+
+def test_ac7_cash_solvency_survives_full_rotation():
+    """
+    Full portfolio rotation (all 4 positions sold, 4 new names bought in the
+    same rebalance) is the highest-risk scenario for implicit leverage.
+    Cash must stay non-negative throughout.
+
+    WHY: the rebalance plan sizes all buys against total equity (including the
+    value of positions being liquidated).  The engine's _clamp_buys_to_cash
+    must scale buys down to actual post-sell cash before applying fills.
+    """
+    # 8 ISINs, tight buffer → forced rotation into bottom-4 when top-4 weaken
+    isins = [f"ISIN{i:02d}" for i in range(8)]
+    prices = _make_prices(isins, n_days=600, seed=72, drift=0.0008, vol=0.02)
+    result = run(
+        prices,
+        _cfg(target_positions=4, sell_rank_buffer=4),
+        cost_fn=fill_cost,
+        cost_cfg=CostConfig(),
+    )
+
+    for snap in result.snapshots:
+        assert snap.cash >= -1.0, (
+            f"Cash negative on {snap.date}: {snap.cash:.4f} — "
+            "buy clamping failed during full portfolio rotation"
+        )

@@ -177,6 +177,12 @@ def run(
             _side_order = {"sell": 0, "trim": 1, "buy": 2}
             pending_fills.sort(key=lambda f: _side_order.get(f.side, 9))
             stamped_fills = _stamp_fills(pending_fills, open_prices_today, day_date)
+            # Clamp buys to projected cash (sell proceeds + current cash, net of all
+            # costs) to prevent implicit leverage when buys were sized against equity
+            # that includes positions sold on the same rebalance day.
+            stamped_fills = _clamp_buys_to_cash(
+                stamped_fills, portfolio.cash, cost_fn, cost_cfg
+            )
             adv_today = _adv_20.get(day, {})
             portfolio.apply_fills(
                 stamped_fills,
@@ -371,6 +377,64 @@ def _current_weights(portfolio: Portfolio) -> dict[str, float]:
         isin: (pos.shares * pos.last_price) / equity
         for isin, pos in portfolio.positions.items()
     }
+
+
+def _clamp_buys_to_cash(
+    fills: list[Fill],
+    available_cash: float,
+    cost_fn: CostFn,
+    cost_cfg: CostConfig,
+) -> list[Fill]:
+    """
+    Scale all buy fills proportionally so total cash outflow (notional + costs)
+    fits within projected cash: current cash + sell/trim proceeds net of their costs.
+
+    WHY: build_rebalance_plan sizes targets against portfolio.equity, which includes
+    positions being sold on the same rebalance day.  Without this clamp, buys can
+    exceed actual post-sell cash, producing implicit leverage (exposure > 100%).
+
+    adv_20 is passed as 0.0 to the cost_fn for the projection (placeholder; the real
+    cost model in spec 03 uses adv for slippage but the per-fill cost ratio is the same).
+    Cost linearity in qty guarantees the scaled outflow equals projected_cash exactly.
+    """
+    projected_cash = available_cash
+    total_buy_outflow = 0.0
+
+    for f in fills:
+        if f.side in ("sell", "trim"):
+            cost = cost_fn(f.side, f.qty, f.price, 0.0, cost_cfg)
+            projected_cash += f.qty * f.price - cost
+        else:
+            cost = cost_fn("buy", f.qty, f.price, 0.0, cost_cfg)
+            total_buy_outflow += f.qty * f.price + cost
+
+    if total_buy_outflow <= 0.0 or total_buy_outflow <= projected_cash:
+        return fills
+
+    scale = projected_cash / total_buy_outflow
+    log.info(
+        "Buy outflow %.2f > projected cash %.2f; scaling buys by %.6f to prevent leverage.",
+        total_buy_outflow,
+        projected_cash,
+        scale,
+    )
+    result: list[Fill] = []
+    for f in fills:
+        if f.side == "buy":
+            result.append(
+                Fill(
+                    isin=f.isin,
+                    symbol=f.symbol,
+                    side=f.side,
+                    qty=f.qty * scale,
+                    price=f.price,
+                    date=f.date,
+                    cost_rupees=0.0,
+                )
+            )
+        else:
+            result.append(f)
+    return result
 
 
 def _compute_turnover(
