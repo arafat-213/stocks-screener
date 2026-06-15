@@ -332,7 +332,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T7 — Engine daily loop (`engine.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T2, T3, T4, T5, T6
 - **Goal:** Wire the authoritative control flow (`02` §3) — the time-driven daily loop that
   replaces v1's symbol-first engine.
@@ -353,16 +353,23 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
     session's open. No same-bar decide-and-fill. No intrabar high/low peeking. Catastrophic
     stop triggers on close, fills next open.
 - **Done-criteria:**
-  - [ ] A full run over a small synthetic universe + calendar produces a `DailySnapshot`
+  - [x] A full run over a small synthetic universe + calendar produces a `DailySnapshot`
         series (equity + exposure curves) and a fills/positions log.
-  - [ ] Queue discipline verified: a decision on day D never fills before D+1 open
+  - [x] Queue discipline verified: a decision on day D never fills before D+1 open
         (unit test inspects fill dates vs decision dates).
-  - [ ] Rebalance only on month-end trading days; catastrophic stop fires on close breach
+  - [x] Rebalance only on month-end trading days; catastrophic stop fires on close breach
         and fills next open (unit tests).
-  - [ ] **Determinism:** same config + data → identical equity curve (`02` §10.3).
-  - [ ] Tests offline (synthetic prices/calendar; injected costs + regime series).
+  - [x] **Determinism:** same config + data → identical equity curve (`02` §10.3).
+  - [x] Tests offline (synthetic prices/calendar; injected costs + regime series).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `engine.run` in `engine.py`: `_pivot` for fast {date→{isin→val}}
+    lookups, `_month_end_dates` for rebalance schedule, `_stamp_fills` (replaces placeholder
+    prices with next-session open, recalcs buy qty as target_notional/open to preserve ₹
+    allocation), `_compute_turnover`. Loop order: apply_fills → MTM → stop-check → regime →
+    rebalance→queue. Sells/trims sorted before buys in pending queue to replenish cash first.
+    Stop fills de-duplicated against rebalance sells. `EngineResult` dataclass captures all
+    outputs. `signal_store` injectable for test re-use. 11/11 T7 tests pass; 157/157 T1–T7
+    total pass offline (`test_t7_engine.py`).
 
 ---
 
