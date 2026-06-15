@@ -407,7 +407,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T9 — Acceptance suite (`02` §10 as hard tests)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T7, T8
 - **Goal:** Encode **all** of `02` §10 as a test suite that gates the simulation core.
   Fail loud (Rule 12).
@@ -424,20 +424,28 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
   6. **v1-direction smoke:** on the same (biased) data, reproduce a v1-style run *direction*
      as a gross-wiring check — **not** a correctness claim (`02` §10.6).
 - **Done-criteria:**
-  - [ ] All six §10 criteria implemented as tests; each fails if its invariant is broken
+  - [x] All six §10 criteria implemented as tests; each fails if its invariant is broken
         (include a negative test per criterion where practical).
-  - [ ] No-lookahead test mutates future rows and asserts byte-identical pre-D results.
-  - [ ] Exposure-sanity test shows overlay-on < overlay-off average exposure in a downtrend.
-  - [ ] Suite runs offline (synthetic data; no live network, no live yfinance/NSE — Rule 5).
+  - [x] No-lookahead test mutates future rows and asserts byte-identical pre-D results.
+  - [x] Exposure-sanity test shows overlay-on < overlay-off average exposure in a downtrend.
+  - [x] Suite runs offline (synthetic data; no live network, no live yfinance/NSE — Rule 5).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `test_t9_acceptance.py` — 15 tests covering all 6 §10 criteria.
+    AC1: no-lookahead (corrupt future rows → pre-D curve unchanged; negative: corrupt inside
+    window → results DO change). AC2: cash conservation every snapshot + total_cost_paid ==
+    Σ fill.cost_rupees + no-fill equity stays at starting capital. AC3: three-run determinism
+    + negative (different config → different curve). AC4: overlay-on < overlay-off in downtrend;
+    overlay-off ignores index series; overlay-on doesn't over-constrain uptrend. AC5: turnover
+    below absurd threshold via metrics.turnover_is_absurd; wide buffer reduces turnover vs tight.
+    AC6: strong uptrend deploys capital + positive CAGR; flat market stays in cash without loss.
+    15/15 pass; 214/214 T1–T9 total pass offline.
 
 ---
 
 ## Exit criteria for the whole Simulation Core (spec 02 complete)
 
-- [ ] T0–T9 all ☑.
-- [ ] The §10 acceptance suite (T9) passes.
+- [x] T0–T9 all ☑.
+- [x] The §10 acceptance suite (T9) passes.
 - [ ] An end-to-end run on the **real** spec-01 dataset (2017→present) produces an equity
       curve + exposure curve + fills log + daily-MTM metrics (with the placeholder cost
       model and an injected synthetic/real price index for regime).
