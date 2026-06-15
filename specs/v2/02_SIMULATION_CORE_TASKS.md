@@ -123,7 +123,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T1 — Scaffold + types + config (`types.py`, `config.py`, package)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T0
 - **Goal:** Create the package and the data structures everything else targets, so later
   tasks build against fixed dataclasses instead of inventing them.
@@ -139,12 +139,15 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
     defaults verbatim.
 - **Deliverable:** importable package; `types.py` + `config.py`; other modules stub cleanly.
 - **Done-criteria:**
-  - [ ] `from app.backtest_v2 import types, config` works; other stubs import cleanly.
-  - [ ] `MomentumConfig` field set == `02` §7 exactly (no missing, no extra fields).
-  - [ ] A round-trip/instantiation test constructs each dataclass with sample values and
+  - [x] `from app.backtest_v2 import types, config` works; other stubs import cleanly.
+  - [x] `MomentumConfig` field set == `02` §7 exactly (no missing, no extra fields).
+  - [x] A round-trip/instantiation test constructs each dataclass with sample values and
         asserts field presence + types (offline, no network).
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Created `backend/app/backtest_v2/` package with `__init__.py`, `types.py`,
+    `config.py`, and stubs (raise NotImplementedError) for costs/signals/regime/portfolio/
+    engine/metrics. All dataclasses frozen where appropriate. `MomentumConfig` field set
+    matches spec §7 verbatim (14 fields). 16/16 unit tests pass offline.
 
 ---
 
