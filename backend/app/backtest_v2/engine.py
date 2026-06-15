@@ -28,6 +28,7 @@ import pandas as pd
 
 from app.backtest_v2.config import MomentumConfig
 from app.backtest_v2.costs import CostConfig, CostFn
+from app.backtest_v2.costs import effective_price as _effective_price
 from app.backtest_v2.costs import fill_cost as _default_fill_cost
 from app.backtest_v2.portfolio import Portfolio, build_rebalance_plan
 from app.backtest_v2.regime import RegimeConfig, RegimeOverlay
@@ -173,17 +174,21 @@ def run(
         # ---- 5.i: apply fills queued on the prior day (at today's open) -----
         if pending_fills:
             open_prices_today = _open.get(day, {})
+            adv_today = _adv_20.get(day, {})
             # Sort: sells/trims before buys so exits replenish cash before new purchases.
             _side_order = {"sell": 0, "trim": 1, "buy": 2}
             pending_fills.sort(key=lambda f: _side_order.get(f.side, 9))
-            stamped_fills = _stamp_fills(pending_fills, open_prices_today, day_date)
+            # Stamp fills with next-open price and apply slippage as an effective
+            # price adjustment (spec 03 §1.3 option a — slippage moves cost basis).
+            stamped_fills = _stamp_fills(
+                pending_fills, open_prices_today, day_date, adv_today, cost_cfg
+            )
             # Clamp buys to projected cash (sell proceeds + current cash, net of all
             # costs) to prevent implicit leverage when buys were sized against equity
             # that includes positions sold on the same rebalance day.
             stamped_fills = _clamp_buys_to_cash(
                 stamped_fills, portfolio.cash, cost_fn, cost_cfg
             )
-            adv_today = _adv_20.get(day, {})
             portfolio.apply_fills(
                 stamped_fills,
                 cost_fn=cost_fn,
@@ -321,18 +326,25 @@ def _stamp_fills(
     fills: list[Fill],
     open_prices: dict[str, float],
     exec_date: date,
+    adv_lookup: dict[str, float] | None = None,
+    cost_cfg: CostConfig | None = None,
 ) -> list[Fill]:
     """
-    Replace placeholder prices on fills with the actual next-session open.
+    Replace placeholder prices on fills with the actual next-session open,
+    then apply slippage as an effective price adjustment (spec 03 §1.3).
 
-    For buy fills, qty is recalculated as target_notional / open_price so that
-    the intended ₹ allocation is preserved at the actual execution price,
-    avoiding cash overruns when open > decision-close.  (target_notional is
-    recovered from the placeholder fill as qty * placeholder_price.)
+    For buy fills, qty is recalculated as target_notional / effective_price so
+    the intended ₹ allocation is preserved — fewer shares at the slipped price.
+
+    Slippage moves the fill price (buys higher, sells lower), so cost basis and
+    realized P&L reflect market impact rather than treating it as a fee-only term.
+    When cost_cfg is None or uses the legacy round_trip_bps path, no slippage
+    adjustment is applied (backwards-compat).
 
     Fills for ISINs with no open price (halted/unlisted) are dropped with a
     warning — the position remains held at its last MTM price.
     """
+    _adv = adv_lookup or {}
     stamped: list[Fill] = []
     for f in fills:
         p = open_prices.get(f.isin)
@@ -344,14 +356,26 @@ def _stamp_fills(
             )
             continue
 
+        adv_20 = _adv.get(f.isin, 0.0)
+
         if f.side == "buy":
-            # Recalculate qty so the ₹ notional at open == original target notional.
+            # Recalculate qty so the ₹ notional at open == original target notional,
+            # then apply slippage: fewer shares acquired at the higher effective price.
             target_notional = f.qty * f.price  # target ₹ at decision-close price
-            qty = target_notional / p
+            raw_qty = target_notional / p
+            if cost_cfg is not None:
+                eff_p = _effective_price("buy", p, raw_qty, adv_20, cost_cfg)
+            else:
+                eff_p = p
+            qty = target_notional / eff_p
         else:
             qty = f.qty  # sell/trim: share count is fixed by position size
+            if cost_cfg is not None:
+                eff_p = _effective_price(f.side, p, qty, adv_20, cost_cfg)
+            else:
+                eff_p = p
 
-        if qty * p < _MIN_FILL_NOTIONAL:
+        if qty * eff_p < _MIN_FILL_NOTIONAL:
             continue  # hairline rounding fill — skip
 
         stamped.append(
@@ -360,7 +384,7 @@ def _stamp_fills(
                 symbol=f.symbol,
                 side=f.side,
                 qty=qty,
-                price=p,
+                price=eff_p,
                 date=exec_date,
                 cost_rupees=0.0,  # recomputed by apply_fills
             )
