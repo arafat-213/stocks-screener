@@ -26,7 +26,7 @@ from app.backtest_v2.metrics import (
     compute_metrics,
     summary,
 )
-from app.backtest_v2.types import DailySnapshot, Fill
+from app.backtest_v2.schemas import DailySnapshot, Fill
 
 # ---------------------------------------------------------------------------
 # Helpers — build synthetic EngineResult-like objects

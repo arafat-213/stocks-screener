@@ -18,7 +18,7 @@ from datetime import date
 
 from app.backtest_v2.config import MomentumConfig
 from app.backtest_v2.portfolio import Portfolio, build_rebalance_plan
-from app.backtest_v2.types import Position
+from app.backtest_v2.schemas import Position
 
 # ---------------------------------------------------------------------------
 # Helpers

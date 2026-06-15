@@ -16,7 +16,7 @@ import pytest
 
 from app.backtest_v2.costs import CostConfig, fill_cost
 from app.backtest_v2.portfolio import Portfolio, build_rebalance_plan
-from app.backtest_v2.types import Fill, Position
+from app.backtest_v2.schemas import Fill, Position
 
 # ---------------------------------------------------------------------------
 # Helpers

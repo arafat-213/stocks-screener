@@ -12,7 +12,7 @@ from datetime import date
 import pytest
 
 from app.backtest_v2.config import MomentumConfig
-from app.backtest_v2.types import DailySnapshot, Fill, Position, RebalancePlan
+from app.backtest_v2.schemas import DailySnapshot, Fill, Position, RebalancePlan
 
 # ---------------------------------------------------------------------------
 # Position
