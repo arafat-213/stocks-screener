@@ -291,7 +291,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T6 — Rebalance plan with hysteresis (`portfolio.py`, part 2)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T5, T3
 - **Goal:** `build_rebalance_plan(portfolio, ranked, deployable_fraction, config)` →
   `RebalancePlan(sells, buys, trims)` as next-open fills (`02` §5). The buffer keeps
@@ -309,15 +309,24 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
   - Apply `max_position_pct` cap. `max_sector_positions` — **defer** (no sector map from
     bhavcopy; config-driven, default off — `02` §5).
 - **Done-criteria:**
-  - [ ] Hysteresis verified: a holding at rank between N and M is **held**, not sold; a
+  - [x] Hysteresis verified: a holding at rank between N and M is **held**, not sold; a
         holding past M is sold (unit test on a constructed `ranked` list).
-  - [ ] A holding that fails the entry gate is sold even if rank ≤ M.
-  - [ ] Equal-weight reset produces correct ₹ targets from current equity; cap enforced.
-  - [ ] `deployable_fraction < 1` leaves the remainder in **cash** (no forced deployment).
-  - [ ] Fewer than N eligible names → no padding with junk; cash held (unit test).
-  - [ ] Tests offline.
+  - [x] A holding that fails the entry gate is sold even if rank ≤ M.
+  - [x] Equal-weight reset produces correct ₹ targets from current equity; cap enforced.
+  - [x] `deployable_fraction < 1` leaves the remainder in **cash** (no forced deployment).
+  - [x] Fewer than N eligible names → no padding with junk; cash held (unit test).
+  - [x] Tests offline.
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `build_rebalance_plan` in `portfolio.py` replacing the T6 stub.
+    Key decisions: (1) sell-check uses `rank_of.get(isin)` — None (not in universe) → sell,
+    rank > M → sell, gate fail → sell; (2) target_isins built from survivors (rank order via
+    ranked iteration) then filled with top-N new entrants (rank ≤ N, not in portfolio); cap at
+    N handles surplus-survivors case; (3) equal-weight reset: delta computed as target_rs −
+    current_rs → buy if positive, trim if negative, skip if ≤ eps; (4) Fill prices are
+    placeholders (last_price/prices dict) — T7 replaces with next-open on execution;
+    (5) entry_gate_map=None bypasses gate check (all pass); explicit map defaults missing ISINs
+    to False (conservative). Added `prices`, `symbols`, `decision_date` params for T7 wiring.
+    38/38 unit tests pass (`test_t6_rebalance_plan.py`); 146/146 T1–T6 total pass offline.
 
 ---
 

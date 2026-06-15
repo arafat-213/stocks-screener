@@ -292,7 +292,7 @@ class Portfolio:
 
 
 # ---------------------------------------------------------------------------
-# T6 — build_rebalance_plan  (implement in T6 session)
+# T6 — build_rebalance_plan
 # ---------------------------------------------------------------------------
 
 
@@ -301,18 +301,187 @@ def build_rebalance_plan(
     ranked: list[tuple[str, float]],  # [(isin, score), ...] descending by score
     deployable_fraction: float,
     config: "MomentumConfig",
-    entry_gate_map: dict[str, bool] | None = None,  # isin → bool; None = all eligible
+    entry_gate_map: dict[str, bool] | None = None,
+    prices: dict[str, float] | None = None,
+    symbols: dict[str, str] | None = None,
+    decision_date: "date | None" = None,
 ) -> RebalancePlan:
     """
-    Build sells/buys/trims for the next rebalance.
+    Build sells/buys/trims for the next rebalance.  (02 §5)
 
-    Hysteresis (02 §5):
-      - Sell if rank > sell_rank_buffer (M) OR name fails entry gate.
-      - Hold otherwise (let winners run).
-      - Buy top names (rank ≤ target_positions N) until slots filled.
-      - Equal-weight reset: target ₹ = deployable_fraction * equity / target_positions.
-      - Remainder stays in cash — never force-deploy.
+    Hysteresis:
+      Sell a holding if any of: rank > M, rank not found (not in universe),
+      entry gate fails.  Otherwise hold (let winners run, re-weighted to
+      equal weight below).
 
-    NOT YET IMPLEMENTED — implement in T6.
+    Target set:
+      Survivors (held names that pass the hold check) + top-N new entrants
+      (rank ≤ N, not already in portfolio) until len == N.  Capped at N even
+      if more than N survivors exist (keeps best-ranked ones).
+
+    Equal-weight reset:
+      target_rupees = equity * deployable_fraction / N, capped at
+      equity * max_position_pct / 100.  Underweight names → buy delta;
+      overweight names → trim excess.  Unallocated capital stays in cash —
+      never force-deploy.
+
+    Fill prices/dates are placeholders (current close / last_price, decision_date).
+    The engine (T7) replaces price+date with the actual next-session open before
+    calling apply_fills.
+
+    Parameters
+    ----------
+    prices : dict[str, float] | None
+        Close prices for the decision date.  Required to size new-entry fills;
+        missing new-entry ISINs are skipped with a warning.
+    symbols : dict[str, str] | None
+        isin → NSE symbol for Fill.symbol.  Falls back to pos.symbol for held
+        names, then isin for truly new names.
+    decision_date : date | None
+        Placeholder date stamped on all generated fills.
+    entry_gate_map : dict[str, bool] | None
+        isin → bool.  None means all held names pass the gate (bypass check).
+        In an explicit map, an ISIN absent from the map defaults to False
+        (conservative: missing data → exit).
     """
-    raise NotImplementedError("build_rebalance_plan — implement in T6")
+    from datetime import date as _date_type
+
+    _prices = prices or {}
+    _symbols = symbols or {}
+    _d = decision_date or _date_type.today()
+
+    # ----- helpers -----
+    def _gate_ok(isin: str) -> bool:
+        if entry_gate_map is None:
+            return True
+        return entry_gate_map.get(isin, False)
+
+    def _price_for(isin: str) -> float | None:
+        # Prefer last_price from MTM for currently held names.
+        if isin in portfolio.positions:
+            return portfolio.positions[isin].last_price
+        p = _prices.get(isin)
+        return float(p) if p is not None else None
+
+    def _symbol_for(isin: str) -> str:
+        if isin in portfolio.positions:
+            return portfolio.positions[isin].symbol
+        return _symbols.get(isin, isin)
+
+    # ----- 1. rank lookup (1-indexed) -----
+    rank_of: dict[str, int] = {isin: i + 1 for i, (isin, _) in enumerate(ranked)}
+    N = config.target_positions
+    M = config.sell_rank_buffer
+
+    # ----- 2. classify current holdings: sell vs. survivor -----
+    sells: list[Fill] = []
+    survivors: set[str] = set()
+
+    for isin, pos in portfolio.positions.items():
+        r = rank_of.get(isin)
+        if r is None or r > M or not _gate_ok(isin):
+            sells.append(
+                Fill(
+                    isin=isin,
+                    symbol=pos.symbol,
+                    side="sell",
+                    qty=pos.shares,
+                    price=pos.last_price,
+                    date=_d,
+                    cost_rupees=0.0,
+                )
+            )
+        else:
+            survivors.add(isin)
+
+    # ----- 3. build target set -----
+    # Survivors first, in rank order (so the N-cap keeps the best-ranked ones).
+    target_isins: list[str] = []
+    for isin, _ in ranked:
+        if isin in survivors:
+            target_isins.append(isin)
+
+    # Fill remaining slots with top-N new entrants (rank ≤ N, not in portfolio).
+    slots = max(0, N - len(target_isins))
+    for isin, _ in ranked:
+        if slots <= 0:
+            break
+        if rank_of[isin] > N:
+            break  # ranked is descending by score; once past N, stop
+        if isin not in survivors and isin not in portfolio.positions:
+            target_isins.append(isin)
+            slots -= 1
+
+    # Defensive cap: if survivors alone exceeds N, keep only top-N by rank.
+    target_isins = target_isins[:N]
+
+    # ----- 4. per-name target ₹ -----
+    current_equity = portfolio.equity
+    cap_rs = current_equity * config.max_position_pct / 100.0
+    target_rs = (current_equity * deployable_fraction / N) if N > 0 else 0.0
+    target_rs = min(target_rs, cap_rs)
+
+    # ----- 5. generate buys / trims -----
+    buys: list[Fill] = []
+    trims: list[Fill] = []
+
+    for isin in target_isins:
+        price = _price_for(isin)
+        if price is None or price <= 0.0:
+            log.warning(
+                "build_rebalance_plan: no valid price for %s — skipping fill.", isin
+            )
+            continue
+
+        sym = _symbol_for(isin)
+
+        if isin in portfolio.positions and isin in survivors:
+            # Already held — compute delta from equal-weight target.
+            pos = portfolio.positions[isin]
+            current_rs = pos.shares * pos.last_price
+            delta_rs = target_rs - current_rs
+
+            if delta_rs > _SHARE_EPS * price:
+                qty = delta_rs / price
+                buys.append(
+                    Fill(
+                        isin=isin,
+                        symbol=sym,
+                        side="buy",
+                        qty=qty,
+                        price=price,
+                        date=_d,
+                        cost_rupees=0.0,
+                    )
+                )
+            elif delta_rs < -(_SHARE_EPS * price):
+                qty = (-delta_rs) / price
+                trims.append(
+                    Fill(
+                        isin=isin,
+                        symbol=sym,
+                        side="trim",
+                        qty=qty,
+                        price=price,
+                        date=_d,
+                        cost_rupees=0.0,
+                    )
+                )
+            # within eps → no fill (tiny residuals ignored)
+        else:
+            # New entry — buy the full target allocation.
+            qty = target_rs / price
+            if qty > _SHARE_EPS:
+                buys.append(
+                    Fill(
+                        isin=isin,
+                        symbol=sym,
+                        side="buy",
+                        qty=qty,
+                        price=price,
+                        date=_d,
+                        cost_rupees=0.0,
+                    )
+                )
+
+    return RebalancePlan(sells=sells, buys=buys, trims=trims)

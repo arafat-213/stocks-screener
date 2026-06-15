@@ -425,10 +425,12 @@ class TestGuardRails:
 # ---------------------------------------------------------------------------
 
 
-def test_build_rebalance_plan_not_yet_implemented():
-    """build_rebalance_plan is a T6 stub — must raise NotImplementedError."""
+def test_build_rebalance_plan_empty_portfolio_empty_ranked():
+    """build_rebalance_plan with no holdings and no ranked names returns empty plan."""
     from app.backtest_v2.config import MomentumConfig
 
     p = Portfolio(cash=1_000_000)
-    with pytest.raises(NotImplementedError):
-        build_rebalance_plan(p, [], 1.0, MomentumConfig())
+    plan = build_rebalance_plan(p, [], 1.0, MomentumConfig())
+    assert plan.sells == []
+    assert plan.buys == []
+    assert plan.trims == []
