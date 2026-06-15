@@ -95,7 +95,7 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
 
 ## T0 — Verification spike (NO production code)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** — (specs 01 + 02 done)
 - **Goal:** Resolve every "verify at build time" item in `03` (§1.1 rates change,
   §1.2 slippage calibration, §2.1 TRI source/download method). The spec forbids
@@ -123,15 +123,23 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
   defaults + calibration rationale, the TRI download method + one verbatim row per
   series, and the regime price-index source + method.
 - **Done-criteria:**
-  - [ ] Each cost component has a verified current rate + source link (Rule 12 — no
+  - [x] Each cost component has a verified current rate + source link (Rule 12 — no
         guessed rates silently shipped).
-  - [ ] `base_slippage_pct` + `impact_coeff` + participation ceiling chosen, with the
+  - [x] `base_slippage_pct` + `impact_coeff` + participation ceiling chosen, with the
         1%-of-ADV ≈ 0.1–0.2% calibration shown.
-  - [ ] niftyindices TRI download method confirmed working, with one verbatim row +
+  - [x] niftyindices TRI download method confirmed working, with one verbatim row +
         column names for each of the 3 TRI series.
-  - [ ] Regime **price** index source + download method confirmed (distinct from TRI).
+  - [x] Regime **price** index source + download method confirmed (distinct from TRI).
 - **Session log:**
-  - _(fill in at session end)_
+  - 2026-06-15: All four T0 items verified live. Zerodha charges fetched from
+    zerodha.com/charges + Oct 2024 revision article. NSE exchange txn revised to
+    0.00297% (was 0.00322%) effective Oct 1, 2024. DP = ₹15.34/scrip/sell. Slippage
+    defaults: base 0.15%/side, impact_coeff 0.15, cap 10% ADV (calibration: 1% ADV
+    participation → +0.15% additional, within spec target). niftyindices POST API
+    confirmed for getTotalReturnIndexString (TRI) and getHistoricaldatatabletoString
+    (price). Verbatim rows fetched for all 3 TRI series. Regime: Nifty 50 price index
+    (CLOSE column). All findings written to `## Verified findings (T0)` section at top
+    of 03_COST_AND_BENCHMARK.md. No production code written.
 
 ---
 

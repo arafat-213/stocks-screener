@@ -5,6 +5,127 @@
 
 ---
 
+## Verified findings (T0)
+
+> Resolved at: 2026-06-15. Session: T0 verification spike (no production code).
+> Sources verified live against Zerodha and niftyindices.com.
+
+### A. Confirmed cost rates — Zerodha delivery equity (current as of June 2026)
+
+Zerodha delivery brokerage is ₹0 (free). All costs below are statutory/regulatory.
+NSE exchange transaction charge was revised downward on **October 1, 2024** (from 0.00322% to 0.00297%).
+
+| Component | Buy | Sell | Notes |
+|---|---|---|---|
+| Brokerage | ₹0 | ₹0 | Zerodha delivery is free — source: [zerodha.com/charges](https://zerodha.com/charges/) |
+| STT | **0.1%** | **0.1%** | On turnover; dominant statutory cost (~0.2% RT) |
+| NSE exchange txn | **0.00297%** | **0.00297%** | Revised Oct 1, 2024 — source: [Zerodha Z-Connect](https://zerodha.com/z-connect/business-updates/revision-in-exchange-transaction-charges-and-securities-transaction-tax-from-october-1-2024) |
+| SEBI charges | **0.0001%** | **0.0001%** | ₹10 per crore — source: [zerodha.com/charges](https://zerodha.com/charges/) |
+| Stamp duty | **0.015%** | **0%** | Buy side only (₹1,500/crore) |
+| GST | **0.000553%** | **0.000553%** | 18% × (exchange txn 0.00297% + SEBI 0.0001%); brokerage = 0 so tiny |
+| DP charges | ₹0 | **₹15.34 flat/scrip** | ₹3.50 CDSL + ₹9.50 Zerodha + ₹2.34 GST; per-scrip on sell regardless of qty |
+
+**Per-fill statutory totals (approximate, excluding DP):**
+- Buy: 0.1% + 0.00297% + 0.0001% + 0.015% + 0.000553% ≈ **0.1186%**
+- Sell (excl. DP): 0.1% + 0.00297% + 0.0001% + 0.000553% ≈ **0.1036%**
+- Round-trip (excl. DP): ≈ **0.222%**; add DP ₹15.34/scrip → effective RT rises with position size (larger positions = smaller DP %-impact)
+
+These numbers go directly into `CostConfig` in T1.
+
+---
+
+### B. Slippage defaults + calibration rationale
+
+Model (per spec §1.2):
+```
+participation  = order_value / adv_20
+slippage_pct   = base_slippage_pct + impact_coeff × participation
+                 (clamped at participation_cap)
+```
+
+**Chosen defaults (conservative; tuned in spec 04, never optimized down here):**
+
+| Parameter | Value | Rationale |
+|---|---|---|
+| `base_slippage_pct` | **0.0015** (0.15%/side) | Spread + queue cost for NSE mid/smallcap delivery; zero-participation floor |
+| `impact_coeff` | **0.15** | Calibrated so 1%-of-ADV order adds 0.15 × 0.01 = 0.15% → total 0.30%/side; within the 0.1–0.2% additional range the spec targets |
+| `participation_cap` | **0.10** (10% of ADV) | Position is capped if order_value > 10% of adv_20; protects against illiquid fills |
+
+**Calibration check (spec §1.2 requirement: 1%-of-ADV order adds ~0.1–0.2% additional):**
+- At participation = 0.01: additional = 0.15 × 0.01 = **0.0015 = 0.15%** ✓ (within 0.10–0.20% range)
+- At participation = 0.05: additional = 0.15 × 0.05 = 0.75% → total = 0.90%/side (expected penalty for illiquid fills)
+- At participation = 0.10 (cap): additional = 0.15 × 0.10 = 1.50% → effectively a hard wall
+
+**Literature basis:** Linear temporary-impact model consistent with Almgren-Chriss (2000) at small participation rates; for Indian mid/smallcap equity, empirical estimates suggest 0.10–0.25% spread cost at open + participation-scaled impact. Conservative calibration is intentional per spec rule — tuning sweeps belong in spec 04.
+
+---
+
+### C. niftyindices.com TRI download method (confirmed working)
+
+**Method:** HTTP POST to `https://www.niftyindices.com/Backpage.aspx/getTotalReturnIndexString`
+
+**Required steps:**
+1. GET `https://www.niftyindices.com` first (warm-up — establishes session cookie)
+2. POST with headers: `Content-Type: application/json; charset=utf-8`, `X-Requested-With: XMLHttpRequest`, `Referer: https://www.niftyindices.com/reports/historical-data`
+3. Payload: `{"cinfo": "<JSON-encoded string: {name, startDate, endDate, indexName}>"}` where dates are `"DD-Mon-YYYY"` format (e.g. `"01-Jan-2024"`)
+4. Response: JSON `{"d": "<JSON-string array of row objects>"}` — parse `d` as JSON
+
+**Confirmed index name strings (exact, case-sensitive as the API accepts them):**
+
+| Series | API name string |
+|---|---|
+| Nifty200 Momentum 30 TRI (primary benchmark) | `"NIFTY200 Momentum 30"` |
+| Nifty Midcap150 Momentum 50 TRI (secondary) | `"NIFTY MIDCAP150 Momentum 50"` |
+| Nifty 50 TRI (sanity floor) | `"Nifty 50"` |
+
+**Column names (all three series):** `['RequestNumber', 'Index Name', 'Date', 'TotalReturnsIndex', 'NTR_Value']`
+
+**Key column for benchmark:** `TotalReturnsIndex` (string; parse as float)
+
+**Verbatim first rows (fetched 2026-06-15, date range 01-Jan-2024 to 31-Jan-2024):**
+
+```
+Nifty200 Momentum 30:
+{'RequestNumber': 'TRI63917115692712165300', 'Index Name': 'Nifty200 Momentum 30',
+ 'Date': '31 Jan 2024', 'TotalReturnsIndex': '35727.81', 'NTR_Value': '-'}
+
+Nifty Midcap150 Momentum 50:
+{'RequestNumber': 'TRI63917115692774507600', 'Index Name': 'Nifty Midcap150 Momentum 50',
+ 'Date': '31 Jan 2024', 'TotalReturnsIndex': '64036.58', 'NTR_Value': '-'}
+
+Nifty 50:
+{'RequestNumber': 'TRI63917115692837063900', 'Index Name': 'Nifty 50',
+ 'Date': '31 Jan 2024', 'TotalReturnsIndex': '31939.59', 'NTR_Value': '28933.54'}
+```
+
+---
+
+### D. Regime price index — source + method
+
+**Chosen index:** **Nifty 50** (price, not TRI) — standard broad-market regime indicator for Indian equity strategies; widely used for 200-DMA market-health signals.
+
+**Endpoint:** `https://www.niftyindices.com/Backpage.aspx/getHistoricaldatatabletoString`
+**Same warm-up + headers as the TRI endpoint.** Payload `cinfo` uses the same format.
+
+**API name string:** `"Nifty 50"`
+
+**Column names:** `['RequestNumber', 'Index Name', 'INDEX_NAME', 'HistoricalDate', 'OPEN', 'HIGH', 'LOW', 'CLOSE']`
+
+**Key column for regime 200-DMA:** `CLOSE` (the `engine.run(index_prices=...)` series)
+
+**Verbatim first row (fetched 2026-06-15, same date range):**
+```
+{'RequestNumber': 'His63917115706613247900', 'Index Name': '', 'INDEX_NAME': 'Nifty 50',
+ 'HistoricalDate': '31 Jan 2024', 'OPEN': '21487.25', 'HIGH': '21741.35',
+ 'LOW': '21448.85', 'CLOSE': '21725.70'}
+```
+
+**Distinct from TRI:** the price index endpoint (`getHistoricaldatatabletoString`) returns OHLC; the TRI endpoint (`getTotalReturnIndexString`) returns `TotalReturnsIndex`. Do not feed the TRI into regime.
+
+---
+
+---
+
 ## 1. Cost model (costs.py)
 
 v1 used a flat 0.25% round-trip. That is optimistic — it ignores STT, flat DP charges, and
