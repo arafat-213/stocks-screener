@@ -27,7 +27,7 @@ from datetime import date
 import pandas as pd
 
 from app.backtest_v2.config import MomentumConfig
-from app.backtest_v2.costs import CostConfig, CostFn
+from app.backtest_v2.costs import CostConfig, CostFn, CostLevel
 from app.backtest_v2.costs import effective_price as _effective_price
 from app.backtest_v2.costs import fill_cost as _default_fill_cost
 from app.backtest_v2.portfolio import Portfolio, build_rebalance_plan
@@ -62,6 +62,7 @@ def run(
     regime_config: RegimeConfig | None = None,
     cost_fn: CostFn = _default_fill_cost,
     cost_cfg: CostConfig | None = None,
+    cost_level: CostLevel | None = None,
     signal_store: SignalStore | None = None,
 ) -> EngineResult:
     """
@@ -85,11 +86,18 @@ def run(
         Injectable cost function; defaults to the placeholder fill_cost.
     cost_cfg : CostConfig | None
         Cost parameters; defaults to CostConfig() if None.
+        Ignored when cost_level is set.
+    cost_level : CostLevel | None
+        "optimistic" | "base" | "pessimistic" preset (spec 03 T4).
+        When set, derives cost_cfg from the preset and overrides any explicit
+        cost_cfg.  Enables single-parameter sensitivity runs.
     signal_store : SignalStore | None
         Pre-built SignalStore; if None, precompute_signals is called here.
         Pass a pre-built store to avoid recomputing in tests or sweeps.
     """
-    if cost_cfg is None:
+    if cost_level is not None:
+        cost_cfg = _cfg_for_level(cost_level)
+    elif cost_cfg is None:
         cost_cfg = CostConfig()
 
     # ------------------------------------------------------------------ #
@@ -459,6 +467,15 @@ def _clamp_buys_to_cash(
         else:
             result.append(f)
     return result
+
+
+def _cfg_for_level(level: CostLevel) -> CostConfig:
+    """Resolve a CostLevel string to the corresponding CostConfig preset."""
+    if level == "optimistic":
+        return CostConfig.optimistic()
+    if level == "pessimistic":
+        return CostConfig.pessimistic()
+    return CostConfig.base()
 
 
 def _compute_turnover(

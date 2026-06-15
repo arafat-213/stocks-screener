@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Callable, Literal
 
 SideLiteral = Literal["buy", "sell", "trim"]
+CostLevel = Literal["optimistic", "base", "pessimistic"]
 
 
 @dataclass
@@ -56,6 +57,21 @@ class CostConfig:
     # --- Legacy flat-bps override (spec-02 placeholder compat) ---
     # None → use real statutory model; float → use flat half-RT per leg.
     round_trip_bps: float | None = None
+
+    @classmethod
+    def optimistic(cls) -> "CostConfig":
+        """Real statutory charges; zero slippage (≈0.3% RT, best-case sensitivity)."""
+        return cls(base_slippage_pct=0.0, impact_coeff=0.0)
+
+    @classmethod
+    def base(cls) -> "CostConfig":
+        """T0-verified statutory + real slippage model (production default)."""
+        return cls()
+
+    @classmethod
+    def pessimistic(cls) -> "CostConfig":
+        """Real statutory + 2× base slippage (worst-case sensitivity)."""
+        return cls(base_slippage_pct=0.003, impact_coeff=0.30)
 
 
 # Injectable cost-function type (signature unchanged from spec-02 placeholder).

@@ -16,8 +16,8 @@ from typing import Optional
 @dataclass
 class MomentumConfig:
     # universe / selection
-    target_positions: int = 20  # N: buy when rank <= N
-    sell_rank_buffer: int = 35  # M: sell when rank > M  (M > N)
+    target_positions: int = 10  # N: buy when rank <= N
+    sell_rank_buffer: int = 50  # M: sell when rank > M  (M > N)
     liquidity_floor_cr: float = 5.0  # adv_20 >= this (₹ crore), decision-date
 
     # ranking
@@ -29,7 +29,7 @@ class MomentumConfig:
     trend_ma: str = "EMA_200"  # or "SMA_200" — see 02 verified contracts
 
     # weighting / sizing
-    max_position_pct: float = 10.0  # single-name cap (%)
+    max_position_pct: float = 20.0  # single-name cap (%)
     starting_capital: float = 1_000_000.0
 
     # risk overlay

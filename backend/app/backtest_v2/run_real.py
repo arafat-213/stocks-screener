@@ -28,16 +28,20 @@ Run:
 
 from __future__ import annotations
 
+import logging
 import sys
 from datetime import date
 
 import numpy as np
 import pandas as pd
 
-from app.backtest_v2 import engine, metrics
+from app.backtest_v2 import benchmark, engine, metrics
 from app.backtest_v2.config import MomentumConfig
+from app.backtest_v2.costs import CostLevel
 from app.backtest_v2.signals import precompute_signals
 from app.data.bhavcopy import store
+
+log = logging.getLogger(__name__)
 
 # Daily return clip for the synthetic index proxy: the survivorship-free
 # universe contains microcaps with absurd single-day moves; clip so a handful
@@ -103,7 +107,7 @@ def check_determinism(
     first_equity: np.ndarray,
 ) -> list[str]:
     """Re-run identically; equity curve must be byte-identical."""
-    rerun = engine.run(prices, config, index_prices=index_prices)
+    rerun = engine.run(prices, config, index_prices=index_prices, cost_level="base")
     second = _equity_array(rerun)
     if first_equity.shape != second.shape:
         return [
@@ -140,7 +144,7 @@ def check_no_lookahead(
     corrupt_index = index_prices.copy()
     corrupt_index.loc[corrupt_index.index > cutoff] *= 5.0
 
-    rerun = engine.run(corrupt, config, index_prices=corrupt_index)
+    rerun = engine.run(corrupt, config, index_prices=corrupt_index, cost_level="base")
     corrupt_equity = _equity_array(rerun)
 
     # Compare the prefix up to and including the cutoff date.
@@ -168,6 +172,105 @@ def check_no_lookahead(
 # Module-level holder so check_no_lookahead can see the baseline snapshot dates
 # without re-threading them through every signature.
 _SNAPSHOT_DATES_HOLDER: list = []
+
+_COST_LEVELS: list[CostLevel] = ["optimistic", "base", "pessimistic"]
+
+
+def _try_load_benchmark(
+    config: MomentumConfig,
+    trading_calendar: list[pd.Timestamp],
+) -> pd.Series | None:
+    """Try to load the primary benchmark TRI from disk cache; None if not cached."""
+    try:
+        tri = benchmark.load_tri(
+            benchmark.TRI_MOMENTUM_30,
+            config.date_from or date(2010, 1, 1),
+            config.date_to or date.today(),
+        )
+        return benchmark.align_benchmark(
+            tri, config.date_from, trading_calendar, config.starting_capital
+        )
+    except Exception as exc:
+        log.info("benchmark TRI not available (cache miss or network): %s", exc)
+        return None
+
+
+def _print_three_level_report(
+    prices: pd.DataFrame,
+    config: MomentumConfig,
+    index_prices: pd.Series,
+    signal_store,
+) -> None:
+    """Run all three cost levels and print the sensitivity comparison."""
+    print()
+    print("=" * 60)
+    print("  THREE-COST-LEVEL SENSITIVITY REPORT (spec 03 §1.4)")
+    print("=" * 60)
+
+    results: dict[CostLevel, engine.EngineResult] = {}
+    metric_blocks: dict[CostLevel, metrics.BacktestMetrics] = {}
+
+    for level in _COST_LEVELS:
+        print(f"\nRunning cost level: {level.upper()} ...", flush=True)
+        r = engine.run(
+            prices,
+            config,
+            index_prices=index_prices,
+            cost_level=level,
+            signal_store=signal_store,
+        )
+        results[level] = r
+        metric_blocks[level] = metrics.compute_metrics(r)
+
+    # Build trading calendar from the base run (all three share the same calendar).
+    base_result = results["base"]
+    trading_calendar = [pd.Timestamp(s.date) for s in base_result.snapshots]
+    bench_series = _try_load_benchmark(config, trading_calendar)
+
+    # Print each level's block.
+    for level in _COST_LEVELS:
+        r = results[level]
+        m = metric_blocks[level]
+        strat_equity = pd.Series(
+            [s.equity for s in r.snapshots],
+            index=pd.DatetimeIndex([pd.Timestamp(s.date) for s in r.snapshots]),
+        )
+        print()
+        print(f"{'─' * 60}")
+        print(f"  COST LEVEL: {level.upper()}")
+        print(f"{'─' * 60}")
+        print(metrics.summary(m))
+        if bench_series is not None:
+            try:
+                bm = metrics.compute_benchmark_metrics(strat_equity, bench_series)
+                print()
+                print(metrics.benchmark_summary(bm))
+            except Exception as exc:
+                print(f"  [benchmark-relative metrics unavailable: {exc}]")
+        print()
+
+    # One-line comparison table.
+    print()
+    print("=" * 60)
+    print("  HEADLINE COMPARISON")
+    print("=" * 60)
+    print(
+        f"  {'Level':<14}  {'CAGR':>8}  {'Sharpe':>7}  {'MaxDD':>7}  {'Calmar':>7}  {'TotalCost ₹':>12}"
+    )
+    print(f"  {'─' * 14}  {'─' * 8}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 12}")
+    for level in _COST_LEVELS:
+        m = metric_blocks[level]
+        calmar_s = f"{m.calmar:.2f}" if not (m.calmar != m.calmar) else "n/a"
+        print(
+            f"  {level.upper():<14}  {m.cagr:>+8.2%}  {m.sharpe:>7.2f}  "
+            f"{m.max_drawdown:>7.2%}  {calmar_s:>7}  {m.total_cost_paid:>12,.0f}"
+        )
+    print()
+    if bench_series is None:
+        print(
+            "  [Benchmark-relative metrics not shown — load TRI cache first via "
+            "benchmark.load_tri()]"
+        )
 
 
 def main() -> int:
@@ -208,13 +311,12 @@ def main() -> int:
     print("Precomputing signals (per-ISIN indicators) ...", flush=True)
     signal_store = precompute_signals(prices, config)
 
-    print(
-        "Running engine (placeholder costs, injected synthetic index) ...", flush=True
-    )
+    print("Running engine at base cost level (for invariant checks) ...", flush=True)
     result = engine.run(
         prices,
         config,
         index_prices=index_prices,
+        cost_level="base",
         signal_store=signal_store,
     )
 
@@ -232,6 +334,8 @@ def main() -> int:
         f"  Suspensions     : {len(result.suspension_log)} names flagged"
     )
     print()
+
+    _print_three_level_report(prices, config, index_prices, signal_store)
 
     # ---- Invariant checks (fail loud) --------------------------------------
     print("=== Real-data invariant checks ===", flush=True)

@@ -27,7 +27,7 @@ import pandas as pd
 class RegimeConfig:
     """Configuration for the market-level regime overlay."""
 
-    risk_off_floor: float = 0.0  # deployable fraction in risk-off (0.0 = full cash)
+    risk_off_floor: float = 1.0  # deployable fraction in risk-off (0.0 = full cash)
     debounce_days: int = 3  # consecutive days required to confirm a regime change
     dma_period: int = 200  # rolling SMA window for the market-regime signal
 

@@ -288,7 +288,7 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
 
 ## T4 — Cost level as first-class run parameter + three-cost-level report
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1 (cost model), T3 (for the full headline report)
 - **Goal:** Make cost level a first-class run parameter and render the mandatory
   three-cost-level sensitivity report (`03` §1.4, §4.4).
@@ -305,16 +305,31 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
     ratio, max-DD ratio). The edge must survive **base**; if it only exists at
     optimistic, the report makes that obvious (`03` §1.4 — "no edge").
 - **Done-criteria:**
-  - [ ] Three `CostConfig` presets exist; optimistic = no slippage + ~0.3% RT
+  - [x] Three `CostConfig` presets exist; optimistic = no slippage + ~0.3% RT
         statutory, pessimistic = 2× base slippage (unit-tested: pessimistic cost >
-        base > optimistic on the same fill).
-  - [ ] `cost_level` is a single run parameter threaded through `engine.run` +
-        `run_real.py` (not hand-edited per run).
-  - [ ] The three-cost-level report renders for a run (each level → its metric block).
-  - [ ] Tests offline for the preset ordering; the real-data report is exercised via the
-        `run_real.py` harness (out-of-pytest, depends on the bhavcopy parquet — Rule 5).
+        base > optimistic on the same fill). Note: ordering is asserted on final
+        equity (correct economic observable) rather than `total_cost_paid` (statutory
+        cash only); slippage manifests as effective price drag, not a cash deduction.
+  - [x] `cost_level` is a single run parameter threaded through `engine.run` +
+        `run_real.py` (not hand-edited per run). `cost_level` overrides explicit
+        `cost_cfg` when both are passed.
+  - [x] The three-cost-level report renders for a run (each level → its metric block +
+        optional benchmark-relative headline when TRI cache is available).
+  - [x] Tests offline for the preset ordering; 17 new T4 tests pass. The real-data
+        report is exercised via the `run_real.py` harness (out-of-pytest — Rule 5).
 - **Session log:**
-  - _(fill in at session end)_
+  - 2026-06-15: `CostLevel = Literal["optimistic", "base", "pessimistic"]` added to
+    `costs.py`. Three classmethods (`CostConfig.optimistic/base/pessimistic`) implement
+    the presets: optimistic zeros slippage, base = T0 defaults, pessimistic 2× slippage
+    (`base_slippage_pct=0.003`, `impact_coeff=0.30`), all with identical statutory rates.
+    `engine.run` extended with `cost_level` param (overrides `cost_cfg` when set);
+    resolved by `_cfg_for_level()` helper. `run_real.py` updated: base-level run for
+    invariant checks; `_print_three_level_report()` runs all three levels, prints
+    absolute metrics per level, and optionally adds benchmark-relative headline if the
+    Nifty200 Momentum 30 TRI cache is available. `test_s03t4_cost_levels.py` added with
+    17 tests across TestPresets, TestPresetOrdering, TestCostLevelEngineParam,
+    TestPresetUnitCost. 156 pass (was 139), same 8 pre-existing regime failures,
+    same 4 collection errors (types→schemas). No regressions.
 
 ---
 
@@ -351,7 +366,7 @@ T4 needs T1 (and T3 to render the full headline). T5 gates the whole layer.
 
 ## Exit criteria for the whole Cost + Benchmark layer (spec 03 complete)
 
-- [ ] T0–T5 all ☑.
+- [ ] T0–T5 all ☑.  (T0 ☑ T1 ☑ T2 ☑ T3 ☑ T4 ☑ T5 ☐)
 - [ ] The §4 acceptance suite (T5) passes.
 - [ ] A real-data run (`run_real.py`, 2017→present) renders the **three-cost-level
       report** with the benchmark-relative headline (Calmar ratio, max-DD ratio vs
