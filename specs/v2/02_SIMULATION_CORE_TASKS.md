@@ -375,7 +375,7 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
 
 ## T8 — Metrics (`metrics.py`)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T7 (a `DailySnapshot` series to measure)
 - **Goal:** Honest **daily-MTM** metrics from the v2 equity curve (`02` §9, `03` §3
   "Absolute" block). Benchmark-relative metrics are **spec 03** — not here.
@@ -390,13 +390,18 @@ T2, T3, T4 are independent once T1 lands and can be done in any order.
   - **Do not** compute benchmark-relative metrics (excess CAGR, Calmar ratio, capture, IR) —
     leave a clean seam for spec 03 to add them.
 - **Done-criteria:**
-  - [ ] Each metric unit-tested against a hand-constructed equity curve with a known answer
+  - [x] Each metric unit-tested against a hand-constructed equity curve with a known answer
         (e.g. a fixed-CAGR ramp → exact CAGR; a known drawdown → exact maxDD/Calmar).
-  - [ ] Sharpe uses **daily** returns × √252 (not step-on-exit — the v1 bug, `00` §2.2).
-  - [ ] Turnover computed per rebalance and annualized; flagged absurd if > ~1000% (`02` §10.5).
-  - [ ] Tests offline.
+  - [x] Sharpe uses **daily** returns × √252 (not step-on-exit — the v1 bug, `00` §2.2).
+  - [x] Turnover computed per rebalance and annualized; flagged absurd if > ~1000% (`02` §10.5).
+  - [x] Tests offline.
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-15: Implemented `BacktestMetrics` dataclass + `PerNameStats` + `compute_metrics`
+    function. Metrics: CAGR (calendar-time), Sharpe/Sortino (daily × √252), max DD +
+    peak-to-trough duration, Calmar, avg/median exposure, time-in-cash %, annualized
+    turnover (flags > 1000%), per-name realized P&L / hold-period / hit-rate. `summary()`
+    helper prints compact table. Benchmark-relative seam left clean for spec 03.
+    42/42 T8 tests pass; 199/199 T1–T8 total pass offline (`test_t8_metrics.py`).
 
 ---
 
