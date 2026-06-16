@@ -279,8 +279,8 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T3 — Controlled-iteration harness (`iterate.py`) + plateau detector + layer 1
 
-- **Status:** ☐ — _conditional on T1 = GO and T2 complete._
-- **Depends on:** T2.
+- **Status:** ☑ — done 2026-06-16.
+- **Depends on:** T2. ✓ met.
 - **Goal:** Provide the one-layer-at-a-time, coarse-grid, plateau-based iteration
   machinery (`04` §4), and demonstrate it on the first candidate layer only.
 - **Do:**
@@ -298,12 +298,47 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 - **Deliverable:** `iterate.py` + plateau detector + the layer-1 (regime) result with
   a plateau verdict, in the session log.
 - **Done-criteria:**
-  - [ ] Harness runs a coarse single-layer grid on `DISCOVERY` only; every config hits
+  - [x] Harness runs a coarse single-layer grid on `DISCOVERY` only; every config hits
         the ledger.
-  - [ ] Plateau detector implemented + unit-tested (spiky optimum rejected).
-  - [ ] Layer 1 (regime) run; plateau present/absent stated honestly.
+  - [x] Plateau detector implemented + unit-tested (spiky optimum rejected).
+  - [x] Layer 1 (regime) run; plateau present/absent stated honestly.
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-16. Built `iterate.py` (plateau detector + `run_regime_layer` + `__main__`).
+    Unit tests: 25 tests, all green, fully offline. Key invariants: spiky optimum
+    rejected; flat plateau accepted; 2-D interior/corner/spike cases; DISCOVERY bounds
+    pinned on every engine call; FINAL_OOS never touched; signals precomputed once;
+    ledger counts every combo; each combo gets a distinct `RegimeConfig`.
+
+    **Layer 1 run — regime-overlay calibration** on DISCOVERY (2018-02-06 → 2023-06-30)
+    at base cost. Grid: `debounce_days` × `risk_off_floor` = 7 × 3 = **21 combos**
+    (all logged to ledger, K=21).
+
+    Full Calmar grid (strat Calmar on DISCOVERY):
+
+    | debounce \ risk_off | 0.00  | 0.25  | 0.50  |
+    |---------------------|-------|-------|-------|
+    | 1                   | 0.246 | **0.265** | 0.261 |
+    | 3 (floor default)   | 0.221 | 0.231 | 0.247 |
+    | 5                   | 0.024 | 0.063 | 0.128 |
+    | 7                   | 0.043 | 0.089 | 0.148 |
+    | 10                  | 0.040 | 0.074 | 0.139 |
+    | 15                  | 0.021 | 0.061 | 0.126 |
+    | 20                  | 0.010 | 0.056 | 0.122 |
+
+    **PLATEAU VERDICT: PLATEAU (04 §4 ACCEPTED).** Winner: `{debounce_days=1,
+    risk_off_floor=0.25}` calmar=0.265. All 3 immediate neighbors ≥ 85% × 0.265 =
+    0.225: (debounce=3, rof=0.25)=0.231 ✓, (debounce=1, rof=0.0)=0.246 ✓,
+    (debounce=1, rof=0.50)=0.261 ✓. Winner vs floor config: +19.8% calmar.
+
+    Structural note (not tuning — observation): debounce ≥ 5 with risk_off=0.0 is a
+    "death valley" (calmars 0.010–0.043). The 2020 COVID V-shape recovery devastated
+    high-debounce + full-cash configs: go to cash slowly, wait 5–20 consecutive days
+    above DMA before returning → miss the entire recovery. debounce=1 is more responsive
+    but also more whipsaw-prone; the 25% risk_off floor cushions whipsaws while keeping
+    25% of equity deployed in risk-off, catching V-shaped bounces.
+
+    **Accepted candidate:** `RegimeConfig(debounce_days=1, risk_off_floor=0.25)`.
+    Proceed to T4 robustness checks with this config + floor MomentumConfig.
 
 ---
 
@@ -367,8 +402,10 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 - [x] **If NO-GO:** diagnosis note written (`04_FLOOR_DIAGNOSIS.md`); spec 04 paused at
       gate; data bug identified (Spec 05) and fixed; floor re-run returned GO (marginal).
       This is resolved — the valid terminal NO-GO state was superseded by the data fix.
-- [x] **If GO:** T2 scaffolding green (2026-06-16 — 33 tests, all pass); T3 iteration ran one layer at a time on discovery
-      with plateau-based selection; T4 robustness checks all pass on the candidate;
+- [x] **If GO:** T2 scaffolding green (2026-06-16 — 33 tests, all pass); T3 iteration
+      ran one layer at a time on discovery with plateau-based selection (2026-06-16 —
+      25 tests green; layer 1 regime grid PLATEAU, winner debounce=1/rof=0.25 calmar=0.265);
+      T4 robustness checks all pass on the candidate;
       T5 one-shot OOS consumed once and the §7 DoD checklist completed.
 - [ ] Final artifact is labeled truthfully: "validated, deployable config" only if §7
       is fully satisfied; otherwise "research note" (Rule 12 — fail loud). No softening.
