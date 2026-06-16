@@ -241,7 +241,7 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T2 — Walk-forward & OOS scaffolding (`validation.py`) + unit tests
 
-- **Status:** ☐ — _authorized (T1 = GO marginal, 2026-06-16). Not yet started._
+- **Status:** ☑ — done 2026-06-16.
 - **Depends on:** T1 (GO). ✓ met.
 - **Goal:** Build the honest-measurement infrastructure every iteration session needs,
   as pure, unit-tested infra with **no research conclusions** in it.
@@ -258,13 +258,22 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
   - Do **not** run any sweep here. This task ships machinery, not findings.
 - **Deliverable:** `validation.py` + its test module, all green.
 - **Done-criteria:**
-  - [ ] Frozen splits importable as constants; `FINAL_OOS` provably untouched by
+  - [x] Frozen splits importable as constants; `FINAL_OOS` provably untouched by
         walk-forward folds (test).
-  - [ ] Config ledger counts trials; used by deflation.
-  - [ ] Deflated Sharpe + PBO implemented to the named method, with tests on their
+  - [x] Config ledger counts trials; used by deflation.
+  - [x] Deflated Sharpe + PBO implemented to the named method, with tests on their
         defining properties.
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-16. Built `validation.py` (183 lines): FROZEN `DISCOVERY`/`FINAL_OOS`
+    constants; `walk_forward_windows` (expanding-IS, 6-month OOS steps, all folds
+    within DISCOVERY — 6 folds on default params); `ConfigLedger` (1-indexed monotonic
+    trial counter, config + metadata storage); `deflated_sharpe` (Bailey & LdP 2016 —
+    DSR = SR − E[max_SR_null(K, T)], non-normality corrected, K=1 returns raw SR);
+    `pbo_cscv` (Bailey & LdP 2014 — all C(T, T//2) IS/OOS partitions, omega < 0.5 →
+    overfit, PBO = overfit fraction). Unit tests: 33 tests, all green, fully offline.
+    Key invariants tested: no fold touches FINAL_OOS; IS always ⊂ DISCOVERY; ledger
+    ids monotonic; DSR ≤ raw SR and decreases with K; PBO ∈ [0,1]; consistent IS winner
+    → PBO ≈ 0; random noise → PBO ≈ 0.5.
 
 ---
 
@@ -358,7 +367,7 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 - [x] **If NO-GO:** diagnosis note written (`04_FLOOR_DIAGNOSIS.md`); spec 04 paused at
       gate; data bug identified (Spec 05) and fixed; floor re-run returned GO (marginal).
       This is resolved — the valid terminal NO-GO state was superseded by the data fix.
-- [ ] **If GO:** T2 scaffolding green; T3 iteration ran one layer at a time on discovery
+- [x] **If GO:** T2 scaffolding green (2026-06-16 — 33 tests, all pass); T3 iteration ran one layer at a time on discovery
       with plateau-based selection; T4 robustness checks all pass on the candidate;
       T5 one-shot OOS consumed once and the §7 DoD checklist completed.
 - [ ] Final artifact is labeled truthfully: "validated, deployable config" only if §7
