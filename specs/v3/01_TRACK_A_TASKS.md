@@ -1,0 +1,246 @@
+# v3 / 01 — Track A Task Breakdown & Build Tracker
+
+> **Purpose.** Decompose the Track-A portion of `00_PREREGISTRATION.md` into small,
+> resumable, session-sized tasks (CLAUDE.md Rule 6 — token budget). Each session loads
+> `00_PREREGISTRATION.md`, this file, and the **one task** it is doing — nothing more.
+>
+> **Scope = Track A only** (price/volume factors, computable from the existing OHLCV data
+> layer). Track B (fundamentals) is NOT in scope and is not started unless the prereg §11
+> gate re-opens it.
+>
+> **How to use each session:**
+> 1. Read the task and its "Depends on".
+> 2. Do only that task. Honor the per-session token budget.
+> 3. Update **Status** and fill the **Session log**.
+> 4. Check off Done-criteria. Do not mark Done if anything was skipped (Rule 12).
+>
+> **Status legend:** ☐ not started · ◐ in progress · ☑ done · ⚠ blocked
+>
+> **Discipline reminders (from prereg §1, non-negotiable):** one layer at a time on
+> `DISCOVERY` only; plateau-not-peak selection; every config logged to the v2 `ConfigLedger`;
+> `FINAL_OOS` consumed exactly once at the very end; no factor without a pre-registered
+> rationale; no fine weight optimization; never slice `DISCOVERY`.
+
+---
+
+## What this reuses (built + test-gated in v2 — do NOT rewrite, Rule 3)
+
+- `engine.run(prices, config, *, index_prices, regime_config, cost_level, signal_store)`
+  — the daily loop, costs, regime hook, 02 §10 invariants. Selection logic (top-N, buffer-M)
+  is driven by whatever `signal_store.eligible_ranked(day, universe)` returns → the ranker
+  swap is a **signal-layer** change, not an engine change.
+- `costs.py` (3 levels), `benchmark.py` (3 TRIs + real price index), `regime.py` (overlay).
+- `validation.py` — `DISCOVERY` / `FINAL_OOS`, walk-forward, `ConfigLedger`,
+  `deflated_sharpe`, `pbo_cscv`.
+- `iterate.py` — coarse-grid runner + `plateau_check`.
+- `robustness.py` — the five §6 checks (adapt the candidate, not the checks).
+- `store.read_prices_adjusted()` — OHLCV + adv_20 (no fundamentals — Track A constraint).
+
+Keep **entirely separate** from v2's frozen `MomentumConfig` (config.py field-lock) — v3
+gets its own config dataclass so v2 stays runnable.
+
+---
+
+## Task graph (dependencies)
+
+```
+T0 (lock: V3Config dataclass, factor list, grids+splits as constants — light)
+   └─> T1 (factors.py: 5 Track-A factors + rank-blend composite + smoothing + tests)
+            └─> T2 (composite signal store wired through engine's signal_store seam + tests)
+                     ├─> T3 (engine rebalance-cadence knob: monthly/quarterly/semi-annual + tests)
+                     │
+                     └─> T4 (PARITY + TURNOVER layers: momentum-only parity vs v2 floor;
+                     │        then cadence / buffer-M / smoothing on DISCOVERY — H1)
+                              └─> T5 (FACTOR layers: +low-vol, +trend-quality, +6-1, +reversal — H2)
+                                       └─> T6 (robustness battery on chosen candidate — §6 gate)
+                                                └─> T7 (one-shot FINAL_OOS + DoD — §7)
+```
+
+T3 (cadence infra) is a prerequisite for the cadence sub-layer in T4 but is independent of
+the factor work; it may be done in parallel with T1/T2 if convenient.
+
+---
+
+## T0 — Lock V3Config, factor list, grids & splits as constants (light / minimal code)
+
+- **Status:** ☐
+- **Depends on:** prereg §11 locked. ✓
+- **Goal:** Pre-commit every v3 choice as code constants so no later session moves the stick.
+- **Do:**
+  - Add `app/backtest_v2/v3_config.py` (or `factors_config.py`): a `V3Config` dataclass —
+    a **separate** type from `MomentumConfig` — carrying: the active factor list, composite
+    weighting (equal), rank-smoothing window, `sell_rank_buffer` (M), `reconstitution`/
+    `rebalance` cadence, plus the v2 fields the engine needs. Default = the **v3 floor**
+    (momentum-12-1-only, monthly, M=35) so the floor reproduces v2's candidate ranker.
+  - Freeze the §6 coarse grids (prereg §6) and decision predicates as module constants.
+  - Reuse v2 frozen `DISCOVERY` / `FINAL_OOS` from `validation.py` (import, do not redefine).
+  - No data probe needed — span unchanged from v2 T0 (2018-02-06 → 2026-06-12). Confirm by
+    import, not re-read.
+- **Deliverable:** `V3Config` + frozen grids/predicates; a `## Locked decisions (T0)` block
+  appended to the top of `00_PREREGISTRATION.md`.
+- **Done-criteria:**
+  - [ ] `V3Config` dataclass exists, separate from `MomentumConfig`; v3-floor defaults set.
+  - [ ] §6 grids + decision predicates frozen as constants.
+  - [ ] Frozen splits imported from `validation.py` (not redefined).
+- **Session log:** _(fill at end)_
+
+---
+
+## T1 — Factor library (`factors.py`) + composite + tests
+
+- **Status:** ☐
+- **Depends on:** T0.
+- **Goal:** The reusable, pure factor primitives — no engine wiring yet.
+- **Do:**
+  - `factors.py`: each Track-A factor (prereg §4) as a **pure cross-sectional** function
+    over the prices frame: momentum-12-1, momentum-6-1, low-volatility, trend-quality,
+    short-term-reversal. Each returns a per-(day, isin) score.
+  - `composite_rank(...)`: percentile-rank each active factor cross-sectionally, equal-weight
+    average → one composite rank. Optional rank-smoothing (N-month average) per prereg §3.1.
+  - Unit tests (Rule 9 — encode WHY): each factor's sign/monotonicity on a synthetic series;
+    composite of one factor == that factor's rank; rank-blend is robust to a single-factor
+    outlier (the reason we rank-blend not z-blend); smoothing reduces rank churn on a noisy
+    fixture. Mock all data (no live yfinance/NSE).
+- **Deliverable:** `factors.py` + test module, all green.
+- **Done-criteria:**
+  - [ ] All 5 Track-A factors implemented as pure functions, unit-tested.
+  - [ ] Composite rank-blend + smoothing implemented + tested (outlier-robustness test).
+- **Session log:** _(fill at end)_
+
+---
+
+## T2 — Composite signal store wired through the engine seam + tests
+
+- **Status:** ☐
+- **Depends on:** T1.
+- **Goal:** Make the multi-factor signal runnable through the **unchanged** engine via the
+  `signal_store` seam.
+- **Do:**
+  - Build a v3 signal store exposing the same interface the engine calls —
+    `eligible_ranked(day, universe)` and `entry_gate(day, isin)` — but ranking by the T1
+    composite. Reuse the v2 entry gate (`close > 200-MA AND liquidity floor`, plus the
+    momentum-positive gate while momentum is active).
+  - A `precompute_*` builder that computes all active factor scores once (like v2's
+    `precompute_signals`) so sweeps don't recompute.
+  - Unit tests: engine runs end-to-end with the composite store on a small fixture; with
+    momentum-only active, ranking matches v2's `momentum_12_1/vol` ordering (parity hook for
+    T4); ledger/determinism unaffected.
+- **Deliverable:** v3 signal store + builder + tests, green; an engine run on a fixture.
+- **Done-criteria:**
+  - [ ] Engine runs with the composite store via the existing `signal_store` param — no
+        engine edit required for the ranker.
+  - [ ] Momentum-only composite reproduces v2 ranking order (test).
+- **Session log:** _(fill at end)_
+
+---
+
+## T3 — Engine rebalance-cadence knob (monthly / quarterly / semi-annual) + tests
+
+- **Status:** ☐
+- **Depends on:** T0 (config). Independent of T1/T2 — may run in parallel.
+- **Goal:** The membership-turnover lever #1: trade less often. Surgical engine change.
+- **Do:**
+  - Generalize the engine's hardcoded `_month_end_dates` to honor a cadence param
+    (monthly = current behavior **default**, quarterly, semi-annual). v2's `MomentumConfig`
+    path must be byte-for-byte unchanged (default monthly) — v2 stays runnable.
+  - Tests: quarterly cadence yields exactly the quarter-end trading days; monthly default
+    unchanged (regression — Rule 1/5); no-lookahead invariant still holds.
+- **Deliverable:** cadence-aware rebalance-date generator + tests, green; v2 regression intact.
+- **Done-criteria:**
+  - [ ] Cadence param drives rebalance dates; monthly default = unchanged v2 behavior (test).
+  - [ ] 02 §10 invariants still pass.
+- **Session log:** _(fill at end)_
+
+---
+
+## T4 — Parity + turnover layers on DISCOVERY (H1)
+
+- **Status:** ☐
+- **Depends on:** T2, T3.
+- **Goal:** Confirm the v3 floor reproduces v2, then test whether the turnover levers cut
+  realized turnover without wrecking Calmar (prereg H1).
+- **Do:**
+  - **Parity check first:** v3 floor (momentum-only, monthly, M=35) on DISCOVERY ≈ v2
+    candidate's base numbers (Calmar ~0.265, turnover ~934%). A mismatch means a wiring bug —
+    fix before proceeding (Rule 12).
+  - Then run, one layer at a time via `iterate.py` (coarse grids, prereg §6, log to ledger):
+    Layer 1 cadence {monthly, quarterly, semi-annual}; Layer 2 buffer M {35, 50, 70};
+    Layer 3 smoothing {none, 2-mo, 3-mo}. Plateau-select each.
+  - Report **realized** turnover (executed fills, per `diag_turnover_decomp` method), not just
+    planned Σ|Δw|, plus Calmar — for each layer.
+- **Deliverable:** parity confirmation + per-layer turnover/Calmar plateau verdicts in the log.
+- **Done-criteria:**
+  - [ ] v3 floor parity with v2 candidate confirmed (or bug fixed).
+  - [ ] 3 turnover layers run on DISCOVERY; plateau verdicts stated; realized turnover reported.
+- **Session log:** _(fill at end)_
+
+---
+
+## T5 — Factor layers on DISCOVERY (H2)
+
+- **Status:** ☐
+- **Depends on:** T4 (a turnover-stable base config).
+- **Goal:** Add price/volume factors one at a time on the T4 base; test whether the composite
+  broadens selection (prereg H2 — §6.2 concentration).
+- **Do:**
+  - Add, one layer at a time (plateau, ledger): +low-vol, +trend-quality, +momentum-6-1,
+    +short-term-reversal. Each holds prior-accepted knobs fixed (04 §4).
+  - Track the §6.2-style top-10-drop retention as a running diagnostic (not the final gate,
+    but the signal we care about) alongside Calmar.
+- **Deliverable:** per-factor plateau verdicts + concentration trend in the log; the chosen
+  v3 candidate config.
+- **Done-criteria:**
+  - [ ] Each factor added on a plateau or rejected, honestly stated.
+  - [ ] A single v3 candidate config selected for robustness.
+- **Session log:** _(fill at end)_
+
+---
+
+## T6 — Robustness battery on the v3 candidate (§6 gate)
+
+- **Status:** ☐
+- **Depends on:** T5.
+- **Goal:** Subject the v3 candidate to all five §6 checks before it nears FINAL_OOS.
+- **Do:** Reuse `robustness.py`'s five checks (cost stress, universe perturbation, neighborhood,
+  subperiod, turnover/capacity) on the v3 candidate — adapt the candidate config, not the
+  checks. **Strengthen §6.4** to a hard concentration FAIL (the v2 coded-check gap: one period
+  > 5× the mean of other positive periods → FAIL), per the T4-v2 diagnosis note.
+- **Deliverable:** per-check pass/fail table for the v3 candidate.
+- **Done-criteria:**
+  - [ ] All five §6 checks run; each explicit pass/fail (Rule 12); any fail blocks T7.
+  - [ ] §6.4 concentration hardened.
+- **Session log:** _(fill at end)_
+
+---
+
+## T7 — One-shot FINAL_OOS + Definition of Done (§7)
+
+- **Status:** ⚠ BLOCKED until T6 passes all five checks.
+- **Depends on:** T6 (all pass).
+- **Goal:** Run the single pre-committed v3 candidate on `FINAL_OOS` **exactly once**; assemble
+  the §9 / spec-04 §7 DoD verdict.
+- **Do:** Run on FINAL_OOS once (log the trial). If it fails, it fails — no iteration. Fill the
+  DoD checklist (beats Mom30 on Calmar after base costs, maxDD ≤ 70% of bench on discovery;
+  holds at pessimistic + subperiods; passes one-shot OOS without re-tuning; tradeable on
+  realized turnover/capacity). Report raw Sharpe, K, deflated Sharpe, PBO together.
+- **Deliverable:** FINAL_OOS numbers + completed DoD checklist + one-line verdict.
+- **Done-criteria:**
+  - [ ] FINAL_OOS consumed exactly once (ledger shows it).
+  - [ ] DoD filled item-by-item; verdict stated plainly — "validated" only if every box checks,
+        else "research note" (Rule 12).
+- **Session log:** _(fill at end)_
+
+---
+
+## Exit criteria for Track A
+
+- [ ] T0 locked (V3Config, grids, predicates, splits reused).
+- [ ] T1–T3 infra green (factors, composite signal store, cadence knob) with v2 regression intact.
+- [ ] T4 parity confirmed; turnover layers plateau-selected; realized turnover reported.
+- [ ] T5 factor layers added one at a time; v3 candidate chosen.
+- [ ] T6 robustness battery run; honest pass/fail.
+- [ ] T7 FINAL_OOS consumed once; DoD verdict labeled truthfully.
+
+> If Track A's candidate clears §6 but H3 (regime concentration) is still weak, that is the
+> trigger to consider **Track B (fundamentals)** — a separate data build, separately scoped
+> and approved. Track A ending as a research note is an acceptable, honest outcome (prereg §10).

@@ -485,14 +485,38 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
       25 tests green; layer 1 regime grid PLATEAU, winner debounce=1/rof=0.25 calmar=0.265);
       T4 robustness run (2026-06-16): **FAIL on §6.1 and §6.2** (3/5 pass). T5 blocked.
       FINAL_OOS has not been touched. See T4 session log for full diagnosis and next-step options.
-- [ ] Final artifact is labeled truthfully: "validated, deployable config" only if §7
+- [x] Final artifact is labeled truthfully: "validated, deployable config" only if §7
       is fully satisfied; otherwise "research note" (Rule 12 — fail loud). No softening.
 
-  **Current state (2026-06-16): research note.** The candidate (layer-1 regime config)
-  does not clear T4. It is NOT a validated, deployable strategy. The DISCOVERY result
-  (calmar 0.265 at base cost) is a real measurement on real data with the pre-committed
-  config, but it is fragile to costs (§6.1) and concentrated in ~10 post-COVID momentum
-  names (§6.2). Labeling it anything other than "research note" would violate Rule 12.
+  **TERMINAL STATE (2026-06-16): research note — SPEC 04 CLOSED.** The candidate
+  (layer-1 regime config) does not clear T4. It is NOT a validated, deployable strategy.
+  The DISCOVERY result (calmar 0.265 at base cost) is a real measurement on real data
+  with the pre-committed config, but it is fragile to costs (§6.1) and concentrated in
+  ~10 post-COVID momentum names (§6.2), with a single regime carrying the result (§6.4).
+  Labeling it anything other than "research note" would violate Rule 12.
+
+  **Decision (Arafat, 2026-06-16): close v2 as a research note; do not iterate the
+  current candidate further; pivot to a disciplined v3.** T5 is NOT run; FINAL_OOS
+  (2023-07-01 → 2026-06-12) remains pristine and is inherited by v3 as a still-unspent
+  one-shot block. The v2 harness (engine, cost model, three benchmarks, frozen splits,
+  walk-forward, trial ledger, deflated Sharpe, PBO, the five-check robustness battery)
+  is the durable deliverable and is reused wholesale by v3.
+
+  **Post-T4 turnover decomposition (read-only, 2026-06-16, `diag_turnover_decomp.py`).**
+  Run to inform v3 design (no parameter changed, no OOS spent). The candidate's ~934%
+  annualized turnover decomposes (DISCOVERY, base cost) as: **membership churn ~90%
+  (~839%)**, weight-reset ~15% (~142%), **regime overlay ~−5% (turning it OFF *raised*
+  turnover 934%→981%)**. This **corrects** the floor-diagnosis guess that the regime
+  overlay was the prime turnover driver — measurement disproved it. The regime earns its
+  keep on drawdown (regime-off maxDD 38%→48.6%). Caveat: the engine turnover figure is
+  *planned* Σ|Δw|; executed fills reconcile to ~58%, so realized trading (~540%) is lower.
+
+  **Three measured design principles carried into v3** (see `specs/v3/00_PREREGISTRATION.md`):
+  (1) membership-aware turnover control (slower reconstitution / wider buffer / smoother
+  signal — targets the 90% churn bucket, not weight-reset cadence); (2) multi-factor for
+  a smoother, less name-concentrated signal (addresses §6.2/§6.4); (3) keep the regime
+  overlay for drawdown control. v3 must reuse the v2 harness and honor the same
+  one-shot-OOS / plateau / ledger discipline.
 
 > Reminder for every session in this spec: the entire point of v2 was honest
 > measurement. The frozen splits, the one-shot OOS, the plateau rule, the trial

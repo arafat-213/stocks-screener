@@ -149,6 +149,17 @@ re-run, but the line should be relabeled (or made statutory+slippage) when work 
 Recommended, not urgent; flagged for Arafat.
 
 ### 3.2 Regime overlay whipsaw (structure / signal quality) — **dominant suspect**
+
+> **CORRECTION (2026-06-16, post-T4 turnover decomposition — `diag_turnover_decomp.py`).**
+> The turnover hypothesis below was **disproved by measurement.** On DISCOVERY (base cost)
+> the ~934% turnover is **~90% membership churn** (top-20 names rotating across the
+> rank-20/35 boundary monthly), only **~15% weight-reset**, and the **regime overlay is
+> turnover-neutral-to-helpful** — turning it OFF *raised* turnover (934%→981%). The regime
+> earns its keep on drawdown (regime-off maxDD 38%→48.6%). The regime overlay is **not**
+> the turnover driver. It *may* still contribute to the *return* gap via cash drag (regime
+> ON CAGR 10.05% < regime OFF 11.63% on DISCOVERY) — that part of the suspicion stands; the
+> turnover part does not. See [[turnover-decomp-churn-dominant]] memory and §4 below.
+
 **51.2% time-in-cash** with **median exposure 100%** means the book is binary: fully in or
 fully out. Combined with **963.6% annualized turnover** (~80% of the book per monthly
 rebalance), the real Nifty 50 200-DMA regime signal is very likely toggling risk-on/off
