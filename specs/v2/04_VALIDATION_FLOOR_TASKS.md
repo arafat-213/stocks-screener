@@ -156,7 +156,7 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T1 — THE FLOOR: pre-committed config, 3 cost levels × 3 benchmarks (the gate)
 
-- **Status:** ☑ — **verdict: NO-GO** (see session log + `04_FLOOR_DIAGNOSIS.md`)
+- **Status:** ☑ — **verdict: GO (marginal)** after Phase 4 re-run on rebuilt data (see session log + `04_FLOOR_DIAGNOSIS.md`)
 - **Depends on:** T0.
 - **Goal:** Run the single `04` §2 floor config, measured honestly, on the full
   usable window; render the `04` §2 report (three cost levels × three benchmarks);
@@ -209,6 +209,27 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
     diagnosis are the 963% turnover and 51% time-in-cash, both pointing at the regime
     overlay whipsawing — but diagnosing ≠ fixing, so no parameter was changed.
 
+  - 2026-06-16 (Phase 4 re-run). §3.3 data bug confirmed and fixed (Spec 05 Phases 1–3):
+    ISIN succession bridge in `adjust.py` applied ~62 previously-missed split/bonus events;
+    `prices_adjusted` rebuilt (4,008,497 rows, 3,470 ISINs, full 2017-01-02 → 2026-06-12
+    range). Floor re-run on rebuilt data — same pre-committed config, no parameter changed.
+    All `02 §10` invariants PASS. New floor report (base cost, full window): CAGR +11.75%,
+    MaxDD 38.51%, Calmar 0.305, Sharpe 0.76, ann. turnover 972.6%, time-in-cash 46.1%
+    (was 51.2% — phantom split-cliff crashes had caused false catastrophic-stop exits).
+    Calmar-ratio matrix (strat/bench):
+
+    | Cost        | Mom30 | Mid50 | Nifty50 |
+    |-------------|-------|-------|---------|
+    | OPTIMISTIC  | 0.77  | 0.65  | 1.14    |
+    | BASE        | 0.68  | 0.57  | 1.01    |
+    | PESSIMISTIC | 0.59  | 0.50  | 0.88    |
+
+    **REVISED VERDICT: GO (marginal).** `C_strat=0.305 >= C_nifty50=0.302` at base cost
+    (clears the NO-GO predicate); `C_strat=0.305 < GO threshold=0.359` (trails primary,
+    so marginal). The data fix added +22 bps to C_strat — enough to cross the floor.
+    T2 is now authorized. Findings documented in `04_FLOOR_DIAGNOSIS.md` §1/§2/§4 and
+    `05_DATA_ADJUSTMENT_REMEDIATION.md` §13.
+
 > ╔══════════════════════════════════════════════════════════════════════════╗
 > ║  GATE — read the T1 verdict before opening T2.                           ║
 > ║  • NO-GO (underperforms Nifty 50 TRI after base costs): STOP. Open a      ║
@@ -220,8 +241,8 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T2 — Walk-forward & OOS scaffolding (`validation.py`) + unit tests
 
-- **Status:** ☐ — _conditional on T1 = GO._
-- **Depends on:** T1 (GO).
+- **Status:** ☐ — _authorized (T1 = GO marginal, 2026-06-16). Not yet started._
+- **Depends on:** T1 (GO). ✓ met.
 - **Goal:** Build the honest-measurement infrastructure every iteration session needs,
   as pure, unit-tested infra with **no research conclusions** in it.
 - **Do:**
@@ -249,7 +270,7 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T3 — Controlled-iteration harness (`iterate.py`) + plateau detector + layer 1
 
-- **Status:** ☐ — _conditional on T1 = GO._
+- **Status:** ☐ — _conditional on T1 = GO and T2 complete._
 - **Depends on:** T2.
 - **Goal:** Provide the one-layer-at-a-time, coarse-grid, plateau-based iteration
   machinery (`04` §4), and demonstrate it on the first candidate layer only.
@@ -330,10 +351,13 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 ## Exit criteria for the whole Validation layer (spec 04 complete)
 
 - [x] T0 decisions locked (window, floor→config map, frozen splits, predicates, PBO method).
-- [x] T1 floor run honestly; GO/NO-GO verdict recorded → **NO-GO** (2026-06-16).
-- [x] **If NO-GO:** diagnosis note written (`04_FLOOR_DIAGNOSIS.md`); spec 04 ends here
-      honestly (this is a valid terminal state — the measuring stick found no foundation,
-      exactly what §2 protects). T2–T5 NOT started; no tuning performed.
+- [x] T1 floor run honestly; GO/NO-GO verdict recorded → **NO-GO** (original, 2026-06-16)
+      → **GO (marginal)** (Phase 4 re-run on rebuilt data, 2026-06-16). §3.3 data bug
+      fixed (Spec 05); floor re-run on same pre-committed config confirmed the data fix
+      was the legitimate trigger. C_strat 0.305 > C_nifty50 0.302 at base costs.
+- [x] **If NO-GO:** diagnosis note written (`04_FLOOR_DIAGNOSIS.md`); spec 04 paused at
+      gate; data bug identified (Spec 05) and fixed; floor re-run returned GO (marginal).
+      This is resolved — the valid terminal NO-GO state was superseded by the data fix.
 - [ ] **If GO:** T2 scaffolding green; T3 iteration ran one layer at a time on discovery
       with plateau-based selection; T4 robustness checks all pass on the candidate;
       T5 one-shot OOS consumed once and the §7 DoD checklist completed.
