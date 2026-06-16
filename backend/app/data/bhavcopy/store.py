@@ -73,10 +73,34 @@ ISIN_SYMBOL_MAP_SCHEMA: dict[str, str] = {
     "last_date": "datetime64[ns]",
 }
 
+# Audit trail for CA events fetched during build (05_DATA_ADJUSTMENT_REMEDIATION §11.2).
+# Schema mirrors corporate_actions.CA_EVENT_COLUMNS exactly.
+CORPORATE_ACTIONS_SCHEMA: dict[str, str] = {
+    "isin": "string",
+    "symbol": "string",
+    "ex_date": "datetime64[ns]",
+    "type": "string",
+    "ratio": "float64",
+    "dividend": "float64",
+    "subject": "string",
+}
+
+# Unmatched CA records that could not be classified or parsed.
+# Schema mirrors corporate_actions.CA_UNMATCHED_COLUMNS exactly.
+CA_UNMATCHED_SCHEMA: dict[str, str] = {
+    "isin": "string",
+    "symbol": "string",
+    "ex_date_raw": "string",
+    "subject": "string",
+    "reason": "string",
+}
+
 # Subdir / file names under the storage root.
 _PRICES_DIR = "prices_adjusted"
 _MEMBERSHIP_DIR = "universe_membership"
 _ISIN_MAP_FILE = "isin_symbol_map.parquet"
+_CA_EVENTS_FILE = "corporate_actions.parquet"
+_CA_UNMATCHED_FILE = "ca_unmatched.parquet"
 
 # Partition columns.
 _PRICES_PARTITION = "isin"
@@ -267,3 +291,36 @@ def read_isin_symbol_map(
     if isins is not None:
         df = df[df["isin"].isin(list(isins))].reset_index(drop=True)
     return df
+
+
+# --------------------------------------------------------------------------- #
+# corporate_actions (CA events audit trail)                                   #
+# --------------------------------------------------------------------------- #
+def write_corporate_actions(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, CORPORATE_ACTIONS_SCHEMA, "corporate_actions")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _CA_EVENTS_FILE, index=False)
+
+
+def read_corporate_actions(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _CA_EVENTS_FILE
+    if not path.exists():
+        return _empty(CORPORATE_ACTIONS_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, CORPORATE_ACTIONS_SCHEMA, "corporate_actions")
+
+
+def write_ca_unmatched(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, CA_UNMATCHED_SCHEMA, "ca_unmatched")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _CA_UNMATCHED_FILE, index=False)
+
+
+def read_ca_unmatched(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _CA_UNMATCHED_FILE
+    if not path.exists():
+        return _empty(CA_UNMATCHED_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, CA_UNMATCHED_SCHEMA, "ca_unmatched")

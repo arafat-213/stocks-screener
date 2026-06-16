@@ -88,11 +88,14 @@ def adjust_prices(
     if raw_df.empty:
         return _empty_adjusted()
 
-    # Index CA events by ISIN once for O(1) per-ISIN lookup.
+    # Index CA events by ISIN and by symbol for the ISIN succession bridge below.
     events_by_isin: dict[str, pd.DataFrame] = {}
+    events_by_symbol: dict[str, pd.DataFrame] = {}
     if not events.empty:
         for isin_key, grp in events.groupby("isin", sort=False):
             events_by_isin[str(isin_key)] = grp
+        for sym_key, grp in events.groupby("symbol", sort=False):
+            events_by_symbol[str(sym_key)] = grp
 
     parts: list[pd.DataFrame] = []
 
@@ -101,8 +104,33 @@ def adjust_prices(
         dates = pd.DatetimeIndex(grp["date"])
         close_raw = grp["close"].to_numpy(dtype="float64")
 
-        # CA events for this ISIN — absent ISIN gets empty events → factors = 1.0.
+        # Primary join: CA events keyed by this ISIN.
         isin_events = events_by_isin.get(str(isin), _EMPTY_EVENTS)
+
+        # ISIN succession bridge: the NSE CA feed files events against the *old* ISIN
+        # even after a company re-lists under a new ISIN (e.g. face-value split creates
+        # a new ISIN while CA events remain under the predecessor). When the primary join
+        # returns nothing, fall back to the symbol-keyed index and restrict to ex_dates
+        # within this ISIN's active trading window so stale predecessor events are not
+        # applied. See 05_DATA_ADJUSTMENT_REMEDIATION §11.2.
+        if isin_events.empty and events_by_symbol:
+            symbol = str(grp["symbol"].iloc[0])
+            sym_events = events_by_symbol.get(symbol, _EMPTY_EVENTS)
+            if not sym_events.empty:
+                date_min = dates.min()
+                date_max = dates.max()
+                mask = (sym_events["ex_date"] >= date_min) & (
+                    sym_events["ex_date"] <= date_max
+                )
+                bridged = sym_events[mask].reset_index(drop=True)
+                if not bridged.empty:
+                    logger.debug(
+                        "adjust_prices: ISIN succession bridge — %d event(s) for %s via symbol %s",
+                        len(bridged),
+                        isin,
+                        symbol,
+                    )
+                    isin_events = bridged
 
         adj_arr = split_bonus_factor_series(isin_events, dates).to_numpy(
             dtype="float64"

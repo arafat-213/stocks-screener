@@ -377,6 +377,12 @@ def run_build(
         "build: %d CA events, %d unmatched", report.ca_events, report.ca_unmatched
     )
 
+    # Persist CA events and unmatched as an audit trail so subsequent validation /
+    # diagnosis runs can inspect them without re-fetching from the NSE API.
+    logger.info("build: persisting CA events audit trail")
+    store_mod.write_corporate_actions(ca.events, root)
+    store_mod.write_ca_unmatched(ca.unmatched, root)
+
     # ------------------------------------------------------------------ #
     # Stage 4: Adjust prices                                               #
     # ------------------------------------------------------------------ #

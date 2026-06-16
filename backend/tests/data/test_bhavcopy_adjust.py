@@ -393,3 +393,124 @@ class TestEdgeCases:
         out = adjust_prices(raw, _events())
         assert len(out) == 3
         assert set(out["isin"].unique()) == {ISIN_A, ISIN_B}
+
+
+# --------------------------------------------------------------------------- #
+# ISIN succession bridge                                                       #
+# --------------------------------------------------------------------------- #
+class TestIsinSuccessionBridge:
+    """ISIN succession: CA events filed under old ISIN must adjust prices under new ISIN.
+
+    Why this matters: after a company changes its ISIN (e.g. face-value split), the
+    NSE CA feed continues to file corporate actions against the *old* ISIN. The primary
+    ISIN-keyed join in adjust_prices returns empty for the new ISIN → factors stay 1.0
+    → split/bonus cliffs survive into signal and P&L prices. The bridge fixes this by
+    falling back to a symbol-keyed lookup restricted to the new ISIN's active date
+    window. (05_DATA_ADJUSTMENT_REMEDIATION §11.2, confirmed for CUPID INE509F01029.)
+    """
+
+    # Real CUPID ISINs from the confirmed diagnosis.
+    ISIN_OLD = "INE509F01011"
+    ISIN_NEW = "INE509F01029"
+    SYMBOL = "CUPID"
+    # Bonus 4:1 → ratio = b/(a+b) = 1/(4+1) = 0.2
+    BONUS_EX_DATE = pd.Timestamp("2026-03-09")
+    BONUS_RATIO = 1.0 / (4.0 + 1.0)  # 0.2
+
+    def _build(self):
+        """Old ISIN trades 2020-2024; new ISIN trades 2025-2026.
+        Bonus 4:1 (ex 2026-03-09) is filed under the old ISIN in the CA feed.
+        """
+        raw = _raw(
+            _row(self.ISIN_OLD, "2020-01-02", 100, symbol=self.SYMBOL),
+            _row(self.ISIN_OLD, "2024-12-30", 200, symbol=self.SYMBOL),
+            _row(self.ISIN_NEW, "2025-01-02", 50, symbol=self.SYMBOL),
+            _row(self.ISIN_NEW, "2026-01-05", 55, symbol=self.SYMBOL),
+            _row(self.ISIN_NEW, "2026-04-01", 60, symbol=self.SYMBOL),
+        )
+        # Event is stored under old ISIN — the exact CUPID failure mode.
+        evts = _events(
+            {
+                "isin": self.ISIN_OLD,
+                "symbol": self.SYMBOL,
+                "ex_date": self.BONUS_EX_DATE.strftime("%Y-%m-%d"),
+                "type": "bonus",
+                "ratio": self.BONUS_RATIO,
+            }
+        )
+        return raw, evts
+
+    def test_bridge_applies_event_to_new_isin_pre_ex_date(self):
+        """Pre-ex-date rows under the new ISIN must get adj_factor = 0.2, not 1.0."""
+        raw, evts = self._build()
+        out = adjust_prices(raw, evts)
+        new_out = (
+            out[out["isin"] == self.ISIN_NEW].sort_values("date").reset_index(drop=True)
+        )
+
+        pre = new_out[new_out["date"] < self.BONUS_EX_DATE]
+        assert len(pre) >= 2, "Fixture must have ≥2 pre-ex-date rows for new ISIN"
+        np.testing.assert_array_almost_equal(
+            pre["adj_factor"].values,
+            [self.BONUS_RATIO] * len(pre),
+        )
+
+    def test_bridge_post_ex_date_factor_is_one(self):
+        """Post-ex-date rows under the new ISIN must have adj_factor = 1.0."""
+        raw, evts = self._build()
+        out = adjust_prices(raw, evts)
+        new_out = (
+            out[out["isin"] == self.ISIN_NEW].sort_values("date").reset_index(drop=True)
+        )
+
+        post = new_out[new_out["date"] >= self.BONUS_EX_DATE]
+        assert len(post) >= 1, "Fixture must have ≥1 post-ex-date row for new ISIN"
+        np.testing.assert_array_almost_equal(
+            post["adj_factor"].values,
+            [1.0] * len(post),
+        )
+
+    def test_bridge_does_not_corrupt_old_isin(self):
+        """Old ISIN uses the primary join — bridge must not double-apply.
+
+        Both old ISIN rows predate the bonus ex-date, so they both get
+        adj_factor = BONUS_RATIO via the primary (ISIN-keyed) join.
+        """
+        raw, evts = self._build()
+        out = adjust_prices(raw, evts)
+        old_out = (
+            out[out["isin"] == self.ISIN_OLD].sort_values("date").reset_index(drop=True)
+        )
+
+        assert len(old_out) == 2
+        np.testing.assert_array_almost_equal(
+            old_out["adj_factor"].values,
+            [self.BONUS_RATIO, self.BONUS_RATIO],
+        )
+
+    def test_bridge_excludes_event_outside_new_isin_active_window(self):
+        """An event whose ex_date predates the new ISIN's first trading date is NOT applied.
+
+        This guards against accidentally inheriting predecessor events that happened
+        before this ISIN existed (e.g. the 2024-04-04 CUPID FV split should not
+        affect INE509F01029 prices that start only on 2024-10-28).
+        """
+        raw = _raw(
+            _row(self.ISIN_NEW, "2025-01-02", 100, symbol=self.SYMBOL),
+        )
+        evts = _events(
+            {
+                "isin": self.ISIN_OLD,
+                "symbol": self.SYMBOL,
+                "ex_date": "2024-06-01",  # before new ISIN's first date
+                "type": "bonus",
+                "ratio": 0.5,
+            }
+        )
+        out = adjust_prices(raw, evts)
+        new_out = out[out["isin"] == self.ISIN_NEW]
+
+        assert new_out["adj_factor"].iloc[0] == pytest.approx(1.0), (
+            "Bridge must not apply an event whose ex_date precedes the new ISIN's "
+            "first trading date"
+        )

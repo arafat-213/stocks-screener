@@ -241,8 +241,13 @@ Two changes to `adjust.py` / `corporate_actions.py`:
 ## 6. Definition of done
 - [x] Phase 0 failure mode documented (§11 below). Window-cap hypothesis disproved;
       ISIN succession confirmed as the mechanism; 62 fixable + 180 permanently absent.
-- [ ] ISIN succession bridge in `adjust.py`; CUPID event now produces non-flat adj_factor.
-- [ ] CA events + unmatched persisted; unmatched triaged (no real actions hiding there).
+- [x] ISIN succession bridge in `adjust.py`; symbol-keyed fallback restricted to new
+      ISIN's active date range; CUPID's Bonus 4:1 now applies to `INE509F01029`.
+      **Phase 1 complete 2026-06-16.** `adjust.py` bridge + `store.py` CA schemas +
+      `build.py` persist + 4 unit tests (all green, 145/145).
+- [x] CA events + unmatched persisted to `corporate_actions.parquet` / `ca_unmatched.parquet`
+      via new `store.write_corporate_actions` / `write_ca_unmatched`; unmatched triaged in
+      Phase 0 (no real splits/bonuses hiding there).
 - [ ] `validate.py` Check 7 added + tested; Check 1 hardened.
 - [ ] Old parquet store backed up; data rebuilt in one full-range call.
 - [ ] `validate.py` passes with ~0 unadjusted-split violations (was 556 in-window).
