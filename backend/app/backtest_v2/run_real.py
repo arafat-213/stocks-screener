@@ -255,7 +255,7 @@ def _print_three_level_report(
     print("  HEADLINE COMPARISON")
     print("=" * 60)
     print(
-        f"  {'Level':<14}  {'CAGR':>8}  {'Sharpe':>7}  {'MaxDD':>7}  {'Calmar':>7}  {'TotalCost ₹':>12}"
+        f"  {'Level':<14}  {'CAGR':>8}  {'Sharpe':>7}  {'MaxDD':>7}  {'Calmar':>7}  {'StatCost ₹':>12}"
     )
     print(f"  {'─' * 14}  {'─' * 8}  {'─' * 7}  {'─' * 7}  {'─' * 7}  {'─' * 12}")
     for level in _COST_LEVELS:

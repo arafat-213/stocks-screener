@@ -91,7 +91,9 @@ class BacktestMetrics:
 
     # ---- Diagnostics ---------------------------------------------------
     n_fills: int = 0
-    total_cost_paid: float = 0.0
+    total_cost_paid: float = (
+        0.0  # statutory + DP only; slippage is in the equity curve, not here
+    )
     per_name_stats: list[PerNameStats] = field(default_factory=list)
     hit_rate: float = float("nan")  # % of closed ISINs with positive realized P&L
 
@@ -285,7 +287,7 @@ def summary(m: BacktestMetrics) -> str:
         f"  Rebalances      : {len(m.per_rebalance_turnover)}",
         "",
         f"  Fills           : {m.n_fills}",
-        f"  Total Cost Paid : {m.total_cost_paid:,.0f}",
+        f"  Statutory Cost  : {m.total_cost_paid:,.0f}   (fees+DP only; slippage is in P&L)",
         f"  Names traded    : {len(m.per_name_stats)}",
         f"  Hit Rate        : {hr_str}",
     ]

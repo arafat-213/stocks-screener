@@ -156,7 +156,7 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## T1 — THE FLOOR: pre-committed config, 3 cost levels × 3 benchmarks (the gate)
 
-- **Status:** ☐
+- **Status:** ☑ — **verdict: NO-GO** (see session log + `04_FLOOR_DIAGNOSIS.md`)
 - **Depends on:** T0.
 - **Goal:** Run the single `04` §2 floor config, measured honestly, on the full
   usable window; render the `04` §2 report (three cost levels × three benchmarks);
@@ -179,13 +179,35 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 - **Deliverable:** `floor.py` + a written **Floor Report** (numbers at all three cost
   levels vs all three benchmarks) + the recorded GO/NO-GO verdict, in the session log.
 - **Done-criteria:**
-  - [ ] Exactly one config run; regime fed the **real** price index, not synthetic.
-  - [ ] Three cost levels × three benchmarks rendered with Calmar + max-DD ratios.
-  - [ ] `02 §10` invariants pass for the floor run.
-  - [ ] GO/NO-GO verdict computed by the T0 predicates and stated plainly (Rule 12 —
+  - [x] Exactly one config run; regime fed the **real** price index, not synthetic.
+  - [x] Three cost levels × three benchmarks rendered with Calmar + max-DD ratios.
+  - [x] `02 §10` invariants pass for the floor run.
+  - [x] GO/NO-GO verdict computed by the T0 predicates and stated plainly (Rule 12 —
         no softening a miss into "promising").
 - **Session log:**
-  - _(fill at end of session)_
+  - 2026-06-16. Built `floor.py` (single default `MomentumConfig`, window 2018-02-06 →
+    2026-06-12). Swapped the synthetic regime index for the **real Nifty 50 price index
+    200-DMA** (`benchmark.load_price_index`). Warmed the benchmark cache from network
+    (price index + all three TRIs over 2017-01-01 → 2026-06-12); run itself is offline.
+    `02 §10` invariants all **PASS** (cash conservation, determinism, no-lookahead @
+    cutoff 2024-06-12). Floor report (base cost, full window): CAGR +10.74%, MaxDD 37.99%,
+    Calmar 0.28, Sharpe 0.71, ann. turnover **963.6%**, time-in-cash **51.2%**.
+    Calmar-ratio matrix (strat/bench):
+
+    | Cost        | Mom30 | Mid50 | Nifty50 |
+    |-------------|-------|-------|---------|
+    | OPTIMISTIC  | 0.72  | 0.60  | 1.07    |
+    | BASE        | 0.63  | 0.53  | 0.94    |
+    | PESSIMISTIC | 0.54  | 0.46  | 0.81    |
+
+    **VERDICT: NO-GO.** `C_strat=0.283 < C_nifty50=0.302` at base cost (NO-GO predicate
+    trips before the GO test). The floor does not clear even the Nifty 50 TRI on Calmar
+    after base costs, and trails the primary Mom30 TRI badly (ratio 0.63). Per the gate:
+    **STOP** — diagnosis note written to `04_FLOOR_DIAGNOSIS.md`; T2–T5 NOT started; no
+    tuning performed. Note (Rule 12, not softening): the miss is narrow (~6%) and is a
+    *return* gap, not a drawdown gap (strat MaxDD 37.99% ≈ Nifty50 38.27%); leads for the
+    diagnosis are the 963% turnover and 51% time-in-cash, both pointing at the regime
+    overlay whipsawing — but diagnosing ≠ fixing, so no parameter was changed.
 
 > ╔══════════════════════════════════════════════════════════════════════════╗
 > ║  GATE — read the T1 verdict before opening T2.                           ║
@@ -307,10 +329,11 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 
 ## Exit criteria for the whole Validation layer (spec 04 complete)
 
-- [ ] T0 decisions locked (window, floor→config map, frozen splits, predicates, PBO method).
-- [ ] T1 floor run honestly; GO/NO-GO verdict recorded.
-- [ ] **If NO-GO:** diagnosis note written; spec 04 ends here honestly (this is a valid
-      terminal state — the measuring stick found no foundation, exactly what §2 protects).
+- [x] T0 decisions locked (window, floor→config map, frozen splits, predicates, PBO method).
+- [x] T1 floor run honestly; GO/NO-GO verdict recorded → **NO-GO** (2026-06-16).
+- [x] **If NO-GO:** diagnosis note written (`04_FLOOR_DIAGNOSIS.md`); spec 04 ends here
+      honestly (this is a valid terminal state — the measuring stick found no foundation,
+      exactly what §2 protects). T2–T5 NOT started; no tuning performed.
 - [ ] **If GO:** T2 scaffolding green; T3 iteration ran one layer at a time on discovery
       with plateau-based selection; T4 robustness checks all pass on the candidate;
       T5 one-shot OOS consumed once and the §7 DoD checklist completed.
