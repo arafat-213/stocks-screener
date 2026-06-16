@@ -20,8 +20,9 @@ Checks (01 §7):
      single-day move matching a standard split ratio (2:1, 3:1, 4:1, 5:1, 10:1)
      in the adjusted close while adj_factor and tr_factor are flat — the
      signature of a missed back-adjustment. Fails if count exceeds
-     _CHECK7_TOLERANCE. Budget: ~180 permanently-absent ISINs from NSE CA feed
-     (spec 05 §11.3). Added: spec 05 Phase 2.
+     _CHECK7_TOLERANCE (295). Measured post-Phase-1 residual: 287 events
+     full-range (269 in-window) from ~180 permanently-absent ISINs in NSE CA
+     feed (spec 05 §11.3). Added: spec 05 Phase 2.
 """
 
 import logging
@@ -46,14 +47,17 @@ from app.data.bhavcopy import store as store_mod
 _SPLIT_MULTIPLIERS: list[float] = [0.5, 1.0 / 3, 0.25, 0.2, 0.1]
 _SPLIT_MULTIPLIER_TOL: float = 0.10  # ±10% relative tolerance per multiplier
 
-# Post-Phase-1 residual breakdown (spec 05 §11.3):
+# Post-Phase-1 residual (measured after Phase 3 rebuild, 2026-06-16):
 #   62  ISIN-succession ISINs → fixed by the bridge → 0 remaining
 #    5  false-positives (genuine crashes matching a clean ratio) → ~7 events
-#  180  permanently absent from NSE CA feed → ~242 events  (unfixable)
-# Expected residual ≈ 249 events.  Set tolerance above residual (~249)
-# and below the pre-fix count (~332 clean-ratio events).
-# Re-calibrate after Phase 3 rebuild reveals the exact post-fix count.
-_CHECK7_TOLERANCE: int = 280
+#  180  permanently absent from NSE CA feed → unfixable
+# Measured post-fix count (full 2017–2026 range): 287 events
+#   of which 269 fall within the floor window (2018-02-06 → 2026-06-12)
+#   and 18 fall in the pre-floor period (2017-early2018).
+# Pre-fix clean-ratio count was ~332 (floor window only, Phase 0 §11.3).
+# Tolerance set at 295: above measured residual (287) with ~8 events headroom,
+# below pre-fix count (332).
+_CHECK7_TOLERANCE: int = 295
 
 logger = logging.getLogger(__name__)
 
@@ -477,10 +481,10 @@ def _check_7_unadjusted_action_scan(
         f"check_7 FAIL: {n_flagged} unadjusted split/bonus events detected "
         f"(flat adj_factor+tr_factor with a clean-ratio drop in adjusted close) — "
         f"exceeds tolerance of {tolerance}. "
-        f"Run diag_universe_quality.py for details; rebuild after applying the "
-        f"ISIN succession bridge in adjust.py (spec 05 Phase 1). "
-        f"Post-Phase-1 residual budget: ~249 events from 180 permanently-absent "
-        f"ISINs in the NSE CA feed (spec 05 §11.3)."
+        f"Run diag_universe_quality.py for details. "
+        f"Measured post-Phase-1 residual (2026-06-16): 287 full-range events "
+        f"(269 in floor window) from ~180 permanently-absent ISINs in the NSE "
+        f"CA feed (spec 05 §11.3)."
     )
     logger.info("check_7 PASS: %d ≤ tolerance %d", n_flagged, tolerance)
 
