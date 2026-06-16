@@ -1,6 +1,6 @@
 # Spec 05 — Split/Bonus Adjustment Remediation (data-layer bug found by the T1 floor)
 
-> **Status:** Phase 0 COMPLETE (2026-06-16). Phase 1 COMPLETE (2026-06-16). Phase 2 COMPLETE (2026-06-16). Phase 3 COMPLETE (2026-06-16). Floor re-run pending (Phase 4).
+> **Status:** Phase 0 COMPLETE (2026-06-16). Phase 1 COMPLETE (2026-06-16). Phase 2 COMPLETE (2026-06-16). Phase 3 COMPLETE (2026-06-16). Phase 4 COMPLETE (2026-06-16). **ALL PHASES DONE — verdict: GO (marginal).**
 > **Owner:** Arafat. **Created:** 2026-06-16.
 > **Trigger:** Spec 04 T1 floor returned NO-GO; the §3.3 diagnosis
 > (`04_FLOOR_DIAGNOSIS.md`) uncovered a **systemic split/bonus adjustment failure**
@@ -256,7 +256,14 @@ Two changes to `adjust.py` / `corporate_actions.py`:
   stay consistent with the rest of the data layer.)
 - Re-run `validate.py` (now with Check 7) — must pass with ~0 violations.
 
-### Phase 4 — The single authorized floor re-run
+### Phase 4 — The single authorized floor re-run — **COMPLETE 2026-06-16**
+
+> **Verdict: GO (marginal).** C_strat = **0.305** > C_nifty50 = **0.302** at base cost
+> level. The fix flipped the verdict from NO-GO (C_strat 0.283, corrupted data) to a
+> marginal GO (+22 bps on C_strat; +1% clearance over the Nifty 50 floor). All `02 §10`
+> invariants passed (cash conservation, determinism, no-lookahead). See §13 for the full
+> Phase 4 findings.
+
 - Re-run `floor.py` on the **same pre-committed config** (§7 below). This is the
   `04` §2-legitimate re-run — **not** tuning. Change no parameter.
 - Compare new `C_strat` vs `C_nifty50` (and the full 3×3 grid).
@@ -291,8 +298,9 @@ Two changes to `adjust.py` / `corporate_actions.py`:
       per-event); 18 events fall in 2017 pre-floor period outside the Phase 0 scan.
 - [x] `diag_universe_quality.py` shows 0 held phantom-DOWN non-corp flags (was 1: CUPID).
       CUPID adj_factor correctly steps from 0.2 → 1.0 at ex-date 2026-03-09.
-- [ ] Floor re-run on the pre-committed config; verdict recorded in `04_FLOOR_DIAGNOSIS.md`
-      + memory.
+- [x] Floor re-run on the pre-committed config; verdict **GO (marginal)** recorded in
+      `04_FLOOR_DIAGNOSIS.md` §1/§2/§4 and memory `v2-floor-no-go.md`. C_strat 0.305 >
+      C_nifty50 0.302; all `02 §10` invariants passed. See §13 (Phase 4 Findings).
 - [ ] CI green (`pytest`), no live-API calls in tests.
 
 ---
@@ -499,3 +507,87 @@ CA feed.
 ### 12.4 Validation result
 
 All checks 1–7 pass. No per-day errors in Stage 1.
+
+---
+
+## 13. Phase 4 Findings (2026-06-16) — documented exit
+
+**Scope:** `backend/venv/bin/python -m app.backtest_v2.floor` on rebuilt Phase 3 data;
+same pre-committed `MomentumConfig` (§7); no parameter changed. Real Nifty 50 price
+200-DMA regime; real TRI benchmarks. All `02 §10` invariants passed.
+
+### 13.1 Invariant checks
+
+| Check | Result |
+|---|---|
+| Cash conservation + cost accounting | **PASS** |
+| Determinism (identical re-run) | **PASS** |
+| No-lookahead (cutoff 2024-06-12) | **PASS** |
+
+### 13.2 Verdict
+
+```
+C_strat   = 0.305   (strategy Calmar, base costs)   ← was 0.283 on corrupted data
+C_nifty50 = 0.302   (Nifty 50 TRI Calmar, floor)
+C_primary = 0.448   (Nifty200 Momentum 30 TRI)       →  GO threshold = 0.359
+```
+
+**Verdict: GO (marginal).** C_strat (0.305) ≥ C_nifty50 (0.302); C_strat < 0.359.
+The data fix added **+22 bps** to C_strat — enough to clear the Nifty 50 floor by 1%.
+The strategy still trails the primary momentum index (Calmar ratio 0.68).
+
+### 13.3 Full metrics comparison (base cost level)
+
+| Metric | Phase 4 (rebuilt) | T1 original (corrupted) | Change |
+|---|---|---|---|
+| Final equity | ₹2,527,845 | ₹2,343,587 | +₹184,258 |
+| CAGR | +11.75% | +10.74% | **+1.01%** |
+| Sharpe | 0.76 | 0.71 | +0.05 |
+| Ann. Vol | 16.96% | 16.66% | +0.30% |
+| MaxDD | 38.51% | 37.99% | +0.52% |
+| Calmar | 0.305 | 0.283 | **+0.022** |
+| Time-in-cash | 46.1% | 51.2% | **−5.1%** |
+| Ann. Turnover | 972.6% | 963.6% | +9.0% |
+| Fills | 2,082 | 2,081 | +1 |
+| Hit Rate | 45.7% | 45.2% | +0.5% |
+| Names traded | 392 | 392 | — |
+
+The −5.1% drop in time-in-cash is the phantom-crash artifact: false catastrophic-stop
+exits triggered by split cliffs on held names now eliminated; the strategy stays
+invested through those periods instead of liquidating to cash.
+
+### 13.4 Calmar-ratio matrix (Phase 4)
+
+| Cost | Mom30 | Mid50 | Nifty50 |
+|---|---|---|---|
+| OPTIMISTIC | 0.77 | 0.65 | **1.14** |
+| BASE | 0.68 | 0.57 | **1.01** |
+| PESSIMISTIC | 0.59 | 0.50 | **0.88** |
+
+Every cell is higher than the T1 original matrix (old: 0.72/0.60/1.07 / 0.63/0.53/0.94
+/ 0.54/0.46/0.81). The Nifty50 column now clears 1.0 at base (was 0.94).
+
+### 13.5 What changed and what didn't
+
+**Changed (expected from the data fix):**
+- Phantom MTM cliffs on held names removed → equity curve higher; CAGR +1%.
+- Catastrophic-stop false exits removed → time-in-cash −5.1%; more market exposure.
+- Momentum scores now clean for post-split names → selection slightly different.
+
+**Unchanged (structural, not a data artifact):**
+- Primary-benchmark tracking gap (Calmar ratio 0.68): regime overlay at ~46% cash +
+  ~970% annual turnover remains the dominant drag. This is the §3.2 structural suspect
+  and is T3's calibration scope.
+- Regime-overlay binary behaviour (fully in / fully out): confirmed still present.
+- Universe breadth (392 names traded) and hit rate (~46%): essentially unchanged.
+
+### 13.6 Open items for T2
+
+- **§3.2 regime whipsaw** is the only remaining diagnosed-but-unresolved structural
+  suspect. Calibrating the regime debounce / risk-off floor is T3 layer-1 work — not
+  actionable in T2, documented here for continuity.
+- **Residual 287 Check 7 events** (permanently-absent ISINs in NSE CA feed): accepted
+  as unfixable via current data source. Check 7 tolerance = 295 absorbs them.
+- **Marginal GO framing for T2:** the 1% clearance over Nifty 50 TRI is narrow; T2
+  must be designed with the understanding that the strategy's edge is primarily in
+  specific structural improvements (e.g. regime layer), not in the base signal quality.

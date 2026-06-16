@@ -1,4 +1,4 @@
-# Spec 04 — Floor Diagnosis Note (T1 = NO-GO)
+# Spec 04 — Floor Diagnosis Note (T1 → Phase 4 re-run → GO marginal)
 
 > Written 2026-06-16, immediately after the T1 floor run returned **NO-GO**.
 > The `04` §2 gate mandates this note on a NO-GO: *stop, diagnose data/costs/universe,
@@ -6,6 +6,12 @@
 > parameter. Re-running the floor is allowed **only** if diagnosis uncovers a genuine
 > data/cost **bug** (still the same pre-committed config); changing a knob to make the
 > number pass is tuning and is forbidden here.
+>
+> **Phase 4 re-run complete (2026-06-16).** After the §3.3 data bug was fixed (Spec 05,
+> Phases 1–3), the floor was re-run on the same pre-committed config on rebuilt
+> `prices_adjusted`. All `02 §10` invariants passed. New verdict: **GO (marginal)**.
+> C_strat rose from 0.283 to **0.305**, crossing the C_nifty50 floor (0.302). Spec 04
+> is now at a terminal GO state. Proceed to T2 under the marginal-GO branch.
 
 ---
 
@@ -15,7 +21,7 @@ Floor config: every `MomentumConfig` field at its spec-02 default (N=20, M=35, 5
 liquidity, EMA_200, monthly, regime ON, cat-stop 25%), window **2018-02-06 → 2026-06-12**,
 regime driven by the **real Nifty 50 price 200-DMA**. `02 §10` invariants all pass.
 
-Decision predicate (T0), base cost level:
+### T1 original run (corrupted data — 2026-06-16)
 
 ```
 C_strat   = 0.283   (strategy Calmar, base costs)
@@ -24,20 +30,57 @@ C_primary = 0.448   (Nifty200 Momentum 30 TRI Calmar)   →  0.80 × = 0.359
 NO-GO predicate:  C_strat (0.283) < C_nifty50 (0.302)   →  TRIPS  →  NO-GO
 ```
 
-The floor does not clear even the plain Nifty 50 TRI on Calmar after base costs, and
-trails the purpose-built primary momentum index badly (Calmar ratio 0.63).
+Diagnosed as corrupted input (§3.3). Verdict superseded by Phase 4 re-run below.
 
-**Honest framing (do not soften — and do not catastrophize):** the miss vs the Nifty 50
-floor is *narrow* (~6%) and is a **return** gap, not a drawdown gap — strategy MaxDD
-(37.99%) is actually marginally *better* than Nifty 50 TRI (38.27%). The strategy simply
-earns slightly less return (CAGR 10.74% vs ~11.55%) for comparable risk. It clears the
-Nifty 50 floor at *optimistic* costs (Calmar ratio 1.07) but not at base (0.94) or
-pessimistic (0.81). So the result is **cost-sensitive and marginal**, not a blowout — but
-the pre-committed predicate is base costs, and at base costs it fails. NO-GO stands.
+### Phase 4 re-run (rebuilt data — 2026-06-16)
+
+```
+C_strat   = 0.305   (strategy Calmar, base costs)
+C_nifty50 = 0.302   (Nifty 50 TRI Calmar)
+C_primary = 0.448   (Nifty200 Momentum 30 TRI Calmar)   →  0.80 × = 0.359
+GO predicate:     C_strat (0.305) >= C_nifty50 (0.302)  →  CLEARS  →  GO (marginal)
+GO predicate:     C_strat (0.305) < GO threshold (0.359) →  trails primary → MARGINAL
+```
+
+The floor clears the Nifty 50 TRI on Calmar after base costs — by a narrow margin (+1%).
+It trails the primary benchmark significantly (gap 0.054, Calmar ratio 0.68). This is a
+**marginal GO**: proceed to T2 with heightened scrutiny; the primary-tracking gap is the
+main structural question.
+
+**Honest framing:** the +22 bps lift in C_strat (0.283 → 0.305) came entirely from
+removing the phantom split-cliff losses that had been biasing measured returns down.
+Time-in-cash also fell from 51.2% → 46.1% (the phantom crashes had caused false exits
+under the catastrophic-stop), which improved CAGR (+10.74% → +11.75%). The strategy
+still earns less than the primary momentum index (CAGR gap ~3.5%) and the regime
+overlay at 46% time-in-cash with ~970% annualised turnover remains the prime structural
+suspect for the primary-tracking gap (§3.2).
 
 ---
 
 ## 2. Headline numbers
+
+### Phase 4 re-run (rebuilt data — authoritative)
+
+| | Strat (base) | Nifty50 TRI | Mom30 TRI (primary) | Mid50 TRI |
+|---|---|---|---|---|
+| CAGR | +11.75% | ~+11.55% | ~+15.2% | ~+19.3% |
+| MaxDD | 38.51% | 38.27% | 33.96% | 36.39% |
+| Calmar | 0.305 | 0.302 | 0.448 | 0.53 |
+| Calmar ratio (strat/bench) | — | **1.01** | 0.68 | 0.57 |
+
+Calmar-ratio matrix (strat / bench) across cost levels — Phase 4:
+
+| Cost | Mom30 | Mid50 | Nifty50 |
+|---|---|---|---|
+| OPTIMISTIC | 0.77 | 0.65 | **1.14** |
+| BASE | 0.68 | 0.57 | **1.01** |
+| PESSIMISTIC | 0.59 | 0.50 | **0.88** |
+
+Other floor diagnostics (base, Phase 4): Sharpe 0.76 · ann. vol 16.96% · **ann. turnover 972.6%**
+· **time-in-cash 46.1%** · avg exposure 79.5% · median exposure 100.0% · 2,082 fills ·
+hit rate 45.7% · 392 names traded · statutory cost ₹80,521 (slippage in P&L).
+
+### T1 original run (corrupted data — superseded)
 
 | | Strat (base) | Nifty50 TRI | Mom30 TRI (primary) | Mid50 TRI |
 |---|---|---|---|---|
@@ -46,17 +89,13 @@ the pre-committed predicate is base costs, and at base costs it fails. NO-GO sta
 | Calmar | 0.283 | 0.302 | 0.448 | 0.53 |
 | Calmar ratio (strat/bench) | — | 0.94 | 0.63 | 0.53 |
 
-Calmar-ratio matrix (strat / bench) across cost levels:
+Original Calmar-ratio matrix (strat / bench) — corrupted data, for reference only:
 
 | Cost | Mom30 | Mid50 | Nifty50 |
 |---|---|---|---|
 | OPTIMISTIC | 0.72 | 0.60 | **1.07** |
 | BASE | 0.63 | 0.53 | **0.94** |
 | PESSIMISTIC | 0.54 | 0.46 | 0.81 |
-
-Other floor diagnostics (base): Sharpe 0.71 · ann. vol 16.66% · **ann. turnover 963.6%**
-· **time-in-cash 51.2%** · avg exposure 79.4% · median exposure 100.0% · 2,081 fills ·
-hit rate 45.2% · 392 names traded · total cost ₹79,562.
 
 ---
 
@@ -172,9 +211,9 @@ names, 30 had median hold-window ADV below the 5cr floor and 42 were ever stale-
 
 ## 4. Decision
 
-**STOP at the gate.** T2–T5 are not started. No parameter was changed. The floor as
-specified does not establish a foundation that clears the Nifty 50 TRI on Calmar after base
-costs — exactly the outcome `04` §2's gate exists to catch.
+**TERMINAL STATE: GO (marginal) — proceed to T2.** Spec 04 is complete. The floor on
+rebuilt data (Phase 4 re-run, 2026-06-16) clears the Nifty 50 TRI on Calmar at base
+costs. T2 is authorized under the marginal-GO branch.
 
 **Diagnosis progress:**
 - **§3.1 cost-model sanity — DONE (2026-06-16): NOT an artifact.** Base preset is calibrated
@@ -183,20 +222,15 @@ costs — exactly the outcome `04` §2's gate exists to catch.
   level-invariant). Not a measurement error. Reporting line relabeled (was "Total Cost Paid",
   now "Statutory Cost … (fees+DP only; slippage is in P&L)") in `metrics.summary` /
   `run_real` — verdict unaffected.
-- **§3.3 universe / data integrity — DONE (2026-06-16): CONFIRMED SYSTEMIC DATA BUG.** The
-  adjustment layer silently drops split/bonus back-adjustment on 556 in-window events / 406
-  ISINs (CUPID 5:1 on 2026-03-09 is the worked example, held by the floor). The bug
-  corrupts both the signal and P&L price series and biases held-name returns **downward** —
-  the direction that could be masking a GO. **This is the §2 fix-and-re-run trigger.**
-- **§3.2 regime whipsaw — NOT investigated and now moot until data is fixed:** any regime
-  analysis on corrupted prices is unreliable, and a regime-parameter change is T3 tuning
-  regardless.
-
-**Revised status (supersedes the earlier "valid terminal state").** Spec 04 is **no longer
-at a clean terminal STOP**. The §3.3 data bug means the NO-GO was computed on corrupted
-input; per §2 the legitimate next step is **fix `prices_adjusted` (split/bonus adjustment)
-and re-run the floor once on the same pre-committed config**. This is *not* tuning. It is,
-however, a foundational data-pipeline remediation affecting all prior backtests, so it must
-be **scoped and approved by Arafat before any code is written** (CLAUDE.md: migrations /
-data pipeline are holy). T2–T5 remain unauthorized. No parameter and no data were changed by
-this diagnosis.
+- **§3.3 universe / data integrity — DONE (2026-06-16): CONFIRMED SYSTEMIC DATA BUG → FIXED
+  → RE-RUN → GO (marginal).** The adjustment layer silently dropped split/bonus back-adjustment
+  on 556 in-window events / 406 ISINs. Fixed via ISIN succession bridge in `adjust.py`
+  (Spec 05 Phases 1–3); rebuilt `prices_adjusted` (4,008,497 rows, 3,470 ISINs). Phase 4
+  re-run on rebuilt data returned **GO (marginal)**: C_strat 0.305 > C_nifty50 0.302. The
+  fix also reduced time-in-cash from 51.2% → 46.1% (phantom crashes had caused false
+  catastrophic-stop exits).
+- **§3.2 regime whipsaw — carryover diagnostic (not yet investigated, not blocking T2).**
+  The regime overlay remains the prime structural suspect for the primary-tracking gap (Calmar
+  ratio 0.68 vs 1.0 target): 46.1% time-in-cash with 972% annualised turnover. Calibrating
+  the regime debounce / risk-off floor is T3's layer-1 work. The diagnosis stops here; T3
+  is now authorized by the GO verdict.
