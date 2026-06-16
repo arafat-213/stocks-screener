@@ -1,6 +1,6 @@
 # Spec 05 — Split/Bonus Adjustment Remediation (data-layer bug found by the T1 floor)
 
-> **Status:** Phase 0 COMPLETE (2026-06-16). Phase 1 shape revised by findings. No data changed yet.
+> **Status:** Phase 0 COMPLETE (2026-06-16). Phase 1 COMPLETE (2026-06-16). Phase 2 COMPLETE (2026-06-16). No data rebuilt yet (Phase 3 pending).
 > **Owner:** Arafat. **Created:** 2026-06-16.
 > **Trigger:** Spec 04 T1 floor returned NO-GO; the §3.3 diagnosis
 > (`04_FLOOR_DIAGNOSIS.md`) uncovered a **systemic split/bonus adjustment failure**
@@ -202,16 +202,28 @@ Two changes to `adjust.py` / `corporate_actions.py`:
   Assert that the bridge does NOT apply an old-ISIN event whose ex_date is outside
   the new ISIN's active window.
 
-### Phase 2 — Add the prevention gate (`validate.py`)
+### Phase 2 — Add the prevention gate (`validate.py`) — **COMPLETE 2026-06-16**
+
+> **Implementation note:** Check 7 uses a **clean-ratio filter** (2:1/3:1/4:1/5:1/10:1
+> ±10%) rather than flagging all >40% drops. This distinguishes unadjusted split/bonus
+> events (which produce clean multiplier ratios) from genuine market crashes (non-clean
+> ratios). Tolerance set to 280 — above the post-Phase-1 residual (~249) and below the
+> pre-fix clean-ratio count (~332). A `check7_tolerance` param on `run_validation` lets
+> callers (tests) override.
+
 - **New Check 7 (universe-wide unadjusted-action scan):** for every ISIN, flag any
-  single-day move > 40% in the **adjusted `close`** where `adj_factor` **and** `tr_factor`
-  are flat across that day; **fail loud** (AssertionError) if the count exceeds a small
-  tolerance. Allow a tiny budget for genuine no-band events, but a cluster fails. This is
-  the diagnostic promoted to a permanent acceptance check.
-- **Harden Check 1:** fail (not skip) if a multi-year build (range start ≤ 2018) finds
-  **zero** of the known events present-and-checked.
-- Tests: a synthetic dataset with one unadjusted split must FAIL Check 7; the same dataset
-  correctly adjusted must PASS.
+  single-day drop in the **adjusted `close`** matching a standard split/bonus multiplier
+  (2:1/3:1/4:1/5:1/10:1, ±10%) while both `adj_factor` **and** `tr_factor` are flat —
+  the exact signature of a missed back-adjustment. Fail loud (AssertionError) if the
+  count exceeds `_CHECK7_TOLERANCE` (280). This is the diagnostic promoted to a permanent
+  acceptance gate.
+- **Harden Check 1:** fail (not skip) if a multi-year build (data start year ≤ 2018) finds
+  **zero** of the known events present-and-checked. INFY (2018-06-14) and TCS (2018-07-26)
+  must be found in any ≥2018 build; zero found indicates data loss or schema mismatch.
+- Tests (14 new): synthetic unadjusted split → FAIL; correctly adjusted → PASS; all five
+  standard split ratios tested; CUPID near-ratio (0.204 ≈ 0.2) tested; non-split-ratio
+  crash → NOT flagged; end-to-end integration via `run_validation`. All 43 validate tests
+  green.
 
 ### Phase 3 — Rebuild the data (idempotent; holy)
 - **Back up the current parquet store first** (`backend/data/...`) — it is the audit
@@ -248,7 +260,12 @@ Two changes to `adjust.py` / `corporate_actions.py`:
 - [x] CA events + unmatched persisted to `corporate_actions.parquet` / `ca_unmatched.parquet`
       via new `store.write_corporate_actions` / `write_ca_unmatched`; unmatched triaged in
       Phase 0 (no real splits/bonuses hiding there).
-- [ ] `validate.py` Check 7 added + tested; Check 1 hardened.
+- [x] `validate.py` Check 7 added + tested; Check 1 hardened.
+      **Phase 2 complete 2026-06-16.** Check 7 uses clean-ratio filter (2:1/3:1/4:1/5:1/10:1
+      ±10%, flat adj_factor+tr_factor); `_CHECK7_TOLERANCE=280` (above expected post-Phase-1
+      residual ~249, below pre-fix count ~332). 12 new unit tests + 2 integration tests (all
+      green, 43/43). Check 1 hardened: fails (not skips) when a ≥2018 build finds zero known
+      ISINs. `check7_tolerance` param on `run_validation` lets callers override for tests.
 - [ ] Old parquet store backed up; data rebuilt in one full-range call.
 - [ ] `validate.py` passes with ~0 unadjusted-split violations (was 556 in-window).
 - [ ] `diag_universe_quality.py` shows 0 held phantom-DOWN non-corp flags (was 1: CUPID).

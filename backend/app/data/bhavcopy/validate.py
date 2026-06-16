@@ -7,6 +7,7 @@ a successful build.
 Checks (01 §7):
   1. Known CA events: ~5 hard-coded split/bonus ex-dates have no spurious >40%
      single-day gap; adj_factor ratio across the ex-date matches documented ratio.
+     Hardened: fails (not skips) when a ≥2018 build finds zero known ISINs.
   2. Survivorship sanity: universe_membership contains ISINs whose last trading
      date is well before today (delisted names present). Zero delisted → FAIL.
   3. ISIN continuity across a known rename: one ISIN spans both symbols, no gap.
@@ -15,6 +16,12 @@ Checks (01 §7):
   5. close_tr cumulative return ≥ split/bonus-adjusted cumulative return on a
      sample (dividends are non-negative, so TR ≥ price over any horizon).
   6. Coverage report: printed always; sane numbers on a real multi-year run.
+  7. Universe-wide unadjusted-split/bonus scan: for every ISIN, flag any
+     single-day move matching a standard split ratio (2:1, 3:1, 4:1, 5:1, 10:1)
+     in the adjusted close while adj_factor and tr_factor are flat — the
+     signature of a missed back-adjustment. Fails if count exceeds
+     _CHECK7_TOLERANCE. Budget: ~180 permanently-absent ISINs from NSE CA feed
+     (spec 05 §11.3). Added: spec 05 Phase 2.
 """
 
 import logging
@@ -25,6 +32,28 @@ import numpy as np
 import pandas as pd
 
 from app.data.bhavcopy import store as store_mod
+
+# ---------------------------------------------------------------------------
+# Check 7 constants (spec 05 Phase 2)
+# ---------------------------------------------------------------------------
+# Standard split/bonus price multipliers: close_T / close_{T-1} for a correctly
+# priced event is (1 / ratio).  A flat adj_factor + this ratio = missed adjustment.
+#   2:1 split or Bonus 1:1 → ×0.5    (50% drop)
+#   3:1 split or Bonus 2:1 → ×0.333  (67% drop)
+#   4:1 split or Bonus 3:1 → ×0.25   (75% drop)
+#   5:1 split or Bonus 4:1 → ×0.2    (80% drop)   ← CUPID's actual event
+#   10:1 split              → ×0.1    (90% drop)
+_SPLIT_MULTIPLIERS: list[float] = [0.5, 1.0 / 3, 0.25, 0.2, 0.1]
+_SPLIT_MULTIPLIER_TOL: float = 0.10  # ±10% relative tolerance per multiplier
+
+# Post-Phase-1 residual breakdown (spec 05 §11.3):
+#   62  ISIN-succession ISINs → fixed by the bridge → 0 remaining
+#    5  false-positives (genuine crashes matching a clean ratio) → ~7 events
+#  180  permanently absent from NSE CA feed → ~242 events  (unfixable)
+# Expected residual ≈ 249 events.  Set tolerance above residual (~249)
+# and below the pre-fix count (~332 clean-ratio events).
+# Re-calibrate after Phase 3 rebuild reveals the exact post-fix count.
+_CHECK7_TOLERANCE: int = 280
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +239,18 @@ def _check_1_known_ca_events(prices: pd.DataFrame, report: ValidationReport) -> 
         checked += 1
 
     if checked == 0:
+        # For a multi-year build whose data spans ≥2018, INFY (2018-06-14) and
+        # TCS (2018-07-26) must be present.  Finding zero known ISINs in such a
+        # build indicates data loss, wrong store path, or schema mismatch — fail
+        # rather than silently skip (spec 05 Phase 2, Check 1 hardening).
+        if not prices.empty and prices["date"].min().year <= 2018:
+            raise AssertionError(
+                f"check_1 FAIL: multi-year build (data from "
+                f"{prices['date'].min().date()}) contains zero of the "
+                f"{len(KNOWN_CA_EVENTS)} known CA event ISINs in prices_adjusted. "
+                f"Expected ISINs: {[ev['isin'] for ev in KNOWN_CA_EVENTS]}. "
+                f"Indicates data loss, wrong store path, or ISIN schema mismatch."
+            )
         report.checks_skipped.append("1-known-ca (no known ISINs in dataset)")
         logger.warning(
             "check_1: none of the %d known ISINs found in dataset", len(KNOWN_CA_EVENTS)
@@ -360,6 +401,90 @@ def _check_5_tr_ge_price_adjusted(
         )
 
 
+def _check_7_unadjusted_action_scan(
+    prices: pd.DataFrame,
+    report: ValidationReport,
+    tolerance: int = _CHECK7_TOLERANCE,
+) -> None:
+    """Universe-wide unadjusted-split/bonus scan (spec 05 Phase 2).
+
+    Flags every single-day drop in the adjusted ``close`` that:
+      (a) matches a standard split/bonus ratio (2:1, 3:1, 4:1, 5:1, 10:1)
+          within ±10 % relative tolerance, AND
+      (b) has both ``adj_factor`` and ``tr_factor`` flat across that day
+          (no back-adjustment step was applied).
+
+    This is the signature of a missed corporate-action back-adjustment.
+    Genuine market crashes produce non-clean price ratios; circuit limits
+    prevent >40 % single-day drops in liquid names, so false positives are
+    rare (Phase 0 found 5 over the full universe).
+
+    Fails loud if the flagged count exceeds *tolerance*.  Default tolerance
+    (280) sits above the expected post-Phase-1 residual of ~249 events from
+    the 180 permanently-absent ISINs in the NSE CA feed (spec 05 §11.3).
+    Tests should pass ``tolerance=0`` to fail on even one unadjusted event.
+    """
+    if prices.empty:
+        report.checks_skipped.append("7-unadjusted-action-scan (empty prices)")
+        return
+
+    ps = prices.sort_values(["isin", "date"]).reset_index(drop=True)
+    close_arr = ps["close"].to_numpy(dtype=float)
+    adj_arr = ps["adj_factor"].to_numpy(dtype=float)
+    trf_arr = ps["tr_factor"].to_numpy(dtype=float)
+    isin_arr = ps["isin"].to_numpy()
+
+    # Mark first row of each ISIN group so we never compare across ISINs.
+    isin_prev = np.empty_like(isin_arr)
+    isin_prev[0] = ""
+    isin_prev[1:] = isin_arr[:-1]
+    same_isin = isin_arr == isin_prev  # False at every group boundary
+
+    # Daily price ratio close[T] / close[T-1], NaN at group boundaries.
+    prev_close = np.empty_like(close_arr)
+    prev_close[0] = np.nan
+    prev_close[1:] = close_arr[:-1]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        daily_ratio = np.where(
+            same_isin & (prev_close > 0), close_arr / prev_close, np.nan
+        )
+
+    # Flat-factor flags: True when the factor does not step on this row.
+    prev_adj = np.empty_like(adj_arr)
+    prev_adj[0] = np.nan
+    prev_adj[1:] = adj_arr[:-1]
+    prev_trf = np.empty_like(trf_arr)
+    prev_trf[0] = np.nan
+    prev_trf[1:] = trf_arr[:-1]
+    adj_flat = np.isclose(adj_arr, prev_adj, rtol=1e-6, equal_nan=False)
+    trf_flat = np.isclose(trf_arr, prev_trf, rtol=1e-6, equal_nan=False)
+    both_flat = same_isin & adj_flat & trf_flat
+
+    # Match daily_ratio against each standard split/bonus multiplier.
+    is_split_ratio = np.zeros(len(close_arr), dtype=bool)
+    for m in _SPLIT_MULTIPLIERS:
+        band = _SPLIT_MULTIPLIER_TOL * m
+        is_split_ratio |= np.abs(daily_ratio - m) <= band
+
+    n_flagged = int((both_flat & is_split_ratio).sum())
+
+    logger.info(
+        "check_7: %d unadjusted-split/bonus events (tolerance %d)",
+        n_flagged,
+        tolerance,
+    )
+    assert n_flagged <= tolerance, (
+        f"check_7 FAIL: {n_flagged} unadjusted split/bonus events detected "
+        f"(flat adj_factor+tr_factor with a clean-ratio drop in adjusted close) — "
+        f"exceeds tolerance of {tolerance}. "
+        f"Run diag_universe_quality.py for details; rebuild after applying the "
+        f"ISIN succession bridge in adjust.py (spec 05 Phase 1). "
+        f"Post-Phase-1 residual budget: ~249 events from 180 permanently-absent "
+        f"ISINs in the NSE CA feed (spec 05 §11.3)."
+    )
+    logger.info("check_7 PASS: %d ≤ tolerance %d", n_flagged, tolerance)
+
+
 def _build_coverage_report(
     prices: pd.DataFrame,
     membership: pd.DataFrame,
@@ -414,6 +539,7 @@ def run_validation(
     ca_events_applied: int | None = None,
     ca_events_unmatched: int | None = None,
     today: date | None = None,
+    check7_tolerance: int = _CHECK7_TOLERANCE,
 ) -> ValidationReport:
     """Run all acceptance checks from 01_DATA_LAYER.md §7.
 
@@ -430,6 +556,9 @@ def run_validation(
         coverage report if supplied.
     today:
         Override "today" for testing (default: date.today()).
+    check7_tolerance:
+        Maximum unadjusted-split events before Check 7 fails.  Pass 0 in tests
+        that inject a deliberately unadjusted split (default: _CHECK7_TOLERANCE).
 
     Returns
     -------
@@ -472,6 +601,9 @@ def run_validation(
 
     logger.info("validate: running check 5 — close_tr ≥ close cumulative return")
     _check_5_tr_ge_price_adjusted(prices, report)
+
+    logger.info("validate: running check 7 — universe-wide unadjusted-split scan")
+    _check_7_unadjusted_action_scan(prices, report, tolerance=check7_tolerance)
 
     report.print_coverage()
     logger.info("validate: all checks passed")

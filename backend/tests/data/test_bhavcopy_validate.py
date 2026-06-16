@@ -22,6 +22,7 @@ from app.data.bhavcopy.validate import (
     _check_3_isin_rename,
     _check_4_no_lookahead,
     _check_5_tr_ge_price_adjusted,
+    _check_7_unadjusted_action_scan,
     run_validation,
 )
 
@@ -205,6 +206,35 @@ class TestCheck1KnownCAEvents:
     def test_missing_isin_skipped(self):
         """ISIN not in prices → skipped without failure, noted in report."""
         prices = _make_prices(isin="INE999999999", symbol="UNKNOWN")
+        report = ValidationReport()
+        _check_1_known_ca_events(prices, report)  # must not raise
+        assert "1-known-ca" in " ".join(report.checks_skipped)
+
+    def test_multi_year_build_no_known_events_fails(self):
+        """Hardened Check 1: a build starting ≤2018 with zero known ISINs → FAIL.
+
+        WHY: INFY (2018-06-14) and TCS (2018-07-26) events must be present in
+        any build covering 2018.  Finding no known ISINs at all means data loss
+        or wrong store path — it must fail, not silently skip.
+        """
+        early_start = pd.Timestamp("2018-01-02")
+        prices = _make_prices(
+            isin="INE999999999", symbol="UNKNOWN", n=30, start=early_start
+        )
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_1"):
+            _check_1_known_ca_events(prices, report)
+
+    def test_post_2018_build_no_known_events_skipped(self):
+        """Build starting after 2018 with no known ISINs → still skipped (not failed).
+
+        WHY: RELIANCE/INFY/TCS events are all ≤2019; a 2021-start build
+        legitimately lacks them.  The hardening only fires for ≤2018 builds.
+        """
+        late_start = pd.Timestamp("2021-01-04")
+        prices = _make_prices(
+            isin="INE999999999", symbol="UNKNOWN", n=30, start=late_start
+        )
         report = ValidationReport()
         _check_1_known_ca_events(prices, report)  # must not raise
         assert "1-known-ca" in " ".join(report.checks_skipped)
@@ -574,3 +604,213 @@ class TestRunValidation:
         )
         with pytest.raises(AssertionError, match="empty"):
             run_validation(root=tmp_path, today=date(2026, 6, 14))
+
+
+# ---------------------------------------------------------------------------
+# Check 7 — Universe-wide unadjusted-split/bonus scan
+# ---------------------------------------------------------------------------
+def _make_prices_with_split_cliff(
+    ratio: float,
+    isin: str = "INE000000001",
+    symbol: str = "STOCK",
+    n: int = 30,
+    cliff_row: int = 15,
+    adjust: bool = False,
+) -> pd.DataFrame:
+    """Build a synthetic prices frame with a single split/bonus cliff at cliff_row.
+
+    ratio:   price multiplier after the event (e.g. 0.5 for a 2:1 split).
+    adjust:  if True, adj_factor steps at cliff_row so the adjusted close is
+             continuous — simulates a correctly-applied back-adjustment.
+             if False, adj_factor stays 1.0 — simulates a missed adjustment.
+    """
+    dates = pd.date_range("2022-01-03", periods=n, freq="B")
+
+    close_raw = np.ones(n, dtype=float) * 100.0
+    close_raw[cliff_row:] *= ratio  # raw price drops at cliff
+
+    adj_factor = np.ones(n, dtype=float)
+    if adjust:
+        # Factor steps down before the cliff so close = close_raw * adj_factor = 100
+        adj_factor[:cliff_row] = ratio
+
+    close = close_raw * adj_factor
+    tv = np.ones(n, dtype=float) * 1_000_000.0
+
+    return pd.DataFrame(
+        {
+            "isin": isin,
+            "symbol": symbol,
+            "date": dates,
+            "open": close,
+            "high": close * 1.01,
+            "low": close * 0.99,
+            "close": close,
+            "close_raw": close_raw,
+            "close_tr": close,
+            "volume": np.full(n, 10_000, dtype=np.int64),
+            "traded_value": tv,
+            "adv_20": pd.Series(tv).rolling(20, min_periods=1).median().values,
+            "adj_factor": adj_factor,
+            "tr_factor": adj_factor.copy(),
+            "series": "EQ",
+        }
+    )
+
+
+class TestCheck7UnadjustedActionScan:
+    def test_unadjusted_split_fails(self):
+        """A clean-ratio drop with flat factors must FAIL check_7.
+
+        WHY: flat adj_factor + clean-ratio close drop is the exact signature of
+        a missed back-adjustment.  Even one event must trigger the gate.
+        """
+        prices = _make_prices_with_split_cliff(ratio=0.5, adjust=False)
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_7"):
+            _check_7_unadjusted_action_scan(prices, report, tolerance=0)
+
+    def test_correctly_adjusted_passes(self):
+        """Same split, but adj_factor steps correctly → check_7 must PASS.
+
+        WHY: the back-adjustment factor must absorb the corporate action so the
+        adjusted close series is continuous (no clean-ratio drop remains).
+        """
+        prices = _make_prices_with_split_cliff(ratio=0.5, adjust=True)
+        report = ValidationReport()
+        _check_7_unadjusted_action_scan(prices, report, tolerance=0)  # must not raise
+
+    @pytest.mark.parametrize(
+        "ratio",
+        [0.5, 1.0 / 3, 0.25, 0.2, 0.1],
+        ids=["2:1", "3:1", "4:1", "5:1", "10:1"],
+    )
+    def test_all_standard_ratios_flagged(self, ratio: float):
+        """Every supported split/bonus ratio must be detected when unadjusted.
+
+        WHY: the NSE CA universe includes all these ratio types; missing any one
+        of them would leave real splits undetected by the gate.
+        """
+        prices = _make_prices_with_split_cliff(ratio=ratio, adjust=False)
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_7"):
+            _check_7_unadjusted_action_scan(prices, report, tolerance=0)
+
+    def test_near_ratio_within_tolerance_flagged(self):
+        """A price ratio within ±10% of a clean multiplier must still be flagged.
+
+        WHY: real CUPID Bonus 4:1 gave ratio 0.204 (target 0.2, +2%) — the
+        tolerance must absorb minor rounding without missing the event.
+        """
+        # ratio=0.204 is within ±10% of 0.2 (5:1/Bonus-4:1)
+        prices = _make_prices_with_split_cliff(ratio=0.204, adjust=False)
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_7"):
+            _check_7_unadjusted_action_scan(prices, report, tolerance=0)
+
+    def test_non_split_ratio_not_flagged(self):
+        """A >40% drop that does NOT match any standard split ratio → not flagged.
+
+        WHY: genuine market crashes can produce large drops; check_7 must not
+        false-positive on a -43% crash that doesn't match 2:1, 3:1, 4:1, 5:1,
+        or 10:1 within the ±10% band.
+        """
+        # ratio=0.57 → 43% drop.  Nearest multiplier 0.5 (2:1): |0.57-0.5|=0.07
+        # vs tolerance band 0.5*0.10=0.05 → outside band → not flagged.
+        prices = _make_prices_with_split_cliff(ratio=0.57, adjust=False)
+        report = ValidationReport()
+        _check_7_unadjusted_action_scan(prices, report, tolerance=0)  # must not raise
+
+    def test_small_drop_not_flagged(self):
+        """A drop < 40% (even at a clean ratio) must not be flagged.
+
+        WHY: Bonus 1:2 events only drop the price by ~33%; they should not
+        trigger the gate (below the detection threshold of 40%).
+        """
+        # ratio=0.8 → 20% drop; even if the ratio happened to match a multiplier,
+        # 0.8 is outside all the ±10% bands around [0.5, 0.333, 0.25, 0.2, 0.1].
+        prices = _make_prices_with_split_cliff(ratio=0.8, adjust=False)
+        report = ValidationReport()
+        _check_7_unadjusted_action_scan(prices, report, tolerance=0)  # must not raise
+
+    def test_multiple_isins_counted_independently(self):
+        """Events across multiple ISINs are each counted; sum must exceed tolerance.
+
+        WHY: the scan must aggregate across the full universe, not per-ISIN.
+        """
+        p1 = _make_prices_with_split_cliff(ratio=0.5, isin="INE000000001", adjust=False)
+        p2 = _make_prices_with_split_cliff(ratio=0.5, isin="INE000000002", adjust=False)
+        prices = pd.concat([p1, p2], ignore_index=True)
+        report = ValidationReport()
+        # 2 events; tolerance=1 → fails (2 > 1)
+        with pytest.raises(AssertionError, match="check_7"):
+            _check_7_unadjusted_action_scan(prices, report, tolerance=1)
+        # tolerance=2 → passes (2 ≤ 2)
+        report2 = ValidationReport()
+        _check_7_unadjusted_action_scan(prices, report2, tolerance=2)  # must not raise
+
+    def test_empty_prices_skipped(self):
+        """Empty prices → check_7 skipped gracefully, noted in report."""
+        empty = pd.DataFrame(columns=list(store_mod.PRICES_ADJUSTED_SCHEMA))
+        report = ValidationReport()
+        _check_7_unadjusted_action_scan(empty, report)
+        assert any("7-unadjusted" in s for s in report.checks_skipped)
+
+
+class TestRunValidationCheck7Integration:
+    """End-to-end run_validation integration tests for Check 7."""
+
+    def _write_passing_dataset(self, tmp_path: Path, today: date) -> None:
+        """Minimal passing dataset (reused from TestRunValidation helpers)."""
+        live_start = pd.Timestamp(today - timedelta(days=50))
+        old_start = pd.Timestamp(today - timedelta(days=800))
+        prices_live = _make_prices(
+            isin="INE000000001", symbol="LIVE", n=30, start=live_start, vary_tv=True
+        )
+        prices_del = _make_prices(
+            isin="INE000000002", symbol="GONE", n=30, start=old_start
+        )
+        prices = pd.concat([prices_live, prices_del], ignore_index=True)
+        membership = pd.concat(
+            [_make_membership(prices_live), _make_membership(prices_del)],
+            ignore_index=True,
+        )
+        isin_map = pd.DataFrame(
+            {
+                "isin": ["INE000000001", "INE000000002"],
+                "symbol": ["LIVE", "GONE"],
+                "first_date": [prices_live["date"].min(), prices_del["date"].min()],
+                "last_date": [prices_live["date"].max(), prices_del["date"].max()],
+            }
+        )
+        store_mod.write_prices_adjusted(prices, root=tmp_path)
+        store_mod.write_universe_membership(membership, root=tmp_path)
+        store_mod.write_isin_symbol_map(isin_map, root=tmp_path)
+
+    def test_unadjusted_split_breaks_run(self, tmp_path):
+        """An injected unadjusted split must fail run_validation via Check 7.
+
+        WHY: end-to-end gate — the full validation pipeline must surface a
+        missed adjustment even when all other checks pass.
+        """
+        today = date(2026, 6, 14)
+        self._write_passing_dataset(tmp_path, today)
+
+        # Inject one unadjusted 2:1 split into the live ISIN.
+        prices = store_mod.read_prices_adjusted(tmp_path)
+        live_mask = prices["isin"] == "INE000000001"
+        idx = prices[live_mask].index.tolist()
+        for i in idx[15:]:
+            prices.loc[i, "close"] = prices.loc[i, "close"] * 0.5
+        # adj_factor stays 1.0 (flat) — simulates missed adjustment.
+        store_mod.write_prices_adjusted(prices, root=tmp_path)
+
+        with pytest.raises(AssertionError, match="check_7"):
+            run_validation(root=tmp_path, today=today, check7_tolerance=0)
+
+    def test_clean_dataset_passes_check7(self, tmp_path):
+        """Dataset with no split cliffs passes Check 7 at default tolerance."""
+        today = date(2026, 6, 14)
+        self._write_passing_dataset(tmp_path, today)
+        report = run_validation(root=tmp_path, today=today)
+        assert isinstance(report, ValidationReport)
