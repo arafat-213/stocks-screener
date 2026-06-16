@@ -367,29 +367,86 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
     Candidate: `RegimeConfig(debounce_days=1, risk_off_floor=0.25)` + floor
     `MomentumConfig` defaults, DISCOVERY window.
 
-    **Per-check results (run on rebuilt prices_adjusted, 2026-06-16):**
+  - 2026-06-16 (live run). Ran `venv/bin/python -m app.backtest_v2.robustness`
+    on rebuilt prices_adjusted (4,008,497 rows, 3,470 ISINs). Base calmar on
+    DISCOVERY = 0.265, sharpe = 0.651, cagr = 10.05%, maxdd = 37.96%,
+    turnover = 934%. Total ledger trials K = 12.
+
+    **Per-check results:**
 
     | Check | Verdict | Key numbers |
     |---|---|---|
-    | §6.1 Cost stress (pessimistic) | **PASS** | calmar_ratio 0.88 >= 1.0? — _to be filled on live run_ |
-    | §6.2 Universe perturbation (drop top-10 P&L) | _(live run pending)_ | — |
-    | §6.3 Parameter neighborhood (6-combo grid) | _(live run pending)_ | — |
-    | §6.4 Subperiod stability (3 market cycles) | _(live run pending)_ | — |
-    | §6.5 Turnover / capacity | _(live run pending)_ | — |
+    | §6.1 Cost stress (pessimistic) | **FAIL** | calmar_ratio **0.65** < 1.0; C_strat=0.226, C_nifty50=0.346 |
+    | §6.2 Universe perturbation (drop top-10 P&L) | **FAIL** | Calmar retention **41%** < 70%; base=0.265 → perturbed=0.108 |
+    | §6.3 Parameter neighborhood | **PASS** | Plateau — min neighbor calmar 0.231 ≥ 85% × 0.265 = 0.225 |
+    | §6.4 Subperiod stability | **PASS** | 2/3 positive Calmar (⚠ see note below) |
+    | §6.5 Turnover / capacity | **PASS** | participation 0.031% << 5% at ₹10L |
 
-    > **Note (Rule 12):** The live run against the real dataset was not executed in
-    > this session (token budget approaching Rule 6 limit). The infrastructure and
-    > test suite are complete and green. Run
-    > `backend/venv/bin/python -m app.backtest_v2.robustness` to produce the actual
-    > per-check pass/fail numbers; update this table with the output before
-    > opening T5. The T5 gate stays closed until that run completes and every check
-    > shows PASS.
+    **>>> T4 OVERALL VERDICT: FAIL — T5 is blocked. <<<**
+
+    3/5 checks pass; 2/5 fail. Per spec 04 §6 and the task done-criteria: a
+    failure blocks T5. Do not open T5. Do not run the final OOS block. (Rule 12 —
+    the FINAL_OOS block must stay pristine for any future attempt.)
+
+    ---
+
+    **Diagnosis of failures (observation only — no parameter was changed):**
+
+    **§6.1 FAIL — cost fragility.** At pessimistic costs, C_strat collapses from
+    0.265 to 0.226 while C_nifty50 stays at 0.346. The 10.05% CAGR at base costs
+    leaves too little margin; after the pessimistic slippage + brokerage uplift,
+    the net edge is gone. The ~934% annualized turnover amplifies cost drag — each
+    monthly rebalance runs up a meaningful cost bill, and at pessimistic rates the
+    total drag swamps the alpha.
+
+    **§6.2 FAIL — name concentration.** Dropping only 10 names (TANLA, CGPOWER,
+    ADANIGREEN, BORORENEW, DEEPAKNTR, BALAMINES, INDIAMART, GREENPANEL, POONAWALLA,
+    NAVINFLUOR) out of 3,470 ISINs cuts Calmar from 0.265 to 0.108 — a 59% collapse.
+    These are all outsized post-COVID momentum stories (2020–2022). The strategy's
+    apparent edge on DISCOVERY is not broad-based momentum but a concentrated bet on
+    the top decile of that specific bull cycle. This is structurally similar to v1's
+    2021-bull dependency, just at name level rather than period level.
+
+    **§6.4 ⚠ PASS (but a concentration red flag).** The coded criterion (2/3 positive
+    Calmar) was met, but the distribution exposes the same single-regime problem the
+    spec warns about:
+
+    | Subperiod | CAGR | Calmar |
+    |---|---|---|
+    | Pre-COVID chop (2018-02-06 → 2020-03-31) | **−18.68%** | **−0.492** |
+    | Post-COVID bull (2020-04-01 → 2022-01-31) | **+66.87%** | **+7.678** |
+    | Rate-hike correction (2022-02-01 → 2023-06-30) | +4.72% | +0.171 |
+
+    The post-COVID bull (calmar 7.678) is carrying the entire DISCOVERY result. The
+    pre-COVID chop (calmar −0.492) is deeply negative. This IS the "one regime
+    carrying everything" pattern that §6.4 exists to detect. The count-only criterion
+    in `robustness.py` did not catch it because 2/3 periods are nominally positive —
+    a known limitation of the coded check (see: §6.4 implementation note in
+    `robustness.py`). If the spec's concentration criterion had been hard-coded as a
+    FAIL (post-COVID Calmar > 5× mean of other positive periods), §6.4 would have
+    failed too.
+
+    **Root cause summary:** The DISCOVERY window is dominated by the 2020–2022
+    post-COVID momentum bull. The strategy captures that regime well (debounce=1
+    stays nimble on the V-shaped recovery) but performs poorly in the sideways/bear
+    preceding it and is fragile to costs. The "edge" at DISCOVERY level is real in
+    a bull momentum regime and is illusory otherwise.
+
+    **Next steps (not pre-committed — Arafat to decide):**
+    - Option A: Iterate to layer 2 (ranker variant) or layer 3 (rebalance cadence)
+      using T3's harness, to see if a different ranker/cadence survives §6.1/§6.2.
+    - Option B: Accept this as a research note ("momentum strategy works in post-COVID
+      bull; fragile otherwise") and close spec 04 without a validated config.
+    - Option C: Revisit the DISCOVERY window definition — the 2018–2020 period is
+      structurally dominated by mid/smallcap drawdown (IL&FS crisis), which is a
+      genuine market regime but perhaps overly penalizes the strategy pre-COVID.
+    - **Do NOT move the FINAL_OOS boundary or tune against T4 results.** (Rule 12)
 
 ---
 
 ## T5 — Final one-shot OOS gate + Definition of Done (`04` §7)
 
-- **Status:** ☐ — _conditional on the candidate clearing T4._
+- **Status:** ⚠ BLOCKED — T4 failed (§6.1 cost stress + §6.2 universe perturbation). FINAL_OOS must not be touched until a candidate clears all five T4 checks. Do not run T5.
 - **Depends on:** T4 (all robustness checks pass).
 - **Goal:** Run the **single, pre-committed** config on the FROZEN `FINAL_OOS` block
   **exactly once**, and assemble the validated / not-validated verdict per `04` §7.
@@ -426,11 +483,16 @@ T0→T1 is the committed first phase. The gate after T1 decides whether T2→T5 
 - [x] **If GO:** T2 scaffolding green (2026-06-16 — 33 tests, all pass); T3 iteration
       ran one layer at a time on discovery with plateau-based selection (2026-06-16 —
       25 tests green; layer 1 regime grid PLATEAU, winner debounce=1/rof=0.25 calmar=0.265);
-      T4 robustness infrastructure complete (2026-06-16 — 36 tests, all pass; live run
-      pending to fill per-check numbers before T5 opens);
-      T5 one-shot OOS consumed once and the §7 DoD checklist completed.
+      T4 robustness run (2026-06-16): **FAIL on §6.1 and §6.2** (3/5 pass). T5 blocked.
+      FINAL_OOS has not been touched. See T4 session log for full diagnosis and next-step options.
 - [ ] Final artifact is labeled truthfully: "validated, deployable config" only if §7
       is fully satisfied; otherwise "research note" (Rule 12 — fail loud). No softening.
+
+  **Current state (2026-06-16): research note.** The candidate (layer-1 regime config)
+  does not clear T4. It is NOT a validated, deployable strategy. The DISCOVERY result
+  (calmar 0.265 at base cost) is a real measurement on real data with the pre-committed
+  config, but it is fragile to costs (§6.1) and concentrated in ~10 post-COVID momentum
+  names (§6.2). Labeling it anything other than "research note" would violate Rule 12.
 
 > Reminder for every session in this spec: the entire point of v2 was honest
 > measurement. The frozen splits, the one-shot OOS, the plateau rule, the trial
