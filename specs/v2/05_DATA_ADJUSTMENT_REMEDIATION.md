@@ -1,6 +1,6 @@
 # Spec 05 — Split/Bonus Adjustment Remediation (data-layer bug found by the T1 floor)
 
-> **Status:** APPROVED TO PLAN, NOT STARTED. No code or data changed yet.
+> **Status:** Phase 0 COMPLETE (2026-06-16). Phase 1 shape revised by findings. No data changed yet.
 > **Owner:** Arafat. **Created:** 2026-06-16.
 > **Trigger:** Spec 04 T1 floor returned NO-GO; the §3.3 diagnosis
 > (`04_FLOOR_DIAGNOSIS.md`) uncovered a **systemic split/bonus adjustment failure**
@@ -163,20 +163,44 @@ Pin the exact failure mode:
 - **Exit:** documented failure mode (window cap vs. join mismatch vs. parse miss). This
   decides Phase 1's exact shape.
 
-### Phase 1 — Fix the fetch (the real bug)
-- Chunk the CA fetch into ≤N-month windows across the full span (reuse the existing
-  retry/backoff + cookie-warmed session), dedupe, concat. Smallest change: a
-  `fetch_corporate_actions_chunked(start, end, window_months=...)` helper in
-  `corporate_actions.py`, called from `build.py` Stage 3.
-- **Persist parsed CA events + `unmatched`** to a new parquet artifact via `store.py`
-  (e.g. `corporate_actions/` table + schema). This is the missing audit trail and lets
-  validation/diagnosis run without re-fetching. (Schema add only — no change to
-  `PRICES_ADJUSTED_SCHEMA`.)
+### Phase 1 — Fix the adjustment (revised after Phase 0)
+
+> **Phase 0 revised Bug A:** The NSE CA API does NOT have a window cap — a single
+> full-range call (2017→2026) returns the same 20,941 records as 113 monthly windows
+> summed. The actual failure mode is **ISIN succession**: when a company changes its
+> ISIN (typically after a face-value split), subsequent CA events are filed against the
+> **old ISIN** while bhavcopy prices trade under the **new ISIN**. The ISIN-keyed join
+> in `adjust.py:105` silently misses these events. See §11 Phase 0 Findings for detail.
+
+Two changes to `adjust.py` / `corporate_actions.py`:
+
+1. **ISIN succession bridge** — when `events_by_isin.get(isin)` returns empty,
+   look up the ISIN's symbol (from `raw_df`) in a symbol-keyed secondary index of CA
+   events and apply any events whose `ex_date` falls within the current ISIN's active
+   date range (first/last date in `raw_df` for that ISIN). This bridges the ~62 ISINs
+   where the CA event exists under the old ISIN but prices are now under a new ISIN.
+   The simplest implementation: build `events_by_symbol` alongside `events_by_isin`
+   in `adjust.py`, restrict by ex_date range, and merge in before computing factors.
+
+2. **Persist CA events + `unmatched`** to a new parquet artifact via `store.py`
+   (e.g. `corporate_actions/` table + schema). This is the missing audit trail and lets
+   validation/diagnosis run without re-fetching. (Schema add only — no change to
+   `PRICES_ADJUSTED_SCHEMA`.)
+
 - Triage `unmatched` after a full fetch — manually verify none of them are real
-  splits/bonuses that the free-text parser missed (Bug A's smaller sibling).
-- **Tests** (CLAUDE.md §5, Rule 9): unit-test the chunker with a mocked session
-  (`_ca_records` injection already exists in `run_build` for tests); assert full-range
-  coverage = union of window coverage; regression-test CUPID's event is now produced.
+  splits/bonuses that the free-text parser missed. Phase 0 found 2 bonus-parse
+  failures and 86 dividend-parse failures; no split/bonus-keyword records were
+  dropped silently.
+- **180 ISINs** with unadjusted cliffs have NO CA event in the NSE feed by any join
+  key — these cannot be fixed via the current data source. Accept this residual;
+  document in the rebuilt `validate.py` Check 7 tolerance.
+- No monthly chunking needed; keep a single `fetch_corporate_actions` call. (Chunking
+  may be added later for API resilience but is NOT required for coverage.)
+- **Tests** (CLAUDE.md §5, Rule 9): unit-test the ISIN-succession bridge with a
+  synthetic two-ISIN scenario (`_ca_records` injection already exists in `run_build`
+  for tests); assert CUPID's Bonus 4:1 is now applied to `INE509F01029` prices.
+  Assert that the bridge does NOT apply an old-ISIN event whose ex_date is outside
+  the new ISIN's active window.
 
 ### Phase 2 — Add the prevention gate (`validate.py`)
 - **New Check 7 (universe-wide unadjusted-action scan):** for every ISIN, flag any
@@ -215,8 +239,9 @@ Pin the exact failure mode:
 ---
 
 ## 6. Definition of done
-- [ ] Phase 0 failure mode documented in this file (append a "Findings" section).
-- [ ] CA fetch chunked; full-range coverage proven by test; CUPID event produced.
+- [x] Phase 0 failure mode documented (§11 below). Window-cap hypothesis disproved;
+      ISIN succession confirmed as the mechanism; 62 fixable + 180 permanently absent.
+- [ ] ISIN succession bridge in `adjust.py`; CUPID event now produces non-flat adj_factor.
 - [ ] CA events + unmatched persisted; unmatched triaged (no real actions hiding there).
 - [ ] `validate.py` Check 7 added + tested; Check 1 hardened.
 - [ ] Old parquet store backed up; data rebuilt in one full-range call.
@@ -261,11 +286,107 @@ NO-GO iff `C_strat < C_nifty50`.
 1. **Rebuild scope** — full 2017→2026 (recommended; a partial fix re-corrupts the next
    run and leaves the signal series wrong) vs. held-names-only patch (cheaper, dirty).
 2. **CA audit store** — parquet (recommended, consistent) vs. DB table (needs Alembic).
-3. **Phase 0 live probe** — OK to hit NSE for the one-off, or is the API window cap
-   already known?
+3. ~~Phase 0 live probe — window cap known?~~ **RESOLVED:** No window cap exists. Phase 0
+   complete; see §11.
+4. **Residual 180 absent ISINs** — accept as permanently unfixable via NSE CA feed, or
+   supplement with a second data source (BSE corporate actions, CDSL, manual CSV)?
+   Recommendation: accept the residual; adjust Check 7 tolerance accordingly.
+   The 62 ISIN-succession fixes likely cover the verdict-relevant held names (CUPID
+   confirmed; others TBD by Phase 4 re-run).
 
 ## 10. Blast radius (stated, not discovered later)
 Every backtest in the project — **v1 and the v2 floor** — ran on these mis-adjusted
 prices. After the rebuild, signals, rankings, and the universe all shift (the phantom
 cliffs corrupted momentum scores, not just MTM). That is expected and is the point. v1
 results are also retroactively invalidated (informational; no action implied here).
+
+---
+
+## 11. Phase 0 Findings (2026-06-16) — documented exit
+
+**Probe script:** `backend/app/data/bhavcopy/diag_ca_fetch.py`
+**Scope:** live NSE calls, read-only, no data changed.
+
+---
+
+### 11.1 Window-cap hypothesis — DISPROVED
+
+The original Bug A hypothesis was: *the NSE `corporates-corporateActions` API caps
+the per-query window (months, not years), causing a single multi-year call to return
+truncated/near-empty results.*
+
+**Result:** Full-range fetch (2017-01-01 → 2026-06-12, a single call) returned
+exactly **20,941 records** — identical to the sum of 113 monthly 1-month windows
+(each fetched separately). No truncation. The API cap does NOT apply at this volume.
+
+### 11.2 CUPID-specific probe — root cause confirmed
+
+CUPID (ISIN `INE509F01029`, ex-date 2026-03-09) was tested with a 60-day narrow
+window. The event is **absent from the CA feed under `INE509F01029`** — but it IS
+present under the old ISIN `INE509F01011`:
+
+```
+isin=INE509F01011  symbol=CUPID  exDate=09-Mar-2026  subject=Bonus 4:1
+```
+
+A Bonus 4:1 = 4 new shares per 1 held → total 5 shares → price divides by 5 →
+price multiplier 0.2 — matches the observed ~5:1 price gap (402 → 82). The action
+content is correct; the **join key is wrong**.
+
+**ISIN succession history for CUPID:**
+| Date | Event |
+|---|---|
+| 2017 – 2023-12-12 | Trades as `INE509F01011` |
+| 2024-04-04 | FV Split (10→1) + Bonus 1:1 under `INE509F01011` |
+| 2024-10-28 | Re-lists as `INE509F01029` (new face-value ISIN) |
+| 2026-03-09 | Bonus 4:1 — recorded against old `INE509F01011` in NSE CA feed |
+
+The CA feed continues to record events against the **old ISIN** even after the
+company re-lists under a **new ISIN**. The join in `adjust.py:105`
+(`events_by_isin.get(str(isin), _EMPTY_EVENTS)`) looks up by exact ISIN and
+finds nothing for `INE509F01029` → factors = 1.0 → the Bonus cliff survives.
+
+### 11.3 Universe-wide breakdown (all 556 unadjusted cliffs)
+
+Scan: single-day drop >40% in adjusted `close` where `adj_factor == adj_factor[T-1]`
+AND `tr_factor == tr_factor[T-1]` (no factor step), floor window 2018-02-06 →
+2026-06-12. Matches the spec's 556 total exactly.
+
+Of the subset with a **clean split ratio** (2:1 / 3:1 / 4:1 / 5:1 / 10:1 within
+±10%): **332 events across 247 distinct ISINs**.
+
+| Category | ISINs | What it means |
+|---|---|---|
+| CA event in NSE feed, **ISIN succession** (old ISIN) | **62** | Fixable — ISIN bridge in `adjust.py` |
+| CA event in NSE feed, same ISIN, ex_date ≠ cliff | **5** | False positives — genuine market events (VAKRANGEE crash, COVID, etc.) |
+| **No CA event in NSE feed at all** | **180** | Permanently absent from this API; unfixable without a 2nd source |
+
+The remaining ~224 clean-ratio cliff ISINs (556 − 332 = 224 non-clean-ratio cliffs)
+are predominantly genuine extreme market events and NSE circuit-limit edge cases.
+
+**Unmatched CA records (parse failures):** 8,218 out of 20,941 total. Breakdown:
+- 8,130 — no split/bonus/dividend keyword (AGM notices, rights, etc.) → correct to skip
+- 86 — dividend: could not parse value (unusual Rs formatting like "Rs - 2") → only dividends; no splits hidden here
+- 2 — bonus: could not parse value → marginal, investigated, not splits
+
+**Conclusion on unmatched:** No real splits or bonuses are hidden in the unmatched
+pile. The free-text parser correctly classifies all capital-structure events in the feed.
+
+### 11.4 Revised failure mode (replaces Bug A in §4)
+
+| Bug as specced | Actual finding |
+|---|---|
+| Bug A: window cap → empty full-range fetch | **DISPROVED.** No cap; single call returns complete data |
+| — | **REAL BUG: ISIN succession** — NSE CA feed files events against old ISIN after company changes ISIN; `adjust.py` join fails silently |
+| Bug B: validate.py whitelist | **CONFIRMED unchanged** — still needs universe-wide Check 7 |
+
+### 11.5 Phase 1 implications
+
+- **No chunking needed** for fetch coverage.
+- Phase 1's single real change: add **ISIN succession bridge** to `adjust.py` —
+  when `events_by_isin[isin]` is empty, fall back to `events_by_symbol[symbol]`
+  filtered to events whose `ex_date` is within the ISIN's active date range.
+- Fixes ~62 ISINs (CUPID confirmed; others TBD by re-run).
+- **180 ISINs** with no CA event in the NSE feed are accepted as residual; Check 7
+  tolerance must account for them.
+- Persist CA events parquet (audit trail) as originally planned.
