@@ -251,3 +251,60 @@ the locked scaffolding is written until each task's own gate is met.
 | DoD predicates | Frozen as functions in `v3_config.py` | §9 |
 
 Nothing above may be changed without a new pre-registration entry and explicit session approval.
+
+---
+
+## Erratum (T1 → T2) — parity baseline correction — 2026-06-17
+
+**Approved by Arafat, 2026-06-17.** A new pre-registration entry per the T0 lock rule above.
+This is an **erratum, not a re-tuning**: it repairs an internal contradiction surfaced during
+T1, *before any measurement*, and **loosens no §9 Definition-of-Done bar**.
+
+### The contradiction
+
+- §4 + the T0 lock define the v3 floor as `active_factors=["mom_12_1"]`, and §4 defines
+  `mom_12_1` as the **raw** 12-1 return `ret(252d skip 21d)`.
+- But T2's done-criterion and T4's parity check (in `01_TRACK_A_TASKS.md`) ask that same floor
+  to "reproduce v2's ranking order / base numbers (Calmar ~0.265, turnover ~934%)" — numbers
+  produced by v2's **volatility-adjusted** ranker `momentum_12_1 / annualized_vol`
+  (`signals.py:137`).
+
+These cannot both hold. A raw-momentum floor will **not** reproduce a vol-adjusted candidate's
+exact ordering or Calmar. The parity criterion was written on the unstated assumption that
+*floor == v2 candidate*; §4 makes that false. The defect is the over-specified parity
+criterion, not the factor library.
+
+### Why the floor stays raw (this divergence is by design)
+
+§3.2 commits v3 to **"replace the single `momentum_12_1 / vol` ranker with a rank-blended
+composite"** — i.e. v3 *deliberately decomposes* the ratio into separable rank-blended
+factors (`mom` and `low_vol` as distinct §4 factors). So the raw-momentum floor differing
+from v2's vol-adjusted candidate is the **v3 thesis**, not a bug. Layer 4 (`+low_vol`, §6) is
+precisely where vol information re-enters — the v3 way. Two rejected "fixes" and why:
+
+- ❌ **Add `low_vol` to the floor.** Violates the T0/§11 lock; pre-spends Layer 4 (destroys
+  the clean one-layer-at-a-time test §6 exists to protect); and an equal-weight rank-blend of
+  `{mom, low_vol}` is a *different transform* from the ratio `mom/vol` — it would break the
+  lock and still miss parity.
+- ❌ **Redefine `mom_12_1` as `mom/vol`.** Moves the §4 measuring stick after T1 was built and
+  tested against the raw definition — the v1 sin (§1) — and contradicts §3.2.
+
+### The correction (binding on T2 and T4)
+
+The parity check is a **wiring-correctness** check, not a historical-number-matching check.
+Because the v2 ranker is explicitly pluggable (`signals.py:126` — "swapping the ranker is a
+one-line change… pass a different callable with the same `(day, isin) → float` signature"):
+
+1. **Exact parity target = a raw-momentum v2 reference.** Drive the *unchanged* v2 engine with
+   a ranker returning raw `momentum_12_1` (not `mom/vol`). Assert the v3 momentum-only floor
+   matches **that** reference to numerical tolerance. This isolates plumbing correctness
+   instead of confounding it with a deliberate signal-definition difference. Log the reference
+   run to the `ConfigLedger`.
+2. **The historical `Calmar ~0.265 / turnover ~934%` are demoted to a sanity band only** — same
+   order of magnitude, turnover still ~900% — explicitly **not** an equality target, because
+   they belong to the vol-adjusted signal, not the raw-momentum floor.
+3. **Recorded expectation (Rule 12).** v3 `{mom, low_vol}` at Layer 4 should recover v2's
+   character, since that is where vol-adjustment legitimately re-enters. If it does not, that
+   is itself a finding to report, not to engineer around.
+
+No §9 DoD predicate, no frozen split, and no factor definition is changed by this erratum.

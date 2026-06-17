@@ -139,13 +139,15 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
   - A `precompute_*` builder that computes all active factor scores once (like v2's
     `precompute_signals`) so sweeps don't recompute.
   - Unit tests: engine runs end-to-end with the composite store on a small fixture; with
-    momentum-only active, ranking matches v2's `momentum_12_1/vol` ordering (parity hook for
-    T4); ledger/determinism unaffected.
+    momentum-only active, ranking matches a **raw-momentum v2 reference ranker** (v2 engine
+    driven by raw `momentum_12_1`, NOT `mom/vol`) — see prereg **Erratum (T1→T2)**; the
+    historical vol-adjusted candidate is NOT the equality target; ledger/determinism unaffected.
 - **Deliverable:** v3 signal store + builder + tests, green; an engine run on a fixture.
 - **Done-criteria:**
   - [ ] Engine runs with the composite store via the existing `signal_store` param — no
         engine edit required for the ranker.
-  - [ ] Momentum-only composite reproduces v2 ranking order (test).
+  - [ ] Momentum-only composite matches the **raw-momentum v2 reference** ranker exactly (test),
+        per prereg Erratum (T1→T2) — not the vol-adjusted `mom/vol` candidate.
 - **Session log:** _(fill at end)_
 
 ---
@@ -176,9 +178,12 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 - **Goal:** Confirm the v3 floor reproduces v2, then test whether the turnover levers cut
   realized turnover without wrecking Calmar (prereg H1).
 - **Do:**
-  - **Parity check first:** v3 floor (momentum-only, monthly, M=35) on DISCOVERY ≈ v2
-    candidate's base numbers (Calmar ~0.265, turnover ~934%). A mismatch means a wiring bug —
-    fix before proceeding (Rule 12).
+  - **Parity check first (like-for-like wiring test — see prereg Erratum T1→T2):** the v3
+    floor is RAW momentum-only, so it is NOT expected to reproduce v2's vol-adjusted candidate.
+    Exact target = a **raw-momentum v2 reference** (unchanged v2 engine driven by raw
+    `momentum_12_1`); the v3 floor must match it to numerical tolerance — a mismatch is a wiring
+    bug, fix before proceeding (Rule 12). The historical `Calmar ~0.265 / turnover ~934%` are a
+    **sanity band only** (same order of magnitude, turnover ~900%), NOT an equality target.
   - Then run, one layer at a time via `iterate.py` (coarse grids, prereg §6, log to ledger):
     Layer 1 cadence {monthly, quarterly, semi-annual}; Layer 2 buffer M {35, 50, 70};
     Layer 3 smoothing {none, 2-mo, 3-mo}. Plateau-select each.
@@ -186,7 +191,8 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
     planned Σ|Δw|, plus Calmar — for each layer.
 - **Deliverable:** parity confirmation + per-layer turnover/Calmar plateau verdicts in the log.
 - **Done-criteria:**
-  - [ ] v3 floor parity with v2 candidate confirmed (or bug fixed).
+  - [ ] v3 floor matches the **raw-momentum v2 reference** to tolerance (or wiring bug fixed);
+        historical 0.265/934% checked as a sanity band only — per prereg Erratum (T1→T2).
   - [ ] 3 turnover layers run on DISCOVERY; plateau verdicts stated; realized turnover reported.
 - **Session log:** _(fill at end)_
 
