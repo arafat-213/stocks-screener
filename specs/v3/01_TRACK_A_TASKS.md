@@ -167,7 +167,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T3 — Engine rebalance-cadence knob (monthly / quarterly / semi-annual) + tests
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T0 (config). Independent of T1/T2 — may run in parallel.
 - **Goal:** The membership-turnover lever #1: trade less often. Surgical engine change.
 - **Do:**
@@ -178,9 +178,25 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
     unchanged (regression — Rule 1/5); no-lookahead invariant still holds.
 - **Deliverable:** cadence-aware rebalance-date generator + tests, green; v2 regression intact.
 - **Done-criteria:**
-  - [ ] Cadence param drives rebalance dates; monthly default = unchanged v2 behavior (test).
-  - [ ] 02 §10 invariants still pass.
-- **Session log:** _(fill at end)_
+  - [x] Cadence param drives rebalance dates; monthly default = unchanged v2 behavior (test).
+  - [x] 02 §10 invariants still pass.
+- **Session log:** 2026-06-17 — Generalized the engine's hardcoded
+  `_month_end_dates(calendar)` call (engine.py §3) to `_rebalance_dates(calendar,
+  config.rebalance)`. New `_rebalance_dates` is a *thin filter on the untouched*
+  `_month_end_dates`: a `_CADENCE_MONTHS` map gives `monthly → None` (return
+  `_month_end_dates(calendar)` verbatim — so v2's MomentumConfig path is
+  byte-for-byte unchanged), `quarterly → {3,6,9,12}`, `semi-annual → {6,12}`;
+  unknown cadence raises `ValueError` (Rule 12). Reads the pre-existing
+  `MomentumConfig.rebalance` field (T0), no config/schema change. Tests
+  (`test_v3t3_cadence.py`, 8): generator — monthly == `_month_end_dates`
+  byte-for-byte, quarterly/semi-annual == exact calendar quarter/half-year ends,
+  strict nesting semi ⊂ quarterly ⊂ monthly (the lever trades less often, Rule 9),
+  unknown-cadence fail-loud; engine — monthly default reproduces v2 scheduling
+  end-to-end through `run()`, quarterly schedules only quarter-ends and strictly
+  fewer of them; no-lookahead — every fill has a strictly-earlier rebalance
+  decision under quarterly (02 §10 / DC2 queue discipline intact). v2 regression
+  green (`test_t7_engine`, `test_t3_signals`, `test_v3t1_factors`,
+  `test_v3t2_signal_store` — 74 passed total). Both done-criteria met.
 
 ---
 

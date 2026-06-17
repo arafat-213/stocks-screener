@@ -135,9 +135,9 @@ def run(
         raise ValueError(f"No trading dates in [{config.date_from}, {config.date_to}].")
 
     # ------------------------------------------------------------------ #
-    # 3. Rebalance dates (last trading day of each month within the run)
+    # 3. Rebalance dates (last trading day per cadence period within the run)
     # ------------------------------------------------------------------ #
-    rebalance_dates: set[pd.Timestamp] = _month_end_dates(calendar)
+    rebalance_dates: set[pd.Timestamp] = _rebalance_dates(calendar, config.rebalance)
 
     # ------------------------------------------------------------------ #
     # 4. Signals (precomputed once)
@@ -328,6 +328,43 @@ def _month_end_dates(calendar: list[pd.Timestamp]) -> set[pd.Timestamp]:
         if key not in groups or ts > groups[key]:
             groups[key] = ts
     return set(groups.values())
+
+
+# Calendar months whose month-end is a rebalance day, per cadence.
+# `None` = every month-end (the v2 default — byte-for-byte unchanged behavior).
+# quarterly = calendar quarter-ends; semi-annual = half-year-ends.
+_CADENCE_MONTHS: dict[str, frozenset[int] | None] = {
+    "monthly": None,
+    "quarterly": frozenset({3, 6, 9, 12}),
+    "semi-annual": frozenset({6, 12}),
+}
+
+
+def _rebalance_dates(
+    calendar: list[pd.Timestamp], cadence: str = "monthly"
+) -> set[pd.Timestamp]:
+    """
+    Last trading day of each cadence period present in `calendar`.
+
+    The membership-turnover lever (v3 T3): trading less often. Built as a thin
+    filter on `_month_end_dates` so the monthly path is *identical* to v2's
+    original behavior — `monthly` returns exactly `_month_end_dates(calendar)`,
+    keeping v2's MomentumConfig run byte-for-byte unchanged (default cadence).
+
+    `quarterly`/`semi-annual` keep only the month-ends landing on calendar
+    quarter-ends ({3,6,9,12}) / half-year-ends ({6,12}). Fails loud on an
+    unknown cadence (Rule 12).
+    """
+    try:
+        months = _CADENCE_MONTHS[cadence]
+    except KeyError:
+        raise ValueError(
+            f"unknown rebalance cadence: {cadence!r} (known: {sorted(_CADENCE_MONTHS)})"
+        ) from None
+    month_ends = _month_end_dates(calendar)
+    if months is None:
+        return month_ends
+    return {ts for ts in month_ends if ts.month in months}
 
 
 def _stamp_fills(
