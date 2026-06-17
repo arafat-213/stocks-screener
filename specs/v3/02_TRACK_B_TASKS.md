@@ -306,7 +306,8 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB1 — Storage schema: Alembic migration + ORM models for the PIT tables
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-17 — ORM models + Alembic migration `c4e1f7a9b2d3`
+  (single head), 5 invariant tests green. See Session log.
 - **Depends on:** TB0, TB0.5 (probe go).
 - **Goal:** The tables the whole layer writes to, created the only sanctioned way (Alembic),
   with the restatement-versioning key baked into the schema.
@@ -324,10 +325,37 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     inserting a duplicate `(isin, period_end, available_date)` is rejected (idempotency guard).
 - **Deliverable:** ORM models + Alembic migration + tests, green; `alembic upgrade head` works.
 - **Done-criteria:**
-  - [ ] PIT tables created via Alembic only; up/down both clean.
-  - [ ] Schema permits multiple `available_date` versions per `(isin, period_end)` (restatement);
+  - [x] PIT tables created via Alembic only; up/down both clean (verified — see Session log caveat
+        on Postgres vs SQLite).
+  - [x] Schema permits multiple `available_date` versions per `(isin, period_end)` (restatement);
         rejects exact-duplicate versions (idempotency).
-- **Session log:** _(fill at end)_
+- **Session log:** 2026-06-17 — **Models** in new `app/fundamentals/models.py` (registered on the
+  shared `app.db.models.Base` — one metadata / one Alembic chain; package boundary is by code
+  location, not a separate DB). **Four tables** (`fundamentals_` prefix):
+  `fundamentals_universe` (survivorship-free spine, ISIN PK, list/delist dates, exchange);
+  `fundamentals_symbol_history` (ISIN→symbol PIT history, `.NS`, valid_from/valid_to — the
+  symbols-over-time half the probe flagged TB3 needs); `fundamentals_filing_index` (the PIT clock:
+  `period_end`, `available_date` (filing date, never period-end), statement_type, source_exchange,
+  document_url); `fundamentals_line_items` (the 8 standardized items — revenue/net_income/ebit/
+  total_equity/total_assets/total_debt/shares_outstanding/cfo, all NULLable, never zero-filled).
+  **Restatement key** = `UniqueConstraint(isin, period_end, available_date)` on line items: admits
+  two rows for one `(isin, period_end)` differing only by `available_date`, rejects an exact dup
+  (idempotency). Filing index dedups on `(isin, period_end, available_date, statement_type)` so an
+  Annual + a Quarterly can share a period/date. **Indexes** `(isin, available_date)` &
+  `(isin, period_end)` on both versioned tables. FKs `isin → fundamentals_universe.isin`. All
+  timestamps `DateTime(timezone=True)`, UTC python defaults (repo convention). **Migration**
+  `c4e1f7a9b2d3` (down_revision = prior head `934e63731fa2`; `alembic heads` = single head).
+  `migrations/env.py` now imports the models so autogenerate sees them and never proposes dropping
+  them. **Tests** `tests/unit/test_fundamentals_models.py` (5, green): restatement keeps both
+  versions; exact-dup version rejected; unmapped item is NULL not 0; filing-index idempotent on the
+  full version key; distinct statement_types coexist. **Verification caveat (Rule 12):** the Docker
+  daemon was down so Postgres (5434) was unreachable — `upgrade`/`downgrade` were verified by
+  isolating this revision on a throwaway SQLite DB (`alembic stamp 934e63731fa2` → `upgrade head`
+  creates all 4 tables + 6 indexes → `downgrade -1` drops them clean). The full chain can't replay
+  on SQLite (earlier migrations use Postgres-only `ALTER ... DROP CONSTRAINT`), and the ORM↔DDL
+  match is corroborated by the SQLite `create_all` the tests run on. **`alembic upgrade head` against
+  the real Postgres still to be confirmed when docker is up.** No ingest, no network, no factor;
+  `FINAL_OOS` untouched.
 
 ---
 

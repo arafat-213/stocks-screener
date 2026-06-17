@@ -7,6 +7,10 @@ from dotenv import load_dotenv
 from sqlalchemy import engine_from_config, pool
 
 sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), "..")))
+# Register the Track-B fundamentals PIT tables (TB1) on the shared metadata so
+# autogenerate sees them and never proposes dropping them. Imported for the
+# side effect of class definition only.
+import app.fundamentals.models  # noqa: E402,F401
 from app.db.models import Base
 
 load_dotenv()
