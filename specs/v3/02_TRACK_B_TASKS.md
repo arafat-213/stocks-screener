@@ -71,7 +71,7 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB0 — Lock §8 decisions as committed constants (light / no ingest)
 
-- **Status:** ☐ ready — §8 locked in the spec 2026-06-17; remaining work = transcribe into `data_config.py`.
+- **Status:** ☑ done 2026-06-17 — `data_config.py` created with all 9 locked §8 constants.
 - **Depends on:** Arafat locking §8 — ✓ done (`02_TRACK_B_DATA.md` §8, COMMITTED 2026-06-17).
 - **Goal:** Pre-commit every data-layer threshold as a code constant **before any ingest**, so
   no later session can tune the §6 gate to whatever the ingest happens to yield.
@@ -90,10 +90,19 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     longer touches the spec; constants only. No ingest, no schema, no network.
 - **Deliverable:** `data_config.py` with the locked constants.
 - **Done-criteria:**
-  - [ ] All §8 values recorded as frozen constants in `data_config.py`, matching the spec verbatim.
+  - [x] All §8 values recorded as frozen constants in `data_config.py`, matching the spec verbatim.
   - [x] `02_TRACK_B_DATA.md` §8 resolved; doc status = COMMITTED (done 2026-06-17, this session).
-  - [ ] No ingest/schema code added (TB0 is the lock, not the build).
-- **Session log:** _(fill at end)_
+  - [x] No ingest/schema code added (TB0 is the lock, not the build).
+- **Session log:** 2026-06-17 — Created `backend/app/fundamentals/` package (`__init__.py`
+  + `data_config.py`). Transcribed all 9 locked §8 values verbatim as frozen module
+  constants: `EXCHANGE_PRIORITY=("NSE","BSE")` (§8.1), `COVERAGE_THRESHOLD_WEIGHT=0.90` &
+  `COVERAGE_THRESHOLD_NAME=0.75` (§8.2), `RECON_SAMPLE_N=30` & `RECON_TOLERANCE=0.02`
+  (§8.3), `SAFETY_LAG_TRADING_DAYS=2` (§8.4), `RESTATEMENT_POLICY="as-of-latest-version-known"`
+  (§8.5), `SCOPE="historical-panel-only"` (§8.6), plus `PANEL_START=2017-01-01` (TTM-lookback
+  boundary, not a §8 threshold). Verified clean import + value match under `backend/venv/`.
+  No pytest file: a constants module test would just restate the spec (Rule 9 tautology); the
+  import/assert check is the verification. No ingest/schema/network — TB0 is the lock only.
+  TB0.5 (feasibility probe) is now unblocked.
 
 ---
 
@@ -326,7 +335,7 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## Exit criteria for the Track-B data layer
 
-- [ ] TB0 locked (§8 thresholds frozen as constants; spec committed, no longer DRAFT).
+- [x] TB0 locked (§8 thresholds frozen as constants; spec committed, no longer DRAFT).
 - [ ] TB0.5 feasibility probe run; by-name coverage estimate reported; go/no-go stated before
       any TB1–TB6 build (fail-fast — never lowers the §6 thresholds).
 - [ ] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
