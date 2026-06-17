@@ -255,7 +255,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T5 — Factor layers on DISCOVERY (H2)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T4 (a turnover-stable base config).
 - **Goal:** Add price/volume factors one at a time on the T4 base; test whether the composite
   broadens selection (prereg H2 — §6.2 concentration).
@@ -267,9 +267,60 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 - **Deliverable:** per-factor plateau verdicts + concentration trend in the log; the chosen
   v3 candidate config.
 - **Done-criteria:**
-  - [ ] Each factor added on a plateau or rejected, honestly stated.
-  - [ ] A single v3 candidate config selected for robustness.
-- **Session log:** _(fill at end)_
+  - [x] Each factor added on a plateau or rejected, honestly stated.
+  - [x] A single v3 candidate config selected for robustness.
+- **Session log:** 2026-06-17 — New runner `t5_factors.py` (offline, DISCOVERY only,
+  base cost, regime ON; FINAL_OOS untouched). Built like t4_turnover.py — a run script,
+  not a unit-tested module. **Base wiring sanity: PASS** — momentum-only floor on the T4
+  turnover-stable config (cadence=monthly, M=70, smoothing=0, N=20) reproduces T4's L3
+  selected run bit-for-bit: Calmar 0.250 / realized turnover 800% / 1265 fills. **§6.2
+  retention diagnostic** uses `robustness.check_universe_perturbation`'s exact method (drop
+  the top-10 realized-P&L names, re-run the SAME signal_store on perturbed prices,
+  retention = perturbed_calmar / base_calmar; higher = less name-concentrated = broader).
+  **Gate (prereg §6 / §5):** each factor added one at a time, prior-accepted factors held
+  fixed, chained forward; ACCEPT iff Calmar holds on the plateau (cand ≥ 0.85×base — the
+  directional Calmar floor, mirroring T4's `_select_layer`); retention is the H2 DIAGNOSTIC,
+  not the gate (per the T5 do-item / prereg line 56). K=5 logged.
+  **Factor layers (Calmar → §6.2 retention → realized turnover):**
+  - +low_vol {0.250→0.310, 31%→57%, 800%→584%}: **ACCEPT** — broadens AND cuts turnover;
+    the textbook H2/H1 win. (plateau_check flagged SPIKE — a binary-axis artefact: the large
+    Calmar *gain* drops the without-config below 85% of the with-config; not the gate.)
+  - +trend_quality {0.310→0.268, 57%→23%, 584%→601%}: **ACCEPT** on the Calmar floor
+    (0.268 ≥ 0.85×0.310=0.263), but it **NARROWS** retention sharply (57%→23%) — works
+    against H2.
+  - +mom_6_1 {0.268→0.380, 23%→54%, 601%→694%}: **ACCEPT** — broadens; strongest Calmar lift.
+  - +reversal {0.380→0.396, 54%→32%, 694%→956%}: **ACCEPT** on the Calmar floor for a
+    marginal +0.016 Calmar, but it **balloons realized turnover 694%→956%** (back to v2-floor
+    magnitude, undoing T4's H1 gain) AND narrows retention (54%→32%).
+  **Selected v3 candidate (per the pre-registered greedy Calmar-plateau gate):**
+  `active_factors = [mom_12_1, low_vol, trend_quality, mom_6_1, reversal]`, monthly, M=70,
+  smoothing=0, N=20 → Calmar **0.396** (base 0.250), realized turnover **956%** (base 800%),
+  §6.2 retention **32%** (base 31%).
+  **Honest verdicts (Rule 12, no softening):**
+  - **H2 = PARTIAL/effectively NOT met.** Candidate retention 32% ≈ base 31%, far below the
+    §9 ≥70% bar (the bar v2 failed). The blend's broadening is **non-monotonic**: low_vol and
+    mom_6_1 broaden, but trend_quality and reversal each narrow it back. Net ≈ flat → the
+    candidate is at **high risk of FAILING T6 §6.2**, and at 956% turnover the **§9
+    turnover/tradeability** bar too.
+  - **H1 partially undone by reversal** (turnover 694%→956%); the T4 turnover gain survives
+    only up to +mom_6_1.
+  - **Methodological flag (not resolved here — changing it now would be HARKing):**
+    "plateau" (04 §4) is defined for continuous parameter grids; for a *binary* factor-add
+    it does not map cleanly (plateau_check flags Calmar-improving adds as SPIKE). The gate
+    used is the directional Calmar floor with retention as diagnostic, faithful to the T5
+    do-item. A retention-aware alternative — **reject a factor that narrows §6.2 retention
+    or regresses turnover** — would reject trend_quality at its layer (57%→23%); the best
+    ALREADY-RUN config on the project's own H1+H2 goals is then the two-factor
+    `[mom_12_1, low_vol]` → Calmar 0.310, **retention 57% (best of all runs), turnover 584%
+    (lowest of all runs)**. **Correction/caveat:** `[mom_12_1, low_vol, mom_6_1]` was **NOT
+    run** — the 0.380/54%/694% row is the FOUR-factor `[mom, low_vol, trend_quality, mom_6_1]`
+    (trend_quality still in); testing mom_6_1 on a `[mom, low_vol]` base needs a fresh run.
+    **Even the best-retention config (57%) misses the §9 ≥70% bar → Track A does not deliver
+    H2 on DISCOVERY** (consistent with prereg §10/§11: Track A can fix H1 and only partially
+    H2; the regime/concentration fix (H3) needs Track B). Adopting a retention-aware gate is
+    a **NEW pre-registration decision for Arafat**, NOT a post-hoc T5 change. Both
+    done-criteria met (candidate selected + each factor honestly stated); the candidate is
+    forwarded to T6 **with the §6.2/turnover risk noted**.
 
 ---
 
