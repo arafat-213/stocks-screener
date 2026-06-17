@@ -229,3 +229,25 @@ Anything less is a research note (Rule 12). No softening.
 
 Build proceeds via `01_TRACK_A_TASKS.md` (T0…T7). No data is touched and no code beyond
 the locked scaffolding is written until each task's own gate is met.
+
+---
+
+## Locked decisions (T0) — 2026-06-17
+
+**Code:** `backend/app/backtest_v2/v3_config.py`
+
+| Decision | Value | Source |
+|---|---|---|
+| Config type | `V3Config` dataclass, separate from `MomentumConfig` | §7, §11 |
+| v3 floor | `active_factors=["mom_12_1"]`, `rebalance_cadence="monthly"`, `sell_rank_buffer=35` | §11 item 1 |
+| Composite weighting | Equal-weight rank-blend (`factor_weights=None`) | §5, §11 item 3 |
+| Layer 1 cadence grid | `["monthly", "quarterly", "semi-annual"]` | §6 |
+| Layer 2 buffer-M grid | `[35, 50, 70]` (N=20 fixed) | §6 |
+| Layer 3 smoothing grid | `[0, 2, 3]` months | §6 |
+| Factor layers (4–7) | `["low_vol", "trend_quality", "mom_6_1", "reversal"]` | §6 |
+| DISCOVERY split | Imported from `validation.py` — `(2018-02-06, 2023-06-30)` | §8, §11 item 4 |
+| FINAL_OOS split | Imported from `validation.py` — `(2023-07-01, 2026-06-12)` | §8, §11 item 4 |
+| §6.4 concentration predicate | Hard FAIL if any positive subperiod > 5× mean of other positives | §6, T6 note |
+| DoD predicates | Frozen as functions in `v3_config.py` | §9 |
+
+Nothing above may be changed without a new pre-registration entry and explicit session approval.

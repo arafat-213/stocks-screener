@@ -63,7 +63,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T0 — Lock V3Config, factor list, grids & splits as constants (light / minimal code)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** prereg §11 locked. ✓
 - **Goal:** Pre-commit every v3 choice as code constants so no later session moves the stick.
 - **Do:**
@@ -79,10 +79,10 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 - **Deliverable:** `V3Config` + frozen grids/predicates; a `## Locked decisions (T0)` block
   appended to the top of `00_PREREGISTRATION.md`.
 - **Done-criteria:**
-  - [ ] `V3Config` dataclass exists, separate from `MomentumConfig`; v3-floor defaults set.
-  - [ ] §6 grids + decision predicates frozen as constants.
-  - [ ] Frozen splits imported from `validation.py` (not redefined).
-- **Session log:** _(fill at end)_
+  - [x] `V3Config` dataclass exists, separate from `MomentumConfig`; v3-floor defaults set.
+  - [x] §6 grids + decision predicates frozen as constants.
+  - [x] Frozen splits imported from `validation.py` (not redefined).
+- **Session log:** 2026-06-17 — Created `backend/app/backtest_v2/v3_config.py`: `V3Config` dataclass with v3-floor defaults (`active_factors=["mom_12_1"]`, monthly, M=35); all four coarse grids frozen as module constants; five decision-predicate functions (Calmar vs bench, max-DD ratio, top-10 retention, concentration hard-FAIL); `DISCOVERY`/`FINAL_OOS` re-exported from `validation.py`. `## Locked decisions (T0)` block appended to `00_PREREGISTRATION.md`. All done-criteria met.
 
 ---
 
@@ -234,7 +234,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## Exit criteria for Track A
 
-- [ ] T0 locked (V3Config, grids, predicates, splits reused).
+- [x] T0 locked (V3Config, grids, predicates, splits reused).
 - [ ] T1–T3 infra green (factors, composite signal store, cadence knob) with v2 regression intact.
 - [ ] T4 parity confirmed; turnover layers plateau-selected; realized turnover reported.
 - [ ] T5 factor layers added one at a time; v3 candidate chosen.
