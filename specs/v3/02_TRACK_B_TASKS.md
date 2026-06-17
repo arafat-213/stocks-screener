@@ -353,15 +353,18 @@ on read) — there is no standalone restatement task; the two halves are cross-r
   isolating this revision on a throwaway SQLite DB (`alembic stamp 934e63731fa2` → `upgrade head`
   creates all 4 tables + 6 indexes → `downgrade -1` drops them clean). The full chain can't replay
   on SQLite (earlier migrations use Postgres-only `ALTER ... DROP CONSTRAINT`), and the ORM↔DDL
-  match is corroborated by the SQLite `create_all` the tests run on. **`alembic upgrade head` against
-  the real Postgres still to be confirmed when docker is up.** No ingest, no network, no factor;
-  `FINAL_OOS` untouched.
+  match is corroborated by the SQLite `create_all` the tests run on. **CAVEAT CLOSED (2026-06-17,
+  docker up):** `alembic upgrade head` ran clean against the real Postgres (5434): `934e63731fa2 →
+  c4e1f7a9b2d3`, `alembic current` = `c4e1f7a9b2d3 (head)`; all 4 `fundamentals_*` tables, 6 named
+  indexes, and 3 unique constraints confirmed present in `pg_tables`/`pg_indexes`. No ingest, no
+  network, no factor; `FINAL_OOS` untouched.
 
 ---
 
 ## TB2 — Survivorship-free universe master (populate + cross-check v2)
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-17 — `app/fundamentals/universe.py` (populate + cross-check),
+  5 invariant tests green. See Session log.
 - **Depends on:** TB1.
 - **Goal:** The ISIN set listed at *any* point in-window, including later delisted/merged names —
   the survivorship-free spine the rest of the layer hangs on (§3.1, problem §1.2).
@@ -378,10 +381,36 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     master is flagged, not swallowed.
 - **Deliverable:** populated universe master + cross-check report + tests, green.
 - **Done-criteria:**
-  - [ ] Universe master populated survivorship-free (delisted names present with windows).
-  - [ ] Cross-check vs v2 price universe run; discrepancies surfaced (Rule 12).
-  - [ ] Populate is idempotent + checkpointed; per-ISIN failures logged.
-- **Session log:** _(fill at end)_
+  - [x] Universe master populated survivorship-free (delisted names present with windows).
+  - [x] Cross-check vs v2 price universe run; discrepancies surfaced (Rule 12).
+  - [x] Populate is idempotent + checkpointed; per-ISIN failures logged.
+- **Session log:** 2026-06-17 — **Module** `app/fundamentals/universe.py`. `populate_universe(
+  session, source, run_id, *, resume=True)` idempotently upserts the `fundamentals_universe`
+  master from an injectable `ListingSource` (`Callable[[], Iterable[ListingRecord]]`) — ISIN is
+  the PK so a re-run never duplicates (upsert via `session.get`, refresh-in-place on hit);
+  `resume=True` skips ISINs already checkpointed for the run (crash-recovery), `resume=False`
+  forces a full re-process. **Checkpoint/error plumbing reuses the existing primitives** (Rule 3):
+  `PipelineCheckpoint` (one row per `run_id`+`phase="tb2_universe"`, completed ISINs as the JSON
+  `completed_symbols` array), `PipelineError` + `classify_error` for per-ISIN failures — counters
+  increment **only after a durable commit** (a failed row is rolled back, logged, and skipped, never
+  double-counted or fatal). Empty-ISIN records are rejected as a per-ISIN failure (can't key the
+  master). **Survivorship-free** = `delist_date` retained for delisted names, `NULL` = still-listed
+  open window. **Cross-check** `cross_check_against_price_universe(session, price_isins)` →
+  `CrossCheckReport` flags every price-layer ISIN absent from the master (`missing_from_master`,
+  `.ok`) — surfaced, never dropped (Rule 12); `read_price_universe_isins()` is the thin IO seam over
+  the v2 price layer (`store.read_isin_symbol_map` — one row per ISIN), kept separate so the
+  cross-check is testable without Parquet/disk. **Tests** `tests/unit/test_fundamentals_universe.py`
+  (5, green): DHFL delisting retained with its closed window; re-run idempotent (no dup ISIN,
+  refresh-in-place); a price-ISIN absent from the master is flagged + the clean case is `.ok`; a
+  per-ISIN failure is logged to `PipelineError` (`error_type="unknown"`) and the run continues with
+  the good rows landing; a checkpointed ISIN is skipped on resume. **Scope call (Rule 1/7,
+  surfaced):** TB2 builds the populate *machinery* + cross-check, test-gated against fixture sources
+  (CLAUDE.md §5 — no live NSE in tests). **No concrete exchange listings/delistings fetcher exists in
+  the repo yet** and the source isn't pinned (TB0.5 = NSE-only ≈2020); the production seam
+  `fetch_exchange_listings()` therefore **fails loud** (`NotImplementedError`) rather than fabricating
+  a universe — wiring the real NSE source is a follow-on ingest-source task, and a real populate run
+  against live data has **not** been executed. No schema change (TB1's tables), no network, no
+  factor; `FINAL_OOS` untouched.
 
 ---
 
