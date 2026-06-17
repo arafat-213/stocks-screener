@@ -127,7 +127,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T2 — Composite signal store wired through the engine seam + tests
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T1.
 - **Goal:** Make the multi-factor signal runnable through the **unchanged** engine via the
   `signal_store` seam.
@@ -144,11 +144,24 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
     historical vol-adjusted candidate is NOT the equality target; ledger/determinism unaffected.
 - **Deliverable:** v3 signal store + builder + tests, green; an engine run on a fixture.
 - **Done-criteria:**
-  - [ ] Engine runs with the composite store via the existing `signal_store` param — no
+  - [x] Engine runs with the composite store via the existing `signal_store` param — no
         engine edit required for the ranker.
-  - [ ] Momentum-only composite matches the **raw-momentum v2 reference** ranker exactly (test),
+  - [x] Momentum-only composite matches the **raw-momentum v2 reference** ranker exactly (test),
         per prereg Erratum (T1→T2) — not the vol-adjusted `mom/vol` candidate.
-- **Session log:** _(fill at end)_
+- **Session log:** 2026-06-17 — Created `backend/app/backtest_v2/signals_v3.py`: `V3SignalStore`
+  exposing the exact engine seam (`entry_gate`, `eligible_ranked`) but ordering eligible names by
+  the T1 `composite_rank` instead of v2's `mom/vol`. Gate inputs (close, EMA_200, momentum_12_1,
+  adv_20) are reused **verbatim** from v2's `precompute_signals` via a `_gate_config` projection
+  (Rule 3), so the gate is byte-identical to v2's for the floor. The absolute-momentum filter
+  (`mom>0`) is applied **only while `mom_12_1` is active** (prereg Erratum) — a non-momentum
+  composite must not inherit it. `precompute_v3_signals` builds it once (sweep-ready). Tests:
+  `tests/backtest_v2/test_v3t2_signal_store.py` — 8 cases, all green: end-to-end engine run via
+  the **unchanged** engine (`signal_store` param, no engine edit); **parity** = momentum-only floor
+  ordering equals the raw-momentum v2 reference (v2 `entry_gate` + raw `momentum_12_1` order), NOT
+  the `mom/vol` candidate — scores are percentiles in [0,1] (monotone transform → same order);
+  floor eligibility == v2 gate on warmed-up rebalances; conditional-gate (low-vol composite admits
+  a superset of the momentum gate); determinism. v2 regression intact (`test_t3_signals`,
+  `test_t7_engine`, `test_v3t1_factors` — 58 passed). Both T2 done-criteria met.
 
 ---
 

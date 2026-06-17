@@ -1,0 +1,184 @@
+"""
+signals_v3.py — v3 multi-factor signal store wired through the engine seam (T2).
+
+The v2 engine drives selection entirely off whatever object is passed as
+`signal_store`, querying two methods (engine.py §5.v):
+
+  - entry_gate(day, isin) -> bool                  (binary eligibility)
+  - eligible_ranked(day, isins) -> [(isin, score)] (ordered membership)
+
+So making the multi-factor composite runnable is a SIGNAL-layer change only —
+no engine edit (01 §"What this reuses"). `V3SignalStore` implements that same
+interface but orders eligible names by the T1 rank-blended composite
+(factors.composite_rank) instead of v2's vol-adjusted `mom/vol` ranker.
+
+Separation of concerns (mirrors signals.py):
+  - entry_gate : binary. close > EMA_200, adv_20 floor, AND momentum_12_1 > 0
+                 *only while momentum is an active factor* (prereg Erratum T1→T2 —
+                 the absolute-momentum filter is meaningful only when momentum is
+                 in the composite; a pure low-vol composite must not inherit it).
+  - ranker     : continuous composite rank in [0, 1], higher = better.
+
+Indicator inputs for the gate are reused verbatim from v2's precompute_signals
+(Rule 3) so the gate is byte-identical to v2's for the momentum-only floor — the
+load-bearing property behind the T2 parity check.
+"""
+
+from __future__ import annotations
+
+import math
+from datetime import date
+
+import pandas as pd
+
+from app.backtest_v2 import factors
+from app.backtest_v2.config import MomentumConfig
+from app.backtest_v2.signals import precompute_signals
+from app.backtest_v2.v3_config import V3Config
+
+
+def _gate_config(cfg: V3Config) -> MomentumConfig:
+    """
+    Project the V3Config fields the v2 indicator precompute needs onto a
+    MomentumConfig, so precompute_signals (EMA_200, momentum_12_1, adv_20,
+    annualized_vol) is reused unchanged (Rule 3).
+
+    Only gate/indicator-relevant fields matter here; cadence/sizing fields are
+    carried for completeness but are not consulted by precompute_signals.
+    """
+    return MomentumConfig(
+        target_positions=cfg.target_positions,
+        sell_rank_buffer=cfg.sell_rank_buffer,
+        liquidity_floor_cr=cfg.liquidity_floor_cr,
+        momentum_lookback_days=cfg.momentum_lookback_days,
+        momentum_skip_days=cfg.momentum_skip_days,
+        vol_lookback_days=cfg.vol_lookback_days,
+        trend_ma=cfg.trend_ma,
+        max_position_pct=cfg.max_position_pct,
+        starting_capital=cfg.starting_capital,
+        use_regime_overlay=cfg.use_regime_overlay,
+        catastrophic_stop_pct=cfg.catastrophic_stop_pct,
+        rebalance=cfg.rebalance_cadence,
+        date_from=cfg.date_from,
+        date_to=cfg.date_to,
+    )
+
+
+class V3SignalStore:
+    """
+    Precomputed multi-factor signal cache for one v3 backtest run.
+
+    Built once by precompute_v3_signals(); queried O(1) per (day, isin) by the
+    engine loop. Holds two things:
+      - `_ind`: {isin → DataFrame} v2 indicator cache (gate inputs).
+      - `_composite`: wide (date × isin) composite rank frame (ordering).
+    """
+
+    def __init__(
+        self,
+        ind: dict[str, pd.DataFrame],
+        composite: pd.DataFrame,
+        cfg: V3Config,
+    ) -> None:
+        self._ind = ind
+        self._composite = composite
+        self._cfg = cfg
+        self._liq_floor_rupees: float = cfg.liquidity_floor_cr * 1e7
+        # Absolute-momentum filter applies only when momentum is in the blend.
+        self._momentum_active: bool = "mom_12_1" in cfg.active_factors
+
+    # ------------------------------------------------------------------
+    # Public query interface (matches SignalStore — the engine seam)
+    # ------------------------------------------------------------------
+
+    def entry_gate(self, day: pd.Timestamp | date, isin: str) -> bool:
+        """
+        True iff `isin` is eligible to be held on `day`.
+
+        Conditions (prereg Erratum T1→T2):
+          1. close > EMA_200            (long-term uptrend)
+          2. adv_20 >= liquidity_floor  (decision-date, no lookahead)
+          3. momentum_12_1 > 0          (ONLY while momentum is an active factor)
+
+        Returns False for missing data or NaN in any consulted field.
+        """
+        row = self._ind_row(day, isin)
+        if row is None:
+            return False
+        close = row["close"]
+        ema200 = row["EMA_200"]
+        adv = row["adv_20"]
+        consulted = [close, ema200, adv]
+        if self._momentum_active:
+            consulted.append(row["momentum_12_1"])
+        if any(math.isnan(v) for v in consulted):
+            return False
+        ok = (close > ema200) and (adv >= self._liq_floor_rupees)
+        if self._momentum_active:
+            ok = ok and (row["momentum_12_1"] > 0.0)
+        return bool(ok)
+
+    def ranker(self, day: pd.Timestamp | date, isin: str) -> float:
+        """
+        Composite rank in [0, 1] for (day, isin); higher → better rank.
+
+        Returns NaN if the name has no composite value on `day` (e.g. any active
+        factor is in warmup), so eligible_ranked can drop it deterministically.
+        """
+        ts = pd.Timestamp(day)
+        try:
+            val = self._composite.at[ts, isin]
+        except KeyError:
+            return float("nan")
+        if val is None or pd.isna(val):
+            return float("nan")
+        return float(val)
+
+    def eligible_ranked(
+        self,
+        day: pd.Timestamp | date,
+        isins: list[str],
+    ) -> list[tuple[str, float]]:
+        """
+        Filter `isins` through entry_gate, then sort by composite rank descending.
+
+        Names that pass the gate but have no composite value (NaN — a factor in
+        warmup) are dropped, so the engine never selects an unranked name.
+        """
+        scored = [
+            (isin, self.ranker(day, isin))
+            for isin in isins
+            if self.entry_gate(day, isin)
+        ]
+        scored = [(isin, s) for isin, s in scored if not math.isnan(s)]
+        return sorted(scored, key=lambda x: x[1], reverse=True)
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _ind_row(self, day: pd.Timestamp | date, isin: str) -> pd.Series | None:
+        df = self._ind.get(isin)
+        if df is None:
+            return None
+        ts = pd.Timestamp(day)
+        if ts not in df.index:
+            return None
+        return df.loc[ts]
+
+
+def precompute_v3_signals(prices: pd.DataFrame, cfg: V3Config) -> V3SignalStore:
+    """
+    Precompute the v3 signal store: v2 indicator cache (gate inputs) reused
+    verbatim from precompute_signals, plus the T1 composite rank frame for
+    ordering. Built once so sweeps (T4/T5) don't recompute (mirrors v2).
+
+    `prices` is the long-format multi-ISIN frame from store.read_prices_adjusted
+    (isin, date, open, high, low, close, volume, adv_20).
+    """
+    gate_store = precompute_signals(prices, _gate_config(cfg))
+    # Reach into the v2 store's indicator cache once, at construction, to reuse
+    # its gate inputs (close, EMA_200, momentum_12_1, adv_20) byte-for-byte.
+    ind = gate_store._data
+    composite = factors.composite_rank(prices, cfg)
+    return V3SignalStore(ind, composite, cfg)
