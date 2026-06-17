@@ -108,9 +108,11 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB0.5 — Feasibility probe (fail-fast, before the heavy build)
 
-- **Status:** ☑ done 2026-06-17 — probe run; **qualified NO-GO on the heavy build as narrowly
-  probed** (NSE annual-results XBRL alone fails the §6.1 by-name floor in the early DISCOVERY
-  window). Re-probe with a broader source before TB1; see Session log + recommendation.
+- **Status:** ☑ done 2026-06-17 — probe chain complete (initial → broader → tightening →
+  STEP-1 hole-fill). **Verdict = GO.** Decision resolved + pre-registered: **`DISCOVERY_START`
+  rescoped ≈2020, NSE-only (BSE not built)** — see `00_PREREGISTRATION.md` → "Track-B
+  `DISCOVERY_START` rescope (2026-06-17)". Exact start month pinned at TB7 (full panel, not
+  probe samples). **TB1 is unblocked.** See Session logs below for the measurement trail.
 - **Depends on:** TB0.
 - **Goal:** Answer in **days, not weeks** whether the locked §6.1 by-name coverage floor (75%)
   is even reachable for self-ingested XBRL — so a "data too dirty" outcome stops the program
@@ -267,6 +269,38 @@ on read) — there is no standalone restatement task; the two halves are cross-r
   more data work, shorter clean window; or (B) start ~2019 + run the **BSE-fallback lever** to
   confirm 2019 ≥75% before committing. Either way **no §6 threshold moves.** `FINAL_OOS` untouched;
   no schema, no ingest tables, no factor.
+
+- **Session log — STEP-1 NSE-only hole-fill re-probe (2026-06-17, Arafat: "re-probe 2019 (BSE)
+  first" → "Step-1 first, then reassess"):** Before building any BSE fetcher, filled the
+  previously-unmeasured 2020 / 2021-H1 band with the **existing NSE-only** classifier (added a
+  `--dates` CLI snap-to-nearest-rebalance override; default 4-date sample unchanged, Rule 3).
+  Same seed=20260617, 20 names/date. **Sampling note:** the RNG advances once per date, so each
+  date's 20-name draw depends on date order — 2019-11 here (55%) is a *different* subsample than
+  the tightening run's 2019-11 (65%); both are noisy 20-name point estimates of the same date.
+
+  | rebalance | (a) none | (b) non-std | (c) usable | by-name % | vs 75% |
+  |-----------|----------|-------------|------------|-----------|--------|
+  | 2019-11-29 | 7 | 2 | 11 | 55% | FAIL |
+  | 2020-06-30 | 0 | 0 | 20 | 100% | PASS |
+  | 2020-12-31 | 4 | 0 | 16 | 80% | PASS |
+  | 2021-03-31 | 1 | 1 | 18 | 90% | PASS |
+
+  **Finding — NSE-only crosses the 75% floor between Nov-2019 and Jun-2020, not "~2021".** The
+  prior A-vs-B framing assumed NSE-only cleared 75% only around 2021, making BSE the *only* route
+  to a pre-2021 start — **that assumption is now falsified.** 2019 fails hard (55–65%); 2020-06,
+  2020-12, 2021-03 all PASS (80–100%; noisy 20-name samples but all clear). A **`DISCOVERY_START`
+  ≈ 2020 is feasible on NSE alone**: clears the 75% by-name floor, yields **2–3 expanding
+  walk-forward folds** (`validation.walk_forward_windows`, `min_is_months=24`+`oos_months=6` ⇒
+  30-month floor — the ~2021 window gives 0–1), and **retains the Mar-2020 COVID-crash regime**,
+  the largest regime event in DISCOVERY and exactly the contrast H3 is built to test. **BSE is
+  therefore OFF the critical path:** it could only attempt to rescue 2019 ((a)-bucket misses =
+  IBULHSGFIN/IBREALEST/INFRATEL/SBILIFE/LTI/SPICEJET/BANKBARODA + recent-IPO (b) AFFLE/INDIAMART),
+  buying at most the one extra 2018-19 NBFC-crisis year for the full scrip-map+fetcher build, and
+  **cannot** rescue 2018 (structural). **Recommendation (Rule 12): do NOT build BSE; rescope
+  `DISCOVERY_START` ≈ 2020** — exact durable-≥75% month to be pinned by TB7 over the *full*
+  liquidity-eligible panel (not 20-name samples), never by moving §6. Final §10 pre-registration
+  choice is Arafat's. No §6 threshold moved; `FINAL_OOS` untouched; no schema, no ingest tables,
+  no factor — data-feasibility measurement only.
 
 ---
 
@@ -471,6 +505,11 @@ on read) — there is no standalone restatement task; the two halves are cross-r
       **Verdict = CONDITIONAL GO** — clears §6.1 from ~2020/2021 on; 2018 unrescuable. Decision for
       Arafat: rescope `DISCOVERY_START` to (A) ~2021 (already PASS) or (B) ~2019 + BSE-fallback
       lever. No §6 threshold moved.
+- [x] TB0.5 **STEP-1 hole-fill re-probe** run (2026-06-17): NSE-only coverage **crosses 75%
+      between Nov-2019 and Jun-2020** (2019-11=55% FAIL; 2020-06=100%, 2020-12=80%, 2021-03=90%
+      PASS) → BSE off the critical path. **DECISION RESOLVED (Arafat, 2026-06-17): rescope
+      `DISCOVERY_START` ≈2020, NSE-only, no BSE** — pre-registered in `00_PREREGISTRATION.md`;
+      exact month pinned at TB7. No §6 threshold moved; `FINAL_OOS` pristine. **Probe = GO.**
 - [ ] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.

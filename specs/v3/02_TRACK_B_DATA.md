@@ -200,6 +200,14 @@ the estimate is far below the floor, the right response is to revisit the source
 scope (§8.1 escalation, or a cleaner data source) **before** committing to the build — not to
 lower the gate.
 
+> **COMMITTED 2026-06-17 — the rescope path was taken, not the close-out.** The TB0.5 probe chain
+> (`02_TRACK_B_TASKS.md`) found NSE-only standard-tag coverage crosses the 75%-by-name floor
+> between Nov-2019 and Jun-2020 (2018 = structural XBRL desert, unrescuable). Per the "revisit
+> scope, never lower the gate" rule above, Arafat rescoped **Track-B `DISCOVERY_START` ≈2020,
+> NSE-only (BSE not built)** — binding entry in `00_PREREGISTRATION.md` ("Track-B
+> `DISCOVERY_START` rescope — 2026-06-17"). §6 thresholds unchanged; `FINAL_OOS` pristine; exact
+> start month pinned at TB7.
+
 If §6 cannot be passed (data too sparse / too biased to trust), Track B stops here and v3
 closes as a research note per `00_PREREGISTRATION.md` §10 — FINAL_OOS stays pristine. That is
 a legitimate outcome; manufacturing coverage by loosening §6 after the fact is not.

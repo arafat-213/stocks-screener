@@ -96,6 +96,19 @@ def liquidity_eligible_isins(
     return sorted(eligible["isin"].unique().tolist())
 
 
+def _snap_to_rebalance(requested: list[date], rebal: list) -> list:
+    """Snap each requested calendar date to the nearest monthly rebalance date
+    in the panel (the probe keys Part-A/B off actual rebalance timestamps).
+    De-duplicated, sorted. A requested date with no rebalance within the panel
+    still snaps to the closest available one (surfaced by the printed date)."""
+    snapped = []
+    for req in requested:
+        req_ts = pd.Timestamp(req)
+        nearest = min(rebal, key=lambda d: abs((d - req_ts).days))
+        snapped.append(nearest)
+    return sorted(set(snapped))
+
+
 def _parse_dt(s: str) -> date | None:
     """NSE date strings like '31-Mar-2024' -> date; None on failure."""
     try:
@@ -292,6 +305,15 @@ def main() -> int:
         action="store_true",
         help="run Part B (live NSE XBRL parseability probe). Off by default.",
     )
+    ap.add_argument(
+        "--dates",
+        default="",
+        help=(
+            "comma-separated YYYY-MM-DD list; each snaps to the nearest monthly "
+            "rebalance date. Overrides the default first/1-3/2-3/last sample. "
+            "Use to fill the 2020/2021-H1 coverage holes (TB0.5 Step-1 re-probe)."
+        ),
+    )
     args = ap.parse_args()
 
     cfg = MomentumConfig()
@@ -304,10 +326,18 @@ def main() -> int:
     calendar_ts = [pd.Timestamp(d) for d in calendar]
     rebal = sorted(_rebalance_dates(calendar_ts, cfg.rebalance))
 
-    # Sample 4 rebalance dates spread across DISCOVERY: first, ~1/3, ~2/3, last.
     n = len(rebal)
-    idx = sorted({0, n // 3, (2 * n) // 3, n - 1})
-    sample = [rebal[i] for i in idx]
+    if args.dates.strip():
+        requested = [
+            datetime.strptime(s.strip(), "%Y-%m-%d").date()
+            for s in args.dates.split(",")
+            if s.strip()
+        ]
+        sample = _snap_to_rebalance(requested, rebal)
+    else:
+        # Default: 4 rebalance dates spread across DISCOVERY: first, ~1/3, ~2/3, last.
+        idx = sorted({0, n // 3, (2 * n) // 3, n - 1})
+        sample = [rebal[i] for i in idx]
 
     print(
         f"liquidity floor = Rs {cfg.liquidity_floor_cr:.1f} cr "

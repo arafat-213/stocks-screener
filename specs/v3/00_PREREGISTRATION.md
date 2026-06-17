@@ -308,3 +308,52 @@ one-line change… pass a different callable with the same `(day, isin) → floa
    is itself a finding to report, not to engineer around.
 
 No §9 DoD predicate, no frozen split, and no factor definition is changed by this erratum.
+
+---
+
+## Pre-registration entry — Track-B `DISCOVERY_START` rescope — 2026-06-17
+
+**Approved by Arafat, 2026-06-17.** A new pre-registration entry per the T0 lock rule above.
+It amends **§11 item 4** ("Reuse v2 frozen splits as-is — DISCOVERY unchanged") **for Track B
+only.** Track A is closed and was evaluated on the full `2018-02-06 → 2023-06-30` DISCOVERY;
+this entry does **not** retroactively alter Track A's record or `validation.py`'s canonical v2
+split. **`FINAL_OOS` (2023-07-01 → 2026-06-12) is unchanged and stays pristine.**
+
+### Why (a data-feasibility constraint, not a performance tune)
+
+The TB0.5 probe chain (`02_TRACK_B_TASKS.md`) established that the early-DISCOVERY self-ingest
+XBRL window cannot clear the **§6.1 75%-by-name floor**: 2018 is a structural XBRL desert
+(~5% — FY2017 results XBRL was never published), and 2019 sits at 55–65%. The Step-1 hole-fill
+re-probe showed NSE-only standard-tag coverage **crosses 75% between Nov-2019 and Jun-2020**
+(2020-06=100%, 2020-12=80%, 2021-03=90% on seeded 20-name samples). So the **frozen 2018-start
+DISCOVERY makes the §6 gate unreachable** — TB7 requires ≥75% at *every* monthly rebalance.
+This is a property of the data, not of any threshold.
+
+### The change
+
+1. **Track-B DISCOVERY is rescoped to start ≈ 2020.** The exact start = the earliest monthly
+   rebalance with **durable ≥75% by-name coverage over the full liquidity-eligible panel**,
+   pinned at **TB7** (over the whole panel, *not* 20-name probe samples, and *never* by moving
+   §6). Until TB7 pins it, "≈2020" is the committed scope; no precise constant is frozen early
+   (avoids false precision — the v1 sin).
+2. **Source = NSE-only self-ingest. BSE fallback is NOT built.** It is off the critical path: it
+   could only attempt to rescue 2019 (one extra 2018-19 NBFC-crisis year) and cannot touch 2018.
+   §8.1 keeps BSE as a *sanctioned remedy* only if a specific BSE-only gap later breaks the floor
+   — more input against an unchanged threshold, never HARKing.
+
+### What is explicitly NOT changed (the guards)
+
+- **§6 thresholds unchanged** — 90%-by-weight AND 75%-by-name dual gate intact. This moves the
+  *window*, not the *measuring stick*. Manufacturing the early window by loosening §6 is forbidden.
+- **`FINAL_OOS` unchanged and pristine** (post-2023 coverage ~95%, feasible regardless).
+- **No §9 DoD predicate lowered.** Walk-forward machinery (`walk_forward_windows`,
+  `min_is_months=24`+`oos_months=6`) unchanged — the ≈2020 start still yields **2–3 expanding
+  folds** (the dominated ~2021 alternative would have given 0–1).
+
+### Cost acknowledged (Rule 12, no overselling)
+
+DISCOVERY shortens from ~5.4 yr to ~3.5 yr, losing the 2018 mid-cap crash and the 2018-19 NBFC
+crisis from the in-sample window. It **retains the Mar-2020 COVID crash** — the largest regime
+contrast in the panel and exactly the diversification H3 is built to test. A shorter window that
+still spans a genuine crash is the honest maximum the data supports; the alternative (a clean
+but regime-thin ~2021 start, or a speculative BSE build for one extra year) was rejected.
