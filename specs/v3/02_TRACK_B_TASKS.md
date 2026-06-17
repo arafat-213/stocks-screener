@@ -108,7 +108,9 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB0.5 — Feasibility probe (fail-fast, before the heavy build)
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-17 — probe run; **qualified NO-GO on the heavy build as narrowly
+  probed** (NSE annual-results XBRL alone fails the §6.1 by-name floor in the early DISCOVERY
+  window). Re-probe with a broader source before TB1; see Session log + recommendation.
 - **Depends on:** TB0.
 - **Goal:** Answer in **days, not weeks** whether the locked §6.1 by-name coverage floor (75%)
   is even reachable for self-ingested XBRL — so a "data too dirty" outcome stops the program
@@ -138,13 +140,133 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 - **Deliverable:** a short coverage-feasibility estimate (by-name %, sample dates, name counts)
   in the session log — a **report, not a gate edit**.
 - **Done-criteria:**
-  - [ ] Liquidity-eligible denominator computed for the sampled dates (reusing the v2 floor).
-  - [ ] **Standard-tag-parseable** (not file-exists) by-name coverage reported against the 75%
+  - [x] Liquidity-eligible denominator computed for the sampled dates (reusing the v2 floor).
+  - [x] **Standard-tag-parseable** (not file-exists) by-name coverage reported against the 75%
         floor, conservative (custom/extension tags = miss), with the (a)/(b)/(c) breakdown.
-  - [ ] Explicit go / no-go recommendation stated (Rule 12): clearly above → proceed to TB1;
-        far below → **STOP**, revisit source/universe (§8.1 escalation or cleaner source)
-        **before** building. The probe never lowers the §6 thresholds.
-- **Session log:** _(fill at end)_
+  - [x] Explicit go / no-go recommendation stated (Rule 12): **qualified NO-GO** on the heavy
+        build as narrowly probed → widen the source (§8.1-sanctioned) and re-probe **before**
+        TB1. The probe did not lower any §6 threshold.
+- **Session log:** 2026-06-17 — Probe built in `app/fundamentals/tb0_5_probe.py` (Part A offline,
+  Part B `--live`). **Part A — §6.1 denominator** (liquidity-eligible = v2 entry-gate `adv_20`
+  ≥ ₹5 cr, NOT raw membership), 4 DISCOVERY rebalance dates over a 2,452-ISIN price panel:
+  2018-02-28 → 417 names; 2019-11-29 → 304; 2021-09-30 → 637; 2023-06-30 → 747. So the 75%
+  floor needs standard-tag fundamentals for ~225–560 names/date.
+  **Part B — standard-tag parseability** (LIVE NSE annual financial-results XBRL; std namespace
+  `in-bse-fin`; usable = both `net_income`=`ProfitLossForPeriod` AND `total_equity`=`Equity`/
+  `EquityAttributableToOwnersOfParent` OR the standard component pair `PaidUpValueOfEquity
+  ShareCapital`+`ReserveExcludingRevaluationReserves`; conservative lower bound; seed=20260617,
+  20 names/date):
+
+  | rebalance | (a) no XBRL | (b) non-std/custom | (c) usable | by-name % | vs 75% |
+  |-----------|-------------|--------------------|------------|-----------|--------|
+  | 2018-02-28 | 17 | 2 | 1 | 5%  | FAIL |
+  | 2019-11-29 |  7 | 0 | 13 | 65% | FAIL |
+  | 2021-09-30 |  2 | 4 | 14 | 70% | FAIL |
+  | 2023-06-30 |  2 | 1 | 17 | 85% | PASS |
+
+  **Finding 1 — the blocker is AVAILABILITY (bucket a), not PARSEABILITY (bucket b).** The
+  reviewer's feared dominant Indian failure mode (core items in custom/extension taxonomy
+  namespaces) is *small* here: (b) = 0–4/20. When a structured XBRL exists it maps to standard
+  Ind-AS tags cleanly; the residual (b) misses are almost all **banks/NBFCs** (SOUTHBANK,
+  DCBBANK, BANKINDIA → bank P&L under a non-standard element; CHOLAFIN → NBFC equity) — a known,
+  bounded gap. **Finding 2 — coverage is strongly TIME-DEPENDENT:** ~5% (2018) → 65% (2019) →
+  70% (2021) → 85% (2023). FY2017-era filings are `format="Old"` with the `xbrl` field = `"-"`
+  (URL 404s) — **structured NSE results XBRL did not exist yet for early DISCOVERY.** **Caveat —
+  these are a conservative LOWER BOUND:** the probe used `period=Annual` only, so names whose
+  full-year balance sheet arrives via their Q4 quarterly/half-yearly filing show up as (a)
+  "no-annual-filings" (e.g. TATAMOTORS, SPICEJET) though their data likely exists under another
+  filing type. True coverage is somewhat higher than the table.
+  **Recommendation (Rule 12): QUALIFIED NO-GO on building TB1–TB6 against NSE annual-results
+  XBRL alone** — it cannot clear the 75% by-name floor across the *full* pre-registered DISCOVERY
+  window (2018 ≈ 5% is a hard floor breach). **Do NOT lower §6 (HARKing).** Because the failure
+  is availability not parseability, two §8.1-sanctioned "more INPUT, same threshold" levers
+  should be re-probed cheaply *before* the heavy build: (1) broaden the filing source beyond
+  `period=Annual` to include Q4 quarterly + half-yearly XBRL (recovers the TATAMOTORS-type (a)
+  misses); (2) add BSE XBRL fallback for NSE-missing names. If 2019+ then clears 75%, proceed to
+  TB1 with the panel start set where structured XBRL becomes dense. **The 2018 hole may be
+  structural** (no exchange published results XBRL for FY2017) — if the re-probe confirms it, the
+  only honest fixes are a later `PANEL_START` / a shorter DISCOVERY (a **pre-registration**
+  change for Arafat to decide, §10) or a non-XBRL structured source for the early years — never a
+  threshold edit. `FINAL_OOS` untouched; no schema, no ingest tables, no factor.
+
+- **Session log — BROADER RE-PROBE (2026-06-17):** Ran the first §8.1 lever. `tb0_5_probe.py`
+  extended to **pool the Annual + Half-Yearly + Quarterly NSE feeds** (`_PERIODS`), modelling the
+  real as-of reader: a line item counts as available if it resolves to a standard tag in *any*
+  filing ≤ as_of. Same seed/sample/classifier → apples-to-apples. **Implementation note (a real
+  bug, fixed):** Indian **Quarterly** results XBRL is **P&L-only** — `total_equity` (the balance
+  sheet) appears only in **Annual / Half-Yearly** filings. A first newest-first download walk
+  spent the per-name budget on quarterly P&L docs and never reached the BS, manufacturing a mass
+  of false `missing-standard:total_equity` (it dropped 2019→15%, 2021→25%). Fixed by ordering
+  candidates **by filing-type (Annual→Half-Yearly→Quarterly), newest within each** so a
+  BS-bearing filing is checked first (yields both items in one download). Corrected result:
+
+  | rebalance | (a) none | (b) non-std | (c) usable | by-name % | vs 75% | Δ vs annual-only |
+  |-----------|----------|-------------|------------|-----------|--------|------------------|
+  | 2018-02-28 | 17 | 2 | 1  | 5%  | FAIL | unchanged |
+  | 2019-11-29 |  4 | 3 | 13 | 65% | FAIL | (a)→(b); coverage flat |
+  | 2021-09-30 |  1 | 5 | 14 | 70% | FAIL | (a)→(b); coverage flat |
+  | 2023-06-30 |  1 | 2 | 17 | 85% | PASS | unchanged |
+
+  **Finding — source-broadening recovered AVAILABILITY but did NOT lift coverage.** Bucket (a)
+  fell at every date (TATAMOTORS-type misses recovered), but the recovered names landed in (b),
+  not (c): they are **recent IPOs with a quarterly P&L on file but no annual balance sheet yet**
+  (SWSOLAR, AFFLE, HUDCO @2019) — so `total_equity` is *genuinely* unavailable at that date, a
+  real miss, not an artifact. **2019 stays 65%, 2021 stays 70% — both still FAIL.** The residual
+  (c)-blockers changed character and are now identifiable: (i) **2018 = structural** (17/20 have
+  no XBRL document — unfixable within NSE); (ii) **banks/NBFCs** consistently in (b) across
+  2021/2023 (SOUTHBANK, DCBBANK, CHOLAFIN, BANKINDIA, KARURVYSYA — sector-specific P&L/equity
+  elements not mapped to the non-financial standard tags — a **TB4 parser-scope** item, bounded);
+  (iii) a few **probe-side symbol-resolution misses** ("no-filings" for TATAMOTORS/SPICEJET/NIACL/
+  L&TFH — the bhavcopy symbol on that date didn't resolve at NSE's results API; a real TB3
+  ISIN→symbol PIT map would recover these). (i) is structural; (ii)+(iii) are build-addressable,
+  so the *measured* 65/70% for 2019+ is still a conservative lower bound on what TB3+TB4 could
+  reach. **Refined recommendation (Rule 12): the early-window NO-GO HARDENS.** Broadening the NSE
+  source — the cheapest lever — did not clear 75% for 2019/2021, and **2018 is a structural XBRL
+  desert that no NSE source-broadening can fix.** The honest forward path is therefore a
+  **pre-registration decision for Arafat (§10), not a threshold edit:** move `PANEL_START` /
+  `DISCOVERY_START` forward to where structured XBRL is dense (≥2022 by this probe) — but that
+  shortens DISCOVERY materially (~2018–2023 → ~1.5 yr), a research-design tradeoff, not a
+  data-quality fix. The two remaining cheap levers (BSE fallback for the symbol-miss/no-filings
+  names; bank/NBFC tag mapping folded into TB4 scope) target (ii)+(iii) but **cannot rescue
+  2018**, so they don't change the rescope decision — they only matter *after* a forward
+  `DISCOVERY_START` is chosen. **BSE fallback not yet run** (deferred: it cannot move the binding
+  2018 constraint, so it is not on the critical path to the rescope call). `FINAL_OOS` untouched;
+  still no schema, no ingest tables, no factor — data-feasibility measurement only.
+
+- **Session log — TIGHTENING re-probe (2026-06-17, Arafat: "tighten 2019+ first"):** Measured the
+  *buildable ceiling* by closing the two non-structural miss-modes the broader re-probe exposed.
+  **Diagnostics (live, targeted):** (iii) the "no-filings" names (TATAMOTORS/SPICEJET/NIACL)
+  return a **genuinely empty** list from NSE's `corporates-financial-results` API across all
+  periods — **not** symbol typos (other names resolve on the same session); so (iii) is **not** a
+  cheap TB3 symbol-map fix — these names need a **different source (BSE / NSE archive)**, folding
+  into the BSE lever. (ii) the bank/NBFC `missing-standard:net_income` misses are **not**
+  custom-namespace: banks file under the **standard `in-bse-fin`** namespace but use the PAT
+  element **`ProfitLossForThePeriod`** / `ProfitLossFromOrdinaryActivitiesAfterTax`, which the
+  recognizer's `_NET_INCOME_TAGS` (`ProfitLossForPeriod` only) didn't match — a **false** miss.
+  Completing `_NET_INCOME_TAGS` with these *verified-standard* variants tightens the lower bound
+  toward true coverage **without touching the 75% floor** (not HARKing — correctly counting
+  filings that genuinely carry the item under a standard tag). **Tightened result (same
+  seed/sample):**
+
+  | rebalance | (a) none | (b) non-std | (c) usable | by-name % | vs 75% | Δ vs broadened |
+  |-----------|----------|-------------|------------|-----------|--------|----------------|
+  | 2018-02-28 | 17 | 2 | 1  | 5%  | FAIL | unchanged (structural) |
+  | 2019-11-29 |  4 | 3 | 13 | 65% | FAIL | unchanged |
+  | 2021-09-30 |  1 | 2 | 17 | **85%** | **PASS** | +15pp (3 names flipped to c) |
+  | 2023-06-30 |  1 | 0 | 19 | **95%** | **PASS** | +10pp (2 banks flipped to c) |
+
+  **Finding — 2021 & 2023 clear 75% decisively; the "bank gap" was a probe artifact.** Binding
+  constraints isolate to two windows: (1) **2018 = structural XBRL desert** (17/20 no document —
+  unfixable in any source); (2) **2019 = 65%, fully non-structural** — residual = 4 NSE-API-empty
+  names (BSE-fallback recoverable), 2 genuine Aug-2019 IPOs with no annual BS yet (SWSOLAR/AFFLE —
+  truly unavailable), 1 equity-tag variant (HUDCO, resolves to (c) by 2023). 2019's buildable
+  ceiling is plausibly ~80–90% **once BSE fallback is added** — the one untested lever — but is
+  **not yet measured ≥75%**. **Refined verdict (Rule 12): CONDITIONAL GO.** Self-ingested NSE XBRL
+  (with the standard PAT recognizer) clears §6.1 from ~2020/2021 onward; 2018 cannot be rescued.
+  Forward = the §10 **`DISCOVERY_START` rescope** (Arafat's): (A) start ~2021 — already PASS, no
+  more data work, shorter clean window; or (B) start ~2019 + run the **BSE-fallback lever** to
+  confirm 2019 ≥75% before committing. Either way **no §6 threshold moves.** `FINAL_OOS` untouched;
+  no schema, no ingest tables, no factor.
 
 ---
 
@@ -336,8 +458,19 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 ## Exit criteria for the Track-B data layer
 
 - [x] TB0 locked (§8 thresholds frozen as constants; spec committed, no longer DRAFT).
-- [ ] TB0.5 feasibility probe run; by-name coverage estimate reported; go/no-go stated before
-      any TB1–TB6 build (fail-fast — never lowers the §6 thresholds).
+- [x] TB0.5 feasibility probe run (2026-06-17); by-name coverage reported (5/65/70/85% across
+      DISCOVERY); **qualified NO-GO** stated — re-probe broader source before any TB1–TB6 build;
+      no §6 threshold lowered.
+- [x] TB0.5 **broader re-probe** run (2026-06-17): pooled Annual+Half-Yearly+Quarterly NSE feeds.
+      Recovered availability but coverage held (5/65/70/85%) — 2019/2021 still FAIL 75%; 2018 is a
+      structural XBRL desert. Forward path = `PANEL_START`/`DISCOVERY_START` rescope (a **§10
+      pre-registration decision for Arafat**, not a threshold edit). No §6 threshold moved.
+- [x] TB0.5 **tightening re-probe** run (2026-06-17): completed `_NET_INCOME_TAGS` with the
+      verified-standard bank PAT variants → **2021=85% PASS, 2023=95% PASS**; 2019=65% (non-
+      structural residual: BSE-recoverable + 2 genuine recent-IPO gaps); 2018=5% structural.
+      **Verdict = CONDITIONAL GO** — clears §6.1 from ~2020/2021 on; 2018 unrescuable. Decision for
+      Arafat: rescope `DISCOVERY_START` to (A) ~2021 (already PASS) or (B) ~2019 + BSE-fallback
+      lever. No §6 threshold moved.
 - [ ] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.
