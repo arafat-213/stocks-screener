@@ -182,14 +182,23 @@ THIS SPEC (02) → lock §8 → FEASIBILITY PROBE (TB0.5) → build §3 componen
 ```
 
 **Feasibility probe (TB0.5) — fail fast before the heavy build.** Before TB1–TB6 are built,
-a cheap spike measures the realistically-achievable **by-name** parseable-XBRL coverage over
-the *liquidity-eligible* DISCOVERY universe (§6.1 denominator) at a handful of sample dates.
-It does **not** build the full pipeline — it estimates whether the locked §6.1 floors are even
-reachable, so a "data too dirty" outcome costs days, not the weeks of TB1–TB6. The probe
-**reports** an estimate; it never *moves* the §6 thresholds (those stay locked). If the probe's
-estimate is far below the floor, the right response is to revisit the source / universe scope
-(§8.1 escalation, or a cleaner data source) **before** committing to the build — not to lower
-the gate.
+a cheap spike measures the realistically-achievable **by-name** coverage over the
+*liquidity-eligible* DISCOVERY universe (§6.1 denominator) at a handful of sample dates. It
+does **not** build the full pipeline — it estimates whether the locked §6.1 floors are even
+reachable, so a "data too dirty" outcome costs days, not the weeks of TB1–TB6.
+
+> **"Parseable" means standard-tag-resolvable, not file-exists.** The binding Indian failure
+> mode is not *missing* filings but filings whose core line items use **custom/extension
+> taxonomy tags** a standardized schema cannot resolve — the file exists yet is unparseable.
+> So the probe counts a name as covered only when its minimal core items (`net_income`,
+> `total_equity`, …) resolve to **standard Ind-AS tags**; custom-extension / ambiguous / absent
+> all count as misses (conservative → the estimate is a lower bound). Checking mere file
+> existence would overstate coverage and defeat the probe.
+
+The probe **reports** an estimate; it never *moves* the §6 thresholds (those stay locked). If
+the estimate is far below the floor, the right response is to revisit the source / universe
+scope (§8.1 escalation, or a cleaner data source) **before** committing to the build — not to
+lower the gate.
 
 If §6 cannot be passed (data too sparse / too biased to trust), Track B stops here and v3
 closes as a research note per `00_PREREGISTRATION.md` §10 — FINAL_OOS stays pristine. That is

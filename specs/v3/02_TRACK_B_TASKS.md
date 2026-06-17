@@ -109,17 +109,29 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     dates: the ISINs passing the v2 entry-gate `adv_20` liquidity floor on those dates
     (liquidity-eligible universe — *not* raw `universe_membership`). Reuse the existing v2 gate
     inputs; locate via the graph, do not reimplement the floor.
-  - For that name set, **estimate** parseable-XBRL availability: of those ISINs, what fraction
-    have a retrievable, parseable Ind-AS financial-results filing near each date? A *thin*
-    probe — fetch + attempt-parse a sample, or inspect the exchange filing index — **not** the
-    TB3/TB4 pipeline. Mock/fixture network in tests; a real one-off measurement run is fine but
-    logged and bounded.
-  - Report the estimated by-name coverage % vs the 75% floor, with the sampled dates and counts.
+  - For that name set, **estimate STANDARD-TAG-parseable coverage — not file existence.**
+    "Usable" for the probe = the **minimal core line items** the Track-B factors actually need
+    (at least `net_income` and `total_equity`; `revenue`/`total_assets` if cheap) **resolve to
+    standard Ind-AS taxonomy tags** in the filing. **A filing whose core items sit in
+    custom/extension taxonomy namespaces counts as a MISS** (the "file exists but is
+    unparseable by a standard schema" case — the dominant Indian failure mode, esp. below the
+    top 500). Checking only "does an XBRL file exist?" overestimates and is **forbidden** here.
+  - Keep it **conservative by construction** so the estimate is a *lower bound*: custom-tag →
+    miss, ambiguous mapping → miss, missing file → miss. A "go" from a conservative probe is
+    trustworthy; a "no-go" is honest. This is a *thin* standard-tag extraction on a sample —
+    **not** TB4's full mapping table, restatement logic, or all 8 fields. Mock/fixture network
+    in tests; a real one-off measurement run is fine but logged and bounded.
+  - Report by-name coverage % vs the 75% floor **with the three-way breakdown** per sampled
+    date: (a) no filing, (b) filing present but core items in custom/extension tags
+    (unmappable), (c) core items resolve to standard tags. The (b) bucket is the signal that
+    most directly informs buy-vs-build — a large (b) means self-ingest parsing will be painful
+    even where filings exist.
 - **Deliverable:** a short coverage-feasibility estimate (by-name %, sample dates, name counts)
   in the session log — a **report, not a gate edit**.
 - **Done-criteria:**
   - [ ] Liquidity-eligible denominator computed for the sampled dates (reusing the v2 floor).
-  - [ ] Estimated parseable-XBRL by-name coverage reported against the 75% floor.
+  - [ ] **Standard-tag-parseable** (not file-exists) by-name coverage reported against the 75%
+        floor, conservative (custom/extension tags = miss), with the (a)/(b)/(c) breakdown.
   - [ ] Explicit go / no-go recommendation stated (Rule 12): clearly above → proceed to TB1;
         far below → **STOP**, revisit source/universe (§8.1 escalation or cleaner source)
         **before** building. The probe never lowers the §6 thresholds.
