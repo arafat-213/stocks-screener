@@ -88,7 +88,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T1 — Factor library (`factors.py`) + composite + tests
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T0.
 - **Goal:** The reusable, pure factor primitives — no engine wiring yet.
 - **Do:**
@@ -103,9 +103,25 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
     fixture. Mock all data (no live yfinance/NSE).
 - **Deliverable:** `factors.py` + test module, all green.
 - **Done-criteria:**
-  - [ ] All 5 Track-A factors implemented as pure functions, unit-tested.
-  - [ ] Composite rank-blend + smoothing implemented + tested (outlier-robustness test).
-- **Session log:** _(fill at end)_
+  - [x] All 5 Track-A factors implemented as pure functions, unit-tested.
+  - [x] Composite rank-blend + smoothing implemented + tested (outlier-robustness test).
+- **Session log:** 2026-06-17 — Created `backend/app/backtest_v2/factors.py`: five Track-A
+  factors as pure functions over the long prices frame, each returning a wide (date × isin)
+  raw frame oriented higher-is-better — `momentum` (reused for 12-1 & 6-1, via v2's
+  `_momentum_12_1` integer-position helper, Rule 3), `low_volatility` (negated annualised
+  vol, same formula as `signals.py`), `trend_quality` (fraction of up-days), and
+  `short_term_reversal` (negated 1M return). `composite_rank` percentile-ranks each active
+  factor cross-sectionally (`rank(axis=1, pct=True)`), equal-weight blends (require-all-present
+  NaN semantics), and applies optional N-month (N×21 trading-day) smoothing. Tests:
+  `tests/backtest_v2/test_v3t1_factors.py` — 15 cases, all green; factor sign/monotonicity,
+  single-factor composite == pct rank, equal-weight blend, outlier-magnitude invariance (the
+  rank-blend-not-z-blend guard), smoothing-reduces-churn. v2 `test_t3_signals.py` regression
+  intact (32 passed). **Note for T2/T4 parity:** the v3 floor factor `mom_12_1` is RAW 12-1
+  return (prereg §4), whereas v2's candidate ranks by `momentum_12_1 / vol`. So the
+  *momentum-only composite* reproduces v2's *eligibility/direction* but not its exact
+  vol-adjusted ordering — the T2 "reproduces v2 ranking order" / T4 parity check must be read
+  against the prereg's raw-momentum definition, or `low_vol` added to recover vol-adjustment.
+  Flagged, not resolved here (out of T1 scope).
 
 ---
 
