@@ -130,13 +130,24 @@ These are the genuinely momentum-orthogonal factors — the H3 fix §6.4 needs.
 
 Pure data-quality checks — **no factor returns, no Calmar.** All on the historical panel:
 
-1. **Coverage (dual gate — both must hold at each monthly rebalance date).** Of the DISCOVERY
-   universe, ≥ **90% by market-cap weight AND ≥ 75% by name** has ≥ 1 usable TTM fundamental
-   set available (§8.2 locked). The weight floor certifies the large caps are covered; the
-   **by-name floor guards breadth** — it fails a cap-heavy but name-thin panel that could pass
-   on weight alone, because such a panel cannot support the broad, de-concentrated portfolio
-   Track B is being built to test (§6.2 / H3). The 75% (not 90%+) by-name level tolerates that
-   the messy/late-filing SME tail may legitimately lack clean fundamentals.
+1. **Coverage (dual gate — both must hold at each monthly rebalance date).** Of the
+   **liquidity-eligible DISCOVERY universe** (denominator defined below), ≥ **90% by market-cap
+   weight AND ≥ 75% by name** has ≥ 1 usable TTM fundamental set available (§8.2 locked). The
+   weight floor certifies the large caps are covered; the **by-name floor guards breadth** — it
+   fails a cap-heavy but name-thin panel that could pass on weight alone, because such a panel
+   cannot support the broad, de-concentrated portfolio Track B is being built to test (§6.2 /
+   H3). The 75% (not 90%+) by-name level tolerates that the messy/late-filing SME tail may
+   legitimately lack clean fundamentals.
+
+   > **Coverage denominator (pinned).** The denominator is the set of ISINs that **pass the v2
+   > entry-gate liquidity floor** (`adv_20` floor, applied at rebalance time in the existing
+   > signal layer) on each DISCOVERY rebalance date — i.e. the names the strategy could
+   > actually *hold* — **not** raw `universe_membership` (every EQ-series ISIN that ever printed
+   > in bhavcopy). Rationale: Track-B factors only need fundamentals for *tradeable* names;
+   > scoring coverage over micro-caps that fail the liquidity floor (and can never be selected)
+   > measures the wrong thing and would make the gate fail on names that are irrelevant to the
+   > strategy. This pins a previously-ambiguous "DISCOVERY universe" reference and does **not**
+   > change the 90% / 75% thresholds — it defines what they are a percentage *of*.
 2. **PIT integrity.** No record is ever readable before its `available_date`; an automated
    replay confirms `available_date ≤ D` for every figure returned by the as-of reader at a
    sample of historical `D`s. Zero violations — hard fail on any (Rule 12).
@@ -158,16 +169,27 @@ sin applied to data).
 ## 7. Sequencing (how this feeds the factor prereg)
 
 ```
-THIS SPEC (02)  →  lock §8  →  build §3 components  →  pass §6 acceptance gate
-                                                              │
-                                                              ▼
-                          03_TRACK_B_PREREG.md  (commit value/quality factors,
-                          H3 test, coarse grids — BEFORE any backtest)
-                                                              │
-                                                              ▼
-                          02_TRACK_B_TASKS.md execution on DISCOVERY (§6 of 00),
-                          then the one-shot FINAL_OOS, same §9 DoD bar as v2
+THIS SPEC (02) → lock §8 → FEASIBILITY PROBE (TB0.5) → build §3 components → pass §6 gate
+                                   │ fail-fast                                     │
+                                   ▼                                               ▼
+                    if probe ✗: STOP — do not build         03_TRACK_B_PREREG.md  (commit
+                    TB1–TB6; revisit source/universe        value/quality factors, H3 test,
+                    (research note, FINAL_OOS pristine)      coarse grids — BEFORE any backtest)
+                                                                          │
+                                                                          ▼
+                                            02_TRACK_B_TASKS.md execution on DISCOVERY (§6 of 00),
+                                            then the one-shot FINAL_OOS, same §9 DoD bar as v2
 ```
+
+**Feasibility probe (TB0.5) — fail fast before the heavy build.** Before TB1–TB6 are built,
+a cheap spike measures the realistically-achievable **by-name** parseable-XBRL coverage over
+the *liquidity-eligible* DISCOVERY universe (§6.1 denominator) at a handful of sample dates.
+It does **not** build the full pipeline — it estimates whether the locked §6.1 floors are even
+reachable, so a "data too dirty" outcome costs days, not the weeks of TB1–TB6. The probe
+**reports** an estimate; it never *moves* the §6 thresholds (those stay locked). If the probe's
+estimate is far below the floor, the right response is to revisit the source / universe scope
+(§8.1 escalation, or a cleaner data source) **before** committing to the build — not to lower
+the gate.
 
 If §6 cannot be passed (data too sparse / too biased to trust), Track B stops here and v3
 closes as a research note per `00_PREREGISTRATION.md` §10 — FINAL_OOS stays pristine. That is

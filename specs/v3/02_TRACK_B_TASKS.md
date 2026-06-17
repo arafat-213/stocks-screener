@@ -52,7 +52,8 @@ from `backtest_v2/` so the existing pipeline stays runnable.
 
 ```
 TB0 (lock §8 decisions as committed constants — light, NO ingest code)
-   └─> TB1 (storage schema: Alembic migration + ORM models for the PIT tables)
+   └─> TB0.5 (feasibility probe — fail-fast: is §6.1 by-name coverage even reachable?)
+          └─> TB1 (storage schema: Alembic migration + ORM models for the PIT tables)
             ├─> TB2 (survivorship-free universe master — populate + cross-check v2)
             │      └─> TB3 (filing-index ingest — the PIT clock)
             │             └─> TB4 (XBRL parser → standardized line items + restatement WRITE-side)
@@ -96,10 +97,40 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ---
 
-## TB1 — Storage schema: Alembic migration + ORM models for the PIT tables
+## TB0.5 — Feasibility probe (fail-fast, before the heavy build)
 
 - **Status:** ☐
 - **Depends on:** TB0.
+- **Goal:** Answer in **days, not weeks** whether the locked §6.1 by-name coverage floor (75%)
+  is even reachable for self-ingested XBRL — so a "data too dirty" outcome stops the program
+  *before* TB1–TB6 are built (the reviewer's "don't waste two months" risk).
+- **Do:**
+  - Compute the **§6.1 denominator** for a small handful (e.g. 3–4) of DISCOVERY rebalance
+    dates: the ISINs passing the v2 entry-gate `adv_20` liquidity floor on those dates
+    (liquidity-eligible universe — *not* raw `universe_membership`). Reuse the existing v2 gate
+    inputs; locate via the graph, do not reimplement the floor.
+  - For that name set, **estimate** parseable-XBRL availability: of those ISINs, what fraction
+    have a retrievable, parseable Ind-AS financial-results filing near each date? A *thin*
+    probe — fetch + attempt-parse a sample, or inspect the exchange filing index — **not** the
+    TB3/TB4 pipeline. Mock/fixture network in tests; a real one-off measurement run is fine but
+    logged and bounded.
+  - Report the estimated by-name coverage % vs the 75% floor, with the sampled dates and counts.
+- **Deliverable:** a short coverage-feasibility estimate (by-name %, sample dates, name counts)
+  in the session log — a **report, not a gate edit**.
+- **Done-criteria:**
+  - [ ] Liquidity-eligible denominator computed for the sampled dates (reusing the v2 floor).
+  - [ ] Estimated parseable-XBRL by-name coverage reported against the 75% floor.
+  - [ ] Explicit go / no-go recommendation stated (Rule 12): clearly above → proceed to TB1;
+        far below → **STOP**, revisit source/universe (§8.1 escalation or cleaner source)
+        **before** building. The probe never lowers the §6 thresholds.
+- **Session log:** _(fill at end)_
+
+---
+
+## TB1 — Storage schema: Alembic migration + ORM models for the PIT tables
+
+- **Status:** ☐
+- **Depends on:** TB0, TB0.5 (probe go).
 - **Goal:** The tables the whole layer writes to, created the only sanctioned way (Alembic),
   with the restatement-versioning key baked into the schema.
 - **Do:**
@@ -258,9 +289,11 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 - **Do:** Run, each with an explicit pass/fail (Rule 12); all on the **historical panel**, no
   factor returns, no Calmar, `FINAL_OOS` untouched. Thresholds come from `data_config.py`
   (TB0) — **do not** introduce a threshold here that TB0 did not fix.
-  1. **Coverage (dual)** — ≥ `COVERAGE_THRESHOLD_WEIGHT` (0.90) of DISCOVERY by market-cap
-     weight **AND** ≥ `COVERAGE_THRESHOLD_NAME` (0.75) by name has ≥ 1 usable TTM set at each
-     monthly rebalance date. Both must hold; the by-name floor is the breadth guard.
+  1. **Coverage (dual)** — over the **liquidity-eligible DISCOVERY universe** (names passing the
+     v2 entry-gate `adv_20` floor on each rebalance date — the §6.1 pinned denominator, *not*
+     raw `universe_membership`), ≥ `COVERAGE_THRESHOLD_WEIGHT` (0.90) by market-cap weight
+     **AND** ≥ `COVERAGE_THRESHOLD_NAME` (0.75) by name has ≥ 1 usable TTM set at each monthly
+     rebalance date. Both must hold; the by-name floor is the breadth guard.
   2. **PIT integrity** — automated replay: every figure the as-of reader returns at a sample of
      historical `D`s satisfies `available_date ≤ D − lag`. **Zero** violations — hard fail on any.
   3. **Survivorship presence** — a pre-listed, independently-assembled set of known in-window
@@ -282,6 +315,8 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 ## Exit criteria for the Track-B data layer
 
 - [ ] TB0 locked (§8 thresholds frozen as constants; spec committed, no longer DRAFT).
+- [ ] TB0.5 feasibility probe run; by-name coverage estimate reported; go/no-go stated before
+      any TB1–TB6 build (fail-fast — never lowers the §6 thresholds).
 - [ ] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.
