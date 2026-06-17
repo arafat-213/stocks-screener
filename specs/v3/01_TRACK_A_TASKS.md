@@ -326,7 +326,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T6 — Robustness battery on the v3 candidate (§6 gate)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T5.
 - **Goal:** Subject the v3 candidate to all five §6 checks before it nears FINAL_OOS.
 - **Do:** Reuse `robustness.py`'s five checks (cost stress, universe perturbation, neighborhood,
@@ -335,15 +335,44 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
   > 5× the mean of other positive periods → FAIL), per the T4-v2 diagnosis note.
 - **Deliverable:** per-check pass/fail table for the v3 candidate.
 - **Done-criteria:**
-  - [ ] All five §6 checks run; each explicit pass/fail (Rule 12); any fail blocks T7.
-  - [ ] §6.4 concentration hardened.
-- **Session log:** _(fill at end)_
+  - [x] All five §6 checks run; each explicit pass/fail (Rule 12); any fail blocks T7.
+  - [x] §6.4 concentration hardened.
+- **Session log (2026-06-17):**
+  - Built `backend/app/backtest_v2/t6_robustness.py` — a sibling runner (like t4/t5),
+    DISCOVERY only, regime ON, FINAL_OOS untouched. Candidate is the T5-locked config
+    `[mom_12_1, low_vol, trend_quality, mom_6_1, reversal]`, monthly, M=70, smoothing=0, N=20.
+    Criteria/thresholds imported verbatim from `robustness.py`; only the candidate config is
+    adapted (the do-item). §6.5 reuses `check_turnover_capacity` unchanged. §6.4 hardened with
+    the pre-registered `v3_config.passes_concentration_hard` as a second hard gate. §6.3
+    neighborhood = the T4 turnover knobs the candidate was selected on (M ∈ {50,70} ×
+    smoothing ∈ {0,2}, cadence=monthly), since v3 fixes the regime overlay v2 perturbed.
+  - Wiring sanity: base run reproduces the T5 candidate (Calmar **0.396** / turnover **956%**) —
+    no drift. K = 10 trials logged.
+  - Test: `tests/backtest_v2/test_v3t6_concentration.py` — 6/6, pins the hardened §6.4 gate
+    (threshold, strict `>`, ignore-negatives / need-≥2-positives) (Rule 9).
+
+  | Check | Verdict | Detail |
+  |-------|---------|--------|
+  | §6.1 Cost stress | **FAIL** | calmar_ratio **0.94** < 1.0 (C_strat 0.326 vs C_nifty50 0.346 at pessimistic cost) |
+  | §6.2 Universe perturbation | **FAIL** | retention **32%** < 70% (perturbed Calmar 0.125 / 0.396); edge concentrated in top names |
+  | §6.3 Parameter neighborhood | **FAIL** | SPIKE — lone peak; both neighbors < 85%×0.396 (M=50→0.309, smoothing=2→0.276) |
+  | §6.4 Subperiod + concentration | **FAIL** | positivity OK (2/3) but **concentration gate trips**: Post-COVID bull Calmar **5.242** ≫ 5× the other positive (Rate-hike 0.274). Pre-COVID chop −0.205. The exact v2 single-regime trap the hardening was built to catch. |
+  | §6.5 Turnover / capacity | **PASS** | participation 0.037% < 5% of ADV floor at ₹10L (956% turnover is still tiny vs ADV) |
+
+  - **Overall: 1/5 PASS → T6 does NOT pass the §6 gate → T7 (FINAL_OOS) stays BLOCKED.**
+    This is the honest, pre-registered ending (prereg §10: "Track A alone is unlikely to fully
+    fix §6.4 regime concentration… a research note is acceptable"). The candidate's edge is
+    single-regime (Post-COVID bull) and top-name-concentrated, and it doesn't survive
+    pessimistic cost or its own turnover-knob neighborhood. FINAL_OOS is never consumed — it
+    stays pristine for a future Track-B (fundamentals) candidate.
 
 ---
 
 ## T7 — One-shot FINAL_OOS + Definition of Done (§7)
 
-- **Status:** ⚠ BLOCKED until T6 passes all five checks.
+- **Status:** ⛔ BLOCKED — T6 failed the §6 gate (1/5 pass, 2026-06-17). FINAL_OOS is NOT
+  consumed; Track A ends as a research note (prereg §10). T7 would only open on a future
+  candidate that clears all five §6 checks on DISCOVERY.
 - **Depends on:** T6 (all pass).
 - **Goal:** Run the single pre-committed v3 candidate on `FINAL_OOS` **exactly once**; assemble
   the §9 / spec-04 §7 DoD verdict.
@@ -366,8 +395,9 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 - [ ] T1–T3 infra green (factors, composite signal store, cadence knob) with v2 regression intact.
 - [ ] T4 parity confirmed; turnover layers plateau-selected; realized turnover reported.
 - [ ] T5 factor layers added one at a time; v3 candidate chosen.
-- [ ] T6 robustness battery run; honest pass/fail.
-- [ ] T7 FINAL_OOS consumed once; DoD verdict labeled truthfully.
+- [x] T6 robustness battery run; honest pass/fail — **1/5 PASS** (only §6.5 turnover/capacity).
+- [ ] T7 FINAL_OOS consumed once; DoD verdict labeled truthfully. — **N/A: blocked by T6;
+      FINAL_OOS left pristine. Track A closes as a research note (prereg §10).**
 
 > If Track A's candidate clears §6 but H3 (regime concentration) is still weak, that is the
 > trigger to consider **Track B (fundamentals)** — a separate data build, separately scoped
