@@ -202,7 +202,7 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
 
 ## T4 — Parity + turnover layers on DISCOVERY (H1)
 
-- **Status:** ☐
+- **Status:** ☑
 - **Depends on:** T2, T3.
 - **Goal:** Confirm the v3 floor reproduces v2, then test whether the turnover levers cut
   realized turnover without wrecking Calmar (prereg H1).
@@ -220,10 +220,36 @@ the factor work; it may be done in parallel with T1/T2 if convenient.
     planned Σ|Δw|, plus Calmar — for each layer.
 - **Deliverable:** parity confirmation + per-layer turnover/Calmar plateau verdicts in the log.
 - **Done-criteria:**
-  - [ ] v3 floor matches the **raw-momentum v2 reference** to tolerance (or wiring bug fixed);
+  - [x] v3 floor matches the **raw-momentum v2 reference** to tolerance (or wiring bug fixed);
         historical 0.265/934% checked as a sanity band only — per prereg Erratum (T1→T2).
-  - [ ] 3 turnover layers run on DISCOVERY; plateau verdicts stated; realized turnover reported.
-- **Session log:** _(fill at end)_
+  - [x] 3 turnover layers run on DISCOVERY; plateau verdicts stated; realized turnover reported.
+- **Session log:** 2026-06-17 — New runner `t4_turnover.py` (offline, DISCOVERY only,
+  base cost, regime ON; FINAL_OOS untouched). Built like floor.py/iterate.py/diag — a
+  run script, not a unit-tested module (the order-equality property is already unit-tested
+  in T2 on synthetic data; here it is the fail-loud parity assertion on real data).
+  **Parity (Erratum T1→T2): PASS, bit-identical.** The v3 momentum-only floor (composite
+  *percentile* of raw 12-1 momentum — a monotone transform → identical engine-consumed
+  order) reproduces a raw-momentum v2 reference (`RawMomentumStore` = v2 `SignalStore` with
+  the ranker swapped to raw `momentum_12_1`, NOT the deployed vol-adjusted `mom/vol`
+  candidate) on every metric: Calmar 0.241451, realized turnover 934.78%, final equity
+  ₹1,617,299.37, 1321 fills — match to 1e-6. Sanity band (order-of-magnitude only, NOT an
+  equality target): floor Calmar 0.241 vs historical ~0.265 ✓; turnover 935% vs ~900% ✓.
+  **Turnover layers (H1), chained, plateau-selected (tol 0.85), realized turnover =
+  annualized Σ|Δw| from executed rebalances (`metrics.annualized_turnover`, the magnitude
+  `diag_turnover_decomp` reconciles against fills); K=9 logged to ConfigLedger:**
+  - L1 cadence {monthly 0.241/935%, quarterly 0.019/365%, semi 0.134/220%}: coarsening
+    cuts turnover but **collapses Calmar** — SPIKE (quarterly neighbor 0.019 ≪ 0.85×best),
+    no plateau → **reject; keep monthly**.
+  - L2 buffer M {35: 0.241/935%, 50: 0.268/840%, 70: 0.250/800%}: widening M cuts turnover
+    935→800% (−14%) while Calmar holds/improves; winner M=50 (0.268) sits on a genuine
+    **PLATEAU** (both neighbors ≥ 0.228). Turnover-aware pick = lowest-turnover within
+    tolerance → **M=70** (the one real H1 lever).
+  - L3 smoothing {0: 0.250/800%, 2: 0.206/787%, 3: 0.141/762%}: negligible turnover benefit
+    (−5%) at a real Calmar cost — SPIKE, only smoothing=0 clears tolerance → **reject; keep 0**.
+  **H1 verdict:** of the three levers only the sell buffer M delivers — M=70 cuts realized
+  turnover ~14% (935→800%) while holding/nudging Calmar (0.241→0.250) on a plateau; cadence
+  and smoothing both fail (cut turnover but wreck Calmar, no plateau). **Plateau-selected
+  base config for T5: cadence=monthly, M=70, smoothing=0.** Both done-criteria met.
 
 ---
 
