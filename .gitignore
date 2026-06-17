@@ -161,3 +161,4 @@ http_cache.sqlite
 .worktrees/
 
 notes/
+data/
