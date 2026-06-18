@@ -526,7 +526,8 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB5 — As-of reader (the chokepoint API + restatement read-side, §3.4)
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-18 — `app/fundamentals/reader.py` (as-of reader),
+  5 invariant tests green, 25/25 total fundamentals tests green. See Session log.
 - **Depends on:** TB4.
 - **Goal:** `read_fundamentals_asof(isin, D) → line items` — the single API every Track-B factor
   will call. No factor reads the raw tables directly (§3.5 + §3.4 read-side).
@@ -543,10 +544,32 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     wins (restatement read-side); a `D` before the first filing returns empty, not a guess.
 - **Deliverable:** `read_fundamentals_asof` + tests, green.
 - **Done-criteria:**
-  - [ ] As-of reader honors `available_date ≤ D − lag`; never returns a future-filed figure.
-  - [ ] Restatement read-side picks the latest qualifying version (test).
-  - [ ] Is the sole fundamentals read path (raw tables not read by factors) (test/boundary).
-- **Session log:** _(fill at end)_
+  - [x] As-of reader honors `available_date ≤ D − lag`; never returns a future-filed figure.
+  - [x] Restatement read-side picks the latest qualifying version (test).
+  - [x] Is the sole fundamentals read path (raw tables not read by factors) (test/boundary).
+- **Session log:** 2026-06-18 — **Module** `app/fundamentals/reader.py`.
+  **`FundamentalsSnapshot`** — frozen dataclass carrying all 8 standardized line items +
+  `(isin, period_end, available_date, statement_type)` metadata; immutable so factors
+  cannot accidentally mutate shared state and the session can be closed after the read.
+  **`read_fundamentals_asof(session, isin, as_of_date)`** — queries
+  `FundamentalsLineItemVersion` for all rows where `isin == isin AND available_date ≤
+  cutoff` (cutoff = `numpy.busday_offset(as_of_date, -SAFETY_LAG_TRADING_DAYS)`; Mon–Fri
+  business days; the 2-day locked buffer absorbs any Indian-holiday edge case). Groups by
+  `period_end`; for each group picks the row with the highest `available_date` (restatement
+  read-side §3.4); returns a list of `FundamentalsSnapshot` ordered by `period_end`
+  descending (most recent period first, ready for TTM slicing). Returns `[]` when nothing
+  qualifies — never a guess. **Sole read-path boundary** enforced by docstring + test:
+  `test_result_is_frozen_snapshot_not_orm_row` verifies the return type is the immutable
+  dataclass (not a live ORM row) and that all 8 fields are present on the interface.
+  **No schema change; no Alembic migration** (TB1 tables unchanged). **Tests**
+  `tests/unit/test_fundamentals_reader.py` (5, green): (1) two filings both pre-cutoff →
+  both periods returned, newest first; (2) `available_date == D` → excluded; becomes
+  visible at `D + 2 bd` (lag guard test with intermediate step); (3) original + restatement
+  for same period → original returned when only it qualifies, restatement returned once it
+  qualifies; (4) `D` before first filing → empty list; (5) return type is frozen
+  `FundamentalsSnapshot`, not ORM row; all 8 fields present; mutation raises. All 25
+  fundamentals unit tests green (TB1+TB2+TB3+TB4+TB5, no regressions). `FINAL_OOS`
+  untouched; no factor.
 
 ---
 
@@ -628,7 +651,7 @@ on read) — there is no standalone restatement task; the two halves are cross-r
       exact month pinned at TB7. No §6 threshold moved; `FINAL_OOS` pristine. **Probe = GO.**
 - [~] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
-      (TB1 ☑ TB2 ☑ TB3 ☑ TB4 ☑ — TB5–TB6 remaining)
+      (TB1 ☑ TB2 ☑ TB3 ☑ TB4 ☑ TB5 ☑ — TB6 remaining)
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.
 - [ ] If TB7 PASSES → write `03_TRACK_B_PREREG.md` (value/quality factors + H3 test + coarse
       grids) **before any backtest** — a separate prereg, separately approved.
