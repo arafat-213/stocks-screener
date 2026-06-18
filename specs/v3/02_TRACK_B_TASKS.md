@@ -60,8 +60,13 @@ TB0 (lock §8 decisions as committed constants — light, NO ingest code)
             │                    └─> TB5 (as-of reader — chokepoint API + restatement READ-side)
             │                           └─> TB6 (corporate-action consistency with price layer)
             │                                  └─> TB7 (§6 data acceptance gate — 5 checks → PASS/FAIL)
+            │                                         └─> TB8 (production ingest + gate RUN → actual verdict)
             └─────────────────────────────────────────────────────────────────────────┘
 ```
+
+> TB0–TB7 are **test-gated machinery** (all fetches mocked, CLAUDE.md §5). **TB8 is the only task
+> that touches live NSE data** and is the only one that produces an actual §6 verdict — the gate
+> branches (write `03` / close as research note) hang off TB8, not TB7.
 
 §3.4 **Restatement handling** is split across TB4 (keep all versions keyed by
 `available_date` on write) and TB5 (pick the latest version with `available_date ≤ D − lag`
@@ -708,6 +713,100 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ---
 
+## TB8 — Production ingest + §6 gate run (the actual PASS/FAIL verdict)
+
+- **Status:** ☐ not started — scoped 2026-06-18 (this session); to be executed in a fresh cold
+  session. **This is the only Track-B data task that touches LIVE NSE data.**
+- **Depends on:** TB1–TB7 (all ☑). Requires Postgres up (5434) + the v2 price layer already
+  ingested on disk (`store.read_prices_adjusted` / `read_universe_membership` /
+  `read_isin_symbol_map` return data).
+- **Goal:** Populate the real PIT panel (NSE-only, `DISCOVERY_START` ≈2020 per the pre-registered
+  rescope), then run `run_acceptance_gate(...)` over it to produce the **first actual §6 PASS/FAIL
+  verdict** — the thing that decides whether `03_TRACK_B_PREREG.md` may be written or Track B closes
+  as a research note. TB7 built and test-gated the gate *machinery*; TB8 *runs* it on real data.
+- **Why this is a separate task (Rule 1/6):** every prior TBx mocked exchange fetches (CLAUDE.md
+  §5). TB8 is the operational ingest run — live NSE, hundreds of ISINs × ~6 years, multi-hour,
+  bounded. It must stay idempotent + checkpointed so it resumes after any crash without re-fetching.
+
+### What this REUSES — do NOT rebuild (Rule 3; signatures verified on disk 2026-06-18)
+
+| Need | Already exists | File |
+|---|---|---|
+| Universe populate (idempotent/checkpointed) | `populate_universe(session, source, run_id, *, resume=True)` | `universe.py` |
+| Filing-index populate + **live NSE fetcher** | `populate_filing_index(session, source, symbol_map, run_id, *, resume=True)` + `fetch_nse_filing_index(isin, symbol)` | `filing_index.py` |
+| XBRL parse/populate + **live XBRL fetcher** | `populate_line_items(session, fetcher, run_id, *, resume=True)` + `fetch_xbrl_document(url)` | `xbrl_parser.py` |
+| As-of reader (sole read path) | `read_fundamentals_asof(session, isin, D)` | `reader.py` |
+| Gate (5 checks + AND-aggregation) | `run_acceptance_gate(...)` → `GateResult` | `gate.py` |
+| Liquidity-eligible denominator (= gate's `EligibleOnDate` minus weight) | `liquidity_eligible_isins(prices_on_day, floor)` | `tb0_5_probe.py` |
+| Raw×raw market-cap weight (TB6 convention) | `market_cap_raw(close_raw, shares_outstanding)` | `ca_consistency.py` |
+| Price/membership/symbol-map readers | `read_prices_adjusted` · `read_universe_membership` · `read_isin_symbol_map` | `bhavcopy/store.py` |
+
+### The 3 seams TB8 must wire (the only new code)
+
+1. **`fetch_exchange_listings()`** — currently the lone `NotImplementedError` (`universe.py:107`).
+   **Recommended source: derive from the v2 `universe_membership`** (already survivorship-free,
+   ISIN-keyed, bhavcopy-built): first-seen → `list_date`, last-seen → `delist_date` (NULL if seen
+   through window end). This makes the universe stage **fully offline + reproducible** and makes
+   TB2's cross-check pass by construction (same ISIN spine). *Alternative:* a live NSE
+   listings/delistings scrape — more faithful to "exchange records" but adds live surface and a new
+   scraper for marginal gain. **Decision pending (Arafat) — see Open decisions.**
+2. **`EligibleOnDate` adapter for the gate** — per rebalance date: `read_prices_adjusted(date)` →
+   `liquidity_eligible_isins(..., floor=₹5cr)` → attach weight via
+   `ca_consistency.market_cap_raw(close_raw, shares_outstanding)` (TB6 raw×raw convention). Returns
+   `list[(isin, weight)]` — the §6.1 pinned denominator (liquidity-eligible, **not** raw membership).
+3. **`ReconReader` for §6.5** — re-parse the stored XBRL doc for `RECON_SAMPLE_N`=30 random
+   ISIN-quarters via `fetch_xbrl_document` + `parse_xbrl`; returns the reference line items the gate
+   diffs against `RECON_TOLERANCE`=±2%.
+
+### Orchestration — new `tb8_ingest.py` (one `PipelineRun`, idempotent + checkpointed)
+
+```
+0. cleanup_zombie_runs + concurrency guard on entry (CLAUDE.md §1); --resume from last checkpoint
+1. populate_universe(source = membership-derived listings)               [OFFLINE]
+2. cross_check_against_price_universe(...)  → must be clean (Rule 12)     [OFFLINE]
+3. symbol_map = read_isin_symbol_map() (+ FundamentalsSymbolHistory)     [OFFLINE]
+4. populate_filing_index(source = fetch_nse_filing_index, symbol_map)    [LIVE NSE — bounded]
+5. populate_line_items(fetcher = fetch_xbrl_document)                    [LIVE NSE XBRL — long pole]
+6. run_acceptance_gate(eligible_on_date, recon_reader,
+                       rebalance_dates = monthly 2020 → DISCOVERY_END)
+7. Emit per-check PASS/FAIL table + overall verdict; pin durable-≥75% DISCOVERY_START month
+```
+Steps 4–5 are the only live surface — per-ISIN, already failure-isolated to `PipelineError` via
+`classify_error`, resumable from the last checkpointed ISIN.
+
+### Discipline guardrails (non-negotiable)
+
+- **HARKing tripwire:** if coverage FAILS at some 2020 rebalances, the *only* sanctioned response is
+  the already-pre-registered `DISCOVERY_START` ≈2020 rescope (a §10 decision) — **never** nudge the
+  90/75 floors. The gate reads `data_config.py`; TB8 adds **no** threshold.
+- **`FINAL_OOS` (2023-07-01 → 2026-06-12) stays pristine** — gate runs on the DISCOVERY panel only.
+- **`DISCOVERY_START` is currently NOT a constant** (`data_config.py` has only
+  `PANEL_START=2017-01-01`); TB7 deferred pinning the exact month to a real run. **The gate's
+  coverage check across monthly rebalances is what pins it** — a genuine TB8 output, not a guess.
+- **No `FINAL_OOS`, no factor, no backtest** — TB8 ends at the data verdict (spec §7).
+
+### Open decisions for Arafat (gate the live run — resolve at the top of the TB8 session)
+
+- **Source for `fetch_exchange_listings`:** membership-derived (offline, recommended) vs. live NSE
+  scrape?
+- **Dry-run first?** Recommend a small end-to-end smoke (e.g. ~20 ISINs through steps 1–7) to
+  confirm the wiring before committing to the full multi-hour panel ingest.
+
+- **Deliverable:** `tb8_ingest.py` orchestrator + the 3 wired seams; a populated panel; a per-check
+  PASS/FAIL table + overall verdict line + the pinned `DISCOVERY_START` month, recorded in this
+  Session log.
+- **Done-criteria:**
+  - [ ] 3 seams wired (`fetch_exchange_listings`, `EligibleOnDate`, `ReconReader`); no new threshold.
+  - [ ] Panel populated via the idempotent/checkpointed orchestrator (resumable; per-ISIN failures
+        → `PipelineError`, never crash the run); cross-check clean.
+  - [ ] `run_acceptance_gate` executed over the real DISCOVERY panel; all five §6 checks reported
+        with an explicit PASS/FAIL each + an overall verdict (Rule 12).
+  - [ ] Durable-≥75%-by-name `DISCOVERY_START` month pinned from the coverage check (not 20-name
+        probe samples); `FINAL_OOS` untouched.
+- **Session log:** _(empty — TB8 not yet started; to be filled by the executing session.)_
+
+---
+
 ## Exit criteria for the Track-B data layer
 
 - [x] TB0 locked (§8 thresholds frozen as constants; spec committed, no longer DRAFT).
@@ -733,9 +832,14 @@ on read) — there is no standalone restatement task; the two halves are cross-r
       every schema change via Alembic, all exchange fetches mocked in tests.
       (TB1 ☑ TB2 ☑ TB3 ☑ TB4 ☑ TB5 ☑ TB6 ☑)
 - [x] TB7 §6 gate built + test-gated (2026-06-18); honest per-check pass/fail against the pre-committed thresholds. Production gate run over the real panel is a follow-on operational step (depends on wiring the concrete exchange listings source — see TB2/TB7 session logs).
-- [ ] If TB7 PASSES → write `03_TRACK_B_PREREG.md` (value/quality factors + H3 test + coarse
+- [ ] **TB8 — production ingest + §6 gate RUN** (scoped 2026-06-18; not started). Wires the 3
+      remaining seams, populates the real DISCOVERY panel (NSE-only, ≈2020), and executes
+      `run_acceptance_gate` to produce the **actual** PASS/FAIL verdict + the pinned
+      `DISCOVERY_START` month. The two branches below are gated on **TB8's** verdict — TB7's
+      machinery alone yields no verdict (no panel was ingested).
+- [ ] If TB8 PASSES → write `03_TRACK_B_PREREG.md` (value/quality factors + H3 test + coarse
       grids) **before any backtest** — a separate prereg, separately approved.
-- [ ] If TB7 FAILS → Track B closes as a research note (spec §7 / prereg §10); `FINAL_OOS`
+- [ ] If TB8 FAILS → Track B closes as a research note (spec §7 / prereg §10); `FINAL_OOS`
       left pristine. Manufacturing coverage by loosening §6 after the fact is forbidden.
 
 > This file builds **only** the data layer. The one-shot `FINAL_OOS` run belongs to a future
