@@ -416,7 +416,8 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB3 — Filing-index ingest (the PIT clock)
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-18 — `app/fundamentals/filing_index.py` (populate +
+  concrete NSE fetcher), 5 invariant tests green. See Session log.
 - **Depends on:** TB1, TB2.
 - **Goal:** For each ISIN, the table of filings carrying the **`available_date`** (public filing
   timestamp) — *this table is the look-ahead guard* (§3.2, problem §1.1).
@@ -431,10 +432,37 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     `available_date > period_end` invariant holds; re-ingest is idempotent.
 - **Deliverable:** populated filing index + invariant tests, green.
 - **Done-criteria:**
-  - [ ] Filing index populated with `available_date` (filing date, not period-end) per ISIN.
-  - [ ] `available_date > period_end` invariant enforced + tested (hard fail on violation).
-  - [ ] Ingest idempotent + checkpointed; per-ISIN failures logged.
-- **Session log:** _(fill at end)_
+  - [x] Filing index populated with `available_date` (filing date, not period-end) per ISIN.
+  - [x] `available_date > period_end` invariant enforced + tested (hard fail on violation).
+  - [x] Ingest idempotent + checkpointed; per-ISIN failures logged.
+- **Session log:** 2026-06-18 — **Module** `app/fundamentals/filing_index.py`.
+  **Scope calls resolved before coding (Rule 1):** (1) One-shot NSE API diagnostic on RELIANCE
+  confirmed the public dissemination field is `broadCastDate` ("22-Apr-2024 19:47:12") — not
+  `submissionDate` or `toDate`; `filingDate` is a minutes-precision fallback. (2) Concrete NSE
+  fetcher built (1A+2A — Arafat's choice) so TB3 ships with a production-ready ingest path
+  rather than a stub. (3) Consolidated/Non-Consolidated dedup: both share the same calendar
+  `available_date`, which would violate the unique key if both inserted — resolved by preferring
+  Consolidated within each `(period_end, statement_type)` group (no schema change).
+  **`available_date`** = `broadCastDate` date portion from NSE API (public dissemination
+  timestamp, never period_end). **`FilingSource`** = `Callable[[str, str], Iterable[FilingRecord]]`
+  (isin, symbol) — injectable seam; tests mock, production passes `fetch_nse_filing_index`.
+  **`fetch_nse_filing_index(isin, symbol)`** — pools Annual + Half-Yearly + Quarterly NSE
+  feeds (§8.1 source-broadening; same endpoint as TB0.5 probe), deduplicates by
+  `(period_end, statement_type)` preferring Consolidated, uses `broadCastDate`→`filingDate` as
+  `available_date`. **`PITViolationError`** — raised for any `available_date ≤ period_end` row;
+  logged to `PipelineError` + row skipped + `pit_violations` counter (never stored, never silent).
+  **`populate_filing_index(session, source, symbol_map, run_id, *, resume=True)`** — takes
+  injected `symbol_map: dict[str, str]` (isin→symbol, resolved by caller from v2 price layer
+  or `FundamentalsSymbolHistory`) so the populate function is source-agnostic and testable.
+  Source-level failures fail the ISIN (not checkpointed → retried on resume); per-row DB errors
+  log + continue (ISIN still checkpointed). Checkpoint/error plumbing reuses `PipelineCheckpoint`
+  + `PipelineError` + `classify_error` (Rule 3). **Tests** `tests/unit/test_fundamentals_filing_index.py`
+  (5, green): available_date stored as broadcast date not period_end; PIT violation logged +
+  zero rows stored (two violation modes tested: equal + before); idempotent re-run produces one
+  row; checkpointed ISIN skipped on resume (tracking source confirms no re-fetch); per-ISIN
+  source failure logged + good ISIN still lands. All 15 fundamentals unit tests green (TB1+TB2+TB3,
+  no regressions). No schema change; no Alembic migration (TB1's tables unchanged). `FINAL_OOS`
+  untouched.
 
 ---
 
@@ -567,8 +595,9 @@ on read) — there is no standalone restatement task; the two halves are cross-r
       PASS) → BSE off the critical path. **DECISION RESOLVED (Arafat, 2026-06-17): rescope
       `DISCOVERY_START` ≈2020, NSE-only, no BSE** — pre-registered in `00_PREREGISTRATION.md`;
       exact month pinned at TB7. No §6 threshold moved; `FINAL_OOS` pristine. **Probe = GO.**
-- [ ] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
+- [~] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
+      (TB1 ☑ TB2 ☑ TB3 ☑ — TB4–TB6 remaining)
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.
 - [ ] If TB7 PASSES → write `03_TRACK_B_PREREG.md` (value/quality factors + H3 test + coarse
       grids) **before any backtest** — a separate prereg, separately approved.
