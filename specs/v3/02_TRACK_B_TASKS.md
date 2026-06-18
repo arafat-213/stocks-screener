@@ -575,7 +575,8 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB6 — Corporate-action consistency with the price layer
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-18 — `app/fundamentals/ca_consistency.py` (convention +
+  reconciler), 5 invariant tests green, 30/30 total fundamentals tests green. See Session log.
 - **Depends on:** TB5.
 - **Goal:** Make per-share / shares-outstanding figures consistent with the v2 price layer's
   adjustment basis, so earnings-yield and B/P are internally coherent (§3.6).
@@ -590,9 +591,47 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     basis mismatch) (Rule 9).
 - **Deliverable:** consistency layer + convention note + tests, green.
 - **Done-criteria:**
-  - [ ] Shares/per-share figures reconciled to the price layer's adjustment basis; mismatches surfaced.
-  - [ ] Convention documented for `03`; continuity-across-split test green.
-- **Session log:** _(fill at end)_
+  - [x] Shares/per-share figures reconciled to the price layer's adjustment basis; mismatches surfaced.
+  - [x] Convention documented for `03`; continuity-across-split test green.
+- **Session log:** 2026-06-18 — **Module** `app/fundamentals/ca_consistency.py`.
+  **Price-layer investigation (graph + store.py + adjust.py):** The v2 price layer stores three
+  price columns per day: `close` (split+bonus back-adjusted signal price = `close_raw × adj_factor`),
+  `close_raw` (unadjusted traded close, retained for audit), and `adj_factor` (cumulative
+  back-adjustment factor — latest date = 1.0, earlier dates < 1.0 wherever a split/bonus occurred).
+  `shares_outstanding` from XBRL is the raw share count reported in the filing.
+  **Basis mismatch identified:** A naïve `market_cap = close × shares_outstanding` fails around
+  a 2:1 split — the adjusted price halves retroactively across ALL pre-split dates while the XBRL
+  shares step upward only at the fiscal period containing the ex-date, creating an artificial ×2
+  discontinuity in market cap.
+  **CHOSEN CONVENTION — Raw × Raw (locked here for 03 factors):**
+  `market_cap(D) = close_raw(D) × shares_outstanding_from_snapshot(D)`. Both quantities are on
+  the unadjusted basis for any given date, so the product is continuous across split/bonus events
+  (pre-split: 1000 × 100M = 100B; post-split: 500 × 200M = 100B). For book-to-price:
+  `b2p = total_equity / (close_raw × shares_outstanding)`. `total_equity` is a monetary total
+  (₹), not per-share, so it is already continuous — no additional adjustment needed.
+  **What NOT to do (enforced by docstring):** `close × shares_outstanding` or
+  `close_tr × shares_outstanding` — both adjusted price, raw shares → discontinuity.
+  **`PriceReader = Callable[[isin, start, end], DataFrame]`** — injectable seam; tests mock,
+  production passes `read_prices_adjusted` (bhavcopy store). **Public helpers** (the only
+  sanctioned paths for 03 factors): `market_cap_raw(close_raw, shares_outstanding)` and
+  `book_to_price_raw(total_equity, close_raw, shares_outstanding)` — both enforce the raw × raw
+  convention; `book_to_price_raw` returns None when any input is None or market_cap is zero.
+  **`reconcile_ca_consistency(session, price_reader, isin_list, start, end)`** — for each ISIN:
+  reads adj_factor series from the price layer, detects steps > 5% (split/bonus events via
+  `_adj_factor_steps`), then for each step reads XBRL `shares_outstanding` straddling the
+  ex_date (via `read_fundamentals_asof` at `ex_date` for before, at `ex_date + 400 days` for
+  after), compares observed shares ratio against the expected multiplier (= adj_factor step ratio),
+  flags divergence beyond `RECON_TOLERANCE` (2%) to `CaConsistencyReport.mismatches` (Rule 12 —
+  never silent). ISINs with no price data, no CA events, or no XBRL snapshots → `skipped_isins`.
+  All-OK ISINs → `ok_isins`. **Tests**
+  `tests/unit/test_fundamentals_ca_consistency.py` (5, green): (1) `market_cap_raw` continuous
+  (1000×100M = 500×200M = 100B, split-invariant); (2) `book_to_price_raw` continuous (10B/100B
+  = 0.1 both sides); (3) adjusted price × raw shares gives ×2 discontinuity — proves the basis
+  mismatch that makes raw × raw necessary; (4) reconciler marks ISIN ok when shares ratio matches
+  adj_factor step (200M/100M = 2.0 = adj_factor 0.5→1.0); (5) reconciler surfaces mismatch when
+  XBRL shows only +10% shares (110M) against a 2× adj_factor step. All 30 fundamentals unit tests
+  green (TB1+TB2+TB3+TB4+TB5+TB6, no regressions). No schema change; no Alembic migration.
+  `FINAL_OOS` untouched; no factor.
 
 ---
 
@@ -649,9 +688,9 @@ on read) — there is no standalone restatement task; the two halves are cross-r
       PASS) → BSE off the critical path. **DECISION RESOLVED (Arafat, 2026-06-17): rescope
       `DISCOVERY_START` ≈2020, NSE-only, no BSE** — pre-registered in `00_PREREGISTRATION.md`;
       exact month pinned at TB7. No §6 threshold moved; `FINAL_OOS` pristine. **Probe = GO.**
-- [~] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
+- [x] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
-      (TB1 ☑ TB2 ☑ TB3 ☑ TB4 ☑ TB5 ☑ — TB6 remaining)
+      (TB1 ☑ TB2 ☑ TB3 ☑ TB4 ☑ TB5 ☑ TB6 ☑)
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.
 - [ ] If TB7 PASSES → write `03_TRACK_B_PREREG.md` (value/quality factors + H3 test + coarse
       grids) **before any backtest** — a separate prereg, separately approved.
