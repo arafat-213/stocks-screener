@@ -468,7 +468,8 @@ on read) — there is no standalone restatement task; the two halves are cross-r
 
 ## TB4 — XBRL parser → standardized line items (+ restatement write-side, §3.4)
 
-- **Status:** ☐
+- **Status:** ☑ done 2026-06-18 — `app/fundamentals/xbrl_parser.py` (parser + populate),
+  5 invariant tests green, 20/20 total fundamentals tests green. See Session log.
 - **Depends on:** TB1, TB3.
 - **Goal:** Map heterogeneous Ind-AS XBRL tags to the fixed line-item schema, writing **every**
   version as its own row (§3.3 + §3.4 write-side).
@@ -486,10 +487,40 @@ on read) — there is no standalone restatement task; the two halves are cross-r
     later `available_date` (the original row is untouched).
 - **Deliverable:** parser + standardized rows + tests, green.
 - **Done-criteria:**
-  - [ ] All 8 line items parsed from fixture XBRL into the fixed schema.
-  - [ ] Unmapped tags logged + left NULL (never zero-filled) (Rule 12).
-  - [ ] Restatement writes a new versioned row; original preserved (§3.4 write-side).
-- **Session log:** _(fill at end)_
+  - [x] All 8 line items parsed from fixture XBRL into the fixed schema.
+  - [x] Unmapped tags logged + left NULL (never zero-filled) (Rule 12).
+  - [x] Restatement writes a new versioned row; original preserved (§3.4 write-side).
+- **Session log:** 2026-06-18 — **Module** `app/fundamentals/xbrl_parser.py`. **Parser
+  design** (`parse_xbrl(xbrl_text) -> XBRLParseResult`) is pure / no I/O — all 8 items
+  resolved from the standard `in-bse-fin` namespace via regex (same approach as TB0.5 probe,
+  Rule 3). Three composite derivations: (1) **EBIT** = `ProfitBeforeExceptionalItemsAndTax` +
+  `FinanceCosts` (no direct EBIT element in Ind-AS XBRL; both components must be present else
+  NULL); (2) **total_equity** = `Equity` direct OR `PaidUpValueOfEquityShareCapital +
+  ReserveExcludingRevaluationReserves` component sum (from TB0.5 tightening probe); (3)
+  **total_debt** = `Borrowings` direct OR `LongTermBorrowings + ShortTermBorrowings` sum
+  (zero-fill per component so LT-only debt is still captured). Tag coverage: `revenue`
+  (Revenue/RevenueFromOperations/+3 fallbacks); `net_income` (4 PAT variants including bank
+  tags from TB0.5 tightening); `total_assets` (Assets/TotalAssets); `shares_outstanding`
+  (NumberOfSharesOutstanding/+2 count-element variants); `cfo` (4 operating-cashflow variants).
+  Non-standard namespace → all NULL (conservative — no false positives). **`XBRLFetcher =
+  Callable[[str], str]`** — injectable seam; tests mock, production passes
+  `fetch_xbrl_document` (requests, local import). **`populate_line_items(session, fetcher,
+  run_id, *, resume=True)`** — reads `FundamentalsFilingIndex` rows with `document_url IS NOT
+  NULL`, grouped by ISIN (checkpoint granularity = ISIN, consistent with TB2/TB3, Rule 3);
+  per-filing: fetch → parse → check for existing row (idempotency) → write
+  `FundamentalsLineItemVersion`; unmapped items → NULL + one `PipelineError` per filing listing
+  them; fetcher/parse failures → `PipelineError` + continue. Restatement write-side: two
+  filings for the same `period_end` with different `available_date`s each write their own row
+  (TB1 unique key admits them; rejects exact duplicates). Checkpoint/error plumbing reuses
+  `PipelineCheckpoint` + `PipelineError` + `classify_error` (Rule 3). **Tests**
+  `tests/unit/test_fundamentals_xbrl_parser.py` (5, green): all 8 items parse from fixture
+  XBRL including EBIT derivation (PBT=130k + FC=20k → ebit=150k) and debt component sum
+  (LT=200k + ST=50k → total_debt=250k); unmapped items are NULL not 0 + PipelineError logged
+  listing fields; restatement writes 2 rows, original net_income=100k untouched alongside
+  restated 115k; idempotent re-run produces 1 row + skipped_existing=1; per-filing fetch
+  failure logs to PipelineError + other ISIN's row lands. All 20 fundamentals unit tests green
+  (TB1+TB2+TB3+TB4, no regressions). No schema change; no Alembic migration (TB1 tables
+  unchanged). `FINAL_OOS` untouched.
 
 ---
 
@@ -597,7 +628,7 @@ on read) — there is no standalone restatement task; the two halves are cross-r
       exact month pinned at TB7. No §6 threshold moved; `FINAL_OOS` pristine. **Probe = GO.**
 - [~] TB1–TB6 built one layer at a time, each test-gated, ingest idempotent + checkpointed,
       every schema change via Alembic, all exchange fetches mocked in tests.
-      (TB1 ☑ TB2 ☑ TB3 ☑ — TB4–TB6 remaining)
+      (TB1 ☑ TB2 ☑ TB3 ☑ TB4 ☑ — TB5–TB6 remaining)
 - [ ] TB7 §6 gate run; honest per-check pass/fail against the pre-committed thresholds.
 - [ ] If TB7 PASSES → write `03_TRACK_B_PREREG.md` (value/quality factors + H3 test + coarse
       grids) **before any backtest** — a separate prereg, separately approved.
