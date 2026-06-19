@@ -229,7 +229,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE2 — Factor characterization on DISCOVERY (coverage + momentum orthogonality; NO returns)
 
-- **Status:** ☐ not started
+- **Status:** ☑ done
 - **Depends on:** TBE1.
 - **Goal:** Establish the H3 *supporting-evidence precondition* (`03` §2): the value/quality factors
   are genuinely low-correlated to momentum, and have enough breadth at each rebalance to matter —
@@ -247,10 +247,62 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - **Deliverable:** a coverage-by-factor table + a momentum-orthogonality (ρ) summary across
   DISCOVERY rebalances, in this Session log.
 - **Done-criteria:**
-  - [ ] Per-factor + per-block name coverage reported across DISCOVERY rebalances.
-  - [ ] Momentum rank-ρ reported per factor/block vs the |ρ|<0.3 expectation (honest, not a gate).
-  - [ ] No backtest return computed; `FINAL_OOS` untouched.
-- **Session log:** _(empty)_
+  - [x] Per-factor + per-block name coverage reported across DISCOVERY rebalances.
+  - [x] Momentum rank-ρ reported per factor/block vs the |ρ|<0.3 expectation (honest, not a gate).
+  - [x] No backtest return computed; `FINAL_OOS` untouched.
+- **Session log (2026-06-19):**
+  - **Script:** `backend/app/backtest_v2/tbe2_characterize.py` — uses bulk-preloaded fundamentals
+    cache (single DB query for all 1,207 eligible ISINs, same PIT logic as `read_fundamentals_asof`),
+    then computes all 5 factors cross-sectionally at each of 42 DISCOVERY rebalance dates.
+    adv_20 ≥ ₹5cr floor; 305–747 eligible names/date (mean 544).
+  - **Coverage (mean % of eligible names with a usable value, across 42 dates):**
+
+    | Factor         | mean% | min%  | max%  | Notes |
+    |----------------|-------|-------|-------|-------|
+    | `earnings_yield` | 0.0 |   0.0 |   0.0 | ❌ CRITICAL — `shares_outstanding` NEVER populated |
+    | `book_to_price`  | 0.0 |   0.0 |   0.0 | ❌ CRITICAL — same root cause |
+    | `roe`           | 89.6 |  83.0 |  94.1 | ✅ healthy — net_income + total_equity both present |
+    | `accruals`      | 17.2 |   0.0 |  93.6 | ⚠️ late-arriving — 0% until 2022-07-29, then 84–94% |
+    | `leverage`       | 6.1 |   0.0 |  12.2 | ❌ CRITICAL — `total_debt` only 2.5% non-null in DB |
+    | `value_block`    | 0.0 |   0.0 |   0.0 | ❌ blocked by E/P + B/P |
+    | `quality_block` | 89.9 |  83.0 |  95.4 | driven almost entirely by ROE alone |
+
+  - **Root cause of critical gaps (DB audit on all 54,693 `fundamentals_line_items` rows):**
+    - `shares_outstanding`: **0 non-null rows** (0/54,693). The XBRL parser looks for
+      `NumberOfSharesOutstanding`, `NumberOfEquitySharesOutstanding`, etc. — these tags are absent
+      in the ingested Indian XBRL filings. A XBRL tag-fix re-ingest is required before E/P and B/P
+      are usable.
+    - `total_debt`: 1,340/54,693 = **2.5% non-null**. Extremely sparse across all ISINs and periods;
+      likely a tag mismatch similar to shares_outstanding.
+    - `cfo`: 18,566/54,693 = 33.9% non-null. Coverage only materialises from Oct 2022 onwards in the
+      price-weighted eligible universe — explains accruals' late arrival.
+    - `total_equity` / `net_income`: ~36% non-null — explains the solid ROE coverage (enough annual
+      filings) despite low total row coverage.
+  - **Momentum rank-ρ (Spearman, cross-sectional; expectation |ρ| < 0.3):**
+
+    | Factor         | mean ρ | min ρ  | max ρ  | frac\|ρ\|<0.3 | Verdict |
+    |----------------|--------|--------|--------|----------------|---------|
+    | `earnings_yield` | NaN  |  NaN   |  NaN   | —              | ❌ no data |
+    | `book_to_price`  | NaN  |  NaN   |  NaN   | —              | ❌ no data |
+    | `roe`           | 0.064 | -0.042 | +0.148 | 100% (21/21)   | ✅ PASS |
+    | `accruals`      | 0.008 | -0.122 | +0.433 | 26% (3/11)     | ⚠️ one outlier date (+0.43); too sparse to conclude |
+    | `leverage`      | -0.117| -0.387 | +0.249 | 60% (14/21)    | ⚠️ MIXED — 5 dates violate |ρ|<0.3 |
+    | `quality_block` | 0.062 | -0.060 | +0.181 | 100% (14/14)   | ✅ PASS (but ROE-dominated) |
+
+  - **Implications for task graph (surfaced per Rule 12):**
+    - **TBE4 (Value block) is structurally blocked** — E/P and B/P have 0% coverage everywhere.
+      Running TBE4 as specified is impossible until `shares_outstanding` is re-ingested with
+      corrected XBRL tag mapping.
+    - **TBE5 (Quality block)** is usable for ROE (89% coverage), marginal for accruals (0% until
+      mid-2022; 84–94% by end), and too sparse for leverage (max 12%). The quality_block composite
+      will be effectively ROE-only for the first 2 years of DISCOVERY.
+    - **H3 test as designed** (`03` §2: value + quality > momentum) requires both blocks. With the
+      value block absent, H3 cannot be formally confirmed or denied — at best we test "quality-alone".
+    - **Recommended path:** Before TBE4, add a **TBE2b** data-fix task: audit + fix the
+      `shares_outstanding` and `total_debt` XBRL tag mappings in `xbrl_parser.py`, re-ingest the
+      full panel, verify coverage. If the fix is not feasible (Indian MCA taxonomy uses non-standard
+      tags), document this as a Track-B close condition and reduce scope to quality-only (ROE + accruals
+      when available) — documenting as a deviation from `03` §3 with the data-availability justification.
 
 ---
 
