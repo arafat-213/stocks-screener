@@ -160,3 +160,7 @@ If you think a convention is harmful, surface it. Don't fork silently.
 "Completed" is wrong if anything was skipped silently.
 "Tests pass" is wrong if any were skipped.
 Default to surfacing uncertainty, not hiding it.
+
+### Rule 13 — Translate quant jargon into software engineer terms
+When discussing quantitative/quant concepts, trading logic, or financial metrics: explain the business purpose first, then the technical term. Use analogies to software concepts when helpful (e.g., "Calmar ratio is like throughput-per-crash for a trading strategy").
+**How:** Lead with plain language ("how much profit per unit of downside risk?"), then the formal term ("Sharpe ratio"). For complex concepts (regime overlay, turnover decomposition), break down the components in layman's terms before diving into the formal definition.
