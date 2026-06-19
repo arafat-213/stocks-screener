@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import datetime
 
+from app.db.models import PipelineRun
 from app.db.session import SessionLocal
 from app.fundamentals.xbrl_parser import (
     fetch_xbrl_document,
@@ -50,6 +51,11 @@ def main() -> None:
 
     fetcher = make_caching_fetcher(args.cache_dir, inner=fetch_xbrl_document)
     session = SessionLocal()
+    # The checkpoint table FKs run_id → pipeline_runs; ensure the parent row
+    # exists (idempotent — reused across resumes).
+    if session.query(PipelineRun).filter_by(run_id=args.run_id).first() is None:
+        session.add(PipelineRun(run_id=args.run_id, status="running"))
+        session.commit()
     print(
         f"[TBE2b] reparse window {args.start} → {args.end} | cache={args.cache_dir} "
         f"| run_id={args.run_id} | resume={not args.no_resume}"
