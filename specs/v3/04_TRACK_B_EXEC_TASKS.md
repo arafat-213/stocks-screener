@@ -393,8 +393,8 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE2b — XBRL tag-mapping fix + panel re-ingest (data-fix; unblocks TBE4)
 
-- **Status:** ◐ in progress — steps 1–2 (tag discovery + parser fix) DONE + test-gated;
-  step 3 (panel re-ingest) **pending an explicit go-decision** (large live NSE op).
+- **Status:** ☑ done (2026-06-20) — tags fixed, panel re-ingested, coverage re-verified.
+  **Value block (E/P, B/P) UNBLOCKED → TBE4 runnable.**
 - **Depends on:** TBE2 (which diagnosed the 0%/2.5% coverage gaps), `06` (authorizes this path).
 - **Goal:** Fix the `xbrl_parser.py` tag mappings so `shares_outstanding` and `total_debt`
   populate from the **real** Ind-AS tags, then re-ingest the panel so E/P, B/P (and leverage where
@@ -447,10 +447,31 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
     repopulates line-item *fields*; no backtest is run.** (Note: it does refresh FINAL_OOS-period
     *fundamentals*, which is fine — the one-shot OOS guard is on backtest *returns*, consumed only at
     TBE8.) Tests: parser 16/16; regression 552.
-- **Step 4 — coverage re-verification (PENDING step 3 completion):** re-run `tbe2_characterize.py`;
-  E/P, B/P must clear usable thresholds before TBE4 is declared runnable (report honestly, Rule 12).
-  Expectation from the 15-sample evidence: E/P, B/P jump from 0% to high coverage (shares fix);
-  total_debt/leverage improve only where balance sheets exist (results-only filings stay NULL).
+  - **Re-ingest result (run `tbe2b-reparse`, completed 2026-06-20):** 56,220 filings processed →
+    45,688 rows updated, 10,390 unchanged, 0 gap-inserts; **shares_outstanding filled 45,510** (DB
+    non-null 0 → 45,530), total_debt filled 10,251 (1,340 → 11,595). 142 filings failed (0.25% —
+    stale/dead URLs); 2,556/2,609 ISINs checkpointed (the 53 uncheckpointed each had ≥1 of the 142
+    fetch failures → a `--resume` retries them, but at 0.25% it does not move the verdict and was
+    not run). 40,125 raw docs cached to `data/raw/xbrl_cache/` (re-runs now fully offline).
+- **Step 4 — coverage re-verification (DONE 2026-06-20):** re-ran `tbe2_characterize.py`. **Value
+  block UNBLOCKED, momentum-orthogonal:**
+  | factor | TBE2 (before) | after re-ingest |
+  |--------|---------------|------------------|
+  | `earnings_yield` | 0.0% | **91.7%** (min 83.7) |
+  | `book_to_price` | 0.0% | **89.8%** (min 81.9) |
+  | `value_block` | 0.0% | **92.3%** (min 85.5 — strong from the FIRST date 2020-01-31) |
+  | `roe` | 89.6% | 89.6% |
+  | `quality_block` | 89.9% | 90.0% |
+  | `leverage` | 6.1% | 21.7% (max 92.8 — still sparse early) |
+  | `accruals` | 17.2% | 17.2% (unchanged) |
+  Momentum rank-ρ: E/P, B/P, value_block all **|ρ|<0.3 on every date that has data** (mean ρ
+  −0.02/−0.08/−0.07) — genuinely momentum-orthogonal, the H3 supporting precondition (`03` §2).
+  (`frac_|ρ|<0.3 = 0.667` is not a violation — it is 28/42, the early-2020 dates being NaN because
+  12-month momentum is not yet computable, NOT because ρ exceeds the bound.) **leverage/accruals
+  stay low exactly as predicted** — results-only filings carry no balance sheet (total_assets/CFO/
+  borrowings absent); leverage is rescuable later via the disclosed `DebtEquityRatio` (TBE5 call).
+- **Verdict:** TBE4 (Value block {E/P, B/P}) is **runnable** — both factors clear ~90% coverage with
+  low momentum-ρ. The quality block (TBE5) is ROE-driven (90%) with sparse accruals/leverage.
 - **Leverage / `DebtEquityRatio` recommendation (surfaced, NOT implemented — Rule 1/7):** leverage
   (`03` §3) = `-(total_debt/total_equity)` = `-DebtEquityRatio`. The disclosed `DebtEquityRatio` tag
   has far better DISCOVERY coverage than balance-sheet borrowings (present in results filings).
