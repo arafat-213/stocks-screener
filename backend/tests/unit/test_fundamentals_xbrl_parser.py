@@ -50,8 +50,11 @@ from app.fundamentals.models import (
 )
 from app.fundamentals.xbrl_parser import (
     PHASE,
+    PHASE_REPARSE,
+    make_caching_fetcher,
     parse_xbrl,
     populate_line_items,
+    reparse_line_items,
 )
 
 RUN_ID = "tb4-test-run"
@@ -569,3 +572,136 @@ def test_placeholder_url_is_skipped_not_fetched(session):
     assert (
         session.query(FundamentalsLineItemVersion).filter_by(isin=ISIN_B).count() == 1
     )
+
+
+# ---------------------------------------------------------------------------
+# Test 8 — caching fetcher pays the network cost once
+# ---------------------------------------------------------------------------
+
+
+def test_caching_fetcher_serves_second_call_from_disk(tmp_path):
+    """A cache hit must NOT call the inner (live) fetcher again.
+
+    Raw XBRL is discarded after parsing, so without a cache a tag-fix re-ingest
+    re-fetches the whole panel from NSE every iteration.  The cache must make the
+    second read fully offline — the inner fetcher fires exactly once per URL.
+    """
+    calls: list[str] = []
+
+    def _inner(url: str) -> str:
+        calls.append(url)
+        return _FULL_XBRL
+
+    fetcher = make_caching_fetcher(str(tmp_path), inner=_inner)
+    first = fetcher(DOC_URL_A1)
+    second = fetcher(DOC_URL_A1)
+
+    assert first == second == _FULL_XBRL
+    assert calls == [DOC_URL_A1]  # inner called once; second served from disk
+
+
+# ---------------------------------------------------------------------------
+# Test 9 — reparse fills shares_outstanding on an existing row in place (TBE2b)
+# ---------------------------------------------------------------------------
+
+
+def test_reparse_fills_shares_in_place_and_is_idempotent(session):
+    """The core TBE2b step-3 behavior: an existing row parsed under the OLD mapping
+    (shares=NULL) is updated in place to the derived share count, without creating
+    a new vintage — and a second reparse changes nothing (idempotent).
+
+    Update-in-place (not delete+repopulate) keeps the frozen panel gap-free on
+    interruption; the available_date is untouched so §3.4 restatement semantics
+    are preserved (this is a parse correction, not a restatement).
+    """
+    _add_filing(session, ISIN_A, _PERIOD_END_A, _AVAIL_DATE_A1, DOC_URL_A1)
+    # Pre-existing row from the OLD parse: shares NULL (the TBE2 0%-coverage state).
+    session.add(
+        FundamentalsLineItemVersion(
+            isin=ISIN_A,
+            period_end=_PERIOD_END_A,
+            available_date=_AVAIL_DATE_A1,
+            statement_type="Annual",
+            source_exchange="NSE",
+            net_income=80_000.0,
+            shares_outstanding=None,
+        )
+    )
+    session.commit()
+
+    # Real-shape filing: PaidUp 313,924,000 @ face 10 → 31,392,400 shares.
+    real = _real_results_xbrl(paid_up=313_924_000.0, face_value=10.0)
+    fetcher = _static_fetcher({DOC_URL_A1: real})
+
+    stats = reparse_line_items(
+        session,
+        fetcher,
+        RUN_ID,
+        period_start=datetime.date(2023, 1, 1),
+        period_end=datetime.date(2023, 12, 31),
+    )
+    assert stats.rows_updated == 1
+    assert stats.rows_inserted == 0
+    assert stats.shares_filled == 1
+
+    rows = session.query(FundamentalsLineItemVersion).filter_by(isin=ISIN_A).all()
+    assert len(rows) == 1  # updated in place — no new vintage row
+    assert rows[0].available_date == _AVAIL_DATE_A1
+    assert rows[0].shares_outstanding == pytest.approx(31_392_400.0)
+
+    # Idempotent: a second pass (resume off to bypass checkpoint) changes nothing.
+    stats2 = reparse_line_items(
+        session,
+        fetcher,
+        RUN_ID,
+        period_start=datetime.date(2023, 1, 1),
+        period_end=datetime.date(2023, 12, 31),
+        resume=False,
+    )
+    assert stats2.rows_unchanged == 1
+    assert stats2.rows_updated == 0
+    assert stats2.shares_filled == 0
+
+
+def test_reparse_respects_period_window(session):
+    """A filing whose period_end is outside [period_start, period_end] is not
+    touched — the re-ingest is scoped to the panel window, not the whole DB."""
+    _add_filing(session, ISIN_A, _PERIOD_END_A, _AVAIL_DATE_A1, DOC_URL_A1)
+    fetched: list[str] = []
+
+    def _tracking(url: str) -> str:
+        fetched.append(url)
+        return _FULL_XBRL
+
+    # Window entirely after the filing's 2023-03-31 period_end → no work.
+    stats = reparse_line_items(
+        session,
+        _tracking,
+        RUN_ID,
+        period_start=datetime.date(2024, 1, 1),
+        period_end=datetime.date(2024, 12, 31),
+    )
+    assert fetched == []
+    assert stats.total_filings == 0
+
+
+def test_reparse_checkpoint_phase_is_isolated_from_populate(session):
+    """Reparse must checkpoint under its own phase so it never clobbers — or is
+    clobbered by — the original populate checkpoint on the same run_id."""
+    from app.db.models import PipelineCheckpoint
+
+    _add_filing(session, ISIN_A, _PERIOD_END_A, _AVAIL_DATE_A1, DOC_URL_A1)
+    real = _real_results_xbrl(paid_up=100.0, face_value=10.0)
+    reparse_line_items(
+        session,
+        _static_fetcher({DOC_URL_A1: real}),
+        RUN_ID,
+        period_start=datetime.date(2023, 1, 1),
+        period_end=datetime.date(2023, 12, 31),
+    )
+    phases = {
+        c.phase
+        for c in session.query(PipelineCheckpoint).filter_by(run_id=RUN_ID).all()
+    }
+    assert PHASE_REPARSE in phases
+    assert PHASE not in phases  # populate's phase untouched by a reparse-only run

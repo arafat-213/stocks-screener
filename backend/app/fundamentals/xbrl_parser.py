@@ -71,6 +71,10 @@ from app.fundamentals.models import FundamentalsFilingIndex, FundamentalsLineIte
 from app.pipeline.errors import classify_error
 
 PHASE = "tb4_xbrl_parse"
+# Re-parse pass (TBE2b): re-fetch + re-parse in-window filings with the corrected
+# tag mappings, updating existing rows in place.  Separate checkpoint phase so it
+# never collides with the original populate checkpoint.
+PHASE_REPARSE = "tbe2b_reparse"
 
 # Standard Ind-AS taxonomy namespace (mandated for NSE/BSE filings).
 _STD_NS_PREFIX = "in-bse-fin"
@@ -378,6 +382,35 @@ def fetch_xbrl_document(url: str) -> str:
     raise last_exc  # type: ignore[misc]
 
 
+def make_caching_fetcher(
+    cache_dir: str, inner: XBRLFetcher = fetch_xbrl_document
+) -> XBRLFetcher:
+    """Wrap a fetcher so each raw XBRL doc is read from / written to ``cache_dir``.
+
+    Raw XBRL is otherwise discarded after parsing, so a tag-mapping re-ingest
+    would re-fetch the whole panel from live NSE every time.  Caching keyed by
+    the URL's filename (filings have globally-unique names) pays the network
+    cost **once**: a cache hit short-circuits the live fetch entirely, so a
+    re-parse after the first pass needs no network at all.  Cache misses delegate
+    to ``inner`` (the live fetcher) and persist the result.
+    """
+    import os
+
+    os.makedirs(cache_dir, exist_ok=True)
+
+    def _fetch(url: str) -> str:
+        path = os.path.join(cache_dir, url.rsplit("/", 1)[-1])
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as fh:
+                return fh.read()
+        text = inner(url)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(text)
+        return text
+
+    return _fetch
+
+
 # ---------------------------------------------------------------------------
 # Stats
 # ---------------------------------------------------------------------------
@@ -395,14 +428,29 @@ class XBRLPopulateStats:
     filings_with_unmapped: int = 0
 
 
+@dataclass
+class XBRLReparseStats:
+    """Outcome of a reparse_line_items run — surfaced, not logged-and-forgotten."""
+
+    total_filings: int = 0
+    rows_updated: int = 0  # existing row re-parsed + a field changed
+    rows_unchanged: int = 0  # existing row re-parsed, identical (idempotent)
+    rows_inserted: int = 0  # filing had no row yet (gap fill)
+    filings_failed: int = 0
+    isins_skipped_checkpoint: int = 0
+    filings_with_unmapped: int = 0
+    shares_filled: int = 0  # rows where shares_outstanding went NULL → value
+    debt_filled: int = 0  # rows where total_debt went NULL → value
+
+
 # ---------------------------------------------------------------------------
 # Checkpoint / error helpers (same pattern as TB2/TB3 — Rule 3)
 # ---------------------------------------------------------------------------
 
 
-def _get_completed_isins(session: Session, run_id: str) -> set[str]:
+def _get_completed_isins(session: Session, run_id: str, phase: str = PHASE) -> set[str]:
     checkpoint = (
-        session.query(PipelineCheckpoint).filter_by(run_id=run_id, phase=PHASE).first()
+        session.query(PipelineCheckpoint).filter_by(run_id=run_id, phase=phase).first()
     )
     if checkpoint and checkpoint.completed_symbols:
         try:
@@ -412,14 +460,16 @@ def _get_completed_isins(session: Session, run_id: str) -> set[str]:
     return set()
 
 
-def _save_checkpoint(session: Session, run_id: str, completed: set[str]) -> None:
+def _save_checkpoint(
+    session: Session, run_id: str, completed: set[str], phase: str = PHASE
+) -> None:
     checkpoint = (
-        session.query(PipelineCheckpoint).filter_by(run_id=run_id, phase=PHASE).first()
+        session.query(PipelineCheckpoint).filter_by(run_id=run_id, phase=phase).first()
     )
     if not checkpoint:
         checkpoint = PipelineCheckpoint(
             run_id=run_id,
-            phase=PHASE,
+            phase=phase,
             started_at=datetime.datetime.now(datetime.timezone.utc),
         )
         session.add(checkpoint)
@@ -599,5 +649,158 @@ def populate_line_items(
         if isin_fetch_failures == 0:
             completed.add(isin)
             _save_checkpoint(session, run_id, completed)
+
+    return stats
+
+
+_REPARSE_FIELDS = (
+    "revenue",
+    "net_income",
+    "ebit",
+    "total_equity",
+    "total_assets",
+    "total_debt",
+    "shares_outstanding",
+    "cfo",
+)
+
+
+def reparse_line_items(
+    session: Session,
+    fetcher: XBRLFetcher,
+    run_id: str,
+    *,
+    period_start: datetime.date,
+    period_end: datetime.date,
+    resume: bool = True,
+) -> XBRLReparseStats:
+    """Re-fetch + re-parse in-window filings with the corrected mappings, updating
+    existing rows **in place** (TBE2b step 3).
+
+    Distinct from ``populate_line_items``: that one *skips* filings whose row
+    already exists, so it cannot apply a parser tag-fix to a panel already
+    ingested.  This pass instead re-parses every in-window filing and overwrites
+    the 8 line-item fields on the matching ``(isin, period_end, available_date)``
+    row.  This is a **parse correction, not a restatement** — ``available_date``
+    is unchanged and no new vintage row is created, so the §3.4 restatement
+    invariant is untouched.  A filing with no row yet is inserted (gap fill).
+
+    Update-in-place (never delete-then-repopulate) means an interruption never
+    leaves the frozen panel with a missing row — only stale-or-fresh values, both
+    valid.  Pair with ``make_caching_fetcher`` so the first pass pays the live-NSE
+    cost once and any re-run is fully offline.  Checkpoints per ISIN under
+    ``PHASE_REPARSE`` so ``resume`` continues after a throttle/crash.
+    """
+    completed = (
+        _get_completed_isins(session, run_id, PHASE_REPARSE) if resume else set()
+    )
+    stats = XBRLReparseStats()
+
+    real_url = FundamentalsFilingIndex.document_url.isnot(None) & ~(
+        FundamentalsFilingIndex.document_url.like("%/-")
+    )
+    in_window = (
+        real_url
+        & (FundamentalsFilingIndex.period_end >= period_start)
+        & (FundamentalsFilingIndex.period_end <= period_end)
+    )
+
+    isins: list[str] = [
+        row.isin
+        for row in (
+            session.query(FundamentalsFilingIndex.isin)
+            .filter(in_window)
+            .distinct()
+            .order_by(FundamentalsFilingIndex.isin)
+            .all()
+        )
+    ]
+
+    for isin in isins:
+        if isin in completed:
+            stats.isins_skipped_checkpoint += 1
+            continue
+
+        filings = (
+            session.query(FundamentalsFilingIndex)
+            .filter(FundamentalsFilingIndex.isin == isin, in_window)
+            .order_by(FundamentalsFilingIndex.available_date)
+            .all()
+        )
+        isin_fetch_failures = 0
+
+        for filing in filings:
+            stats.total_filings += 1
+            try:
+                xbrl_text = fetcher(filing.document_url)
+            except Exception as exc:
+                stats.filings_failed += 1
+                isin_fetch_failures += 1
+                _log_pipeline_error(session, run_id, isin, exc)
+                continue
+
+            try:
+                parsed = parse_xbrl(xbrl_text)
+            except Exception as exc:
+                stats.filings_failed += 1
+                _log_pipeline_error(session, run_id, isin, exc)
+                continue
+
+            if parsed.unmapped_items:
+                stats.filings_with_unmapped += 1
+
+            row = (
+                session.query(FundamentalsLineItemVersion)
+                .filter_by(
+                    isin=isin,
+                    period_end=filing.period_end,
+                    available_date=filing.available_date,
+                )
+                .first()
+            )
+            try:
+                if row is None:
+                    session.add(
+                        FundamentalsLineItemVersion(
+                            isin=isin,
+                            period_end=filing.period_end,
+                            available_date=filing.available_date,
+                            statement_type=filing.statement_type,
+                            source_exchange=filing.source_exchange,
+                            **{f: getattr(parsed, f) for f in _REPARSE_FIELDS},
+                        )
+                    )
+                    session.commit()
+                    stats.rows_inserted += 1
+                    continue
+
+                changed = False
+                for f in _REPARSE_FIELDS:
+                    new = getattr(parsed, f)
+                    old = getattr(row, f)
+                    if new != old:
+                        if (
+                            f == "shares_outstanding"
+                            and old is None
+                            and new is not None
+                        ):
+                            stats.shares_filled += 1
+                        if f == "total_debt" and old is None and new is not None:
+                            stats.debt_filled += 1
+                        setattr(row, f, new)
+                        changed = True
+                if changed:
+                    session.commit()
+                    stats.rows_updated += 1
+                else:
+                    stats.rows_unchanged += 1
+            except Exception as exc:
+                session.rollback()
+                stats.filings_failed += 1
+                _log_pipeline_error(session, run_id, isin, exc)
+
+        if isin_fetch_failures == 0:
+            completed.add(isin)
+            _save_checkpoint(session, run_id, completed, PHASE_REPARSE)
 
     return stats

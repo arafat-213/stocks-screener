@@ -1,0 +1,82 @@
+"""TBE2b step 3 — re-ingest the in-window panel with the corrected XBRL mappings.
+
+Re-fetches every in-window filing (caching each raw doc to disk so the live-NSE
+cost is paid once), re-parses it with the fixed ``parse_xbrl`` (shares via
+PaidUp/Face, debt via Borrowings{Noncurrent,Current}), and updates the matching
+line-item row **in place** (parse correction, not a restatement — §3.4 preserved).
+
+LIVE NSE on the first pass; fully OFFLINE on any re-run (cache hits).  Resumable:
+checkpoints per ISIN under ``PHASE_REPARSE``; re-invoke to continue after a
+throttle/crash.  Window defaults to FY2019-04-01 → 2026-06-12 (DISCOVERY +
+FINAL_OOS, the "in-window" scope chosen for TBE2b).
+
+Run:
+    backend/venv/bin/python -m app.fundamentals.tbe2b_reparse
+    backend/venv/bin/python -m app.fundamentals.tbe2b_reparse --start 2019-04-01 --end 2026-06-12
+"""
+
+from __future__ import annotations
+
+import argparse
+import datetime
+
+from app.db.session import SessionLocal
+from app.fundamentals.xbrl_parser import (
+    fetch_xbrl_document,
+    make_caching_fetcher,
+    reparse_line_items,
+)
+
+_CACHE_DIR = "data/raw/xbrl_cache"
+_RUN_ID = "tbe2b-reparse"
+
+
+def _date(s: str) -> datetime.date:
+    return datetime.datetime.strptime(s, "%Y-%m-%d").date()
+
+
+def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--start", type=_date, default=datetime.date(2019, 4, 1))
+    ap.add_argument("--end", type=_date, default=datetime.date(2026, 6, 12))
+    ap.add_argument("--cache-dir", default=_CACHE_DIR)
+    ap.add_argument("--run-id", default=_RUN_ID)
+    ap.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="ignore the checkpoint and re-walk every ISIN (cache still applies)",
+    )
+    args = ap.parse_args()
+
+    fetcher = make_caching_fetcher(args.cache_dir, inner=fetch_xbrl_document)
+    session = SessionLocal()
+    print(
+        f"[TBE2b] reparse window {args.start} → {args.end} | cache={args.cache_dir} "
+        f"| run_id={args.run_id} | resume={not args.no_resume}"
+    )
+    try:
+        stats = reparse_line_items(
+            session,
+            fetcher,
+            args.run_id,
+            period_start=args.start,
+            period_end=args.end,
+            resume=not args.no_resume,
+        )
+    finally:
+        session.close()
+
+    print("[TBE2b] done:")
+    print(f"  filings seen:        {stats.total_filings}")
+    print(f"  rows updated:        {stats.rows_updated}")
+    print(f"  rows unchanged:      {stats.rows_unchanged}")
+    print(f"  rows inserted (gap): {stats.rows_inserted}")
+    print(f"  shares filled:       {stats.shares_filled}")
+    print(f"  total_debt filled:   {stats.debt_filled}")
+    print(f"  filings failed:      {stats.filings_failed}")
+    print(f"  ISINs skipped (ckpt):{stats.isins_skipped_checkpoint}")
+    print(f"  filings w/ unmapped: {stats.filings_with_unmapped}")
+
+
+if __name__ == "__main__":
+    main()
