@@ -25,11 +25,17 @@ safe) rather than re-implementing it (Rule 3).
 from __future__ import annotations
 
 import math
+import warnings
 
+import numpy as np
 import pandas as pd
 
 from app.backtest_v2.signals import _momentum_12_1
-from app.backtest_v2.v3_config import V3Config
+from app.backtest_v2.v3_config import (
+    FUNDAMENTAL_FACTOR_NAMES,
+    PRICE_FACTOR_NAMES,
+    V3Config,
+)
 
 # Track-A factor names (must match V3Config.active_factors vocabulary).
 FACTOR_NAMES: frozenset[str] = frozenset(
@@ -164,36 +170,99 @@ def _resolve_weights(
     return [w / total for w in raw]
 
 
-def composite_rank(prices: pd.DataFrame, cfg: V3Config) -> pd.DataFrame:
+def composite_rank(
+    prices: pd.DataFrame,
+    cfg: V3Config,
+    extra_raw_frames: dict[str, pd.DataFrame] | None = None,
+) -> pd.DataFrame:
     """
     Equal-weight rank-blended composite (prereg §5):
 
       composite(name, day) = Σ_w  percentile_rank_cross_section(factor_value)
 
-    Each active factor is percentile-ranked *cross-sectionally* (across names on
-    each day, `rank(axis=1, pct=True)`), then weight-averaged. A name is NaN on a
-    day if ANY active factor is NaN there (require-all-present, deterministic).
-    Higher composite = better. Rank-blend (not z-blend) makes the score immune to
-    a single factor's value outliers — an extreme value just maps to rank 1.0.
+    **Track-A path (no fundamental factors in active_factors, extra_raw_frames=None):**
+    Each price factor is percentile-ranked cross-sectionally, then weight-averaged.
+    A name is NaN on a day if ANY active factor is NaN (require-all-present). This
+    is the existing deterministic Track-A behaviour — unchanged.
+
+    **Track-B path (fundamental factors present OR extra_raw_frames provided):**
+    Blends price-factor ranks with fundamental-factor ranks using mean-over-active
+    (nanmean) so names with no fundamental data average over their price factors only
+    (03 §5). Missing fundamental = not counted, not zero-filled (TB4 invariant).
+
+    `extra_raw_frames`: dict mapping each active fundamental factor name to its
+    raw-value wide DataFrame (date × isin). Must contain every fundamental name
+    that appears in `cfg.active_factors` — a missing key raises ValueError (Rule 12).
+    Frames may have sparse date coverage (rebalance dates only); alignment is by
+    index/column union.
 
     If `cfg.rank_smoothing_months > 0`, the composite is smoothed with an
-    N-month rolling mean (N × 21 trading days) so names don't oscillate across
-    the rank boundary on one noisy month (prereg §3.1).
+    N-month rolling mean (N × 21 trading days) (prereg §3.1).
     """
     active = list(cfg.active_factors)
     if not active:
         raise ValueError("V3Config.active_factors is empty")
 
-    weights = _resolve_weights(active, cfg.factor_weights)
+    fund_active = [n for n in active if n in FUNDAMENTAL_FACTOR_NAMES]
+    price_active = [n for n in active if n in PRICE_FACTOR_NAMES]
 
-    composite: pd.DataFrame | None = None
-    for name, w in zip(active, weights):
-        raw = compute_factor(name, prices, cfg)
-        ranked = raw.rank(axis=1, pct=True) * w
-        # `+` aligns on index/columns and propagates NaN (require-all-present).
-        composite = ranked if composite is None else composite + ranked
+    if not fund_active and extra_raw_frames is None:
+        # --- Track-A path: NaN-propagation, weighted sum ---
+        weights = _resolve_weights(active, cfg.factor_weights)
+        composite: pd.DataFrame | None = None
+        for name, w in zip(active, weights):
+            raw = compute_factor(name, prices, cfg)
+            ranked = raw.rank(axis=1, pct=True) * w
+            # `+` aligns on index/columns and propagates NaN (require-all-present).
+            composite = ranked if composite is None else composite + ranked
+        assert composite is not None  # active is non-empty
+    else:
+        # --- Track-B path: mean-over-active (nanmean) ---
+        if extra_raw_frames is None:
+            extra_raw_frames = {}
 
-    assert composite is not None  # active is non-empty
+        # Fail loud: every active fundamental name must have a frame (Rule 12).
+        missing = [n for n in fund_active if n not in extra_raw_frames]
+        if missing:
+            raise ValueError(
+                f"Fundamental factors {missing} are active in cfg.active_factors "
+                f"but not present in extra_raw_frames. Provide a frame for each."
+            )
+
+        rank_frames: list[pd.DataFrame] = []
+
+        for name in price_active:
+            raw = compute_factor(name, prices, cfg)
+            rank_frames.append(raw.rank(axis=1, pct=True))
+
+        for name in fund_active:
+            raw = extra_raw_frames[name]
+            rank_frames.append(raw.rank(axis=1, pct=True))
+
+        if not rank_frames:
+            raise ValueError(
+                "No rank frames produced — active_factors is empty after dispatch."
+            )
+
+        # Union of all dates and ISINs; reindex to common shape for nanmean.
+        all_idx = rank_frames[0].index
+        all_cols = rank_frames[0].columns
+        for f in rank_frames[1:]:
+            all_idx = all_idx.union(f.index)
+            all_cols = all_cols.union(f.columns)
+
+        aligned = [f.reindex(index=all_idx, columns=all_cols) for f in rank_frames]
+        stacked = np.stack(
+            [f.values for f in aligned], axis=0
+        )  # (n_factors, n_dates, n_isins)
+
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore", RuntimeWarning)
+            result = np.nanmean(stacked, axis=0)
+        # Where ALL factors are NaN for a cell → leave as NaN (name has no data).
+        result[np.all(np.isnan(stacked), axis=0)] = np.nan
+
+        composite = pd.DataFrame(result, index=all_idx, columns=all_cols)
 
     months = cfg.rank_smoothing_months
     if months and months > 0:

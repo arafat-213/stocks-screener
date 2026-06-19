@@ -152,7 +152,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE1 — Fundamental factor library (5 factors) + composite wiring (test-gated)
 
-- **Status:** ☐ not started
+- **Status:** ☑ done
 - **Depends on:** TBE0.
 - **Goal:** Implement the 5 LOCKED factors (`03` §3) reading **only** via `read_fundamentals_asof`,
   on the raw×raw basis, with the LOCKED TTM / degenerate-denominator / financials-exclusion rules —
@@ -176,11 +176,54 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
     equal-weight blend of its members.
 - **Deliverable:** the 5 factor functions + composite wiring + unit tests, green. **No backtest.**
 - **Done-criteria:**
-  - [ ] All 5 factors computed via `read_fundamentals_asof` + raw×raw; TTM + degenerate + financials
+  - [x] All 5 factors computed via `read_fundamentals_asof` + raw×raw; TTM + degenerate + financials
         rules match `03` §3/§4 exactly (tests encode each).
-  - [ ] Composite blends fundamental ranks under mean-over-active; missing = not counted (test).
-  - [ ] No raw-table read, no zero-fill, no market cap other than raw×raw (boundary test).
-- **Session log:** _(empty)_
+  - [x] Composite blends fundamental ranks under mean-over-active; missing = not counted (test).
+  - [x] No raw-table read, no zero-fill, no market cap other than raw×raw (boundary test).
+- **Session log (2026-06-19):**
+  - **New file `backend/app/backtest_v2/fundamental_factors.py`:**
+    - `_ttm_flow(snapshots, field)` — TTM via 4 `"Quarterly"` snapshots within `_TTM_MAX_SPAN_DAYS`
+      (456 days ≈ 15 months); fallback to latest `"Annual"` snapshot; else None. NULL in any of the
+      4 quarterly values = not clean → fallback (no partial sums, no zero-fill).
+    - `_latest_stock(snapshots, field)` — latest non-None stock item (any statement type).
+    - `_avg_equity_for_roe(snapshots)` — average of latest 2 `"Annual"` total_equity points; falls
+      back to 1 annual, then latest any-type; else None.
+    - `earnings_yield(snaps, close_raw)` — TTM NI / market_cap_raw; negative NI computed as-is.
+    - `book_to_price(snaps, close_raw)` — total_equity/market_cap_raw via `book_to_price_raw`; non-
+      positive equity → None (03 §4.3).
+    - `roe(snaps)` — TTM NI / avg_equity; non-positive equity → None.
+    - `accruals(snaps, is_financial)` — `−(TTM NI − TTM CFO) / total_assets`; financials → None;
+      zero/negative assets → None.
+    - `leverage(snaps, is_financial)` — `−(total_debt / total_equity)`; financials → None; non-
+      positive equity → None.
+    - `compute_fundamental_factor_frame(name, session, prices, rebalance_dates, financial_isins, *, reader)` —
+      wide DataFrame (date × ISIN) of raw factor values; reader seam allows test injection (Rule 9 /
+      CLAUDE.md §5 — no network or DB in tests).
+    - Financial-ISIN identification is **injected** (`financial_isins: frozenset[str]`); no sector
+      classification exists in the current data model. Determination for TBE3+ is caller's
+      responsibility (a known gap — Rule 12).
+  - **Modified `backend/app/backtest_v2/factors.py`:**
+    - Added `import warnings`, `import numpy as np`; imported `FUNDAMENTAL_FACTOR_NAMES`,
+      `PRICE_FACTOR_NAMES` from `v3_config`.
+    - `composite_rank` extended with optional `extra_raw_frames: dict[str, pd.DataFrame] | None`:
+      - **Track-A path** (no fundamental factors in `active_factors` AND `extra_raw_frames=None`):
+        existing NaN-propagation weighted-sum — **zero change to Track-A behaviour** (regression
+        guard: all 454 prior tests pass).
+      - **Track-B path** (fundamental factors active OR `extra_raw_frames` provided): validates that
+        every active fundamental name has a supplied frame (loud error if not), then blends ALL
+        factor percentile-ranks via `np.nanmean` (mean-over-active: a NaN factor rank is excluded
+        from the mean, not zero-filled). Where ALL factors are NaN for a cell, the composite is NaN.
+      - Index/column union handles sparse fundamental frames (e.g., rebalance-date-only index) — the
+        nanmean aligns them correctly. Forward-fill to daily frequency is the caller's responsibility
+        (TBE3 orchestration).
+  - **Tests: `tests/backtest_v2/test_v3tbe1_fundamental_factors.py` — 44/44 PASS.**
+    - DC1 (36 tests): TTM construction (7), earnings_yield (5), book_to_price (4), ROE (6),
+      accruals (5), leverage (5), ROE helper (4).
+    - DC2 (5 tests): Track-A path unchanged; missing-fundamental = mean-over-active; missing frame
+      raises loud; all-NaN stays NaN; nanmean semantics correct.
+    - DC3 (4 tests): empty snapshots → None not 0; market cap uses close_raw; reader seam works;
+      financial ISIN retained for E/P + B/P + ROE.
+  - **Regression:** 531 existing tests pass (no regressions).
 
 ---
 
