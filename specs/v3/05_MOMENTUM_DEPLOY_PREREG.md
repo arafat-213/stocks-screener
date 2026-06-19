@@ -224,7 +224,7 @@ note** (Rule 12) — no softening of the four hard gates to manufacture a pass.
 
 ### MD1 — Stage 1: 12-config cost screen (base + pessimistic) on full DISCOVERY
 
-- **Status:** ☐ not started
+- **Status:** ✅ DONE 2026-06-19
 - **Goal:** measure all 12 §4 configs on `validation.DISCOVERY`; produce the §6.1 cost-survival table.
 - **Do:** build each config from `TRACK_A_BASELINE` overriding only (M, smoothing, cadence); run
   `engine.run` at base cost + `robustness.check_cost_stress` (pessimistic). Record turnover, base
@@ -232,10 +232,41 @@ note** (Rule 12) — no softening of the four hard gates to manufacture a pass.
 - **Deliverable:** a 12-row table (config → turnover, base Calmar, maxDD, §6.1 ratio, pass/fail §6.1)
   in this Session log; the list of configs that cleared §6.1 ≥ 1.0 (the Stage-2 set).
 - **Done-criteria:**
-  - [ ] All 12 configs run on full DISCOVERY; base + pessimistic recorded; all logged to `ConfigLedger`.
-  - [ ] §6.1-clearing set identified explicitly (may be empty — report honestly, Rule 12).
-  - [ ] `FINAL_OOS` untouched.
-- **Session log:** _(empty)_
+  - [x] All 12 configs run on full DISCOVERY; base + pessimistic recorded; all logged to `ConfigLedger`.
+  - [x] §6.1-clearing set identified explicitly (may be empty — report honestly, Rule 12).
+  - [x] `FINAL_OOS` untouched.
+- **Session log (2026-06-19):**
+
+  Script: `backend/app/backtest_v2/md1_cost_screen.py`
+  Window: DISCOVERY 2018-02-06 → 2023-06-30 | Held constant: 5-factor set, N=20, regime ON, liq floor 5cr
+  C_nifty50 (pessimistic cost, full DISCOVERY) = **0.346** (same for all rows — benchmark is fixed)
+
+  | Config | Base Calmar | MaxDD | Turnover% | C_strat (pess) | C_nifty50 | Ratio | §6.1 |
+  |---|---|---|---|---|---|---|---|
+  | M=70  sm=0 monthly    | 0.396 | 28.7% |  956 | 0.326 | 0.346 | 0.94 | **FAIL** |
+  | M=70  sm=0 quarterly  | 0.147 | 28.3% |  383 | 0.124 | 0.346 | 0.36 | FAIL |
+  | M=70  sm=3 monthly    | 0.304 | 29.4% |  680 | 0.262 | 0.346 | 0.76 | FAIL |
+  | M=70  sm=3 quarterly  | 0.158 | 25.9% |  335 | 0.138 | 0.346 | 0.40 | FAIL |
+  | M=130 sm=0 monthly    | 0.523 | 26.1% |  706 | 0.468 | 0.346 | 1.35 | **PASS** |
+  | M=130 sm=0 quarterly  | 0.115 | 28.9% |  331 | 0.096 | 0.346 | 0.28 | FAIL |
+  | M=130 sm=3 monthly    | 0.272 | 31.4% |  622 | 0.237 | 0.346 | 0.68 | FAIL |
+  | M=130 sm=3 quarterly  | 0.166 | 28.5% |  287 | 0.142 | 0.346 | 0.41 | FAIL |
+  | M=200 sm=0 monthly    | 0.550 | 27.2% |  617 | 0.502 | 0.346 | 1.45 | **PASS** |
+  | M=200 sm=0 quarterly  | 0.061 | 30.4% |  303 | 0.044 | 0.346 | 0.13 | FAIL |
+  | M=200 sm=3 monthly    | 0.187 | 31.4% |  568 | 0.154 | 0.346 | 0.45 | FAIL |
+  | M=200 sm=3 quarterly  | 0.086 | 26.9% |  280 | 0.062 | 0.346 | 0.18 | FAIL |
+
+  **ConfigLedger K this run: 24** (2 runs × 12 configs — base + pessimistic each)
+
+  **Structural findings (diagnostic, no stick moved):**
+  - Smoothing (sm=3) universally hurt: every smoothed config fails §6.1 regardless of M or cadence.
+  - Quarterly cadence universally collapsed Calmar — consistent with the T4 L1 rejection finding.
+  - Wider M (hold longer) improved base Calmar and §6.1 survival when combined with monthly cadence.
+  - The anchor baseline (M=70 sm=0 monthly) reproduces T6 Calmar 0.396 exactly — no wiring drift.
+
+  **§6.1 survivors → Stage-2 set (MD2): 2 configs**
+  1. **M=130, sm=0, monthly** — base Calmar 0.523, 706% turnover, ratio 1.35
+  2. **M=200, sm=0, monthly** — base Calmar 0.550, 617% turnover, ratio 1.45
 
 ### MD2 — Stage 2: full battery + §5 acceptance on the §6.1 survivors
 
@@ -272,7 +303,7 @@ note** (Rule 12) — no softening of the four hard gates to manufacture a pass.
 
 ## Exit criteria
 
-- [ ] MD1 — 12-config cost screen run on full DISCOVERY; §6.1 survivor set identified; all logged.
+- [x] MD1 — 12-config cost screen run on full DISCOVERY; §6.1 survivor set identified (2 configs); all logged.
 - [ ] MD2 — full battery + §5 on survivors; single candidate locked OR null close (FINAL_OOS pristine).
 - [ ] MD3 — one-shot FINAL_OOS (only on a locked candidate); §9 DoD verdict stated truthfully.
 - [ ] If MD2 null OR MD3 fails → momentum-only closes as a research note; no stick moved, no second
