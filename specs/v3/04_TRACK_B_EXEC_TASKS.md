@@ -432,15 +432,25 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
     correctly NULL in results-only filings.
   - **Tests:** `tests/unit/test_fundamentals_xbrl_parser.py` — **12/12 PASS** (5 new encoding the
     real shapes). Regression: **548 pass** (xbrl + tb8 + backtest_v2); no Track-A/engine regressions.
-- **Step 3 — panel re-ingest (PENDING DECISION):** Raw XBRL is **not** cached on disk — only the
-  live `nsearchives.nseindia.com` URLs survive. So re-parsing with the new mappings requires
-  **re-fetching ~56,220 in-window filings (≈2,609 ISINs; 68,004 all-window) from live NSE** — a
-  multi-hour, resumable (`populate_line_items` checkpoints) live operation. Existing 54,693
-  line-item rows have shares=0/total_debt=1340 under the old parse and must be re-parsed. Held for
-  an explicit go + a strategy decision (re-fetch all vs eligible-universe subset; add a raw-doc
-  disk cache so the network cost is paid once for future tag iterations).
-- **Step 4 — coverage re-verification:** after re-ingest, re-run `tbe2_characterize.py`; E/P, B/P
-  must clear usable thresholds before TBE4 is declared runnable (report honestly, Rule 12).
+- **Step 3 — panel re-ingest (RUNNING, 2026-06-19):** Raw XBRL is **not** cached on disk — only the
+  live `nsearchives.nseindia.com` URLs survive, so re-parsing requires re-fetching. Decision
+  (Arafat): **in-window scope + disk cache.** Tooling (committed `f403dfa1`/`9f33c51b`):
+  - `make_caching_fetcher` — disk-caches each raw doc (`data/raw/xbrl_cache/`); live cost paid once,
+    re-runs fully offline.
+  - `reparse_line_items` — re-fetch + re-parse in-window filings, **update the matching
+    `(isin, period_end, available_date)` row in place** (parse correction, NOT a restatement;
+    `available_date` untouched → §3.4 preserved). Update-in-place (not delete+repopulate) keeps the
+    frozen panel gap-free on interruption. Resumable per-ISIN under `PHASE_REPARSE`.
+  - `tbe2b_reparse.py` CLI — window FY2019-04-01 → 2026-06-12 (DISCOVERY + FINAL_OOS), ~56,220
+    filings / ≈2,609 ISINs. **Launched as a resumable background job** (run_id `tbe2b-reparse`);
+    multi-hour at ~0.5 s/fetch + NSE backoffs. **`FINAL_OOS` numbers are NOT touched — this only
+    repopulates line-item *fields*; no backtest is run.** (Note: it does refresh FINAL_OOS-period
+    *fundamentals*, which is fine — the one-shot OOS guard is on backtest *returns*, consumed only at
+    TBE8.) Tests: parser 16/16; regression 552.
+- **Step 4 — coverage re-verification (PENDING step 3 completion):** re-run `tbe2_characterize.py`;
+  E/P, B/P must clear usable thresholds before TBE4 is declared runnable (report honestly, Rule 12).
+  Expectation from the 15-sample evidence: E/P, B/P jump from 0% to high coverage (shares fix);
+  total_debt/leverage improve only where balance sheets exist (results-only filings stay NULL).
 - **Leverage / `DebtEquityRatio` recommendation (surfaced, NOT implemented — Rule 1/7):** leverage
   (`03` §3) = `-(total_debt/total_equity)` = `-DebtEquityRatio`. The disclosed `DebtEquityRatio` tag
   has far better DISCOVERY coverage than balance-sheet borrowings (present in results filings).
