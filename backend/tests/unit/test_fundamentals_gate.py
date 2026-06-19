@@ -33,7 +33,11 @@ from app.fundamentals.gate import (
     check_survivorship,
     run_acceptance_gate,
 )
-from app.fundamentals.models import FundamentalsLineItemVersion, FundamentalsUniverse
+from app.fundamentals.models import (
+    FundamentalsFilingIndex,
+    FundamentalsLineItemVersion,
+    FundamentalsUniverse,
+)
 from app.fundamentals.reader import read_fundamentals_asof
 
 # ── Fixture ISINs (all registered in the universe fixture) ────────────────────
@@ -79,6 +83,26 @@ def _row(
     )
 
 
+def _filing(
+    isin: str,
+    available_date: datetime.date,
+    period_end: datetime.date = PERIOD,
+) -> FundamentalsFilingIndex:
+    """A filing-index row — evidence the name was an established filer as-of D.
+
+    §6.1's filers-only denominator (Option 2) keeps a name only if it had filed
+    something by D; a covered name and a genuine-gap name both need this row.
+    """
+    return FundamentalsFilingIndex(
+        isin=isin,
+        period_end=period_end,
+        available_date=available_date,
+        statement_type="Annual",
+        source_exchange="NSE",
+        document_url=None,
+    )
+
+
 # ── Test 1 — Coverage dual gate ───────────────────────────────────────────────
 
 
@@ -95,6 +119,10 @@ def test_coverage_dual_gate_name_floor_enforced(session):
     CHECK_DATE = datetime.date(2022, 7, 1)
     # cutoff(2022-07-01) = 2022-06-29 ≥ V1_AVAIL → v1 qualifies for ISIN_A.
     session.add(_row(ISIN_A, PERIOD, V1_AVAIL))
+    # All four are established filers as-of D (filing-index entry ≤ cutoff) so
+    # B/C/D stay in the denominator as genuine gaps — the case this test guards.
+    for isin in (ISIN_A, ISIN_B, ISIN_C, ISIN_D):
+        session.add(_filing(isin, V1_AVAIL))
     session.commit()
 
     def eligible_on_date(D: datetime.date) -> list[tuple[str, float]]:
@@ -112,6 +140,42 @@ def test_coverage_dual_gate_name_floor_enforced(session):
         "should FAIL: name_pct=1/4=25% < 75% threshold even though weight_pct=95% ≥ 90%"
     )
     assert "25%" in result.detail or "floor" in result.detail or "name" in result.detail
+
+
+def test_coverage_excludes_nonfilers_from_denominator(session):
+    """
+    WHY: §6.1's filers-only denominator (Option 2, pre-registered 2026-06-19). A
+    name that listed days before D has no fundamentals on file *by construction* —
+    counting it against fundamentals coverage measures IPO timing, not data
+    quality (the 2021-07 Zomato / 2021-11 Paytm-wave artifact). Such a name (no
+    filing-index entry ≤ cutoff) must be DROPPED from the denominator entirely;
+    only zero-filing-history names are dropped — genuine gaps (a long-listed name
+    whose filing we failed to ingest) still count, so this is not a free pass.
+
+    Panel: ISIN_A (covered, est. filer) + ISIN_B (huge weight, NON-filer / fresh
+    IPO). Counted, ISIN_B's weight would sink the 90% floor → FAIL. Excluded as a
+    non-filer, the date PASSES on the established-filer ISIN_A alone. The §8.2
+    floors are untouched — only the denominator narrows.
+    """
+    CHECK_DATE = datetime.date(2022, 7, 1)
+    cutoff_ok = V1_AVAIL  # 2022-05-10 ≤ cutoff(2022-07-01)=2022-06-29
+    # ISIN_A: established filer WITH fundamentals (covered).
+    session.add(_row(ISIN_A, PERIOD, cutoff_ok))
+    session.add(_filing(ISIN_A, cutoff_ok))
+    # ISIN_B: fresh IPO — its only filing is AFTER D (no entry ≤ cutoff).
+    session.add(_filing(ISIN_B, datetime.date(2022, 8, 15)))
+    session.commit()
+
+    def eligible_on_date(D: datetime.date) -> list[tuple[str, float]]:
+        # ISIN_B carries 80% of weight; if counted, weight_pct=20% << 90% → FAIL.
+        return [(ISIN_A, 200.0), (ISIN_B, 800.0)]
+
+    result = check_coverage(session, eligible_on_date, [CHECK_DATE])
+
+    assert result.passed, (
+        "should PASS: ISIN_B is a non-filer as-of D (fresh IPO) and is excluded "
+        "from the denominator; coverage is then 100% on the established filer ISIN_A"
+    )
 
 
 # ── Test 2 — PIT integrity ────────────────────────────────────────────────────
@@ -305,6 +369,8 @@ def test_run_acceptance_gate_fail_aggregation(session):
     # Build a panel that passes §6.2 / §6.3 / §6.4 / §6.5 but FAILS §6.1 (coverage):
     # ISIN_A has fundamentals; the other three do not.
     session.add(_row(ISIN_A, PERIOD, V1_AVAIL))
+    for isin in (ISIN_A, ISIN_B, ISIN_C, ISIN_D):
+        session.add(_filing(isin, V1_AVAIL))
     session.commit()
 
     CHECK_DATE = datetime.date(2022, 7, 1)

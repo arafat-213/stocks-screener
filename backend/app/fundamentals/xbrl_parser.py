@@ -65,7 +65,9 @@ _STD_NS_PREFIX = "in-bse-fin"
 _STD_NS_MARKER = "in-bse-fin"
 
 _HTTP_TIMEOUT_S = 15
-_REQUEST_SLEEP_S = 0.3
+_REQUEST_SLEEP_S = 0.5  # base inter-request sleep (slightly conservative vs 0.3)
+_MAX_RETRIES = 3  # total attempts per URL (1 initial + 2 retries)
+_RETRY_BACKOFF_S = (3.0, 8.0)  # sleep before retry 2, retry 3
 _NSE_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -288,15 +290,30 @@ XBRLFetcher = Callable[[str], str]  # url → raw XBRL text
 
 
 def fetch_xbrl_document(url: str) -> str:
-    """Fetch an XBRL document from a URL; returns raw text.  Production only."""
+    """Fetch an XBRL document from a URL with retry + exponential backoff.
+
+    Retries up to ``_MAX_RETRIES`` times on any exception (connection error,
+    HTTP 429/5xx throttle, timeout).  Sleep between retries grows exponentially
+    per ``_RETRY_BACKOFF_S``.  Base inter-request sleep of ``_REQUEST_SLEEP_S``
+    is applied after every successful fetch to stay under NSE's rate limit.
+    Production only — tests inject a fixture fetcher (CLAUDE.md §5).
+    """
     import requests  # local import: live-only dependency
 
     sess = requests.Session()
     sess.headers.update(_NSE_HEADERS)
-    resp = sess.get(url, timeout=_HTTP_TIMEOUT_S)
-    resp.raise_for_status()
-    time.sleep(_REQUEST_SLEEP_S)
-    return resp.text
+    last_exc: Exception | None = None
+    for attempt in range(_MAX_RETRIES):
+        try:
+            resp = sess.get(url, timeout=_HTTP_TIMEOUT_S)
+            resp.raise_for_status()
+            time.sleep(_REQUEST_SLEEP_S)
+            return resp.text
+        except Exception as exc:
+            last_exc = exc
+            if attempt < _MAX_RETRIES - 1:
+                time.sleep(_RETRY_BACKOFF_S[attempt])
+    raise last_exc  # type: ignore[misc]
 
 
 # ---------------------------------------------------------------------------
@@ -394,12 +411,19 @@ def populate_line_items(
     completed = _get_completed_isins(session, run_id) if resume else set()
     stats = XBRLPopulateStats()
 
-    # Collect all ISINs with at least one filing that has a document_url.
+    # Collect all ISINs with at least one filing that has a REAL document_url.
+    # NSE returns a placeholder URL ending in ``/-`` when no XBRL document exists
+    # for a filing (the ``xbrl="-"`` / format="Old" case — TB0.5). Those are not
+    # fetchable; excluding them here keeps resume from burning the rate-limit
+    # budget re-404ing tens of thousands of dead URLs (~11s each with retries).
+    real_url = FundamentalsFilingIndex.document_url.isnot(None) & ~(
+        FundamentalsFilingIndex.document_url.like("%/-")
+    )
     isins_with_filings: list[str] = [
         row.isin
         for row in (
             session.query(FundamentalsFilingIndex.isin)
-            .filter(FundamentalsFilingIndex.document_url.isnot(None))
+            .filter(real_url)
             .distinct()
             .order_by(FundamentalsFilingIndex.isin)
             .all()
@@ -415,21 +439,46 @@ def populate_line_items(
             session.query(FundamentalsFilingIndex)
             .filter(
                 FundamentalsFilingIndex.isin == isin,
-                FundamentalsFilingIndex.document_url.isnot(None),
+                real_url,
             )
             .order_by(FundamentalsFilingIndex.available_date)
             .all()
         )
 
+        # Track fetch failures separately from parse/write failures.
+        # Only fetch failures are retryable — parse/unmapped are deterministic.
+        # An ISIN is checkpointed only when fetch_failures == 0 so that
+        # throttled ISINs are automatically retried on --resume (Rule 12).
+        isin_fetch_failures = 0
+
         for filing in filings:
             stats.total_filings += 1
             doc_url = filing.document_url  # guaranteed non-None by the query filter
 
-            # --- Fetch ---
+            # --- Idempotency: skip BEFORE fetching ---
+            # On --resume an ISIN may be reprocessed because a sibling filing was
+            # throttled; the filings already stored must be skipped WITHOUT a
+            # network round-trip, or every resume re-fetches the whole panel and
+            # re-throttles the genuine gaps (the "no progress" failure mode).
+            existing = (
+                session.query(FundamentalsLineItemVersion)
+                .filter_by(
+                    isin=isin,
+                    period_end=filing.period_end,
+                    available_date=filing.available_date,
+                )
+                .first()
+            )
+            if existing is not None:
+                stats.rows_skipped_existing += 1
+                continue
+
+            # --- Fetch (with retry/backoff inside fetch_xbrl_document) ---
             try:
                 xbrl_text = fetcher(doc_url)
             except Exception as exc:
                 stats.filings_failed += 1
+                isin_fetch_failures += 1
                 _log_pipeline_error(session, run_id, isin, exc)
                 continue
 
@@ -451,20 +500,10 @@ def populate_line_items(
                 _log_pipeline_error(session, run_id, isin, unmapped_exc)
 
             # --- Write (restatement write-side: new row per available_date) ---
+            # Existence already checked above (pre-fetch). The TB1 unique key
+            # still guards against a concurrent duplicate; an IntegrityError here
+            # rolls back and is logged, never crashing the run.
             try:
-                existing = (
-                    session.query(FundamentalsLineItemVersion)
-                    .filter_by(
-                        isin=isin,
-                        period_end=filing.period_end,
-                        available_date=filing.available_date,
-                    )
-                    .first()
-                )
-                if existing is not None:
-                    stats.rows_skipped_existing += 1
-                    continue
-
                 session.add(
                     FundamentalsLineItemVersion(
                         isin=isin,
@@ -490,7 +529,13 @@ def populate_line_items(
                 stats.filings_failed += 1
                 _log_pipeline_error(session, run_id, isin, exc)
 
-        completed.add(isin)
-        _save_checkpoint(session, run_id, completed)
+        # Only checkpoint if every fetch for this ISIN succeeded.  An ISIN
+        # with any throttled/failed fetch stays uncheckpointed so --resume
+        # retries it automatically.  Parse failures and unmapped items are
+        # deterministic (re-fetching won't change them) and do NOT block
+        # checkpointing — they are already in the DB as NULL or logged.
+        if isin_fetch_failures == 0:
+            completed.add(isin)
+            _save_checkpoint(session, run_id, completed)
 
     return stats

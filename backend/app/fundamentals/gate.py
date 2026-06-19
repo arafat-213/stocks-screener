@@ -39,7 +39,11 @@ from app.fundamentals.data_config import (
     COVERAGE_THRESHOLD_WEIGHT,
     RECON_TOLERANCE,
 )
-from app.fundamentals.models import FundamentalsLineItemVersion, FundamentalsUniverse
+from app.fundamentals.models import (
+    FundamentalsFilingIndex,
+    FundamentalsLineItemVersion,
+    FundamentalsUniverse,
+)
 from app.fundamentals.reader import _cutoff, read_fundamentals_asof
 
 # ---------------------------------------------------------------------------
@@ -106,6 +110,29 @@ class GateResult:
 # ---------------------------------------------------------------------------
 
 
+def _filers_asof(session: Session, isins: list[str], cutoff: datetime.date) -> set[str]:
+    """ISINs in ``isins`` that had made ≥1 filing of any kind by ``cutoff``.
+
+    Reads the filing index (which carries ALL filings, including no-XBRL
+    placeholder ones), so a name that filed results but had no XBRL document
+    still counts as a *filer* — it stays in the §6.1 denominator and, if its
+    line items were never ingested, is correctly counted as an uncovered gap.
+    Only names that had filed *nothing at all* as-of ``cutoff`` are absent here.
+    """
+    if not isins:
+        return set()
+    rows = (
+        session.query(FundamentalsFilingIndex.isin)
+        .filter(
+            FundamentalsFilingIndex.isin.in_(isins),
+            FundamentalsFilingIndex.available_date <= cutoff,
+        )
+        .distinct()
+        .all()
+    )
+    return {r.isin for r in rows}
+
+
 def check_coverage(
     session: Session,
     eligible_on_date: EligibleOnDate,
@@ -114,14 +141,27 @@ def check_coverage(
     """§6.1 — dual coverage: ≥90% weight AND ≥75% name on each rebalance date.
 
     Denominator = liquidity-eligible DISCOVERY universe from ``eligible_on_date``
-    (NOT raw universe_membership — §6.1 denominator pin).  Both TB0-locked floors
-    (§8.2) must hold on EVERY checked date; one date below floor = FAIL.
+    (NOT raw universe_membership — §6.1 denominator pin), further restricted to
+    names that had filed something as-of D (the §10 "filers-only" refinement,
+    pre-registered 2026-06-19): a name that listed days before the rebalance has
+    no fundamentals on file *by construction* — it cannot have a TTM set yet, so
+    counting it against fundamentals coverage measures IPO timing, not data
+    quality. Excluding only zero-filing-history names keeps every genuine gap
+    (a long-listed name whose filing we failed to ingest) in the denominator.
+    The §8.2 floors (90/75) are UNCHANGED — only the denominator is refined.
+    Both TB0-locked floors must hold on EVERY checked date; one below = FAIL.
     """
     failing: list[str] = []
     date_count = 0
 
     for D in rebalance_dates:
         eligible = eligible_on_date(D)
+        if not eligible:
+            continue
+
+        # §10 filers-only denominator: drop names with zero filings as-of D.
+        filers = _filers_asof(session, [i for i, _ in eligible], _cutoff(D))
+        eligible = [(i, w) for i, w in eligible if i in filers]
         if not eligible:
             continue
         date_count += 1

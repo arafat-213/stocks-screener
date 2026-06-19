@@ -357,3 +357,45 @@ crisis from the in-sample window. It **retains the Mar-2020 COVID crash** — th
 contrast in the panel and exactly the diversification H3 is built to test. A shorter window that
 still spans a genuine crash is the honest maximum the data supports; the alternative (a clean
 but regime-thin ~2021 start, or a speculative BSE build for one extra year) was rejected.
+
+---
+
+## Pre-registration entry — Track-B §6.1 "filers-only" denominator — 2026-06-19
+
+**Approved by Arafat, 2026-06-19.** A new pre-registration entry per the T0 lock rule above.
+It refines the **definition of the §6.1 coverage denominator** (`02_TRACK_B_DATA.md` §6.1) for
+Track B. **No §6 threshold is changed** — the dual 90%-by-weight / 75%-by-name floors (§8.2) are
+intact. **`FINAL_OOS` stays pristine.**
+
+### Why (a denominator-definition fix, not a threshold tune)
+
+The first full-panel TB8 gate run (3470 ISINs) PASSED §6.2–6.5 but FAILED §6.1 on exactly **2 of
+42 dates** — 2021-07-30 (weight 88.5%) and 2021-11-30 (weight 85.4%). Root-cause diagnosis
+(2026-06-19) showed the shortfall is driven **entirely by fresh mega-cap IPOs that are
+liquidity-eligible but have no fundamentals filed yet at the rebalance**: the Jul-2021 wave
+(ETERNAL/Zomato, CLEAN, SONACOMS, TATVA) and the Nov-2021 wave (PAYTM, POLICYBZR, NYKAA-era
+names). `read_fundamentals_asof` correctly returns nothing for a company that listed days
+earlier — it *cannot* have a trailing-12m statement. Counting such names against **fundamentals**
+coverage measures IPO timing, not data quality. (This also corrected a misdiagnosis in the
+earlier TB8 log that attributed the gap to "NSE XBRL throttling" — in fact all fetchable XBRL was
+ingested; the residual gap is no-document placeholders + PIT-correct IPO timing.)
+
+### The change
+
+1. **§6.1's denominator is the liquidity-eligible universe restricted to names that had filed
+   something as-of D** (≥1 filing-index entry with `available_date ≤ D − lag`). A name with **zero
+   filing history** as-of D is structurally incapable of having fundamentals and is excluded from
+   *both* numerator and denominator.
+2. **Genuine gaps still count.** A long-listed name whose filing exists in the index (even a
+   no-XBRL placeholder filing) but whose line items we failed to ingest **remains** in the
+   denominator as an uncovered miss — so this is not a free pass. Verified: by-name coverage stays
+   ~96% after the refinement (it does **not** jump to 100%), confirming real gaps are still caught.
+
+### What is explicitly NOT changed (the guards)
+
+- **§6 thresholds unchanged** — 90%-by-weight AND 75%-by-name dual gate intact (`data_config.py`
+  untouched). This refines *who is in the universe being measured*, not *the measuring stick*.
+- **`FINAL_OOS` unchanged and pristine.**
+- **Effect quantified before adoption (Rule 12):** all 42 dates PASS under the refinement; the 2
+  failing dates move 88.5%→97.4% and 85.4%→97.1%; no other date's verdict changes. Adopted only
+  after the effect was measured across the whole panel, not fit to a target.

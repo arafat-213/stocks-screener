@@ -376,3 +376,94 @@ def test_per_filing_failure_logged_and_run_continues(session):
     errors = session.query(PipelineError).filter_by(run_id=RUN_ID, phase=PHASE).all()
     assert len(errors) >= 1
     assert any("Timeout" in e.message or "timeout" in e.message.lower() for e in errors)
+
+
+# ---------------------------------------------------------------------------
+# Test 6 — ISIN with fetch failure is NOT checkpointed → retried on resume
+# ---------------------------------------------------------------------------
+
+
+def test_failed_isin_not_checkpointed_and_retried_on_resume(session):
+    """An ISIN whose fetch fails must NOT be checkpointed so --resume retries it.
+
+    This is the core invariant that prevents throttled NSE responses from being
+    silently swallowed and permanently skipped.  If an ISIN were checkpointed
+    despite fetch failures, a --resume would skip it forever — the §6.1 weight
+    floor failure would be permanent even when the data exists on NSE.
+    The fix: only checkpoint an ISIN when isin_fetch_failures == 0.
+    """
+    _add_filing(session, ISIN_A, _PERIOD_END_A, _AVAIL_DATE_A1, DOC_URL_A1)
+    _add_filing(session, ISIN_B, _PERIOD_END_B, _AVAIL_DATE_B, DOC_URL_B)
+
+    # First pass: ISIN_A fetch fails; ISIN_B succeeds.
+    fetcher_pass1 = _error_fetcher(
+        failing_url=DOC_URL_A1,
+        fallback={DOC_URL_B: _FULL_XBRL},
+    )
+    populate_line_items(session, fetcher_pass1, RUN_ID)
+
+    # After first pass: ISIN_B is checkpointed; ISIN_A is NOT (fetch failed).
+    import json
+
+    from app.db.models import PipelineCheckpoint
+
+    ckpt = (
+        session.query(PipelineCheckpoint).filter_by(run_id=RUN_ID, phase=PHASE).first()
+    )
+    assert ckpt is not None
+    checkpointed = set(json.loads(ckpt.completed_symbols))
+    assert ISIN_B in checkpointed, "ISIN_B (success) must be checkpointed"
+    assert ISIN_A not in checkpointed, "ISIN_A (fetch failed) must NOT be checkpointed"
+
+    # Second pass (resume=True): ISIN_A fetch now succeeds → its row lands.
+    fetcher_pass2 = _static_fetcher({DOC_URL_A1: _FULL_XBRL, DOC_URL_B: _FULL_XBRL})
+    stats2 = populate_line_items(session, fetcher_pass2, RUN_ID, resume=True)
+
+    assert stats2.isins_skipped_checkpoint == 1  # ISIN_B skipped (already done)
+    assert stats2.rows_inserted == 1  # ISIN_A row now lands
+    assert (
+        session.query(FundamentalsLineItemVersion).filter_by(isin=ISIN_A).count() == 1
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test 7 — placeholder ".../xbrl/-" URL (no XBRL doc) is skipped, never fetched
+# ---------------------------------------------------------------------------
+
+
+def test_placeholder_url_is_skipped_not_fetched(session):
+    """A filing whose document_url is NSE's no-document placeholder ('.../xbrl/-')
+    must be skipped WITHOUT a fetch attempt.
+
+    NSE returns this placeholder when no XBRL exists for a filing (the xbrl='-' /
+    format='Old' case — TB0.5). These are not transient throttles: re-fetching
+    them 404s forever. If they entered the fetch loop, every --resume would burn
+    the rate-limit budget re-404ing tens of thousands of dead URLs (~11s each
+    with retries) and never make progress — the exact bug this guards against.
+    The placeholder ISIN must not even count as work, and a fetch must never fire
+    for it (asserted by an exploding fetcher).
+    """
+    placeholder = "https://nsearchives.nseindia.com/corporate/xbrl/-"
+    _add_filing(session, ISIN_A, _PERIOD_END_A, _AVAIL_DATE_A1, placeholder)
+    _add_filing(session, ISIN_B, _PERIOD_END_B, _AVAIL_DATE_B, DOC_URL_B)
+
+    fetched_urls: list[str] = []
+
+    def _tracking_fetcher(url: str) -> str:
+        fetched_urls.append(url)
+        if url == placeholder:
+            raise AssertionError(f"placeholder URL must never be fetched: {url!r}")
+        return _FULL_XBRL
+
+    stats = populate_line_items(session, _tracking_fetcher, RUN_ID)
+
+    # Placeholder filing produced no row and no fetch; only the real ISIN landed.
+    assert placeholder not in fetched_urls
+    assert fetched_urls == [DOC_URL_B]
+    assert stats.rows_inserted == 1
+    assert (
+        session.query(FundamentalsLineItemVersion).filter_by(isin=ISIN_A).count() == 0
+    )
+    assert (
+        session.query(FundamentalsLineItemVersion).filter_by(isin=ISIN_B).count() == 1
+    )

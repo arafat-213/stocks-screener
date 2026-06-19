@@ -194,7 +194,10 @@ def fetch_nse_filing_index(isin: str, symbol: str) -> list[FilingRecord]:
         if not period_end or not avail_date or not stmt_type:
             continue
         xbrl = (row.get("xbrl") or "").strip()
-        doc_url = xbrl if (xbrl and xbrl != "-") else None
+        # NSE signals "no XBRL document" either as a bare "-" or as a full
+        # placeholder URL whose basename is "-" (e.g. ".../xbrl/-"). Both → None.
+        has_doc = bool(xbrl) and xbrl != "-" and not xbrl.rstrip("/").endswith("/-")
+        doc_url = xbrl if has_doc else None
         is_consolidated = row.get("consolidated", "").strip() == "Consolidated"
         key = (period_end, stmt_type)
         existing = best.get(key)
