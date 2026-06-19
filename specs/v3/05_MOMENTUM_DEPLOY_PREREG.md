@@ -270,7 +270,7 @@ note** (Rule 12) — no softening of the four hard gates to manufacture a pass.
 
 ### MD2 — Stage 2: full battery + §5 acceptance on the §6.1 survivors
 
-- **Status:** ☐ not started
+- **Status:** ✅ DONE 2026-06-19
 - **Depends on:** MD1.
 - **Goal:** apply §6.2/§6.3/§6.5 (+ §6.4 diagnostic) and the §5 rule to the Stage-1 survivors; lock the
   single candidate or declare the null close.
@@ -280,31 +280,103 @@ note** (Rule 12) — no softening of the four hard gates to manufacture a pass.
 - **Deliverable:** per-survivor §6 table + the §5 verdict — either the single locked candidate config
   (byte-for-byte) **or** "null outcome → research note; FINAL_OOS pristine."
 - **Done-criteria:**
-  - [ ] §6.2/§6.3/§6.5 reported per survivor; §6.4 reported as diagnostic (not gating).
-  - [ ] §5 applied; exactly one candidate locked OR null close declared (Rule 12 — no silent pick).
-  - [ ] `FINAL_OOS` untouched.
-- **Session log:** _(empty)_
+  - [x] §6.2/§6.3/§6.5 reported per survivor; §6.4 reported as diagnostic (not gating).
+  - [x] §5 applied; exactly one candidate locked OR null close declared (Rule 12 — no silent pick).
+  - [x] `FINAL_OOS` untouched.
+- **Session log (2026-06-19):**
+
+  Script: `backend/app/backtest_v2/md2_battery.py`
+  Window: DISCOVERY 2018-02-06 → 2023-06-30 | §6.4 benchmark: Nifty200 Momentum 30 TRI
+
+  **§6.3 note:** neighborhood plateau reuses MD1 base Calmar table (no re-run; those K entries already
+  logged in MD1). §6.4 deployment bar benchmark = Nifty200 Momentum 30 TRI (base cost). Nifty50 TRI
+  was the §6.1 benchmark in MD1; the deployment bar is the primary benchmark per §3/§9.
+
+  #### Config: M=130 sm=0 monthly (base Calmar 0.523, turnover 706%)
+
+  | Check | Verdict | Detail |
+  |---|---|---|
+  | §6.2 Universe perturbation | **FAIL** | perturbed calmar=0.225, retention=43% (threshold ≥70%) |
+  | §6.3 Neighborhood plateau | **FAIL** | 3/4 neighbors below 0.4446 (85%×0.523): M=70→0.396, sm=3→0.272, quarterly→0.115 |
+  | §6.4 Subperiod (DIAGNOSTIC) | — | Pre-COVID chop −0.140 / Post-COVID bull +5.789 / Rate-hike correction +0.207; concentration_hard=FAIL |
+  | §6.5 Turnover/capacity | PASS | participation 0.030% < 5% ADV floor |
+  | §5-4 Deployment bar | **FAIL** | C_strat=0.523 > C_bench=0.473 (calmar ok) but maxDD ratio=0.77 > 0.70 |
+  | **§5 VERDICT** | **FAIL** | Failed gates: §6.2, §6.3, deployment bar |
+
+  Dropped names (§6.2): CGPOWER, ADANIGREEN, TATAELXSI, PERSISTENT, APOLLOHOSP, KPITTECH, JSWSTEEL, IEX, TIINDIA, DALBHARAT
+
+  #### Config: M=200 sm=0 monthly (base Calmar 0.550, turnover 617%)
+
+  | Check | Verdict | Detail |
+  |---|---|---|
+  | §6.2 Universe perturbation | **FAIL** | perturbed calmar=0.187, retention=34% (threshold ≥70%) |
+  | §6.3 Neighborhood plateau | **FAIL** | 2/3 neighbors below 0.4675 (85%×0.550): sm=3→0.187, quarterly→0.061 |
+  | §6.4 Subperiod (DIAGNOSTIC) | — | Pre-COVID chop −0.136 / Post-COVID bull +6.971 / Rate-hike correction +0.159; concentration_hard=FAIL |
+  | §6.5 Turnover/capacity | PASS | participation 0.027% < 5% ADV floor |
+  | §5-4 Deployment bar | **FAIL** | C_strat=0.550 > C_bench=0.473 (calmar ok) but maxDD ratio=0.80 > 0.70 |
+  | **§5 VERDICT** | **FAIL** | Failed gates: §6.2, §6.3, deployment bar |
+
+  Dropped names (§6.2): CGPOWER, ADANIGREEN, TATAELXSI, GREENPANEL, IEX, PERSISTENT, APOLLOHOSP, KPITTECH, JBCHEPHARM, GUJGASLTD
+
+  **ConfigLedger K this run (MD2): 10** (2 base runs + 2 §6.2 perturb runs + 6 §6.4 subperiod runs)
+
+  **Structural findings (diagnostic, no stick moved):**
+  - §6.2: Edge is concentrated in a handful of mid-cap momentum winners in both configs. Dropping
+    top-10 P&L names cuts Calmar retention to 43% / 34% — the momentum strategy's edge is not
+    broadly distributed across the universe.
+  - §6.3: Both configs are lever spikes, not plateaus. The M-lever has some regional structure
+    (M=130→M=200 is OK), but smoothing=3 and quarterly cadence create hard cliffs in every direction.
+    No config in this grid sits on a robust plateau.
+  - Deployment bar: Both configs beat Nifty200 Momentum 30 on base-cost Calmar (0.523 and 0.550 vs
+    0.473), but neither passes the maxDD ≤70% gate (ratios 0.77 and 0.80). This is a drawdown
+    concentration problem, not a return problem.
+  - §6.4 (diagnostic): Both fail concentration_hard — Post-COVID bull Calmar (5.789 / 6.971) is
+    more than 5× the other positive subperiods. Regime dependence is confirmed.
+
+  **§5 OUTCOME: NULL CLOSE**
+  Zero configs satisfy §5 items 1–4 on full DISCOVERY. Per prereg §5, momentum-only closes as
+  a **research note**. `FINAL_OOS` remains pristine and untouched. No stick moved, no lever added,
+  no threshold loosened. This is a pre-accepted, honest finding per `00` §10.
 
 ### MD3 — One-shot FINAL_OOS + §9 DoD verdict (only on a locked candidate)
 
-- **Status:** ☐ not started
-- **Depends on:** MD2 with a locked candidate (else **N/A** — research note, FINAL_OOS pristine).
-- **Goal:** spend `FINAL_OOS` exactly once on the locked candidate; apply §9.
-- **Do:** run the byte-for-byte candidate through `engine.run` on `FINAL_OOS` **once**. Report §9
-  predicates + the four hard §6 gates OOS + §6.4 diagnostic + raw/deflated Sharpe (K from ledger, §7)
-  + PBO. Mark `FINAL_OOS` consumed.
-- **Done-criteria:**
-  - [ ] Run only on a locked candidate; exact config, no re-tune, exactly one run.
-  - [ ] §9 DoD applied; verdict stated plainly (deployable vs research note); raw + deflated reported.
-  - [ ] `FINAL_OOS` marked consumed; no second run under any outcome.
-- **Session log:** _(empty)_
+- **Status:** **N/A** — MD2 null close. No locked candidate. `FINAL_OOS` pristine.
+- **Depends on:** MD2 with a locked candidate — MD2 produced the null outcome; MD3 is not performed.
+- **Session log:** _(not run — null outcome per prereg §5)_
 
 ---
 
 ## Exit criteria
 
 - [x] MD1 — 12-config cost screen run on full DISCOVERY; §6.1 survivor set identified (2 configs); all logged.
-- [ ] MD2 — full battery + §5 on survivors; single candidate locked OR null close (FINAL_OOS pristine).
-- [ ] MD3 — one-shot FINAL_OOS (only on a locked candidate); §9 DoD verdict stated truthfully.
-- [ ] If MD2 null OR MD3 fails → momentum-only closes as a research note; no stick moved, no second
-      OOS run. A pre-accepted, honest outcome (`00` §10).
+- [x] MD2 — full battery + §5 on survivors; **NULL CLOSE** declared (no config satisfies §5 items 1–4).
+- [x] MD3 — **N/A** (null outcome; FINAL_OOS untouched; no second OOS run).
+- [x] MD2 null → momentum-only closes as a research note; no stick moved, no second OOS run.
+      A pre-accepted, honest outcome (`00` §10). **FINAL_OOS remains pristine.**
+
+---
+
+## Research Note (final close, 2026-06-19)
+
+**Momentum-only (5-factor, N=20, Track-A construction) closes as a research note.**
+
+The full §4 grid (12 configs across M×smoothing×cadence) was searched for a lower-turnover config
+that survives realistic costs and sits on a robust plateau. The honest finding is:
+
+1. **The §6.1 cost bar is passable** — M=130 and M=200 at monthly cadence both survive pessimistic
+   costs (ratios 1.35 and 1.45). The cost problem from T6 is soluble with a wider sell buffer.
+2. **§6.2 is the structural barrier** — momentum edge is concentrated in a small set of top names
+   (~10 stocks drive the bulk of P&L). Dropping them cuts Calmar retention to 34–43%. This is not
+   a config problem; it is a structural property of momentum in the Indian mid-cap universe.
+3. **§6.3 fails because the lever space has no plateau** — smoothing=3 and quarterly cadence both
+   destroy Calmar in every direction (0.06–0.27 vs 0.52–0.55 base). The two survivors are isolated
+   spikes, not robust regions.
+4. **The deployment bar fails on drawdown** — both configs beat Nifty200 Momentum 30 on Calmar but
+   carry maxDD ratios of 0.77–0.80 (threshold ≤ 0.70). The strategy's drawdown is too close to the
+   benchmark's to clear the bar.
+5. **§6.4 (diagnostic) confirms regime concentration** — Post-COVID bull Calmar (5.8–7.0) is >> 5×
+   other subperiods. The momentum edge is real but heavily regime-dependent.
+
+**No config in this grid earns the one-shot OOS. `FINAL_OOS` is pristine.**
+Value+momentum revisit (Track-B) is deferred to ~6 months out pending a fundamental factor re-ingest
+(per TBE2 data-gap finding and `04` close).
