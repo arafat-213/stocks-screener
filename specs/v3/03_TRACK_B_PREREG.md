@@ -1,7 +1,7 @@
 # v3 / 03 — Track B Pre-Registration: Value & Quality Factors (H3)
 
-> **Status: DRAFT 2026-06-19 — awaiting Arafat's lock (§11).** This is the **separate,
-> separately-approved** factor pre-registration that `02_TRACK_B_DATA.md` §7 and
+> **Status: LOCKED 2026-06-19 — Arafat signed off §11. Build via `04_TRACK_B_EXEC_TASKS.md`.**
+> This is the **separate, separately-approved** factor pre-registration that `02_TRACK_B_DATA.md` §7 and
 > `02_TRACK_B_TASKS.md` (TB8) gate on the data layer **passing** its §6 acceptance gate.
 > TB8 returned **§6 = PASS** on the full 3470-ISIN panel (2026-06-19, all 5 checks, all 42
 > rebalance dates) under the pre-registered "filers-only" denominator — so this file may now
@@ -11,8 +11,8 @@
 > **This file is a commitment, not a task list.** It fixes the Track-B factor definitions,
 > their economic rationale, the as-of read contract, the composition rule, the bounded coarse
 > grid, and the H3 test — *before* any number is measured (spec-04 §5; the v1 failure mode is
-> committing the design after seeing the result). A separate `_TASKS.md` will decompose the
-> backtest build **after** Arafat locks §11. Until then, the grids below are **PROPOSED**.
+> committing the design after seeing the result). `04_TRACK_B_EXEC_TASKS.md` decomposes the
+> backtest build into cold-session tasks; the grids below are **LOCKED** (§11, 2026-06-19).
 
 ---
 
@@ -306,11 +306,11 @@ guaranteed deployable strategy (`00` §10).
 
 ---
 
-## 11. Locked commitments (PROPOSED — awaiting Arafat, 2026-06-DD)
+## 11. Locked commitments (Arafat, 2026-06-19)
 
-*Nothing below is binding until Arafat approves this file; on approval, date-stamp and flip to
-LOCKED, mirroring `00` §11. No later session may change a locked item without a new
-pre-registration entry.*
+*Arafat read the full draft and signed off, 2026-06-19. The items below are now binding,
+mirroring `00` §11. No later session may change a locked item without a new pre-registration
+entry and explicit session approval.*
 
 1. **Factor set = the five in §3** (E/P, B/P, ROE, accruals, leverage), raw×raw math, sole read
    path `read_fundamentals_asof`. EBIT/EV, sector-neutralization, and non-equal within-block
@@ -324,6 +324,6 @@ pre-registration entry.*
    passes where the Track-A baseline fails; supporting = spread narrows + low momentum↔V/Q ρ.
 5. **Track-B DISCOVERY = 2020-01-31 → 2023-06-30; `FINAL_OOS` pristine; §9 DoD bar unchanged.** §8.
 
-Build proceeds via a future `04_TRACK_B_EXEC_TASKS.md` (decomposing the DISCOVERY backtest + the
-one-shot `FINAL_OOS`) **only after** §11 is locked. No backtest is run and no `FINAL_OOS` figure is
-observed until then.
+Build proceeds via `04_TRACK_B_EXEC_TASKS.md` (decomposing the DISCOVERY backtest + the one-shot
+`FINAL_OOS` into cold-session tasks). No `FINAL_OOS` figure is observed until a single
+DISCOVERY-selected candidate is locked by that file's penultimate task.
