@@ -243,6 +243,108 @@ def test_all_line_items_parse_from_standard_tags():
 
 
 # ---------------------------------------------------------------------------
+# Test 1b — real Ind-AS tag shapes (TBE2b): shares from paid-up/face value,
+#           debt from Borrowings{Noncurrent,Current}
+# ---------------------------------------------------------------------------
+
+
+def _real_results_xbrl(
+    *,
+    paid_up: float | None = None,
+    face_value: float | None = None,
+    extra: str = "",
+    duplicate_paidup_zero: bool = False,
+) -> str:
+    """Build an XBRL using the REAL Ind-AS tag names discovered from live filings.
+
+    Real filings carry NO ``NumberOf*SharesOutstanding`` element — share count is
+    derived from ``PaidUpValueOfEquityShareCapital / FaceValueOfEquityShareCapital``.
+    ``duplicate_paidup_zero`` reproduces the real artifact where one context
+    reports paid-up = 0 BEFORE the true positive value (must be skipped).
+    """
+    ctx = 'contextRef="OneD" unitRef="INR" decimals="-6"'
+    parts: list[str] = []
+    if duplicate_paidup_zero:
+        parts.append(
+            f"  <in-bse-fin:PaidUpValueOfEquityShareCapital {ctx}>0.00"
+            "</in-bse-fin:PaidUpValueOfEquityShareCapital>"
+        )
+    if paid_up is not None:
+        parts.append(
+            f"  <in-bse-fin:PaidUpValueOfEquityShareCapital {ctx}>{paid_up}"
+            "</in-bse-fin:PaidUpValueOfEquityShareCapital>"
+        )
+    if face_value is not None:
+        parts.append(
+            f"  <in-bse-fin:FaceValueOfEquityShareCapital {ctx}>{face_value}"
+            "</in-bse-fin:FaceValueOfEquityShareCapital>"
+        )
+    body = "\n".join(parts) + ("\n" + extra if extra else "")
+    return f'<?xml version="1.0"?>\n<xbrl {_STD_NS}>\n{body}\n</xbrl>'
+
+
+def test_shares_outstanding_derived_from_paidup_over_face_value():
+    """Real filings have no share-count element — derive PaidUp / FaceValue.
+
+    Without this derivation shares_outstanding is NULL across the entire panel
+    (the TBE2 0%-coverage finding), which kills E/P and B/P — the whole value
+    block.  ₹6,763,020,000 paid-up at ₹2 face = 3,381,510,000 shares.
+    """
+    result = parse_xbrl(_real_results_xbrl(paid_up=6_763_020_000.0, face_value=2.0))
+    assert result.shares_outstanding == pytest.approx(3_381_510_000.0)
+
+
+def test_shares_outstanding_skips_zero_paidup_artifact():
+    """A 0 paid-up value in a duplicate context must be skipped for the real value.
+
+    Observed in a live filing (same period reported twice, once as 0): a listed
+    company cannot have ₹0 paid-up capital, so first-match would wrongly yield 0
+    shares.  First-positive must recover the true 864,320,000 / 2 = 432,160,000.
+    """
+    xbrl = _real_results_xbrl(
+        paid_up=864_320_000.0, face_value=2.0, duplicate_paidup_zero=True
+    )
+    result = parse_xbrl(xbrl)
+    assert result.shares_outstanding == pytest.approx(432_160_000.0)
+
+
+def test_shares_outstanding_null_when_face_value_absent():
+    """Missing face value → shares NULL, never zero-filled (Rule 12)."""
+    result = parse_xbrl(_real_results_xbrl(paid_up=1_000_000.0, face_value=None))
+    assert result.shares_outstanding is None
+
+
+def test_total_debt_from_real_borrowings_current_noncurrent_tags():
+    """Real balance-sheet debt uses Borrowings{Noncurrent,Current}, not the
+    legacy Long/Short-Term names the parser previously looked for.
+
+    The reversed word order (NonCurrentBorrowings vs BorrowingsNoncurrent) is
+    why total_debt was 2.5% non-null — a near-total miss on balance-sheet filings.
+    """
+    bs = (
+        '  <in-bse-fin:BorrowingsNoncurrent contextRef="OneI" unitRef="INR" '
+        'decimals="-6">11977750000.00</in-bse-fin:BorrowingsNoncurrent>\n'
+        '  <in-bse-fin:BorrowingsCurrent contextRef="OneI" unitRef="INR" '
+        'decimals="-6">16284790000.00</in-bse-fin:BorrowingsCurrent>'
+    )
+    result = parse_xbrl(_real_results_xbrl(paid_up=1.0, face_value=1.0, extra=bs))
+    assert result.total_debt == pytest.approx(28_262_540_000.0)
+
+
+def test_results_only_filing_has_shares_but_null_debt():
+    """A P&L-only results filing (the bulk of 2020–2023) carries paid-up/face but
+    NO balance sheet → shares derivable, total_debt correctly NULL (not zero).
+
+    This is the structural reality of the DISCOVERY window: the shares fix
+    unblocks E/P and B/P, while total_debt stays NULL where the data is simply
+    absent — surfaced as NULL, never zero-filled (Rule 12).
+    """
+    result = parse_xbrl(_real_results_xbrl(paid_up=313_924_000.0, face_value=10.0))
+    assert result.shares_outstanding == pytest.approx(31_392_400.0)
+    assert result.total_debt is None
+
+
+# ---------------------------------------------------------------------------
 # Test 2 — unmapped item → NULL not zero + PipelineError logged
 # ---------------------------------------------------------------------------
 

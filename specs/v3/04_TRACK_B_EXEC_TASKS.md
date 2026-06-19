@@ -391,6 +391,65 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ---
 
+## TBE2b — XBRL tag-mapping fix + panel re-ingest (data-fix; unblocks TBE4)
+
+- **Status:** ◐ in progress — steps 1–2 (tag discovery + parser fix) DONE + test-gated;
+  step 3 (panel re-ingest) **pending an explicit go-decision** (large live NSE op).
+- **Depends on:** TBE2 (which diagnosed the 0%/2.5% coverage gaps), `06` (authorizes this path).
+- **Goal:** Fix the `xbrl_parser.py` tag mappings so `shares_outstanding` and `total_debt`
+  populate from the **real** Ind-AS tags, then re-ingest the panel so E/P, B/P (and leverage where
+  available) clear usable coverage → TBE4 (value block) becomes runnable (`06` forward decision).
+- **Step 1 — real-tag discovery (DONE, 2026-06-19):** Bounded, Arafat-authorized live fetch of
+  **15 real filings** (10 INDAS Annual/Quarterly + 2 NBFC + 1 Banking 2024–25 + 3 DISCOVERY-era
+  2020 INDAS), cached offline to `backend/data/raw/xbrl_samples/` (so re-parse is free, no re-fetch).
+  Findings:
+  - **`shares_outstanding`: parser's `NumberOf*SharesOutstanding` tags DO NOT EXIST in Ind-AS
+    filings.** Real source = `PaidUpValueOfEquityShareCapital / FaceValueOfEquityShareCapital`
+    (both present in **15/15** samples, incl. results-only filings). → derivation fix.
+  - **`total_debt`: parser looked for `NonCurrentBorrowings`/`CurrentBorrowings` — real tags are
+    `BorrowingsNoncurrent`/`BorrowingsCurrent` (reversed word order)**, plus direct `Borrowings`
+    (NBFC/Banking). → tag fix.
+  - **STRUCTURAL FINDING (Rule 12):** DISCOVERY-window (2020–2023) filings are **P&L *results*
+    filings, NOT full annual reports** (`fin/2018-03-31` taxonomy, ~68 tags): they carry P&L +
+    `PaidUp`/`Face` + `ReserveExcludingRevaluationReserves` + a disclosed `DebtEquityRatio`, but
+    **no balance sheet** (no `Borrowings`, no total `Assets`, no `Equity` element, no CFO). So:
+    | Item | DISCOVERY outcome after fix |
+    |------|------------------------------|
+    | `shares_outstanding` | ✅ high coverage (PaidUp/Face near-universal) |
+    | `total_equity` | ~OK via `PaidUp + Reserves` (already why ROE was 90%) |
+    | **E/P, B/P** | ✅ **UNBLOCKED** (the headline win for TBE4) |
+    | `total_debt` | ⚠️ only where a balance sheet exists; **NULL in results-only filings** (no zero-fill, Rule 12) |
+    | `leverage` | ⚠️ follows total_debt; OR derivable from disclosed `DebtEquityRatio` (8/15 incl. 2020-era) — *out-of-scope methodology call, see below* |
+    | `accruals` | unchanged (needs total_assets+CFO, both absent in results filings) |
+- **Step 2 — parser fix (DONE + test-gated, 2026-06-19):** `xbrl_parser.py`:
+  - Added `_extract_first_positive` + `_derive_shares_outstanding` (direct tags → else
+    PaidUp(first-positive)/Face; first-positive skips the real 0-paid-up duplicate-context artifact;
+    either component absent/non-positive → None, never zero-filled).
+  - Added real borrowings tags `BorrowingsNoncurrent`/`BorrowingsCurrent` as the primary
+    LT/ST fallbacks (legacy names retained, harmless).
+  - **Validated on the 15 real cached filings:** shares **15/15** populated (incl. the 0-artifact
+    file → 432,160,000 via first-positive); total_debt populated wherever a balance sheet exists,
+    correctly NULL in results-only filings.
+  - **Tests:** `tests/unit/test_fundamentals_xbrl_parser.py` — **12/12 PASS** (5 new encoding the
+    real shapes). Regression: **548 pass** (xbrl + tb8 + backtest_v2); no Track-A/engine regressions.
+- **Step 3 — panel re-ingest (PENDING DECISION):** Raw XBRL is **not** cached on disk — only the
+  live `nsearchives.nseindia.com` URLs survive. So re-parsing with the new mappings requires
+  **re-fetching ~56,220 in-window filings (≈2,609 ISINs; 68,004 all-window) from live NSE** — a
+  multi-hour, resumable (`populate_line_items` checkpoints) live operation. Existing 54,693
+  line-item rows have shares=0/total_debt=1340 under the old parse and must be re-parsed. Held for
+  an explicit go + a strategy decision (re-fetch all vs eligible-universe subset; add a raw-doc
+  disk cache so the network cost is paid once for future tag iterations).
+- **Step 4 — coverage re-verification:** after re-ingest, re-run `tbe2_characterize.py`; E/P, B/P
+  must clear usable thresholds before TBE4 is declared runnable (report honestly, Rule 12).
+- **Leverage / `DebtEquityRatio` recommendation (surfaced, NOT implemented — Rule 1/7):** leverage
+  (`03` §3) = `-(total_debt/total_equity)` = `-DebtEquityRatio`. The disclosed `DebtEquityRatio` tag
+  has far better DISCOVERY coverage than balance-sheet borrowings (present in results filings).
+  Sourcing leverage/total_debt from it would rescue leverage coverage — but it is a **methodology
+  change beyond "fix tag mappings"** and belongs to TBE5 (quality block), not the value block `06`
+  prioritized. Deferred to an explicit decision; the value block (E/P, B/P) does not need it.
+
+---
+
 ## TBE4 — Layer B1: add the Value block {E/P, B/P} (plateau)
 
 - **Status:** ☐ not started

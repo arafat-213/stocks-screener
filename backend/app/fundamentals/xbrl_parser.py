@@ -31,9 +31,21 @@ Direct ``Equity`` element preferred; falls back to the standard component sum
 
 Total debt derivation
 ---------------------
-Direct ``Borrowings`` element preferred; falls back to
-``LongTermBorrowings + ShortTermBorrowings`` (zero-filled per component if
-only one is present — a company with no ST debt still has total_debt = LT only).
+Direct ``Borrowings`` element preferred (used by NBFC/Banking filings); falls
+back to ``BorrowingsNoncurrent + BorrowingsCurrent`` (the real balance-sheet tag
+names — the legacy ``LongTermBorrowings``/``ShortTermBorrowings`` /
+``NonCurrentBorrowings``/``CurrentBorrowings`` names are kept as further fallbacks
+but do not appear in real Ind-AS filings).  Zero-filled per component if only one
+is present.  **Results-only filings (the bulk of 2020–2023) carry no balance
+sheet — total_debt is correctly NULL there, never zero-filled (Rule 12).**
+
+Shares-outstanding derivation
+-----------------------------
+Ind-AS filings carry **no** ``NumberOf*SharesOutstanding`` element.  Share count
+is derived from ``PaidUpValueOfEquityShareCapital / FaceValueOfEquityShareCapital``
+(both near-universal, including results-only filings).  The first **positive**
+paid-up value is used: a listed company cannot have ₹0 paid-up capital, so a 0 in
+a duplicate context is a data artifact and is skipped (§4.3 degenerate handling).
 
 Source seam
 -----------
@@ -126,20 +138,29 @@ _TOTAL_DEBT_DIRECT_TAGS = (
     "Borrowings",
     "TotalBorrowings",
 )
+# Real Ind-AS tag names are BorrowingsNoncurrent / BorrowingsCurrent (the
+# legacy Long/Short/NonCurrent/Current names below never appear in filings but
+# are retained as harmless further fallbacks).
 _LT_BORROWINGS_TAGS = (
+    "BorrowingsNoncurrent",
     "LongTermBorrowings",
     "NonCurrentBorrowings",
 )
 _ST_BORROWINGS_TAGS = (
+    "BorrowingsCurrent",
     "ShortTermBorrowings",
     "CurrentBorrowings",
 )
 
+# Direct share-count tags do not exist in Ind-AS filings (kept as defensive
+# primary); share count is derived from paid-up capital / face value below.
 _SHARES_OUTSTANDING_TAGS = (
     "NumberOfSharesOutstanding",
     "NumberOfEquitySharesOutstanding",
     "NumberOfEquitySharesOutstandingAtEndOfReportingPeriod",
 )
+_PAIDUP_CAPITAL_TAGS = ("PaidUpValueOfEquityShareCapital",)
+_FACE_VALUE_TAGS = ("FaceValueOfEquityShareCapital",)
 
 _CFO_TAGS = (
     "NetCashFlowsFromUsedInOperatingActivities",
@@ -188,6 +209,47 @@ def _extract_numeric(xbrl_text: str, local_names: tuple[str, ...]) -> float | No
         m = re.search(pat, xbrl_text)
         if m:
             return float(m.group(1).replace(",", ""))
+    return None
+
+
+def _extract_first_positive(
+    xbrl_text: str, local_names: tuple[str, ...]
+) -> float | None:
+    """First strictly-positive match from the standard namespace, else None.
+
+    Used for share capital: the same fact can appear in duplicate contexts where
+    one carries a 0 artifact (e.g. a standalone/consolidated split or a filing
+    error).  A listed company cannot have ₹0 paid-up capital, so a 0 is skipped
+    in favour of the real positive value (§4.3 degenerate handling).
+    """
+    for ln in local_names:
+        for m in re.finditer(
+            rf"<{_STD_NS_PREFIX}:{ln}\b[^>]*>"
+            rf"\s*(-?\d[\d,]*\.?\d*(?:[eE][+-]?\d+)?)\s*"
+            rf"</{_STD_NS_PREFIX}:{ln}>",
+            xbrl_text,
+        ):
+            v = float(m.group(1).replace(",", ""))
+            if v > 0:
+                return v
+    return None
+
+
+def _derive_shares_outstanding(xbrl_text: str) -> float | None:
+    """Direct share-count element if present; else paid-up capital / face value.
+
+    No Ind-AS filing carries a ``NumberOf*SharesOutstanding`` element, so in
+    practice the count is ``PaidUpValueOfEquityShareCapital /
+    FaceValueOfEquityShareCapital`` (both near-universal, including results-only
+    filings).  Either component absent or non-positive → None (never zero-filled).
+    """
+    direct = _extract_numeric(xbrl_text, _SHARES_OUTSTANDING_TAGS)
+    if direct is not None:
+        return direct
+    paid_up = _extract_first_positive(xbrl_text, _PAIDUP_CAPITAL_TAGS)
+    face_value = _extract_first_positive(xbrl_text, _FACE_VALUE_TAGS)
+    if paid_up is not None and face_value is not None and face_value > 0:
+        return paid_up / face_value
     return None
 
 
@@ -269,7 +331,7 @@ def parse_xbrl(xbrl_text: str) -> XBRLParseResult:
         ("total_equity", _derive_total_equity(xbrl_text)),
         ("total_assets", _extract_numeric(xbrl_text, _TOTAL_ASSETS_TAGS)),
         ("total_debt", _derive_total_debt(xbrl_text)),
-        ("shares_outstanding", _extract_numeric(xbrl_text, _SHARES_OUTSTANDING_TAGS)),
+        ("shares_outstanding", _derive_shares_outstanding(xbrl_text)),
         ("cfo", _extract_numeric(xbrl_text, _CFO_TAGS)),
     ]
 
