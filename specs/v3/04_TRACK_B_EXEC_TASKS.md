@@ -308,7 +308,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE3 — Track-A baseline backtest on the Track-B window (the H3 comparison anchor)
 
-- **Status:** ☐ not started
+- **Status:** ☑ done
 - **Depends on:** TBE0 (baseline pinned), TBE2.
 - **Goal:** Produce the **baseline** the H3 test compares against (`03` §2): the accepted Track-A
   construction + price-factor composite, run on the *Track-B* DISCOVERY window, with its §6.4
@@ -323,11 +323,71 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
   - One run, no grid. `FINAL_OOS` untouched.
 - **Deliverable:** baseline DISCOVERY-window result + §6.4 profile + ledger entry, in this log.
 - **Done-criteria:**
-  - [ ] Track-A baseline run on `TRACK_B_DISCOVERY` at base cost; logged to `ConfigLedger`.
-  - [ ] §6.4 `passes_concentration_hard` evaluated + subperiod spread recorded as the H3 anchor.
-  - [ ] `FINAL_OOS` untouched; numbers reported honestly (incl. if the baseline unexpectedly passes
+  - [x] Track-A baseline run on `TRACK_B_DISCOVERY` at base cost; logged to `ConfigLedger`.
+  - [x] §6.4 `passes_concentration_hard` evaluated + subperiod spread recorded as the H3 anchor.
+  - [x] `FINAL_OOS` untouched; numbers reported honestly (incl. if the baseline unexpectedly passes
         §6.4 — that would itself be a finding about the window, Rule 12).
-- **Session log:** _(empty)_
+- **Session log (2026-06-19):**
+  - **Script:** `backend/app/backtest_v2/tbe3_baseline.py` — loads offline prices (3,470 ISINs),
+    builds `V3SignalStore` from the TRACK_A_BASELINE config, runs `engine.run` on
+    `TRACK_B_DISCOVERY` (2020-01-31 → 2023-06-30) at base cost, then runs three pre-committed
+    Track-B subperiods. Total ConfigLedger K = 4 (1 main + 3 subperiod).
+  - **Track-B subperiods (pre-committed before running — LOCKED, Rule 12):**
+    - "COVID crash + V-recovery":  2020-01-31 → 2021-03-31 (~14 months)
+    - "Post-COVID bull":            2021-04-01 → 2022-01-31 (~10 months)
+    - "Rate-hike correction":       2022-02-01 → 2023-06-30 (~17 months)
+  - **Full-window result (base cost, TRACK_B_DISCOVERY):**
+    - Calmar: **1.591** | CAGR: **24.1%** | Max DD: **15.13%** | Sharpe: **1.335**
+    - Turnover: **1038%** | Fills: **909**
+    - vs Nifty200 Momentum 30 TRI: strategy Calmar 1.591, bench Calmar 0.591,
+      calmar_ratio **2.69**, excess CAGR **+4.0%**, max-DD ratio **0.45**
+  - **§6.4 subperiod Calmar profile:**
+
+    | Subperiod | Calmar | CAGR | Max DD |
+    |-----------|--------|------|--------|
+    | COVID crash + V-recovery | 4.963 | 34.2% | 6.88% |
+    | Post-COVID bull          | 4.530 | 38.5% | 8.49% |
+    | Rate-hike correction     | 0.274 |  4.1% | 14.86% |
+
+  - **§6.4 concentration analysis:**
+    - n_positive: 3/3 | best: 4.963 | mean of others: 2.402
+    - **Spread ratio: 2.07x** (threshold: 5.0x)
+    - `passes_concentration_hard`: **TRUE**  §6.4 overall: **PASS**
+
+  - **⚠ CRITICAL FINDING — Baseline UNEXPECTEDLY PASSES §6.4 (Rule 12):**
+    The pre-registration (`03` §2) states: "the Track-A-only baseline **fails** `passes_concentration_hard`
+    — that failure is what value/quality must fix." On the Track-B window this expectation is **violated**:
+    spread ratio 2.07x is well inside the 5.0x threshold, all 3 subperiods positive.
+    - **Why:** The Track-B window starts 2020-01-31, which includes the COVID crash. The regime
+      overlay (use_regime_overlay=True) reduces losses during the crash, producing a reasonable
+      Calmar for the first subperiod (4.963). Combined with a similarly strong Post-COVID bull (4.530)
+      and a weaker but still positive rate-hike period (0.274), the spread is only 2.07x — no
+      subperiod dominates to a degree that triggers the gate.
+    - **Contrast with Track-A full window (2018-02-06 → 2023-06-30):** The Pre-COVID chop
+      (2018-19 NBFC crisis, mid-cap bear market) likely produced poor subperiod Calmar, making the
+      Post-COVID bull disproportionately dominant and pushing the spread above 5.0x. The Track-B
+      window omits that crisis period, starting just as the COVID crash begins.
+    - **H3 primary predicate cannot be confirmed in its pre-registered form.** H3 states the
+      candidate passes §6.4 *where the baseline fails it*. Since the baseline already passes §6.4
+      on the Track-B window, the pass/fail comparison is vacuous: the baseline passes AND the
+      candidate (if it does) would also pass — H3 cannot be declared CONFIRMED regardless of
+      TBE4/TBE5 outcomes.
+    - **Implication for TBE4/TBE5:** Running them is still valid research (value/quality may improve
+      Calmar, CAGR, or lower the spread ratio further as supporting evidence). However, the §6.4
+      "pass-where-baseline-failed" test cannot be the gate. The H3 verdict at TBE7 must state this
+      honestly — either as a "window finding" close (Track B ends as a research note because H3's
+      primary predicate is unverifiable on this window) or as an amended supporting-evidence-only
+      verdict, which would require a deviation from `03` §9 (a deviation that must not be manufactured
+      to avoid closing Track B).
+    - **Recommended path:** Proceed with TBE4 (value) and TBE5 (quality) as planned; the data issues
+      (0% coverage for E/P, B/P) from TBE2 already make TBE4 structurally blocked — if TBE4 remains
+      blocked by the data gap, Track B closes at TBE7 as a research note on TWO grounds:
+      (1) H3 primary predicate unverifiable (window finding), (2) value block data gap (TBE2 finding).
+      Both are legitimate pre-accepted close conditions (`03` §9/§10).
+  - **ConfigLedger K:**
+    - TBE3 entries: 4 (1 main + 3 subperiod)
+    - Prior Track-A entries: 16 (T1–T6 per Track-A ledger)
+    - **Cumulative K entering TBE4: 20**  (used in TBE7 deflated Sharpe)
 
 ---
 
@@ -464,7 +524,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - [ ] TBE1 fundamental factor library built + composite-wired, test-gated (sole read path, raw×raw,
       mean-over-active, no zero-fill).
 - [ ] TBE2 factor characterization reported (coverage + momentum orthogonality) — no returns.
-- [ ] TBE3 Track-A baseline on the Track-B window + §6.4 anchor recorded.
+- [x] TBE3 Track-A baseline on the Track-B window + §6.4 anchor recorded (baseline PASSES §6.4 on this window — critical finding logged).
 - [ ] TBE4–TBE6 value/quality layers added one at a time on a plateau (or dropped honestly), all
       configs logged; no threshold or grid widened.
 - [ ] TBE7 single candidate selected; full §6 battery + deflation/PBO + **explicit H3 verdict**;
