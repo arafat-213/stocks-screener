@@ -6,6 +6,12 @@ This is a *separate* dataclass from MomentumConfig; v2 stays runnable and frozen
 
 Also exports the §6 coarse grids and decision predicates as module constants so
 no later session moves the measuring stick.
+
+Track-B additions (TBE0, 2026-06-19):
+  - PRICE_FACTOR_NAMES / FUNDAMENTAL_FACTOR_NAMES / VALUE_BLOCK / QUALITY_BLOCK
+  - TRACK_B_DISCOVERY window constant
+  - TRACK_A_BASELINE — pinned T5 candidate for H3 comparison anchor
+  - V3Config.__post_init__ validates active_factors against all known names
 """
 
 from __future__ import annotations
@@ -18,6 +24,31 @@ from typing import Literal, Optional
 # Re-export frozen splits from validation.py — do NOT redefine them here
 # ---------------------------------------------------------------------------
 from app.backtest_v2.validation import DISCOVERY, FINAL_OOS  # noqa: F401
+
+# ---------------------------------------------------------------------------
+# Factor name sets — price-only (Track-A) and fundamental (Track-B)
+# ---------------------------------------------------------------------------
+
+# Track-A price factors (must match factors.py FACTOR_NAMES exactly)
+PRICE_FACTOR_NAMES: frozenset[str] = frozenset(
+    {"mom_12_1", "mom_6_1", "low_vol", "trend_quality", "reversal"}
+)
+
+# Track-B fundamental factor family blocks (03_TRACK_B_PREREG §3/§6)
+VALUE_BLOCK: frozenset[str] = frozenset({"earnings_yield", "book_to_price"})
+QUALITY_BLOCK: frozenset[str] = frozenset({"roe", "accruals", "leverage"})
+FUNDAMENTAL_FACTOR_NAMES: frozenset[str] = VALUE_BLOCK | QUALITY_BLOCK
+
+# All names accepted in V3Config.active_factors
+ALL_FACTOR_NAMES: frozenset[str] = PRICE_FACTOR_NAMES | FUNDAMENTAL_FACTOR_NAMES
+
+# ---------------------------------------------------------------------------
+# Track-B-only window constant (03_TRACK_B_PREREG §10 rescope, pinned TB8)
+# DO NOT edit validation.DISCOVERY or validation.FINAL_OOS — those are Track-A's
+# canonical splits and are reused for FINAL_OOS unchanged.
+# ---------------------------------------------------------------------------
+
+TRACK_B_DISCOVERY = (date(2020, 1, 31), date(2023, 6, 30))
 
 # ---------------------------------------------------------------------------
 # §6 coarse grids — frozen at T0 per prereg §6 / §11
@@ -87,7 +118,9 @@ class V3Config:
     liquidity_floor_cr: float = 5.0  # adv_20 >= this (₹ crore), decision-date
 
     # --- active factor set ---
-    # Each name must be in {"mom_12_1", "mom_6_1", "low_vol", "trend_quality", "reversal"}
+    # Names must be in ALL_FACTOR_NAMES (price factors: Track-A; fundamental: Track-B).
+    # Floor = price-momentum only. TBE0 extends the validated name set to the 5
+    # fundamental factors; it does NOT change the floor or equal-weight rule.
     active_factors: list[str] = field(
         default_factory=lambda: ["mom_12_1"]  # floor = momentum-only
     )
@@ -129,3 +162,35 @@ class V3Config:
     # --- date range for a run ---
     date_from: Optional[date] = None
     date_to: Optional[date] = None
+
+    def __post_init__(self) -> None:
+        unknown = set(self.active_factors) - ALL_FACTOR_NAMES
+        if unknown:
+            raise ValueError(
+                f"V3Config.active_factors contains unknown names: {sorted(unknown)}. "
+                f"Known: {sorted(ALL_FACTOR_NAMES)}"
+            )
+        if not self.active_factors:
+            raise ValueError("V3Config.active_factors must contain at least one factor")
+
+
+# ---------------------------------------------------------------------------
+# Track-A baseline — pinned from 01_TRACK_A_TASKS.md T4/T5 selection (2026-06-17)
+# Used as the H3 comparison anchor in TBE3–TBE6.  Do NOT change these values.
+#
+# Recovered from the T5 session log:
+#   active_factors = [mom_12_1, low_vol, trend_quality, mom_6_1, reversal]
+#   cadence = monthly (T4 L1 reject — cadence coarsening collapsed Calmar)
+#   sell_rank_buffer M = 70 (T4 L2 plateau-selected — cut turnover 935→800%)
+#   rank_smoothing_months = 0 (T4 L3 reject — smoothing cut Calmar, no plateau)
+#   target_positions N = 20 (locked V3Config default, unchanged)
+#   DISCOVERY Calmar: 0.396 | realized turnover: 956% | ConfigLedger K=10
+# ---------------------------------------------------------------------------
+
+TRACK_A_BASELINE = V3Config(
+    active_factors=["mom_12_1", "low_vol", "trend_quality", "mom_6_1", "reversal"],
+    rebalance_cadence="monthly",
+    sell_rank_buffer=70,
+    rank_smoothing_months=0,
+    target_positions=20,
+)

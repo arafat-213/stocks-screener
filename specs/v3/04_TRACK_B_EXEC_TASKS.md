@@ -92,7 +92,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE0 — Lock exec scaffolding + pin the Track-A baseline (light / no backtest)
 
-- **Status:** ☐ not started
+- **Status:** ☑ done
 - **Depends on:** `03` LOCKED (✓ 2026-06-19).
 - **Goal:** Make the harness *able* to express a Track-B config — extend the validated factor-name
   set and add the Track-B window constant — and pin the held-fixed Track-A comparison baseline,
@@ -114,11 +114,39 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - **Deliverable:** extended `V3Config` factor-name validation + block constants + `TRACK_B_DISCOVERY`;
   the pinned baseline config recorded; tests green.
 - **Done-criteria:**
-  - [ ] The 5 fundamental factor names validate in `active_factors`; price-factor floor + all locked
+  - [x] The 5 fundamental factor names validate in `active_factors`; price-factor floor + all locked
         defaults + the equal-weight rule are unchanged (test asserts no locked default moved).
-  - [ ] `TRACK_B_DISCOVERY` added; `validation.DISCOVERY`/`FINAL_OOS` untouched (test/diff).
-  - [ ] Track-A baseline config recovered from `01`'s ledger (not invented) and recorded here.
-- **Session log:** _(empty)_
+  - [x] `TRACK_B_DISCOVERY` added; `validation.DISCOVERY`/`FINAL_OOS` untouched (test/diff).
+  - [x] Track-A baseline config recovered from `01`'s ledger (not invented) and recorded here.
+- **Session log (2026-06-19):**
+  - **`v3_config.py` changes:**
+    - Added `PRICE_FACTOR_NAMES` (frozenset — the 5 Track-A price factors, previously a comment only).
+    - Added `VALUE_BLOCK = {"earnings_yield", "book_to_price"}` and
+      `QUALITY_BLOCK = {"roe", "accruals", "leverage"}` as named frozenset constants (`03` §6).
+    - Added `FUNDAMENTAL_FACTOR_NAMES = VALUE_BLOCK | QUALITY_BLOCK` and
+      `ALL_FACTOR_NAMES = PRICE_FACTOR_NAMES | FUNDAMENTAL_FACTOR_NAMES`.
+    - Added `TRACK_B_DISCOVERY = (date(2020, 1, 31), date(2023, 6, 30))` as a Track-B-only
+      constant; `validation.DISCOVERY` / `validation.FINAL_OOS` untouched (diff confirmed).
+    - Added `V3Config.__post_init__` that validates `active_factors` against `ALL_FACTOR_NAMES`
+      and raises `ValueError` on any unknown name or empty list.
+    - Added `TRACK_A_BASELINE` (pinned constant, see below).
+  - **Track-A baseline resolved from `01_TRACK_A_TASKS.md` T4/T5 session logs:**
+    - `active_factors = ["mom_12_1", "low_vol", "trend_quality", "mom_6_1", "reversal"]`
+      (T5 greedy Calmar-plateau gate — all 5 factors accepted; K=10)
+    - `rebalance_cadence = "monthly"` (T4 L1 rejected cadence coarsening — collapsed Calmar)
+    - `sell_rank_buffer = 70` (T4 L2 plateau — lowest-turnover within tolerance)
+    - `rank_smoothing_months = 0` (T4 L3 rejected smoothing — minimal turnover gain, Calmar cost)
+    - `target_positions = 20` (locked V3Config default, unchanged)
+    - `factor_weights = None` (equal-weight, §11 item 3 — untouched)
+    - DISCOVERY Calmar: **0.396** | realized turnover: **956%** | ConfigLedger K=10
+    - Pinned as `TRACK_A_BASELINE` constant in `v3_config.py` for TBE3–TBE6 anchor use.
+  - **Tests:** `tests/backtest_v2/test_v3tbe0_scaffolding.py` — **33/33 PASS**.
+    - DC1 (12 tests): all 5 fundamental names accepted; unknown names rejected; block constants correct.
+    - DC2 (9 tests): floor default `["mom_12_1"]`, equal-weight None, N=20, M=35, cadence=monthly,
+      smoothing=0, liquidity=5cr — all frozen (regression).
+    - DC3 (6 tests): `TRACK_B_DISCOVERY` values exact; `validation.DISCOVERY`/`FINAL_OOS` byte-match.
+    - DC4 (6 tests): `TRACK_A_BASELINE` matches T4/T5 ledger values exactly.
+  - **Regression:** 454 existing Track-A tests pass (no regressions introduced).
 
 ---
 
