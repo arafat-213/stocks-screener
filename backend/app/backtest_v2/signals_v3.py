@@ -34,6 +34,10 @@ import pandas as pd
 from app.backtest_v2 import factors
 from app.backtest_v2.config import MomentumConfig
 from app.backtest_v2.signals import precompute_signals
+from app.backtest_v2.stable_universe import (
+    StableUniverseMask,
+    build_stable_universe_mask,
+)
 from app.backtest_v2.v3_config import V3Config
 
 
@@ -79,6 +83,7 @@ class V3SignalStore:
         ind: dict[str, pd.DataFrame],
         composite: pd.DataFrame,
         cfg: V3Config,
+        universe_mask: StableUniverseMask | None = None,
     ) -> None:
         self._ind = ind
         self._composite = composite
@@ -86,6 +91,9 @@ class V3SignalStore:
         self._liq_floor_rupees: float = cfg.liquidity_floor_cr * 1e7
         # Absolute-momentum filter applies only when momentum is in the blend.
         self._momentum_active: bool = "mom_12_1" in cfg.active_factors
+        # Stable-universe mask (08 §3). None == 'floor' mode → byte-identical to
+        # every pre-08 run (no membership constraint AND-ed into the gate).
+        self._universe_mask: StableUniverseMask | None = universe_mask
 
     # ------------------------------------------------------------------
     # Public query interface (matches SignalStore — the engine seam)
@@ -96,12 +104,20 @@ class V3SignalStore:
         True iff `isin` is eligible to be held on `day`.
 
         Conditions (prereg Erratum T1→T2):
+          0. isin in the stable universe on `day`  (ONLY in 'stable' mode — 08 §3)
           1. close > EMA_200            (long-term uptrend)
           2. adv_20 >= liquidity_floor  (decision-date, no lookahead)
           3. momentum_12_1 > 0          (ONLY while momentum is an active factor)
 
+        Condition 0 is AND-ed in only when a stable-universe mask is present; in
+        'floor' mode (mask is None) the gate is byte-identical to every pre-08 run.
+
         Returns False for missing data or NaN in any consulted field.
         """
+        if self._universe_mask is not None and not self._universe_mask.is_member(
+            day, isin
+        ):
+            return False
         row = self._ind_row(day, isin)
         if row is None:
             return False
@@ -181,4 +197,15 @@ def precompute_v3_signals(prices: pd.DataFrame, cfg: V3Config) -> V3SignalStore:
     # its gate inputs (close, EMA_200, momentum_12_1, adv_20) byte-for-byte.
     ind = gate_store._data
     composite = factors.composite_rank(prices, cfg)
-    return V3SignalStore(ind, composite, cfg)
+    # Stable-universe mask only in 'stable' mode (08 §3); 'floor' stays mask-free
+    # so the C0 control is byte-identical to every pre-08 run.
+    universe_mask = None
+    if cfg.universe_mode == "stable":
+        universe_mask = build_stable_universe_mask(
+            prices,
+            cfg.universe_size_U,
+            cfg.universe_buffer_B,
+            cfg.universe_rank_lookback_td,
+            cfg.universe_review_cadence,
+        )
+    return V3SignalStore(ind, composite, cfg, universe_mask=universe_mask)

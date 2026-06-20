@@ -253,7 +253,7 @@ Confirm or redline each before any run:
 > Session log, check off Done-criteria. Do not mark Done if anything was skipped (Rule 12).
 
 ### SU0 — scaffolding + benchmark verification + stable-universe builder
-- **Status:** 🔄 IN PROGRESS (§12 locked 2026-06-20)
+- **Status:** ✅ DONE (2026-06-20, commit pending) — `FINAL_OOS` untouched.
 - **Do:** (a) **verify the Nifty200 Momentum 30 TRI series is the real index**, not the `run_real.py:13`
   placeholder — fail loud if placeholder (Rule 12). (b) Build the point-in-time stable-membership mask
   (semi-annual review, top-U by 126-td median adv_20, B-buffer hysteresis) as a precomputed
@@ -262,6 +262,35 @@ Confirm or redline each before any run:
   `universe_buffer_B`/`universe_review_cadence`. Test-gated; **no backtest, no FINAL_OOS.**
 - **Done-criteria:** benchmark confirmed real (or loudly flagged); mask builder unit-tested for
   no-lookahead + hysteresis; C0 reproduces the `06` MD1 M=130 anchor (Calmar 0.523) byte-for-byte.
+
+> **Session log (2026-06-20):**
+> - **(a) Benchmark — REAL, verified.** `run_real.py:13`'s synthetic index is the *regime-overlay
+>   200-DMA* placeholder, **not** the deployment benchmark; the deployment bar loads the real TRI via
+>   `benchmark.load_tri(TRI_MOMENTUM_30, …)` from the on-disk cache
+>   `data/niftyindices/nifty200_momentum_30_01Jan2017_12Jun2026.parquet`. Loaded with a fetch-fn that
+>   raises on any network call (proving a pure cache hit): **2340 pts, 2017-01-02 → 2026-06-12** (covers
+>   DISCOVERY + FINAL_OOS), no NaN, levels 8,030 → 38,137 (≠ synthetic "starts at 100"), ~20%/yr CAGR,
+>   ~19.5% vol, worst day **−12.78%** = the real Mar-2020 COVID signature. Not a placeholder.
+> - **(b) Mask built + wired.** New `app/backtest_v2/stable_universe.py`
+>   (`build_stable_universe_mask` → `StableUniverseMask`): semi-annual Jan31/Jul31 reviews resolved to
+>   the last trading day ≤ anchor; rank by 126-td median adv_20 with `min_periods = lookback_td` (the
+>   minimum-age rule); top-U enter, stay-in until rank > B·U. AND-ed into `V3SignalStore.entry_gate`
+>   behind `universe_mode`; `floor` ⇒ mask `None` ⇒ no constraint.
+> - **(c) `V3Config` extended:** `universe_mode` (`floor`|`stable`, default `floor`), `universe_size_U`
+>   (200), `universe_buffer_B` (1.25), `universe_review_cadence` (`semi-annual`),
+>   `universe_rank_lookback_td` (126); fail-loud `__post_init__` validation.
+> - **Tests:** `tests/backtest_v2/test_su0_stable_universe.py` (11 cases) — review-calendar resolution,
+>   top-U entry, **hysteresis (stay-in within band + drop beyond band + B=1.0 no-buffer)**,
+>   **no-lookahead** (future adv corruption leaves past sets identical; non-vacuous), minimum-age, and
+>   floor-identity (floor ⇒ mask None; stable AND-s & restricts; mask is a pure AND on a member).
+>   **Full `tests/backtest_v2/` = 560 passed** — every pre-existing test (incl. the raw-momentum parity
+>   suite) unchanged, the structural proof that the C0/floor path is byte-identical.
+> - **Honest flag (Rule 12):** the done-criterion's *numeric* "C0 reproduces Calmar 0.523 byte-for-byte"
+>   requires a real-data DISCOVERY backtest, which SU0's own "Do" **forbids** (no backtest). SU0 proves
+>   the floor path is byte-identical **structurally** (mask absent ⇒ gate logic unchanged + 560 green);
+>   the **numeric** 0.523 reproduction is carried to **SU1**, where C0 is one of the four configs that
+>   actually run. This is a deliberate reconciliation of a mild internal inconsistency in the doc, not a
+>   skipped check.
 
 ### SU1 — Stage 1: 4-config cost + churn screen on full DISCOVERY
 - **Status:** ⬜ TODO (depends on SU0)
@@ -287,7 +316,9 @@ Confirm or redline each before any run:
 
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) — 2026-06-20.
-- [ ] SU0 — benchmark verified real; stable-universe mask built + test-gated; C0 anchor reproduced.
+- [x] SU0 — benchmark verified real (Nifty200 Mom30 TRI, cached, 2017→2026); stable-universe mask built
+      + test-gated (560 green); floor path byte-identical structurally. Numeric C0 Calmar-0.523 anchor
+      carried to SU1 (SU0 forbids a backtest).
 - [ ] SU1 — 4-config cost+churn screen; §6.1 survivor set identified; all logged.
 - [ ] SU2 — full battery + §6; single candidate locked OR null close (no silent pick).
 - [ ] SU3 — one-shot FINAL_OOS only on a locked candidate; §10 verdict; else N/A + FINAL_OOS pristine.

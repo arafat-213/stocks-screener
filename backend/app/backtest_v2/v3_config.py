@@ -159,6 +159,19 @@ class V3Config:
     use_regime_overlay: bool = True
     catastrophic_stop_pct: float = 25.0
 
+    # --- stable-universe redesign (08 §3/§4) ---------------------------------
+    # Default 'floor' == the status-quo per-rebalance ₹5cr-liquidity universe, so
+    # the C0 control path is byte-identical to every pre-08 run (no mask applied).
+    # 'stable' activates the slow-reviewed, buffered ADV-ranked membership mask
+    # (stable_universe.build_stable_universe_mask), AND-ed into entry_gate. The
+    # ₹5cr floor (liquidity_floor_cr) is retained as a per-day tradeability safety
+    # in BOTH modes (08 §2a). Changing these is a new prereg by 08 §11.
+    universe_mode: Literal["floor", "stable"] = "floor"
+    universe_size_U: int = 200  # top-U by trailing adv_20 (08 §4)
+    universe_buffer_B: float = 1.25  # stay-in until rank > B*U (hysteresis band)
+    universe_review_cadence: Literal["semi-annual"] = "semi-annual"
+    universe_rank_lookback_td: int = 126  # ~6mo trailing median-adv_20 window
+
     # --- date range for a run ---
     date_from: Optional[date] = None
     date_to: Optional[date] = None
@@ -172,6 +185,23 @@ class V3Config:
             )
         if not self.active_factors:
             raise ValueError("V3Config.active_factors must contain at least one factor")
+        if self.universe_mode not in ("floor", "stable"):
+            raise ValueError(
+                f"universe_mode must be 'floor' or 'stable'; got {self.universe_mode!r}"
+            )
+        if self.universe_mode == "stable":
+            if self.universe_size_U <= 0:
+                raise ValueError(
+                    f"universe_size_U must be > 0; got {self.universe_size_U}"
+                )
+            if self.universe_buffer_B < 1.0:
+                raise ValueError(
+                    f"universe_buffer_B must be >= 1.0; got {self.universe_buffer_B}"
+                )
+            if self.universe_rank_lookback_td <= 0:
+                raise ValueError(
+                    f"universe_rank_lookback_td must be > 0; got {self.universe_rank_lookback_td}"
+                )
 
 
 # ---------------------------------------------------------------------------
