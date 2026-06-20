@@ -1,9 +1,12 @@
 # v3 / 08 — Stable-Universe Momentum Pre-Registration: universe redesign → one-shot FINAL_OOS
 
-> **Status: LOCKED 2026-06-20 (Arafat).** §12 signed; construction/grid/acceptance/OOS-protocol
-> are now commitments — no stick moves after a result (`00` §1). No config in §5 has been measured.
-> `FINAL_OOS` (2023-07-01 → 2026-06-12) remains **pristine and unconsumed** across the entire
-> v2→v3 program.
+> **Status: CLOSED — RESEARCH NOTE (2026-06-20, Arafat).** §12 LOCKED; SU0/SU1/SU2 executed.
+> **SU2 = pre-accepted NULL CLOSE** (0/3 survivors satisfy §6 items 1–4): the stable-universe redesign
+> *did* fix the §6.2 concentration gate momentum-only died on (control 43% → stable-S2 91% retention),
+> but calming the universe pulled Calmar under the passive Nifty200 Mom30 index → no config both fixes
+> concentration AND beats the index ("buy the index fund", §10). **SU3 is N/A.** `FINAL_OOS`
+> (2023-07-01 → 2026-06-12) remains **pristine and unconsumed** across the entire v2→v3 program — no
+> stick was moved after a result (`00` §1).
 >
 > **This file is a commitment, not a task list.** It is the deliberate, eyes-open §9-bar/universe
 > redesign the `07_TRACK_B_CLOSE.md` escalation checkpoint reserved. It fixes — *before any number is
@@ -338,19 +341,58 @@ Confirm or redline each before any run:
 >   existing code (incl. the SU0 mask + `_decompose_fills`) without modifying any of it.
 
 ### SU2 — Stage 2: full battery + §6 acceptance on the §6.1 survivors
-- **Status:** ⬜ TODO (depends on SU1) — **§6.1 survivor set = {C0, S2, S3}** (S1 dropped, ratio 0.96).
+- **Status:** ✅ DONE (2026-06-20, commit pending) → **NULL CLOSE** — 0/3 satisfy §6 items 1–4.
+  `FINAL_OOS` untouched. **SU3 is N/A; the v3 stable-universe arc closes as a research note.**
 - **Do:** §6.2/§6.3/§6.5 (+ §6.4 diagnostic) on survivors; apply §6 items 1–5 + tie-break. **No FINAL_OOS.**
   Note the §6.3 plateau is over §5 universe neighbors (±1 step on U and B) — with S1 (a U=200 neighbor)
   already failing §6.1, the S2/S3 neighborhood evidence must be read carefully (08 §6.3).
 - **Done-criteria:** per-survivor §6 table; exactly one candidate locked OR null close declared (Rule 12 —
   no silent pick); churn-moved-the-mechanism diagnostic recorded either way; `FINAL_OOS` untouched.
 
+> **Session log (2026-06-20):** runner = `app/backtest_v2/su2_battery.py`
+> (`backend/venv/bin/python -m app.backtest_v2.su2_battery`), DISCOVERY 2018-02-06 → 2023-06-30.
+> Momentum held constant at the MD1 §6.1 survivor (5-factor, N=20, M=130, sm=0, monthly, regime ON,
+> ₹5cr floor); the **only** axis that varies is the universe. §6.2 perturbation drops the top-10
+> P&L names (concentration gate, NOT relaxed); §6.3 plateau reuses the **SU1 base-Calmar table** (no
+> new runs — the §5 points are already logged); §6.4 is diagnostic; deployment bar = Nifty200 Mom30 TRI
+> on base Calmar with **maxDD ≤ 100%** (08 §2b, corrected from MD2's 70%). 15 new ledger entries.
+>
+> | Cfg | Universe | Base Calmar | §6.2 retention | §6.3 plateau | §6.5 | Deploy: C_strat vs C_bench (dd_ratio) | §6 verdict |
+> |---|---|---|---|---|---|---|---|
+> | **C0** | ₹5cr floor (daily) | 0.523 | **43% ❌** | N/A (control) | ✅ | 0.523 > 0.473 (0.77) ✅ | **FAIL** (§6.2) |
+> | **S2** | stable U=200 B=1.0 | 0.457 | **91% ✅** | ✅ (S1 0.391 ≥ 0.389) | ✅ | **0.457 < 0.473** (0.67) ❌ | **FAIL** (deploy) |
+> | **S3** | stable U=350 B=1.25 | 0.575 | **35% ❌** | ❌ (S1 0.391 < 0.489) | ✅ | 0.575 > 0.473 (0.70) ✅ | **FAIL** (§6.2, §6.3) |
+>
+> - **§6 OUTCOME = NULL CLOSE** (pre-accepted, 08 §6): 0/3 configs satisfy items 1–4. Stable-universe
+>   momentum is a **research note**; the OOS run is **not** performed; `FINAL_OOS` stays pristine.
+> - **The §08 churn hypothesis PAID OFF exactly where SU1 predicted it would have to — §6.2 retention.**
+>   The control C0 reproduces `06`/MD2's M=130 concentration failure **byte-for-byte (43%)**; the stable
+>   hard-review **S2 fixes it outright: retention 43% → 91%.** Stabilizing the universe genuinely cured
+>   the single-name concentration that momentum-only died on in `06` ([[turnover-decomp-churn-dominant]]).
+>   This is the strongest mechanistic vindication of the redesign in the whole arc.
+> - **But the fix and the bar are mutually exclusive on this market.** Calming the universe at U=200 also
+>   pulled base Calmar **0.523 → 0.457**, dropping it *just under* the passive Nifty200 Mom30 index
+>   (0.473) → **S2 fails the deployment bar on Calmar dominance.** Per 08 §10 this is the explicit
+>   "if it merely matches the index, **buy the index fund**" outcome — a valid, money-saving finding.
+>   Widening to U=350 (S3) keeps Calmar above the index (0.575) **but reintroduces concentration**
+>   (§6.2 35%, §6.3 fail). **No single universe setting simultaneously fixes §6.2 AND beats the index.**
+> - **The §2b bar-fix was independently validated as correct (not result-fishing):** C0 now **passes**
+>   the corrected ≤100% deployment bar (dd_ratio 0.77) — i.e. the old 70% clause was indeed the
+>   false-negative it was diagnosed to be in 08 §2b — yet C0 still fails on §6.2, so the bar-fix did not
+>   manufacture a pass. The relaxation behaved exactly as the eyes-open justification claimed and rescued
+>   nothing it shouldn't have.
+> - **§6.4 (diagnostic, not gating):** all three are post-COVID-bull-concentrated (Post-COVID Calmar
+>   2.5–5.8 vs negative Pre-COVID), n_positive 2/3 — the same window-fragility TBE3/`05` §2 flagged;
+>   reported, not gated.
+> - **No regression risk:** `su2_battery.py` is a new standalone analysis script; it imports the SU0 mask
+>   + existing battery code without modifying any of it. `FINAL_OOS` untouched.
+
 ### SU3 — One-shot FINAL_OOS + §10 DoD verdict (only on a locked candidate)
-- **Status:** ⬜ TODO (depends on SU2 with a locked candidate)
-- **Do:** byte-for-byte locked candidate through `engine.run` on FINAL_OOS — once, no re-tune. Report §10
-  + raw/deflated Sharpe + PBO. Mark `FINAL_OOS` consumed.
-- **Done-criteria:** §10 verdict (deployable | research note); if research note, `FINAL_OOS` stays
-  pristine and SU3 is N/A.
+- **Status:** ⬜ **N/A** — SU2 returned the pre-accepted **NULL CLOSE** (0 locked candidates). Per 08 §6/§9,
+  the OOS run is **not** performed and `FINAL_OOS` stays **pristine and unconsumed** across the entire
+  v2→v3 program. There is nothing to run here.
+- **Do:** (would have been) byte-for-byte locked candidate through `engine.run` on FINAL_OOS — once.
+- **Done-criteria:** N/A — research-note close; `FINAL_OOS` pristine.
 
 ---
 
@@ -362,5 +404,10 @@ Confirm or redline each before any run:
 - [x] SU1 — 4-config cost+churn screen (2026-06-20): C0 anchor reproduced (Calmar 0.523); §6.1
       survivors **{C0, S2, S3}** (S1 fails 0.96); churn moved C0 561% → 379–438% (hypothesis confirmed
       at mechanism level); 8 ledger entries; FINAL_OOS untouched.
-- [ ] SU2 — full battery + §6; single candidate locked OR null close (no silent pick).
-- [ ] SU3 — one-shot FINAL_OOS only on a locked candidate; §10 verdict; else N/A + FINAL_OOS pristine.
+- [x] SU2 — full battery + §6 (2026-06-20): **NULL CLOSE**, 0/3 satisfy items 1–4. Diagnostic
+      recorded: the churn fix landed in §6.2 (control 43% → stable-S2 **91%**), but stabilizing the
+      universe pulled Calmar under the passive Nifty200 Mom30 index → S2 fails the deploy bar
+      ("buy the index fund", §10); S3 keeps Calmar but reintroduces concentration (§6.2 35%). §2b
+      bar-fix validated as a true-negative (C0 passes the ≤100% bar yet still fails §6.2). 15 ledger
+      entries; `FINAL_OOS` untouched.
+- [x] SU3 — **N/A** (null outcome): OOS not performed; `FINAL_OOS` stays pristine and unconsumed.
