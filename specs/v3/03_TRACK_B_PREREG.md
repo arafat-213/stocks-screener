@@ -1,5 +1,8 @@
 # v3 / 03 — Track B Pre-Registration: Value & Quality Factors (H3)
 
+> **CLOSED 2026-06-20 — research note. H3 NOT confirmed (vacuous predicate) + §6 fails (3/5).
+> Terminal verdict + forward decision in `07_TRACK_B_CLOSE.md`. `FINAL_OOS` never consumed — pristine.**
+>
 > **Status: LOCKED 2026-06-19 — Arafat signed off §11. Build via `04_TRACK_B_EXEC_TASKS.md`.**
 > This is the **separate, separately-approved** factor pre-registration that `02_TRACK_B_DATA.md` §7 and
 > `02_TRACK_B_TASKS.md` (TB8) gate on the data layer **passing** its §6 acceptance gate.

@@ -1,5 +1,8 @@
 # v3 / 04 — Track B Execution Task Breakdown (Value/Quality Backtest → one-shot FINAL_OOS)
 
+> **CLOSED 2026-06-20 — research note (all TBE tasks terminal). Consolidated verdict + forward
+> decision in `07_TRACK_B_CLOSE.md`. `FINAL_OOS` never consumed — pristine.**
+>
 > **Purpose.** Decompose the **backtest execution** of `03_TRACK_B_PREREG.md` (LOCKED 2026-06-19)
 > into small, resumable, cold-session-sized tasks (CLAUDE.md Rule 6 — token budget). Each session
 > loads `03_TRACK_B_PREREG.md`, this file, and the **one task** it is doing — nothing more.
