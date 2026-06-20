@@ -483,7 +483,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE4 — Layer B1: add the Value block {E/P, B/P} (plateau)
 
-- **Status:** ☐ not started
+- **Status:** ☑ done (2026-06-20) — **Layer B1 DROPPED** (Calmar degraded, §6.4 spread worsened).
 - **Depends on:** TBE3.
 - **Goal:** First H3 layer — does adding value to the composite narrow the §6.4 spread vs the TBE3
   baseline, on a plateau (not a single lucky point)?
@@ -498,23 +498,68 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - **Deliverable:** B1 result vs baseline (§6.4 spread delta, Calmar/turnover context) + plateau
   verdict + ledger entries, in this log.
 - **Done-criteria:**
-  - [ ] Value block added on the fixed baseline; runs on DISCOVERY; all configs logged.
-  - [ ] Accept/drop decided on a plateau + §6.4-not-worse rule (Rule 12 — report a drop honestly).
-  - [ ] `FINAL_OOS` untouched.
-- **Session log:** _(empty)_
+  - [x] Value block added on the fixed baseline; runs on DISCOVERY; all configs logged.
+  - [x] Accept/drop decided on a plateau + §6.4-not-worse rule (Rule 12 — report a drop honestly).
+  - [x] `FINAL_OOS` untouched.
+- **Session log (2026-06-20):**
+  - **Script:** `backend/app/backtest_v2/tbe4_value_block.py` — holds Track-A knobs fixed (cadence=monthly,
+    M=70, smoothing=0, N=20), adds `active_factors = Track-A + [book_to_price, earnings_yield]`,
+    builds fundamental frames via bulk in-memory cache (same PIT logic as `read_fundamentals_asof`),
+    then runs `engine.run` on `TRACK_B_DISCOVERY` at base cost.
+  - **B1 config:** `active_factors = ['mom_12_1', 'low_vol', 'trend_quality', 'mom_6_1', 'reversal',
+    'book_to_price', 'earnings_yield']`  (all Track-A factors + Value block)
+  - **Fundamental frame coverage (across all 3,470-ISIN panel × 42 rebalance dates):**
+    - `book_to_price`: 57,912/145,740 cells non-null (39.7% of full panel)
+    - `earnings_yield`: 60,381/145,740 cells non-null (41.4% of full panel)
+    - Note: low full-panel rate expected — non-filer/illiquid ISINs have no fundamentals.
+      Effective coverage for the liquidity-eligible universe (~500–700 names/date) is ~90%
+      (consistent with TBE2b re-verification). Engine only selects eligible ISINs.
+  - **B1 full-window result (base cost, TRACK_B_DISCOVERY):**
+    - Calmar: **1.216**  |  CAGR: **16.1%**  |  Max DD: **13.28%**  |  Sharpe: **0.875**
+    - Turnover: **901%**  |  Fills: **868**
+    - vs Nifty200 Momentum 30 TRI: c_strat=1.216, c_bench=0.591, calmar_ratio=2.06, excess_cagr=−3.9%
+  - **vs TBE3 baseline:** Calmar delta = **−0.375** (baseline 1.591 → B1 1.216); CAGR 24.1% → 16.1%
+  - **§6.4 subperiod Calmars (B1 vs baseline):**
+
+    | Subperiod | B1 Calmar | Baseline | Delta |
+    |-----------|-----------|----------|-------|
+    | COVID crash + V-recovery | 1.584 | 4.963 | −3.379 |
+    | Post-COVID bull          | 2.432 | 4.530 | −2.098 |
+    | Rate-hike correction     | 0.163 | 0.274 | −0.111 |
+
+  - **§6.4 concentration (B1):**
+    - n_positive: 3/3 | best: 2.432 | mean of others: 0.874
+    - **Spread ratio: 2.78x** (baseline: 2.07x; delta **+0.71x worsened**; threshold still 5.0x)
+    - `passes_concentration_hard`: **TRUE** (§6.4 technically passes, but spread worsened vs baseline)
+  - **Acceptance criteria:**
+    - Calmar improved: **FALSE** (−0.375)
+    - §6.4 spread not worsened: **FALSE** (+0.71x)
+    - **Layer B1 verdict: DROP** (both criteria fail — 03 §6 honest-drop rule, Rule 12)
+  - **Why the value block degrades performance:** Adding E/P + B/P as equal-weight members of a
+    7-factor composite dilutes the price momentum signal. The value factors rank cheap/beaten-down
+    names highly — names that momentum explicitly avoids (recent losers). The composite nanmean
+    compromises between "buy strong momentum" and "buy cheap" signals, resulting in a weaker
+    combined signal in this window. The result is an honest finding: value-momentum blending without
+    conditioning (e.g., sector, size, or momentum quality control) hurts on the Track-B window.
+  - **TBE5 base config:** Since B1 was dropped, TBE5 proceeds from the **Track-A baseline**
+    (same as the TBE3 anchor — no B1 config carried forward). Per 03 §6 drop rule.
+  - **ConfigLedger K:**
+    - TBE4 entries: 4 (1 main B1 run + 3 subperiod runs)
+    - **Cumulative K entering TBE5: 24** (16 Track-A + 4 TBE3 + 4 TBE4)
 
 ---
 
 ## TBE5 — Layer B2: add the Quality block {ROE, accruals, leverage} (plateau)
 
 - **Status:** ☐ not started
-- **Depends on:** TBE4.
-- **Goal:** Second H3 layer — on top of the B1-accepted config, does quality further narrow the
-  §6.4 spread on a plateau?
+- **Depends on:** TBE4. **Base config = Track-A baseline** (B1 was dropped; see TBE4 session log).
+- **Goal:** Second H3 layer — on top of the B1-accepted config (here: the Track-A baseline, since
+  B1 was dropped), does quality further narrow the §6.4 spread on a plateau?
 - **Do:**
-  - On the B1-accepted config (or the baseline if B1 was dropped — record which), add the **Quality
-    block** (equal-blend of ROE, accruals, leverage, `03` §6 B2). Run on `TRACK_B_DISCOVERY` at base
-    cost; log all configs. Accept on a plateau + §6.4-not-worse, else drop.
+  - **B1 was dropped → start from Track-A baseline** (cadence=monthly, M=70, smoothing=0, N=20,
+    all 5 price factors). Add the **Quality block** (equal-blend of ROE, accruals, leverage, `03`
+    §6 B2). Run on `TRACK_B_DISCOVERY` at base cost; log all configs. Accept on a plateau +
+    §6.4-not-worse, else drop.
   - DISCOVERY only; `FINAL_OOS` untouched.
 - **Deliverable:** B2 result vs the B1/baseline anchor (§6.4 spread delta) + plateau verdict + ledger
   entries, in this log.
@@ -615,8 +660,8 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
       mean-over-active, no zero-fill).
 - [ ] TBE2 factor characterization reported (coverage + momentum orthogonality) — no returns.
 - [x] TBE3 Track-A baseline on the Track-B window + §6.4 anchor recorded (baseline PASSES §6.4 on this window — critical finding logged).
-- [ ] TBE4–TBE6 value/quality layers added one at a time on a plateau (or dropped honestly), all
-      configs logged; no threshold or grid widened.
+- [x] TBE4 — Value block {E/P, B/P} DROPPED (Calmar −0.375, §6.4 spread +0.71x worsened; logged K=4; honest drop per Rule 12).
+- [ ] TBE5–TBE6 quality layer (and optional block-weight) added one at a time on a plateau (or dropped honestly), all configs logged; no threshold or grid widened.
 - [ ] TBE7 single candidate selected; full §6 battery + deflation/PBO + **explicit H3 verdict**;
       go/no-go for the one-shot.
 - [ ] TBE8 (only on TBE7 PASS + H3 confirmed) — `FINAL_OOS` spent **exactly once**; §9 DoD verdict.
