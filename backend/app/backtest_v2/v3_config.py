@@ -172,6 +172,19 @@ class V3Config:
     universe_review_cadence: Literal["semi-annual"] = "semi-annual"
     universe_rank_lookback_td: int = 126  # ~6mo trailing median-adv_20 window
 
+    # --- value-tilt overlay (09 §2a/§3) -------------------------------------
+    # final_rank = momentum_rank + value_tilt_lambda * value_rank, where
+    # value_rank is the equal-weight cross-sectional percentile of the E/P + B/P
+    # value block (built outside V3Config and passed to precompute_v3_signals).
+    # This is a TILT, not the closed Track-B co-equal blend: momentum stays the
+    # primary ranker (active_factors is price-only) and value is a low-weight
+    # secondary re-rank (λ ≤ 0.6, 09 §3). λ = 0 (default) ⇒ byte-identical to the
+    # pure-momentum base (no value frame is consulted; 09 VT0 done-criterion).
+    # The value factors are NOT placed in active_factors — that would route them
+    # through composite_rank's Track-B nanmean blend (the diluting co-equal path,
+    # 07). Changing this overlay is a new prereg by 09 §11.
+    value_tilt_lambda: float = 0.0
+
     # --- date range for a run ---
     date_from: Optional[date] = None
     date_to: Optional[date] = None
@@ -201,6 +214,22 @@ class V3Config:
             if self.universe_rank_lookback_td <= 0:
                 raise ValueError(
                     f"universe_rank_lookback_td must be > 0; got {self.universe_rank_lookback_td}"
+                )
+        # Value-tilt overlay (09 §2a/§3): non-negative; and when active it must be
+        # a TILT over a price-only momentum base — value factors in active_factors
+        # would route through composite_rank's Track-B blend (the closed co-equal
+        # path, 07), double-counting value and breaking the tilt invariant.
+        if self.value_tilt_lambda < 0.0:
+            raise ValueError(
+                f"value_tilt_lambda must be >= 0; got {self.value_tilt_lambda}"
+            )
+        if self.value_tilt_lambda > 0.0:
+            fund_in_active = set(self.active_factors) & FUNDAMENTAL_FACTOR_NAMES
+            if fund_in_active:
+                raise ValueError(
+                    "value_tilt_lambda > 0 requires a price-only momentum base "
+                    f"(the value tilt is a separate overlay, 09 §3); found "
+                    f"fundamental factors in active_factors: {sorted(fund_in_active)}"
                 )
 
 

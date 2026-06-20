@@ -27,8 +27,10 @@ load-bearing property behind the T2 parity check.
 from __future__ import annotations
 
 import math
+import warnings
 from datetime import date
 
+import numpy as np
 import pandas as pd
 
 from app.backtest_v2 import factors
@@ -183,7 +185,71 @@ class V3SignalStore:
         return df.loc[ts]
 
 
-def precompute_v3_signals(prices: pd.DataFrame, cfg: V3Config) -> V3SignalStore:
+def build_value_rank(value_frames: dict[str, pd.DataFrame]) -> pd.DataFrame:
+    """
+    Equal-weight cross-sectional percentile of the value block (E/P + B/P) (09 §3).
+
+    Each raw value frame (date × isin, oriented higher = cheaper = better — the
+    fundamental_factors.py sign convention) is percentile-ranked cross-sectionally
+    (`rank(axis=1, pct=True)`), then averaged over the factors PRESENT for each
+    cell (nanmean), so a name with only one of E/P or B/P still ranks on what it
+    has (mirrors composite_rank's Track-B nanmean, 03 §5). Cells where NO value
+    factor is present stay NaN — the tilt is neutral there (handled at combine
+    time, _apply_value_tilt), never zero-filled (TB4 invariant).
+
+    Returns a wide (date × isin) frame of value ranks in [0, 1]; frames may be
+    sparse (rebalance dates only) — alignment to the daily momentum grid happens
+    in _apply_value_tilt.
+    """
+    if not value_frames:
+        raise ValueError("build_value_rank requires at least one value frame")
+    rank_frames = [f.rank(axis=1, pct=True) for f in value_frames.values()]
+    all_idx = rank_frames[0].index
+    all_cols = rank_frames[0].columns
+    for f in rank_frames[1:]:
+        all_idx = all_idx.union(f.index)
+        all_cols = all_cols.union(f.columns)
+    aligned = [f.reindex(index=all_idx, columns=all_cols) for f in rank_frames]
+    stacked = np.stack([f.values for f in aligned], axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        result = np.nanmean(stacked, axis=0)
+    result[np.all(np.isnan(stacked), axis=0)] = np.nan
+    return pd.DataFrame(result, index=all_idx, columns=all_cols)
+
+
+def _apply_value_tilt(
+    momentum: pd.DataFrame,
+    value_rank: pd.DataFrame | None,
+    lam: float,
+) -> pd.DataFrame:
+    """
+    final_rank = momentum + lam * value_rank  (the 09 §3 tilt overlay).
+
+    λ = 0 (or no value frame) ⇒ returns the momentum frame UNCHANGED — the
+    pure-momentum base byte-for-byte (09 VT0 done-criterion). For λ > 0:
+      - value_rank is reindexed onto the momentum daily grid and forward-filled
+        (value frames are sparse — rebalance dates only — so each value rank
+        carries until the next review);
+      - names with no value data are NEUTRAL-FILLED to the median rank 0.5, so the
+        tilt only RE-ORDERS momentum-eligible names and never NULLs (drops) a name
+        that merely lacks fundamentals. (Construction decision flagged for 09 VT0:
+        neutral-fill, not NaN-propagate — a tilt must not shrink the momentum
+        universe.) Where momentum itself is NaN (factor warmup) the result stays
+        NaN, so warmup exclusion is preserved.
+    """
+    if lam == 0.0 or value_rank is None:
+        return momentum
+    aligned = value_rank.reindex(index=momentum.index, columns=momentum.columns)
+    aligned = aligned.ffill().fillna(0.5)
+    return momentum + lam * aligned
+
+
+def precompute_v3_signals(
+    prices: pd.DataFrame,
+    cfg: V3Config,
+    value_frames: dict[str, pd.DataFrame] | None = None,
+) -> V3SignalStore:
     """
     Precompute the v3 signal store: v2 indicator cache (gate inputs) reused
     verbatim from precompute_signals, plus the T1 composite rank frame for
@@ -191,12 +257,27 @@ def precompute_v3_signals(prices: pd.DataFrame, cfg: V3Config) -> V3SignalStore:
 
     `prices` is the long-format multi-ISIN frame from store.read_prices_adjusted
     (isin, date, open, high, low, close, volume, adv_20).
+
+    `value_frames` (09 §3): {factor_name → raw wide frame} for the value tilt
+    (E/P, B/P). Required when cfg.value_tilt_lambda > 0; ignored otherwise. The
+    momentum composite (price-only active_factors) is built first, then the value
+    tilt is layered on top (_apply_value_tilt) — value never enters active_factors
+    (that would route it through the closed Track-B co-equal blend, 07).
     """
     gate_store = precompute_signals(prices, _gate_config(cfg))
     # Reach into the v2 store's indicator cache once, at construction, to reuse
     # its gate inputs (close, EMA_200, momentum_12_1, adv_20) byte-for-byte.
     ind = gate_store._data
     composite = factors.composite_rank(prices, cfg)
+    # Value tilt (09 §3): only when λ > 0; λ = 0 leaves composite byte-identical.
+    if cfg.value_tilt_lambda > 0.0:
+        if not value_frames:
+            raise ValueError(
+                "cfg.value_tilt_lambda > 0 requires value_frames (E/P, B/P); "
+                "none provided."
+            )
+        value_rank = build_value_rank(value_frames)
+        composite = _apply_value_tilt(composite, value_rank, cfg.value_tilt_lambda)
     # Stable-universe mask only in 'stable' mode (08 §3); 'floor' stays mask-free
     # so the C0 control is byte-identical to every pre-08 run.
     universe_mask = None

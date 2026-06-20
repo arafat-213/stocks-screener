@@ -293,7 +293,7 @@ Confirm or redline each before any run:
 > Session log, check off Done-criteria. Do not mark Done if anything was skipped (Rule 12).
 
 ### VT0 — scaffolding: value-tilt wiring + skew-aware §6.2 + orthogonality reconfirm (no backtest)
-- **Status:** ⬜ not started — blocked on §12 lock.
+- **Status:** ✅ DONE (2026-06-20). No backtest run; FINAL_OOS untouched.
 - **Do:** (a) load the TBE2b value block (E/P, B/P), point-in-time, into a `value_rank` percentile;
   reconfirm |ρ| < 0.3 vs the momentum composite on DISCOVERY (fail loud if drifted). (b) Wire
   `final_rank = momentum_rank + λ·value_rank` into `V3SignalStore` behind a `value_tilt_lambda` config
@@ -301,6 +301,33 @@ Confirm or redline each before any run:
   (random-subset retention + contributor rotation), unit-tested for **no-lookahead + determinism**.
 - **Done-criteria:** orthogonality reconfirmed (or loudly flagged); λ=0 reproduces the pure-momentum base
   byte-for-byte; skew-aware §6.2 unit-tested; **no backtest, no FINAL_OOS.**
+
+**Session log (2026-06-20):**
+- **(a) Orthogonality RECONFIRMED — PASS.** `vt0_scaffold.py` on full DISCOVERY (2018-02-06 →
+  2023-06-30): momentum composite (2-factor `[mom_12_1, low_vol]`) vs value_rank (E/P+B/P equal-weight
+  percentile) over **62,184** overlapping (date×name) cells → **Pearson ρ = −0.1063, |ρ| = 0.106 < 0.30**.
+  The TBE2b orthogonality holds; the tilt's additive rationale (§2a) stands. *(Coverage note, honest:
+  E/P 29.2% / B/P 27.9% of cells are non-null **over the full 3,470-ISIN universe** incl. illiquid
+  micro-caps with no filings — not contradicting TBE2b's 91.7%/89.8%, which was measured over the
+  tradeable in-universe names; the tilt only ever sees gate-eligible names.)*
+- **(b) Value tilt WIRED, λ=0 byte-identical — VERIFIED.** `V3Config.value_tilt_lambda` (default 0.0,
+  guarded: non-negative; λ>0 forbids fundamental factors in `active_factors` so value cannot route
+  through the closed Track-B co-equal blend). `signals_v3.build_value_rank` + `_apply_value_tilt` layer
+  `final_rank = momentum + λ·value_rank` on top of the price-only composite; `precompute_v3_signals`
+  gained an optional `value_frames` arg. λ=0 short-circuits to the momentum frame **unchanged** —
+  test `test_lambda0_byte_identical_even_with_value_frames` asserts byte-for-byte equality even when
+  value frames are supplied. **560 → 580 backtest_v2 tests green (parity suite unchanged).**
+- **(c) Skew-aware §6.2 IMPLEMENTED + unit-tested.** New `skew_robustness.py`: `random_subset_retention`
+  (seeded RNG, 200×drop-10, median≥0.70 ∧ p5≥0.50; `run_perturbed` injected as a seam → engine-free)
+  + `contributor_rotation` (per-year top-10 union ≥25). Tests prove **determinism** (same seed ⇒
+  identical drop sequence + retentions), **no-lookahead** (200 random draws cover all 40 held names ⇒
+  drops are RNG-driven, not P&L-driven), threshold logic, and fail-loud on non-positive base Calmar.
+- **⚠ Construction decision flagged (Rule 12) — missing-value handling in the tilt:** a held name with
+  **no** E/P/B/P data is **neutral-filled to median rank 0.5** in `_apply_value_tilt`, so the tilt only
+  *re-orders* momentum-eligible names and never *drops* one for lacking fundamentals (NaN-propagation
+  would shrink the momentum universe — wrong for a tilt). This was **not** explicitly pre-registered;
+  it is the principled default for an overlay and is documented in code. Sparse value frames are
+  forward-filled across the daily grid until the next review. **No threshold or grid moved.**
 
 ### VT1 — Stage 1: 9-config cost screen on full DISCOVERY
 - **Status:** ⬜ not started.
@@ -327,7 +354,7 @@ Confirm or redline each before any run:
 
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) 2026-06-20; §12.2 momentum-base = 2-factor `[mom_12_1, low_vol]`.
-- [ ] VT0 — value tilt wired (λ=0 byte-identical), orthogonality reconfirmed, skew-aware §6.2 test-gated.
+- [x] VT0 — value tilt wired (λ=0 byte-identical), orthogonality reconfirmed (ρ=−0.106), skew-aware §6.2 test-gated (2026-06-20).
 - [ ] VT1 — 9-config cost screen; §6.1 survivors identified; U=350,λ=0 reproduces `08` S3; FINAL_OOS untouched.
 - [ ] VT2 — full battery + §6; one candidate locked OR pre-accepted null close; tilt trade-off recorded.
 - [ ] VT3 — one-shot FINAL_OOS (only on a locked candidate); §10 verdict labeled truthfully. — or **N/A** (null).
