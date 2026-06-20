@@ -293,15 +293,55 @@ Confirm or redline each before any run:
 >   skipped check.
 
 ### SU1 — Stage 1: 4-config cost + churn screen on full DISCOVERY
-- **Status:** ⬜ TODO (depends on SU0)
+- **Status:** ✅ DONE (2026-06-20, commit pending) — `FINAL_OOS` untouched.
 - **Do:** run each §5 config at base + pessimistic cost; record turnover, **membership churn**, base
   Calmar, maxDD, §6.1 ratio; log all 4 to `ConfigLedger`. **No FINAL_OOS, no §6.2/3/4.**
 - **Done-criteria:** 4-row table (config → churn, turnover, Calmar, maxDD, §6.1, pass/fail); §6.1-clearing
   set identified (may be empty — report honestly); C0 anchor reproduced; `FINAL_OOS` untouched.
 
+> **Session log (2026-06-20):** runner = `app/backtest_v2/su1_cost_screen.py`
+> (`backend/venv/bin/python -m app.backtest_v2.su1_cost_screen`), DISCOVERY 2018-02-06 → 2023-06-30,
+> §6.1 benchmark = Nifty50 TRI (same metric as `06` MD1; cached). Momentum held constant at the MD1
+> §6.1 survivor (5-factor, N=20, M=130, sm=0, monthly, regime ON, ₹5cr floor). Membership churn measured
+> with the established `diag_turnover_decomp._decompose_fills` (entry+exit Δweight ÷ total, × annualized
+> turnover); regime is ON for all 4 configs ⇒ its full-book-toggle contribution is a **constant confound**
+> and the C0→S* delta isolates the universe effect.
+>
+> | Cfg | Universe | Base Calmar | MaxDD | Turnover | Churn (ann / frac) | C_strat(P) | C_n50 | §6.1 ratio | §6.1 |
+> |---|---|---|---|---|---|---|---|---|---|
+> | **C0** | ₹5cr floor (daily) | **0.523** | 26.1% | 706% | 561% / 79% | 0.468 | 0.346 | **1.35** | ✅ PASS |
+> | **S1** | stable U=200 B=1.25 | 0.391 | 22.3% | 539% | 379% / 70% | 0.333 | 0.346 | **0.96** | ❌ FAIL |
+> | **S2** | stable U=200 B=1.0 | 0.457 | 22.6% | 555% | 387% / 70% | 0.396 | 0.346 | **1.15** | ✅ PASS |
+> | **S3** | stable U=350 B=1.25 | 0.575 | 23.7% | 604% | 438% / 73% | 0.521 | 0.346 | **1.51** | ✅ PASS |
+>
+> - **C0 anchor REPRODUCED byte-for-byte:** base Calmar **0.523** = the `06` MD1 M=130 number exactly,
+>   numerically confirming SU0's structural byte-identity claim (the floor path is unchanged by the SU0
+>   mask wiring). The SU0→SU1 deferred numeric check is now closed.
+> - **§6.1 survivor set = {C0, S2, S3}** (ratio ≥ 1.0). **S1 (the *proposed primary* U=200 B=1.25) FAILS**
+>   at 0.96 — the 1.25 buffer at U=200 drops base Calmar to 0.391. The buffer is *not* free at the
+>   narrow universe (S1 fail) yet is fine at the broad one (S3, U=350 B=1.25, ratio 1.51, best of grid).
+> - **The §08 churn hypothesis is CONFIRMED at the mechanism level:** stabilizing the universe cut
+>   realized membership churn from C0's **561% → 379–438%** (Δ **−122 to −182 pp**), turnover **706% →
+>   539–604%**, churn-fraction **79% → 70–73%**. The redesign moved exactly the lever it targeted
+>   ([[turnover-decomp-churn-dominant]]).
+> - **Honest caveat (Rule 12) — churn ↓ did NOT translate to a §6.1 edge:** C0, the *highest*-churn
+>   config, still posts the 2nd-best §6.1 ratio (1.35) and the only stable config to match/beat C0 on
+>   base Calmar is the *broader* S3 (0.575 > 0.523); the narrower stable configs (S1/S2) gave up Calmar.
+>   So §6.1 (a cost-survival gate) does **not** reward the churn reduction here — the churn payoff, if
+>   any, must appear in **§6.2 retention / concentration** (SU2), which is precisely where momentum-only
+>   died in `06`. SU1 establishes the mechanism moved; SU2 decides whether that buys a deployable gate.
+> - **Realized stable-universe sizes** (per semi-annual review, n=20 reviews): S1 0–230, S2 0–200,
+>   S3 0–396 (the leading 0s are the pre-first-review warmup window — mask empty until the first review).
+> - **Ledger:** all 4 configs × 2 cost levels = **8 entries** logged (`ConfigLedger`, stages
+>   `SU1_base`/`SU1_pessimistic`); K carries (≥46 at TBE7 + 8). `FINAL_OOS` untouched.
+> - **No regression risk:** `su1_cost_screen.py` is a new standalone analysis script; it imports
+>   existing code (incl. the SU0 mask + `_decompose_fills`) without modifying any of it.
+
 ### SU2 — Stage 2: full battery + §6 acceptance on the §6.1 survivors
-- **Status:** ⬜ TODO (depends on SU1)
+- **Status:** ⬜ TODO (depends on SU1) — **§6.1 survivor set = {C0, S2, S3}** (S1 dropped, ratio 0.96).
 - **Do:** §6.2/§6.3/§6.5 (+ §6.4 diagnostic) on survivors; apply §6 items 1–5 + tie-break. **No FINAL_OOS.**
+  Note the §6.3 plateau is over §5 universe neighbors (±1 step on U and B) — with S1 (a U=200 neighbor)
+  already failing §6.1, the S2/S3 neighborhood evidence must be read carefully (08 §6.3).
 - **Done-criteria:** per-survivor §6 table; exactly one candidate locked OR null close declared (Rule 12 —
   no silent pick); churn-moved-the-mechanism diagnostic recorded either way; `FINAL_OOS` untouched.
 
@@ -319,6 +359,8 @@ Confirm or redline each before any run:
 - [x] SU0 — benchmark verified real (Nifty200 Mom30 TRI, cached, 2017→2026); stable-universe mask built
       + test-gated (560 green); floor path byte-identical structurally. Numeric C0 Calmar-0.523 anchor
       carried to SU1 (SU0 forbids a backtest).
-- [ ] SU1 — 4-config cost+churn screen; §6.1 survivor set identified; all logged.
+- [x] SU1 — 4-config cost+churn screen (2026-06-20): C0 anchor reproduced (Calmar 0.523); §6.1
+      survivors **{C0, S2, S3}** (S1 fails 0.96); churn moved C0 561% → 379–438% (hypothesis confirmed
+      at mechanism level); 8 ledger entries; FINAL_OOS untouched.
 - [ ] SU2 — full battery + §6; single candidate locked OR null close (no silent pick).
 - [ ] SU3 — one-shot FINAL_OOS only on a locked candidate; §10 verdict; else N/A + FINAL_OOS pristine.
