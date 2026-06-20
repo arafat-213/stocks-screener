@@ -740,7 +740,9 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE7 — Candidate selection + full §6 battery + deflation/PBO + H3 verdict (DISCOVERY)
 
-- **Status:** ☐ not started
+- **Status:** ☑ DONE (2026-06-20) — **RESEARCH-NOTE CLOSE.** H3 **NOT CONFIRMED** (vacuous predicate)
+  AND the candidate **fails 2/5 §6 checks** — two independent grounds. **TBE8 is N/A; `FINAL_OOS`
+  left PRISTINE.** Runner: `backend/app/backtest_v2/tbe7_candidate.py`.
 - **Depends on:** TBE4–TBE6.
 - **Goal:** Lock the **single** Track-B candidate from the accepted layers, subject it to the full
   five §6 robustness checks on DISCOVERY, account for the search honestly (deflated Sharpe + PBO),
@@ -767,13 +769,54 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
   - [ ] Deflated Sharpe (K = A+B trials) + PBO reported; no fold touches `FINAL_OOS`.
   - [ ] H3 verdict stated plainly (§6.4 pass-where-baseline-failed + supporting evidence); explicit
         TBE8 go/no-go. A FAIL is reported as a research-note close, not engineered around.
-- **Session log:** _(empty)_
+- **Session log (2026-06-20):**
+  - **Runner:** `backend/app/backtest_v2/tbe7_candidate.py` (self-contained, mirrors `tbe5`/`t6`).
+    `§6.1/§6.2/§6.5` reused verbatim from the v3 battery (window-driven); `§6.3`/`§6.4` reimplemented
+    only to re-point the window to `TRACK_B_DISCOVERY` and the LOCKED Track-B subperiods — criteria
+    identical (same `plateau_check` 0.85 tol, same `passes_concentration_hard`). DISCOVERY only.
+  - **Candidate (LOCKED, no re-tune):** Track-A baseline = `["mom_12_1","low_vol","trend_quality",
+    "mom_6_1","reversal"]`, cadence=monthly, M=70, smoothing=0, N=20, regime ON. B1 (TBE4) + B2 (TBE5)
+    dropped, TBE6 N/A → this is the single pre-committed candidate (`03` §6 honest-drop rule).
+  - **Wiring sanity (Rule 12):** base run reproduces the TBE3 anchor **exactly** — Calmar **1.591**,
+    Sharpe **1.335**, CAGR 24.1%, maxDD 15.13%, turnover 1038%, 909 fills. No drift.
+    vs NM30 TRI: c_strat 1.591 / c_bench 0.591 / calmar_ratio 2.69 / excess_CAGR +4.0%.
+  - **§6 battery — 3/5 PASS (per-check, Rule 12):**
+
+    | Check | Verdict | Detail |
+    |-------|---------|--------|
+    | §6.1 Cost stress | **PASS** | calmar_ratio 3.15 ≥ 1.0 at pessimistic cost (c_strat 1.365 vs c_nifty50 0.434) |
+    | §6.2 Universe perturbation | **FAIL** | Calmar retention **33%** < 70% — edge concentrated in top-10 names (dropped TATAELXSI, ADANIGREEN, CGPOWER, PERSISTENT, KPITTECH, WIPRO, APOLLOHOSP, JKCEMENT, TIINDIA, VBL) |
+    | §6.3 Neighborhood | **FAIL** | **lone peak** — winner (M=70,s=0) Calmar 1.591; both neighbors below 0.85×1.591=1.352 ((M=50,s=0)=1.258; (M=70,s=2)=0.707). No plateau (`04` §4) |
+    | §6.4 Subperiod + concentration | **PASS** | 3/3 positive Calmar (4.963/4.530/0.274), spread 2.07x ≤ 5.0x, `passes_concentration_hard`=True |
+    | §6.5 Turnover / capacity | **PASS** | avg participation 0.039% < 5% of ADV floor at ₹10L |
+
+  - **Deflation (`04` §5):** raw Sharpe **1.335**, **K = 46** (28 prior — 16 Track-A + 4 TBE3 + 4 TBE4
+    + 4 TBE5; TBE6 N/A — plus **18** this file's ledger entries; a fresh family does NOT reset K),
+    **deflated Sharpe DSR = 0.092**. Still > 0 but the selection penalty eats ~93% of the raw edge.
+  - **PBO via CSCV (`04` §5):** **PBO = 0.00** over the §6.3 neighborhood grid (4 configs) × the
+    `walk_forward_windows(TRACK_B)` expanding folds. **Caveat (Rule 12):** only **2** folds fit the
+    41-month window at the default 24m-IS/6m-OOS cadence → C(2,1)=2 partitions, a **coarse, low-
+    resolution** estimate; not load-bearing for the verdict.
+  - **H3 VERDICT — NOT CONFIRMED.** The `03` §2 primary predicate ("candidate passes §6.4 *where the
+    TBE3 baseline failed*") is **VACUOUS**: TBE3's critical finding is that the baseline **PASSES** §6.4
+    on this window (it never failed), and the candidate **IS** that baseline (identical config), so there
+    is no pass-where-it-failed to demonstrate. The supporting-evidence path is empty too — B1 and B2 were
+    both dropped, so no fundamental layer adds anything. H3 cannot be confirmed regardless of the §6.4 PASS.
+  - **Independent corroboration:** even ignoring the vacuous H3 gate, the candidate **fails the §6 battery
+    (2/5)** — §6.2 (edge concentrated in top names) and §6.3 (lone peak, no local plateau). So the close
+    rests on **two independent grounds** (H3 unconfirmable + §6 fail), echoing the MD2 momentum-only null
+    close. No rule-relaxation rescues this.
+  - **Verdict → TBE8 = N/A.** Track B closes as a research note (`03` §9/§10). **`FINAL_OOS` UNTOUCHED —
+    left PRISTINE.** A legitimate, pre-accepted outcome; manufacturing a pass by re-tuning is forbidden.
+  - **ConfigLedger:** K this session = 18 → **cumulative K = 46**.
 
 ---
 
 ## TBE8 — One-shot FINAL_OOS run (exactly once — §9 DoD verdict)
 
-- **Status:** ☐ not started
+- **Status:** ☑ N/A (2026-06-20) — **NOT RUN.** Gate not met: TBE7 did not PASS (§6 3/5) and **H3 was
+  NOT confirmed** (vacuous predicate). Track B is a research note. `FINAL_OOS` **untouched — PRISTINE**,
+  carried forward intact (no fold, no run, no peek).
 - **Depends on:** TBE7 **PASS + H3 confirmed** (else this task is N/A — Track B is a research note).
 - **Goal:** Spend the inherited one-shot OOS: run the **single locked** TBE7 candidate on `FINAL_OOS`
   **exactly once, with no re-tuning**, and apply the §9 Definition-of-Done bar.
@@ -808,11 +851,9 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - [x] TBE5b — Leverage rescue via `DebtEquityRatio` fallback: schema + parser + reader + factor + migration + 18 tests PASS; leverage 21.7% → 54.5% (DONE 2026-06-20).
 - [x] TBE5 — Quality block {ROE, accruals, leverage} DROPPED (Calmar −0.567 to 1.024, max-DD 15.1%→19.9%; §6.4 spread NARROWED 2.07x→1.22x but headline Calmar degraded; K=4; honest drop per Rule 12).
 - [x] TBE6 — N/A (skipped): neither B1 nor B2 accepted, so no block-weight to evaluate (§6 gate). FINAL_OOS untouched.
-- [ ] TBE7 single candidate selected; full §6 battery + deflation/PBO + **explicit H3 verdict**;
-      go/no-go for the one-shot.
-- [ ] TBE8 (only on TBE7 PASS + H3 confirmed) — `FINAL_OOS` spent **exactly once**; §9 DoD verdict.
-- [ ] If TBE7 FAILs → Track B closes as a research note; `FINAL_OOS` left pristine (a legitimate,
-      pre-accepted outcome — `03` §9/§10; manufacturing a pass by re-tuning is forbidden).
+- [x] TBE7 — single candidate = Track-A baseline; §6 battery **3/5 PASS** (§6.2 retention 33%, §6.3 lone peak FAIL); raw Sharpe 1.335 → **DSR 0.092** at K=46; PBO 0.00 (coarse, 2 folds); **H3 NOT CONFIRMED** (vacuous predicate). Research-note close.
+- [x] TBE8 — **N/A** (TBE7 did not PASS + H3 not confirmed): `FINAL_OOS` **not** spent; left PRISTINE.
+- [x] TBE7 closed Track B as a research note → `FINAL_OOS` left pristine (the legitimate, pre-accepted outcome — `03` §9/§10; no re-tune to manufacture a pass).
 
 > This file **executes** `03_TRACK_B_PREREG.md`. It defines no new factor, grid, threshold, or
 > split. The one-shot `FINAL_OOS` is consumed only at TBE8, only once, only on a locked candidate.
