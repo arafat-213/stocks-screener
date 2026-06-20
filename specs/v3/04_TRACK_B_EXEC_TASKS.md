@@ -634,7 +634,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ## TBE5 — Layer B2: add the Quality block {ROE, accruals, leverage} (plateau)
 
-- **Status:** ☐ not started
+- **Status:** ☑ done (2026-06-20) — **Layer B2 DROPPED** (Calmar −0.567; §6.4 spread narrowed but full-window degraded).
 - **Depends on:** TBE4. **Base config = Track-A baseline** (B1 was dropped; see TBE4 session log).
 - **Goal:** Second H3 layer — on top of the B1-accepted config (here: the Track-A baseline, since
   B1 was dropped), does quality further narrow the §6.4 spread on a plateau?
@@ -647,16 +647,77 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - **Deliverable:** B2 result vs the B1/baseline anchor (§6.4 spread delta) + plateau verdict + ledger
   entries, in this log.
 - **Done-criteria:**
-  - [ ] Quality block added on the prior-accepted config; runs on DISCOVERY; all configs logged.
-  - [ ] Accept/drop on a plateau + §6.4-not-worse; the running accepted config is stated explicitly.
-  - [ ] `FINAL_OOS` untouched.
-- **Session log:** _(empty)_
+  - [x] Quality block added on the prior-accepted config; runs on DISCOVERY; all configs logged.
+  - [x] Accept/drop on a plateau + §6.4-not-worse; the running accepted config is stated explicitly.
+  - [x] `FINAL_OOS` untouched.
+- **Session log (2026-06-20):**
+  - **Script:** `backend/app/backtest_v2/tbe5_quality_block.py` — adaptation of `tbe4_value_block.py`;
+    holds Track-A knobs fixed (cadence=monthly, M=70, smoothing=0, N=20), adds
+    `active_factors = Track-A + [accruals, leverage, roe]`, builds fundamental frames via the same
+    bulk in-memory cache (PIT logic = `read_fundamentals_asof`), runs `engine.run` on
+    `TRACK_B_DISCOVERY` at base cost. Base = **Track-A baseline** (B1 dropped — `03` §6 honest-drop).
+  - **B2 config:** `active_factors = ['mom_12_1', 'low_vol', 'trend_quality', 'mom_6_1', 'reversal',
+    'accruals', 'leverage', 'roe']`  (all Track-A factors + Quality block).
+  - **⚠ FINANCIAL EXCLUSION GAP (Rule 12 — surfaced, not hidden):** `03` §3 excludes banks/NBFCs
+    from accruals + leverage, but the offline backtest panel is keyed by ISIN with **no sector
+    classification** (the `stocks` table is keyed by NSE symbol, no ISIN join wired into the panel).
+    This is the same known gap flagged in TBE1's log and applied identically in TBE2 + TBE4. Ran with
+    `financial_isins = frozenset()` — financials NOT excluded. Consistent with the TBE2b/TBE5b
+    coverage figures (computed under the same assumption), but leverage may be distorted by
+    naturally-high-leverage financials. Documented as a deviation from `03` §3, not silently applied.
+  - **Fundamental frame coverage (full 3,470-ISIN panel × 42 rebalance dates):**
+    - `accruals`: 16,096/145,740 cells non-null (11.0% of full panel)
+    - `leverage`: 47,422/145,740 cells non-null (32.5% — post-TBE5b `DebtEquityRatio` rescue)
+    - `roe`: 77,812/145,740 cells non-null (53.4%)
+    - Note: low full-panel rate expected — non-filer/illiquid ISINs have no fundamentals. Effective
+      coverage on the liquidity-eligible universe matches TBE5b (roe ~90%, leverage ~55%, accruals ~17%).
+  - **B2 full-window result (base cost, TRACK_B_DISCOVERY):**
+    - Calmar: **1.024**  |  CAGR: **20.4%**  |  Max DD: **19.88%**  |  Sharpe: **1.196**
+    - Turnover: **979%**  |  Fills: **882**
+    - vs Nifty200 Momentum 30 TRI: c_strat=1.024, c_bench=0.591, calmar_ratio=1.73, excess_cagr=+0.3%, max-DD ratio 0.59
+  - **vs TBE3 baseline:** Calmar delta = **−0.567** (baseline 1.591 → B2 1.024); CAGR 24.1% → 20.4%;
+    Max DD 15.13% → 19.88% (worsened).
+  - **§6.4 subperiod Calmars (B2 vs baseline):**
+
+    | Subperiod | B2 Calmar | Baseline | Delta |
+    |-----------|-----------|----------|-------|
+    | COVID crash + V-recovery | 4.150 | 4.963 | −0.813 |
+    | Post-COVID bull          | 5.078 | 4.530 | +0.548 |
+    | Rate-hike correction     | −0.004 | 0.274 | −0.278 |
+
+  - **§6.4 concentration (B2):**
+    - n_positive: 2/3 | best: 5.078 | mean of others: 4.150
+    - **Spread ratio: 1.22x** (baseline: 2.07x; delta **−0.85x — NARROWED**; threshold 5.0x)
+    - `passes_concentration_hard`: **TRUE** (§6.4 passes; spread actually improved vs baseline)
+  - **Acceptance criteria:**
+    - Calmar improved: **FALSE** (−0.567)
+    - §6.4 spread not worsened: **TRUE** (−0.85x, narrowed)
+    - **Layer B2 verdict: DROP** (Calmar criterion fails — `03` §6 honest-drop rule, Rule 12)
+  - **Honest interpretation (Rule 12/13):** the quality block does exactly the *mechanistic* thing H3
+    predicted — it **narrows the §6.4 subperiod spread** (2.07x → 1.22x) by lifting the Post-COVID-bull
+    subperiod relative to the best. But it **degrades the headline risk-adjusted return**: full-window
+    Calmar drops 1.591 → 1.024 because the rate-hike subperiod flips negative (0.274 → −0.004) and
+    full-window max-DD worsens (15.13% → 19.88%). In plain terms: blending "buy high-quality" into a
+    momentum sleeve smoothed the *consistency-across-regimes* metric but cost *profit-per-unit-of-crash*
+    overall — the quality names dragged through the 2022 correction. Per `03` §6 the layer is judged on
+    Calmar-not-degraded first; it fails that, so it drops despite the favorable spread.
+  - **Consequence for the task graph:** **BOTH B1 (value) and B2 (quality) are now DROPPED.** Per `03`
+    §6 / TBE6 gate, **TBE6 (block-weight) is N/A** — no blocks were accepted, so there is nothing to
+    weight. TBE7 proceeds with the **Track-A baseline as the single candidate** (no V/Q blocks). The H3
+    primary predicate was already vacuous on this window (TBE3 critical finding — baseline passes §6.4);
+    with no accepted fundamental layer, the H3 supporting-evidence path also has nothing to add. TBE7
+    will state the H3 verdict as a research-note close (`03` §9/§10) and decide the FINAL_OOS go/no-go.
+  - **ConfigLedger K:**
+    - TBE5 entries: 4 (1 main B2 run + 3 subperiod runs)
+    - **Cumulative K entering TBE6/TBE7: 28** (16 Track-A + 4 TBE3 + 4 TBE4 + 4 TBE5)
 
 ---
 
 ## TBE6 — Layer B3 (CONDITIONAL): coarse block-weight {1:1:1, 2:1:1}
 
-- **Status:** ☐ not started
+- **Status:** ☑ N/A (2026-06-20) — **SKIPPED per the §6 gate: neither B1 nor B2 was accepted.**
+  B1 (value, TBE4) and B2 (quality, TBE5) both DROPPED, so there are no blocks to weight. No run,
+  no ledger entries, no `FINAL_OOS` touch. TBE7 proceeds with the Track-A baseline candidate.
 - **Depends on:** TBE5.
 - **Goal:** Only if **both** B1 and B2 earned a place — a single coarse choice: does momentum stay
   dominant (2:1:1) or do the families get equal say (1:1:1)? (`03` §6 B3.)
@@ -745,7 +806,8 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - [x] TBE3 Track-A baseline on the Track-B window + §6.4 anchor recorded (baseline PASSES §6.4 on this window — critical finding logged).
 - [x] TBE4 — Value block {E/P, B/P} DROPPED (Calmar −0.375, §6.4 spread +0.71x worsened; logged K=4; honest drop per Rule 12).
 - [x] TBE5b — Leverage rescue via `DebtEquityRatio` fallback: schema + parser + reader + factor + migration + 18 tests PASS; leverage 21.7% → 54.5% (DONE 2026-06-20).
-- [ ] TBE5–TBE6 quality layer (and optional block-weight) added one at a time on a plateau (or dropped honestly), all configs logged; no threshold or grid widened.
+- [x] TBE5 — Quality block {ROE, accruals, leverage} DROPPED (Calmar −0.567 to 1.024, max-DD 15.1%→19.9%; §6.4 spread NARROWED 2.07x→1.22x but headline Calmar degraded; K=4; honest drop per Rule 12).
+- [x] TBE6 — N/A (skipped): neither B1 nor B2 accepted, so no block-weight to evaluate (§6 gate). FINAL_OOS untouched.
 - [ ] TBE7 single candidate selected; full §6 battery + deflation/PBO + **explicit H3 verdict**;
       go/no-go for the one-shot.
 - [ ] TBE8 (only on TBE7 PASS + H3 confirmed) — `FINAL_OOS` spent **exactly once**; §9 DoD verdict.
