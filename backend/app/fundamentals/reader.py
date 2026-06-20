@@ -52,6 +52,8 @@ class FundamentalsSnapshot:
     total_debt: float | None
     shares_outstanding: float | None
     cfo: float | None
+    # TBE5b: disclosed D/E ratio from results-only filings (leverage fallback).
+    debt_equity_ratio: float | None
 
 
 def _cutoff(as_of_date: datetime.date) -> datetime.date:
@@ -80,6 +82,7 @@ def _to_snapshot(row: FundamentalsLineItemVersion) -> FundamentalsSnapshot:
         total_debt=row.total_debt,
         shares_outstanding=row.shares_outstanding,
         cfo=row.cfo,
+        debt_equity_ratio=row.debt_equity_ratio,
     )
 
 

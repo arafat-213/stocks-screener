@@ -173,6 +173,11 @@ _CFO_TAGS = (
     "CashGeneratedFromOperations",
 )
 
+# Supplementary ratio tag (TBE5b leverage rescue). Present in results-only
+# filings that carry no balance-sheet borrowings. Not a core statement item —
+# absent in ~76% of filings, so NOT added to _ITEM_NAMES / unmapped_items.
+_DEBT_EQUITY_RATIO_TAGS = ("DebtEquityRatio",)
+
 # All 8 items as (field_name, resolver) — used by parse_xbrl to build the result
 # and populate unmapped_items. Resolvers are set after the helper functions below.
 _ITEM_NAMES = (
@@ -301,6 +306,10 @@ class XBRLParseResult:
     ``None`` means the item could not be resolved from any standard-namespace tag
     — NEVER zero-filled (TB4 / Rule 12).  ``unmapped_items`` lists which fields
     were not found, for surfacing in the PipelineError message.
+
+    ``debt_equity_ratio`` is a supplementary disclosure (TBE5b): present in
+    ~24% of filings (including results-only filings without a balance sheet).
+    Not in ``unmapped_items`` — its absence is expected and not a logging event.
     """
 
     revenue: float | None = None
@@ -311,6 +320,7 @@ class XBRLParseResult:
     total_debt: float | None = None
     shares_outstanding: float | None = None
     cfo: float | None = None
+    debt_equity_ratio: float | None = None
     unmapped_items: list[str] = field(default_factory=list)
 
 
@@ -343,6 +353,9 @@ def parse_xbrl(xbrl_text: str) -> XBRLParseResult:
         setattr(result, name, value)
         if value is None:
             result.unmapped_items.append(name)
+
+    # Supplementary ratio — silent absence (not logged as unmapped).
+    result.debt_equity_ratio = _extract_numeric(xbrl_text, _DEBT_EQUITY_RATIO_TAGS)
 
     return result
 
@@ -441,6 +454,7 @@ class XBRLReparseStats:
     filings_with_unmapped: int = 0
     shares_filled: int = 0  # rows where shares_outstanding went NULL → value
     debt_filled: int = 0  # rows where total_debt went NULL → value
+    de_ratio_filled: int = 0  # rows where debt_equity_ratio went NULL → value
 
 
 # ---------------------------------------------------------------------------
@@ -631,6 +645,7 @@ def populate_line_items(
                         total_debt=parsed.total_debt,
                         shares_outstanding=parsed.shares_outstanding,
                         cfo=parsed.cfo,
+                        debt_equity_ratio=parsed.debt_equity_ratio,
                     )
                 )
                 session.commit()
@@ -662,6 +677,7 @@ _REPARSE_FIELDS = (
     "total_debt",
     "shares_outstanding",
     "cfo",
+    "debt_equity_ratio",
 )
 
 
@@ -787,6 +803,8 @@ def reparse_line_items(
                             stats.shares_filled += 1
                         if f == "total_debt" and old is None and new is not None:
                             stats.debt_filled += 1
+                        if f == "debt_equity_ratio" and old is None and new is not None:
+                            stats.de_ratio_filled += 1
                         setattr(row, f, new)
                         changed = True
                 if changed:

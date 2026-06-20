@@ -57,6 +57,7 @@ def _snap(
     shares_outstanding: float | None = None,
     ebit: float | None = None,
     revenue: float | None = None,
+    debt_equity_ratio: float | None = None,
 ) -> FundamentalsSnapshot:
     return FundamentalsSnapshot(
         isin="TEST",
@@ -71,6 +72,7 @@ def _snap(
         shares_outstanding=shares_outstanding,
         ebit=ebit,
         revenue=revenue,
+        debt_equity_ratio=debt_equity_ratio,
     )
 
 

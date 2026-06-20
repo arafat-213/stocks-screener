@@ -208,6 +208,10 @@ def leverage(
 
     Sign-flipped so lower leverage → higher rank → better.
     Financials excluded (03 §3). Non-positive equity → None (03 §4.3).
+
+    TBE5b fallback: if total_debt is absent but the filing discloses
+    DebtEquityRatio, use −DebtEquityRatio directly (mathematically equivalent).
+    A negative disclosed ratio implies a filing error → None (not zero-filled).
     """
     if is_financial:
         return None
@@ -215,9 +219,13 @@ def leverage(
     if equity is None or equity <= 0.0:
         return None
     debt = _latest_stock(snapshots, "total_debt")
-    if debt is None:
-        return None
-    return -(debt / equity)
+    if debt is not None:
+        return -(debt / equity)
+    # Fallback: disclosed D/E ratio from results-only filings.
+    de_ratio = _latest_stock(snapshots, "debt_equity_ratio")
+    if de_ratio is not None and de_ratio >= 0.0:
+        return -de_ratio
+    return None
 
 
 # ---------------------------------------------------------------------------

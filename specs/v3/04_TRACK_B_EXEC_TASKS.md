@@ -549,6 +549,89 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 
 ---
 
+## TBE5b — Leverage rescue via `DebtEquityRatio` XBRL tag (pre-TBE5 data fix)
+
+- **Status:** ☑ done (2026-06-20) — re-parse complete; leverage coverage 21.7% → 54.5%.
+- **Depends on:** TBE4 (value block characterization surfaced leverage at 21.7%; TBE2b's
+  recommendation to use `DebtEquityRatio` deferred to this task per Rule 1/7).
+- **Goal:** Rescue the leverage factor (Q3) by adding a fallback to the disclosed
+  `DebtEquityRatio` XBRL tag when `total_debt` is absent. Mathematically equivalent to
+  `total_debt / total_equity` but present in results-only filings (the bulk of DISCOVERY)
+  that carry no balance-sheet borrowings. Not a factor redefinition — same quantity,
+  different source.
+- **Do:**
+  - Add `debt_equity_ratio` column to `FundamentalsLineItemVersion` (schema) and run an
+    Alembic migration.
+  - Parse `in-bse-fin:DebtEquityRatio` tag in `xbrl_parser.py` into `debt_equity_ratio`
+    (supplementary — NOT in `unmapped_items`; its absence in ~76% of filings is expected).
+  - Expose `debt_equity_ratio` in `FundamentalsSnapshot` via the reader.
+  - Update `leverage()` in `fundamental_factors.py`: primary path `-(total_debt/equity)`;
+    fallback `-debt_equity_ratio` if `total_debt` is None and `ratio ≥ 0`; negative ratio →
+    None (filing error — §4.3 degenerate rule). Financial exclusion before any lookup.
+  - Re-parse all 40,125 cached XBRL docs **offline** (no live NSE) with `tbe5b_reparse.py`
+    to populate `debt_equity_ratio` in existing `fundamentals_line_items` rows.
+  - Verify coverage improvement vs TBE4's 21.7% leverage baseline.
+  - Tests (DC1–DC8): fallback path, primary-overrides-fallback, negative ratio → None,
+    zero ratio → 0.0, financial exclusion, parser extraction, absent tag → None, both absent → None.
+- **Deliverable:** schema + parser + reader + factor update + migration + offline re-parse +
+  18 new tests + coverage delta, recorded in this Session log.
+- **Done-criteria:**
+  - [x] `debt_equity_ratio` column added to `fundamentals_line_items`; migration applied.
+  - [x] `parse_xbrl` extracts `DebtEquityRatio` tag; absent = None, not logged as unmapped.
+  - [x] `FundamentalsSnapshot.debt_equity_ratio` exposed via reader.
+  - [x] `leverage()` fallback: uses `-debt_equity_ratio` when `total_debt` absent; negative
+        ratio → None; zero ratio → 0.0; financial exclusion unaffected; primary path unchanged.
+  - [x] 18/18 TBE5b tests PASS; 602/602 backtest_v2 + fundamentals regression tests PASS.
+  - [x] Offline re-parse complete; `debt_equity_ratio` populated; coverage delta logged.
+- **Session log (2026-06-20):**
+  - **Methodology note:** `DebtEquityRatio` (disclosed) = `total_debt / total_equity`
+    mathematically. Using it as a fallback is a data-sourcing improvement, not a factor
+    redefinition. Disclosed ratios in results-only filings are the company's own computation —
+    cross-checking on the 15 real samples confirms values are consistent (0.00 for zero-debt
+    companies, small positives for NBFCs). This is analogous to TBE2b's `PaidUp/Face` derivation
+    for `shares_outstanding`.
+  - **Tag discovery:** `in-bse-fin:DebtEquityRatio` present in 7/15 XBRL samples (incl. 2
+    DISCOVERY-era 2020 results filings). Cache sampling: ~24.2% of 40,125 cached docs contain
+    the tag.
+  - **Files changed:**
+    - `app/fundamentals/models.py` — `debt_equity_ratio = Column(Float, nullable=True)` added.
+    - `migrations/versions/a3f8e2d1c094_add_debt_equity_ratio_to_fundamentals_line_items.py` — migration created + applied.
+    - `app/fundamentals/xbrl_parser.py` — `_DEBT_EQUITY_RATIO_TAGS`, `XBRLParseResult.debt_equity_ratio`,
+      supplementary extraction in `parse_xbrl`, `_REPARSE_FIELDS` extended,
+      `XBRLReparseStats.de_ratio_filled` counter, `populate_line_items` row write updated.
+    - `app/fundamentals/reader.py` — `FundamentalsSnapshot.debt_equity_ratio` field + `_to_snapshot`.
+    - `app/backtest_v2/fundamental_factors.py` — `leverage()` fallback via `debt_equity_ratio`.
+    - `app/fundamentals/tbe5b_reparse.py` — offline re-parse script (run_id=`tbe5b-reparse`).
+    - `tests/backtest_v2/test_v3tbe1_fundamental_factors.py` — `_snap` helper updated for new field.
+    - `tests/backtest_v2/test_v3tbe5b_leverage_rescue.py` — **18/18 new tests PASS** (DC1–DC8).
+  - **Re-parse result (run `tbe5b-reparse`, completed 2026-06-20):**
+    56,220 filings processed → 12,039 rows updated, 44,050 unchanged, 0 gap-inserts;
+    **`debt_equity_ratio` filled: 11,985 rows** (0 → 11,985 non-null in DB).
+    131 filings failed (0.23% — stale/dead cache entries); 9 shares_filled + 2 debt_filled
+    (minor TBE2b stragglers from the 142 previous failures, now resolved from cache).
+  - **DB coverage post-re-parse:**
+    - `total_debt` non-null: 11,597 / 54,693 (21.2%)
+    - `debt_equity_ratio` non-null: 11,985 / 54,693 (21.9%)
+    - Either source non-null: 20,349 / 54,693 (**37.2%**)
+  - **Effective DISCOVERY coverage (liquidity-eligible universe, 42 rebalance dates):**
+
+    | Factor | Before TBE5b | After TBE5b | Notes |
+    |--------|-------------|-------------|-------|
+    | `leverage` | 21.7% | **54.5%** (min 27.9, max 92.9) | ✅ substantial rescue |
+    | `quality_block` | 89.9% | **90.2%** | ROE-dominated; leverage adds marginal lift |
+    | `accruals` | 17.2% | 17.2% | unchanged — needs CFO+assets, absent from results filings |
+    | `roe` | 89.6% | 89.6% | unchanged |
+    | `value_block` | 92.3% | 92.3% | unchanged |
+
+  - **Momentum rank-ρ (leverage, post-rescue):** mean ρ = **0.033** (min −0.188, max +0.220),
+    frac|ρ|<0.3 = 0.667 (non-NaN dates). `|ρ| < 0.3` expectation met on every date with data —
+    genuinely momentum-orthogonal.
+  - **Verdict:** leverage is now usable at 54.5% coverage, low momentum-ρ. TBE5 (quality block
+    backtest) is runnable with ROE (~90%), leverage (~55%), accruals (~17%). Quality block will
+    be effectively ROE+leverage for most of DISCOVERY; accruals contributes late (Oct 2022+).
+
+---
+
 ## TBE5 — Layer B2: add the Quality block {ROE, accruals, leverage} (plateau)
 
 - **Status:** ☐ not started
@@ -661,6 +744,7 @@ TBE0 (lock exec scaffolding: extend factor-name set + Track-B window const; pin 
 - [ ] TBE2 factor characterization reported (coverage + momentum orthogonality) — no returns.
 - [x] TBE3 Track-A baseline on the Track-B window + §6.4 anchor recorded (baseline PASSES §6.4 on this window — critical finding logged).
 - [x] TBE4 — Value block {E/P, B/P} DROPPED (Calmar −0.375, §6.4 spread +0.71x worsened; logged K=4; honest drop per Rule 12).
+- [x] TBE5b — Leverage rescue via `DebtEquityRatio` fallback: schema + parser + reader + factor + migration + 18 tests PASS; leverage 21.7% → 54.5% (DONE 2026-06-20).
 - [ ] TBE5–TBE6 quality layer (and optional block-weight) added one at a time on a plateau (or dropped honestly), all configs logged; no threshold or grid widened.
 - [ ] TBE7 single candidate selected; full §6 battery + deflation/PBO + **explicit H3 verdict**;
       go/no-go for the one-shot.

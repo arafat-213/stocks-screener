@@ -150,6 +150,10 @@ class FundamentalsLineItemVersion(Base):
     total_debt = Column(Float, nullable=True)
     shares_outstanding = Column(Float, nullable=True)
     cfo = Column(Float, nullable=True)
+    # Supplementary: disclosed D/E ratio (TBE5b leverage rescue). Equivalent to
+    # total_debt/total_equity but available in results-only filings that carry no
+    # balance-sheet borrowings. Used as leverage() fallback when total_debt is NULL.
+    debt_equity_ratio = Column(Float, nullable=True)
 
     created_at = Column(DateTime(timezone=True), default=_utcnow)
 
