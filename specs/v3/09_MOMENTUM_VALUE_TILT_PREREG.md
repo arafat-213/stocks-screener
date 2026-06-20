@@ -330,11 +330,53 @@ Confirm or redline each before any run:
   forward-filled across the daily grid until the next review. **No threshold or grid moved.**
 
 ### VT1 — Stage 1: 9-config cost screen on full DISCOVERY
-- **Status:** ⬜ not started.
+- **Status:** ✅ DONE (2026-06-20, `vt1_cost_screen.py`). DISCOVERY only; FINAL_OOS untouched.
 - **Do:** run each §5 config at base + pessimistic cost; record base Calmar, maxDD, §6.1 ratio, turnover,
   value-tilt activity; log all 9 to `ConfigLedger`. **No FINAL_OOS, no §6.2/3/4.**
 - **Done-criteria:** 9-row table; §6.1-clearing set identified (may be empty — report honestly); the
   U=350,λ=0 anchor reproduces `08` S3 (0.575); `FINAL_OOS` untouched.
+
+**Session log (2026-06-20):**
+
+| Cfg | U / λ | base Calmar | MaxDD | Turn% | Tilt% | C_strat(P) | C_n50 | Ratio | §6.1 |
+|---|---|---|---|---|---|---|---|---|---|
+| C-300 | U=300 λ=0 | 0.205 | 26.5% | 510 | 0.0 | 0.169 | 0.346 | 0.49 | FAIL |
+| T-300-lo | U=300 λ=0.3 | 0.315 | 27.8% | 514 | 32.0 | 0.277 | 0.346 | 0.80 | FAIL |
+| T-300-hi | U=300 λ=0.6 | 0.295 | 26.7% | 531 | 39.9 | 0.255 | 0.346 | 0.74 | FAIL |
+| C-350 | U=350 λ=0 | 0.295 | 27.4% | 506 | 0.0 | 0.257 | 0.346 | 0.74 | FAIL |
+| T-350-mid | U=350 λ=0.3 | 0.318 | 27.7% | 515 | 33.1 | 0.279 | 0.346 | 0.81 | FAIL |
+| T-350-hi | U=350 λ=0.6 | 0.265 | 27.7% | 545 | 39.7 | 0.227 | 0.346 | 0.66 | FAIL |
+| C-400 | U=400 λ=0 | 0.289 | 28.0% | 528 | 0.0 | 0.252 | 0.346 | 0.73 | FAIL |
+| **T-400-lo** | **U=400 λ=0.3** | **0.392** | 28.2% | 534 | 31.3 | **0.349** | 0.346 | **1.01** | **PASS** |
+| T-400-hi | U=400 λ=0.6 | 0.326 | 28.9% | 558 | 38.5 | 0.286 | 0.346 | 0.83 | FAIL |
+
+- **§6.1 survivor set = {T-400-lo}** — exactly **1/9** clears the pessimistic-cost Calmar ratio ≥ 1.0
+  (ratio **1.01 — marginal**, base Calmar 0.392). This is the only config carried to VT2. Honest: it
+  clears by a hair; a 1.01 ratio is fragile and the deflation headwind (§8, K≫69) is unforgiving.
+- **Plumbing anchor REPRODUCED — PASS.** The separate 5-factor U=350 λ=0 base run returned Calmar
+  **0.575**, byte-reproducing `08` S3 → the stable-universe mask + engine plumbing is unchanged from `08`.
+  ⚠ **Spec-conflict resolved + flagged (Rule 7/12):** §5/§12.3 say *"U=350,λ=0 must reproduce `08` S3's
+  0.575"*, but §12.2 (signed) sets the grid base to the **2-factor** `[mom_12_1, low_vol]`, which **cannot**
+  reproduce a **5-factor** number. The grid's `C-350` (2-factor, λ=0) is **0.295**, not 0.575. Reconciled
+  by treating the anchor as a **plumbing-regression check** run on `08`'s exact 5-factor config *separately*
+  from the grid — both reported. The done-criterion is met under that reading; **no stick moved** (grid base
+  stays the signed 2-factor). The 5-factor "0.575" anchor literal in §5/§12.3 is a drafting artifact, not a
+  grid cell — Arafat to note for any future erratum.
+- **Orthogonality RECONFIRMED — OK.** ρ = −0.1063 (|ρ| 0.106 < 0.30) over 62,184 cells — unchanged from
+  VT0; the tilt's additive rationale (§2a) still holds on this window.
+- **Tilt diagnostic (the §6/§200 trade-off curve, recorded now):** the value tilt is **additive at λ=0.3
+  at every universe** — it lifts base Calmar over the same-U λ=0 control (C-300 0.205→0.315, C-350
+  0.295→0.318, C-400 0.289→0.392) while changing 31–33% of the held set. **λ=0.6 overshoots** (lower than
+  λ=0.3 at all three U) → the tilt is real but small; past a point it displaces too much momentum. The edge
+  is **real-but-thin**, not absent: only the broadest universe (U=400) + the interior tilt (λ=0.3) crosses
+  §6.1, and only marginally.
+- **Honest read on the retention-first base (§2b/§12.2):** the 2-factor base is **materially weaker on
+  Calmar** than `08`'s 5-factor S3 (C-350 0.295 vs S3 0.575). Retention-first traded raw Calmar for
+  robustness up front; the value tilt recovers only part of that gap. VT2 will tell whether the survivor's
+  thinner Calmar still carries §6.2/§6.3 robustness.
+- **K accounting:** 18 ledger entries this run (9 configs × 2 cost levels); the plumbing anchor is **not**
+  logged as a trial (it is a regression check, not a search point). Cumulative K at VT3 ≥ 69 + 18.
+- **FINAL_OOS untouched.** VT2 next: full §6 battery on the lone survivor **T-400-lo**.
 
 ### VT2 — Stage 2: full battery + §6 acceptance on the §6.1 survivors
 - **Status:** ⬜ not started.
@@ -355,6 +397,6 @@ Confirm or redline each before any run:
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) 2026-06-20; §12.2 momentum-base = 2-factor `[mom_12_1, low_vol]`.
 - [x] VT0 — value tilt wired (λ=0 byte-identical), orthogonality reconfirmed (ρ=−0.106), skew-aware §6.2 test-gated (2026-06-20).
-- [ ] VT1 — 9-config cost screen; §6.1 survivors identified; U=350,λ=0 reproduces `08` S3; FINAL_OOS untouched.
+- [x] VT1 — 9-config cost screen (2026-06-20); §6.1 survivor = **{T-400-lo}** (1/9, ratio 1.01 marginal); 5-factor plumbing anchor reproduces `08` S3 (0.575); orthogonality OK (ρ=−0.106); FINAL_OOS untouched.
 - [ ] VT2 — full battery + §6; one candidate locked OR pre-accepted null close; tilt trade-off recorded.
 - [ ] VT3 — one-shot FINAL_OOS (only on a locked candidate); §10 verdict labeled truthfully. — or **N/A** (null).
