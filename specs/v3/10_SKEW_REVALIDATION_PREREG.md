@@ -1,6 +1,8 @@
 # v3 / 10 — Skew-Aware Re-Validation of S3: dense §6.3 plateau → one-shot FINAL_OOS
 
-> **Status: LOCKED (§12 signed 2026-06-21, Arafat) — R10.1 IN PROGRESS.** Pre-registration written BEFORE the dense
+> **Status: LOCKED (§12 signed 2026-06-21, Arafat) — R10.1 DONE → §6.3 dense-lattice FAIL → §5 NULL CLOSE
+> (U=400 neighbour 83% < 85%; S3 is a +U spike, not a region). `FINAL_OOS` pristine — never consumed.**
+> Pre-registration written BEFORE the dense
 > §6.3 lattice is measured. Per spec 04 §5 / `00` §1, the design is committed *before* the new
 > numbers exist, so no later session moves the measuring stick (the v1 failure mode). The v2
 > `FINAL_OOS` block (2023-07-01 → 2026-06-12) has **never been observed** across the entire
@@ -256,15 +258,51 @@ Confirm or redline each before any run:
 > Session log, check off Done-criteria. Do not mark Done if anything was skipped (Rule 12).
 
 ### R10.1 — dense §6.3 lattice on DISCOVERY
-- **Status:** ⬜ NOT STARTED (gated on §12 lock).
+- **Status:** ✅ DONE (2026-06-21, `app/backtest_v2/r10_lattice.py`). **§6.3 dense-lattice plateau = FAIL
+  → §5 pre-accepted null triggered.**
 - **Do:** run the 7 §4 configs (U∈{250,300,350,400,450} at B=1.25; B∈{1.0,1.5} at U=350) on full
   DISCOVERY at base cost; record base Calmar, maxDD, turnover, churn; evaluate S3's four ±1 neighbours
   vs the 0.85 predicate. Log all 7 to `ConfigLedger`. **No FINAL_OOS.**
 - **Done-criteria:** 7-row lattice table; S3 plateau PASS/FAIL stated; C0/S3 anchors reproduced; mem-safe
   (the `su_md_skew_recheck` slice+gc pattern — `del` per-run frame, ≤ DISCOVERY-end slice); FINAL_OOS untouched.
 
+**Result (DISCOVERY 2018-02-06 → 2023-06-30, base cost; anchors REPRODUCED byte-exact: C0 0.523, S3 0.575):**
+
+| cfg | universe | base Calmar | maxDD | turnover | churn | univ size | role |
+|---|---|---|---|---|---|---|---|
+| C0 | ₹5cr floor (daily) | 0.523 *(anchor 0.523 ✅)* | 26.1% | 706% | 561% | — | anchor (MD1 M=130) |
+| U250 | stable U=250 B=1.25 | 0.442 | 22.9% | 557% | 400% | 0–283 (n=14) | U-axis −2 |
+| **U300** | stable U=300 B=1.25 | **0.506** | 24.5% | 584% | 415% | 0–341 (n=14) | U-axis −1 (neighbour) |
+| **S3** | **stable U=350 B=1.25** | **0.575** *(anchor 0.575 ✅)* | 23.7% | 604% | 438% | 0–396 (n=14) | **CENTER** |
+| **U400** | stable U=400 B=1.25 | **0.479** | 26.0% | 650% | 485% | 0–456 (n=14) | U-axis +1 (neighbour) |
+| U450 | stable U=450 B=1.25 | 0.473 | 25.5% | 661% | 501% | 0–513 (n=14) | U-axis +2 |
+| **B100** | stable U=350 B=1.0 | **0.564** | 23.7% | 596% | 425% | 0–350 (n=14) | B-axis −1 (neighbour) |
+| **B150** | stable U=350 B=1.5 | **0.559** | 23.7% | 630% | 462% | 0–437 (n=14) | B-axis +1 (neighbour) |
+
+**§6.3 plateau predicate (§4, NOT relaxed):** threshold = 0.85 × 0.575 = **0.489**. The four ±1 neighbours:
+
+| neighbour | base Calmar | % of S3 | vs 0.489 |
+|---|---|---|---|
+| U300 (U-axis −1) | 0.506 | 88% | ✅ PASS |
+| **U400 (U-axis +1)** | **0.479** | **83%** | **❌ FAIL** |
+| B100 (B-axis −1) | 0.564 | 98% | ✅ PASS |
+| B150 (B-axis +1) | 0.559 | 97% | ✅ PASS |
+
+**Verdict: §6.3 dense-lattice plateau FAIL.** The **B-axis is a clean plateau** (97–98%) and U=300 holds (88%),
+but **U=400 drops to 83% (0.479 < 0.489)** — S3 is a **spike on the +U axis, not a region in both axes** as
+§4 requires. The miss is marginal (2% under the bar, a 0.010 Calmar gap), but §1/§5 forbid relaxing 0.85,
+widening the lattice, or re-picking U on a null. Decay is monotone above the center (U350 0.575 → U400 0.479
+→ U450 0.473), confirming a genuine peak rather than lattice noise. C0 and S3 anchors reproduced exactly; 7
+configs logged to `ConfigLedger`; FINAL_OOS untouched (never loaded — `prices` sliced ≤ DISCOVERY end).
+
+**⇒ §5 pre-accepted null close is triggered (a §6.3 spike).** S3 is a **research note**; `FINAL_OOS` stays
+pristine; the OOS run is **NOT** performed. R10.2/R10.3 are **N/A**. "Buy the index fund" stands as the
+**earned** conclusion — the dense lattice that `08` §6.3 flagged as missing now shows S3's index-beating edge
+(0.575 > 0.473) does **not** generalise to its immediate +U neighbour. (Awaiting Arafat's sign-off to formally
+mark the program closed; the null itself is pre-committed by §5.)
+
 ### R10.2 — full battery + §5 acceptance on S3
-- **Status:** ⬜ NOT STARTED.
+- **Status:** ⛔ N/A — R10.1 §6.3 dense-lattice FAILED (U=400 neighbour 83% < 85%); §5 null close triggered.
 - **Do:** §6.2 skew-aware (adopt committed re-check; re-run optional), §6.3 (from R10.1), §6.5 capacity,
   §6.4 diagnostic, classic guard; build the fair-costed Mom30 (§2c) and evaluate the §5.4 deploy bar at
   base + pessimistic. Apply §5 items 1–5 + the conditional label. **No FINAL_OOS.**
@@ -272,7 +310,7 @@ Confirm or redline each before any run:
   pick); FINAL_OOS untouched.
 
 ### R10.3 — one-shot FINAL_OOS + §9 verdict (only on a locked S3)
-- **Status:** ⬜ NOT STARTED (N/A on the null).
+- **Status:** ⛔ N/A — null close (no §5-locked S3). `FINAL_OOS` NOT consumed — stays pristine.
 - **Do:** byte-for-byte locked S3 through `engine.run` on FINAL_OOS — **once**. Deploy bar at base +
   pessimistic vs fair-costed Mom30; raw + deflated Sharpe + PBO; §6.1/§6.2-skew/§6.3/§6.5 OOS hold.
 - **Done-criteria:** §9 verdict (validated-conditional / research-note); `FINAL_OOS` marked consumed.
@@ -281,6 +319,6 @@ Confirm or redline each before any run:
 
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
-- [ ] R10.1 — dense §6.3 lattice; S3 plateau verdict; FINAL_OOS untouched.
-- [ ] R10.2 — full battery + §5 acceptance; S3 locked (conditional) or null; FINAL_OOS untouched.
-- [ ] R10.3 — one-shot FINAL_OOS + §9 verdict (only on a locked S3); or N/A on the null.
+- [x] R10.1 — dense §6.3 lattice; S3 plateau verdict **= FAIL** (U=400 neighbour 83% < 85%); FINAL_OOS untouched.
+- [x] R10.2 — N/A (null close triggered by R10.1 §6.3 FAIL); FINAL_OOS untouched.
+- [x] R10.3 — N/A on the null; `FINAL_OOS` NOT consumed — pristine.
