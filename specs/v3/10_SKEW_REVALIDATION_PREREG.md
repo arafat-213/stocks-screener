@@ -307,13 +307,36 @@ pristine; the OOS run is **NOT** performed. R10.2/R10.3 are **N/A**. "Buy the in
 proceed as an EXPLORATORY run under the §13 verdict ceiling. See §13 for the binding terms.
 
 ### R10.2 — full battery + §5 acceptance on S3
-- **Status:** 🟡 AUTHORIZED under the §13 deviation (R10.1 §6.3 FAILED; §6.3 waived-with-disclosure ONLY).
+- **Status:** ✅ DONE (2026-06-21, `app/backtest_v2/r10_battery.py`). **S3 ADVANCES to R10.3 (exploratory)** —
+  every HARD gate except the §13-waived §6.3 passes. Base 0.575 reproduced byte-exact.
 - **Do:** §6.2 skew-aware (adopt committed re-check; re-run optional), §6.3 (from R10.1 — **FAILED, waived
   per §13**), §6.5 capacity, §6.4 diagnostic, classic guard; build the fair-costed Mom30 (§2c) and evaluate
   the §5.4 deploy bar at base + pessimistic. Apply §5 items 1–5 (item 3 §6.3 = FAILED-but-waived) + the
   conditional/exploratory label. **No FINAL_OOS.**
 - **Done-criteria:** per-gate table; S3 advanced-to-OOS (exploratory) iff §6.1/§6.2-skew/deploy/§6.5 hold,
   OR independent null if the deploy bar fails at pessimistic cost (Rule 12 — no silent pick); FINAL_OOS untouched.
+
+**Result (DISCOVERY, base Calmar 0.575 REPRODUCED; Sharpe 0.788, maxDD 23.7%, turnover 604%):**
+
+| §5 item | gate | result | verdict |
+|---|---|---|---|
+| 1 | §6.1 pessimistic Calmar ratio vs Nifty50 TRI ≥ 1.0 | **1.51** (pess Calmar 0.521 / 0.346) | ✅ PASS [HARD] |
+| 2 | §6.2 skew-aware (adopted, `713d450a`) | median 91% / p5 72% / rot 55 | ✅ PASS [HARD] |
+| — | §6.2 classic drop-top-10 (reported guard) | 35% | ❌ FAIL ⇒ **"conditional"** caveat |
+| 3 | §6.3 dense-lattice plateau | R10.1 U=400 83% < 85% | ❌ **FAILED — WAIVED per §13** |
+| 4 | deploy §2c base: S3 vs fair-costed Mom30, maxDD≤100% | 0.575 > **0.454** (drag 0.56%/yr; zero-cost TRI 0.473), dd 0.70 | ✅ PASS [HARD] |
+| 4 | **deploy §2c pessimistic (BINDING)**: S3 vs fair-Mom30 | **0.521 > 0.448** (drag 0.71%/yr), dd 0.72 | ✅ **PASS [HARD]** |
+| 5 | §6.5 capacity participation < 5% ADV | 0.027% | ✅ PASS [HARD] |
+| — | §6.4 subperiod (DIAGNOSTIC, not gating) | Pre-COVID **−0.10** · Post-COVID bull **5.34** · Rate-hike **+0.01** (2/3 positive) | ⚠️ **regime-concentrated** |
+
+**Verdict: §5 items 1,2,4,5 PASS; item 3 (§6.3) FAILED-but-WAIVED (§13). S3 ADVANCES to R10.3 one-shot OOS
+as an EXPLORATORY candidate** — ceiling capped "exploratory/disclosed-deviation" (§13.1), with the
+**conditional name-concentration caveat** (classic 35%) carried. **The honest standing forward risk is §6.4:
+the DISCOVERY edge is concentrated almost entirely in the 2020–2022 post-COVID bull (Calmar 5.34 vs ≤0 / ~0
+in the other two regimes). The OOS window (2023-07 → 2026-06) is a DIFFERENT regime — this is exactly what
+R10.3 adjudicates.** FINAL_OOS untouched in R10.2 (prices sliced ≤ DISCOVERY end). Fair-cost drag is a
+transparent constant (ETF 0.30%/yr + 1.0×/yr index two-way turnover through `costs.py`); the zero-cost TRI
+0.473 cross-check is retained, and S3 beats even that harder bar (§2c guard against a lowered bar).
 
 ### R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory, under §13)
 - **Status:** 🟡 AUTHORIZED under §13 — fires **only** if R10.2's deploy/capacity hold; **never** "validated".
@@ -327,8 +350,8 @@ proceed as an EXPLORATORY run under the §13 verdict ceiling. See §13 for the b
 - [x] §12 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] R10.1 — dense §6.3 lattice; S3 plateau verdict **= FAIL** (U=400 neighbour 83% < 85%); FINAL_OOS untouched.
 - [x] §13 post-hoc deviation signed (Arafat 2026-06-21) — §5 null overridden; verdict ceiling capped "exploratory".
-- [ ] R10.2 — full battery (§6.3 waived per §13); S3 advanced-to-OOS or independent deploy null; FINAL_OOS untouched.
-- [ ] R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory ceiling); only if R10.2 deploy/capacity hold.
+- [x] R10.2 — full battery (§6.3 waived per §13); **S3 ADVANCES to OOS** (1,2,4,5 PASS); FINAL_OOS untouched.
+- [ ] R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory ceiling); R10.2 deploy/capacity held → authorized.
 
 ---
 
