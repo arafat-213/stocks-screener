@@ -1,7 +1,10 @@
 # v3 / 10 — Skew-Aware Re-Validation of S3: dense §6.3 plateau → one-shot FINAL_OOS
 
-> **Status: LOCKED (§12 signed 2026-06-21, Arafat) — R10.1 DONE → §6.3 dense-lattice FAIL → §5 NULL CLOSE
-> (U=400 neighbour 83% < 85%; S3 is a +U spike, not a region). `FINAL_OOS` pristine — never consumed.**
+> **Status: LOCKED (§12 signed 2026-06-21) — R10.1 DONE → §6.3 dense-lattice FAIL (U=400 83% < 85%).
+> §5 null OVERRIDDEN by an explicit post-hoc deviation (§13, Arafat 2026-06-21): proceed to the full
+> R10.2 battery + one-shot OOS as an EXPLORATORY run. Verdict ceiling is capped at "exploratory /
+> disclosed-deviation" — NEVER "validated" (§13). `FINAL_OOS` will be consumed under this disclosed
+> deviation, not as a clean pre-registered validation.**
 > Pre-registration written BEFORE the dense
 > §6.3 lattice is measured. Per spec 04 §5 / `00` §1, the design is committed *before* the new
 > numbers exist, so no later session moves the measuring stick (the v1 failure mode). The v2
@@ -298,19 +301,22 @@ configs logged to `ConfigLedger`; FINAL_OOS untouched (never loaded — `prices`
 **⇒ §5 pre-accepted null close is triggered (a §6.3 spike).** S3 is a **research note**; `FINAL_OOS` stays
 pristine; the OOS run is **NOT** performed. R10.2/R10.3 are **N/A**. "Buy the index fund" stands as the
 **earned** conclusion — the dense lattice that `08` §6.3 flagged as missing now shows S3's index-beating edge
-(0.575 > 0.473) does **not** generalise to its immediate +U neighbour. (Awaiting Arafat's sign-off to formally
-mark the program closed; the null itself is pre-committed by §5.)
+(0.575 > 0.473) does **not** generalise to its immediate +U neighbour.
+
+**⇒ §5 null was OVERRIDDEN by an explicit post-hoc deviation (§13, Arafat 2026-06-21).** R10.2/R10.3
+proceed as an EXPLORATORY run under the §13 verdict ceiling. See §13 for the binding terms.
 
 ### R10.2 — full battery + §5 acceptance on S3
-- **Status:** ⛔ N/A — R10.1 §6.3 dense-lattice FAILED (U=400 neighbour 83% < 85%); §5 null close triggered.
-- **Do:** §6.2 skew-aware (adopt committed re-check; re-run optional), §6.3 (from R10.1), §6.5 capacity,
-  §6.4 diagnostic, classic guard; build the fair-costed Mom30 (§2c) and evaluate the §5.4 deploy bar at
-  base + pessimistic. Apply §5 items 1–5 + the conditional label. **No FINAL_OOS.**
-- **Done-criteria:** per-gate table; S3 locked (conditional) OR null close declared (Rule 12 — no silent
-  pick); FINAL_OOS untouched.
+- **Status:** 🟡 AUTHORIZED under the §13 deviation (R10.1 §6.3 FAILED; §6.3 waived-with-disclosure ONLY).
+- **Do:** §6.2 skew-aware (adopt committed re-check; re-run optional), §6.3 (from R10.1 — **FAILED, waived
+  per §13**), §6.5 capacity, §6.4 diagnostic, classic guard; build the fair-costed Mom30 (§2c) and evaluate
+  the §5.4 deploy bar at base + pessimistic. Apply §5 items 1–5 (item 3 §6.3 = FAILED-but-waived) + the
+  conditional/exploratory label. **No FINAL_OOS.**
+- **Done-criteria:** per-gate table; S3 advanced-to-OOS (exploratory) iff §6.1/§6.2-skew/deploy/§6.5 hold,
+  OR independent null if the deploy bar fails at pessimistic cost (Rule 12 — no silent pick); FINAL_OOS untouched.
 
-### R10.3 — one-shot FINAL_OOS + §9 verdict (only on a locked S3)
-- **Status:** ⛔ N/A — null close (no §5-locked S3). `FINAL_OOS` NOT consumed — stays pristine.
+### R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory, under §13)
+- **Status:** 🟡 AUTHORIZED under §13 — fires **only** if R10.2's deploy/capacity hold; **never** "validated".
 - **Do:** byte-for-byte locked S3 through `engine.run` on FINAL_OOS — **once**. Deploy bar at base +
   pessimistic vs fair-costed Mom30; raw + deflated Sharpe + PBO; §6.1/§6.2-skew/§6.3/§6.5 OOS hold.
 - **Done-criteria:** §9 verdict (validated-conditional / research-note); `FINAL_OOS` marked consumed.
@@ -320,5 +326,37 @@ mark the program closed; the null itself is pre-committed by §5.)
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] R10.1 — dense §6.3 lattice; S3 plateau verdict **= FAIL** (U=400 neighbour 83% < 85%); FINAL_OOS untouched.
-- [x] R10.2 — N/A (null close triggered by R10.1 §6.3 FAIL); FINAL_OOS untouched.
-- [x] R10.3 — N/A on the null; `FINAL_OOS` NOT consumed — pristine.
+- [x] §13 post-hoc deviation signed (Arafat 2026-06-21) — §5 null overridden; verdict ceiling capped "exploratory".
+- [ ] R10.2 — full battery (§6.3 waived per §13); S3 advanced-to-OOS or independent deploy null; FINAL_OOS untouched.
+- [ ] R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory ceiling); only if R10.2 deploy/capacity hold.
+
+---
+
+## 13. Post-hoc deviation from §5 (Arafat — signed 2026-06-21, AFTER R10.1)
+
+> **This block is written AFTER the R10.1 result is known. It is, by construction, the exact thing the
+> rest of this prereg forbids (`00` §1 / §1 / §10): a stick moved after a number was seen. It is recorded
+> as such — openly, not as a quiet threshold edit — so the record cannot later be read as a clean validation.**
+
+**What happened:** R10.1's dense §6.3 lattice returned a FAIL — S3's +U neighbour (U=400) retained only
+**83%** of S3's base Calmar, below the locked **85%** predicate (one of four ±1 neighbours; B-axis and U=300
+all passed). Per §5, this is a pre-accepted null close: S3 → research note, `FINAL_OOS` left pristine.
+
+**The decision (Arafat, 2026-06-21):** override the §5 null and **proceed to the one-shot OOS anyway**,
+accepting the miss as marginal (0.010 Calmar, 2% under the bar). The 0.85 threshold itself is **not** edited;
+§6.3 stays **FAILED** on the record and is **waived-with-disclosure**, not passed.
+
+**Binding terms of the deviation (carried into R10.2/R10.3 and §9):**
+1. **Verdict ceiling = "exploratory / disclosed-deviation".** A FINAL_OOS pass under this block is **NEVER**
+   labeled "validated" or "validated-conditional". Best attainable verdict = *"exploratory OOS pass, reached
+   via a disclosed post-hoc §6.3 waiver — warrants a fresh, properly pre-registered re-test, not deployment."*
+2. **Full battery still runs (R10.2).** Only §6.3 is waived. §6.1, §6.2-skew, the deploy bar (base **and**
+   pessimistic), and §6.5 capacity remain **HARD**. If the deploy bar fails at pessimistic cost, that is an
+   **independent** null and the OOS does **not** fire — the §6.3 waiver does not waive anything else.
+3. **One shot, unchanged.** `FINAL_OOS` is still spent at most once, on the byte-for-byte locked S3, under
+   §8. The deflation headwind (§7, K ≳ 80) is unchanged and explicitly accepted — a marginal OOS edge will
+   not clear a deflated bar, and that will be reported honestly, not hidden.
+4. **No further sticks move.** This is a **single, logged** deviation on §6.3 only. It is **not** a licence
+   to relax §6.1/§6.2/deploy/§6.5, widen the lattice, or re-pick U/B (those remain `00` §1 violations).
+
+> **Signed:** Arafat — date 2026-06-21  (§5 null overridden; R10.2/R10.3 authorized as exploratory)
