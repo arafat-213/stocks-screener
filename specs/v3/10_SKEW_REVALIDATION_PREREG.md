@@ -1,10 +1,11 @@
 # v3 / 10 — Skew-Aware Re-Validation of S3: dense §6.3 plateau → one-shot FINAL_OOS
 
-> **Status: LOCKED (§12 signed 2026-06-21) — R10.1 DONE → §6.3 dense-lattice FAIL (U=400 83% < 85%).
-> §5 null OVERRIDDEN by an explicit post-hoc deviation (§13, Arafat 2026-06-21): proceed to the full
-> R10.2 battery + one-shot OOS as an EXPLORATORY run. Verdict ceiling is capped at "exploratory /
-> disclosed-deviation" — NEVER "validated" (§13). `FINAL_OOS` will be consumed under this disclosed
-> deviation, not as a clean pre-registered validation.**
+> **Status: COMPLETE (2026-06-21) — R10.1→R10.3 all DONE. §6.3 dense-lattice FAILED (U=400 83%<85%);
+> §5 null OVERRIDDEN by §13 post-hoc deviation; S3 cleared the R10.2 battery and the one-shot `FINAL_OOS`
+> was CONSUMED. §9 VERDICT = EXPLORATORY OOS PASS, DEFLATION-MARGINAL: S3 held all four hard gates OOS and
+> beat fair-costed Mom30 ~3× on Calmar (base 1.348 / pess 1.275) at both cost levels, but deflated Sharpe
+> ≤ 0 at every K (69–100). Ceiling = "exploratory / disclosed-deviation," NEVER "validated" (§13.1).
+> `FINAL_OOS` is now spent. Forward = a FRESH, properly pre-registered re-test (no §6.3 waiver).**
 > Pre-registration written BEFORE the dense
 > §6.3 lattice is measured. Per spec 04 §5 / `00` §1, the design is committed *before* the new
 > numbers exist, so no later session moves the measuring stick (the v1 failure mode). The v2
@@ -339,10 +340,41 @@ transparent constant (ETF 0.30%/yr + 1.0×/yr index two-way turnover through `co
 0.473 cross-check is retained, and S3 beats even that harder bar (§2c guard against a lowered bar).
 
 ### R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory, under §13)
-- **Status:** 🟡 AUTHORIZED under §13 — fires **only** if R10.2's deploy/capacity hold; **never** "validated".
+- **Status:** ✅ DONE (2026-06-21, `app/backtest_v2/r10_oos.py`). **`FINAL_OOS` CONSUMED** (first & only
+  observation across the entire v2→v3 program). **§9 verdict = EXPLORATORY OOS PASS, DEFLATION-MARGINAL.**
 - **Do:** byte-for-byte locked S3 through `engine.run` on FINAL_OOS — **once**. Deploy bar at base +
   pessimistic vs fair-costed Mom30; raw + deflated Sharpe + PBO; §6.1/§6.2-skew/§6.3/§6.5 OOS hold.
 - **Done-criteria:** §9 verdict (validated-conditional / research-note); `FINAL_OOS` marked consumed.
+
+**Result (FINAL_OOS 2023-07-01 → 2026-06-12; the one-shot, now spent):**
+
+| measure | OOS (base) | OOS (pessimistic) |
+|---|---|---|
+| **Calmar** | **1.348** | **1.275** |
+| maxDD | 13.1% | 13.2% |
+| Sharpe | 1.141 | — |
+| turnover | 581% | — |
+
+| §9 gate | OOS result | verdict |
+|---|---|---|
+| deploy §2c base | S3 **1.348 > fair-Mom30 0.411** (zero-cost TRI 0.433), dd 0.41 | ✅ PASS |
+| **deploy §2c pessimistic (BINDING)** | S3 **1.275 > fair-Mom30 0.405**, dd 0.42 | ✅ **PASS** |
+| §6.1 pess Calmar ratio vs Nifty50 TRI ≥ 1.0 | **2.38** | ✅ PASS |
+| §6.2-skew (median≥70/p5≥50/rot≥25) on OOS book | **91% / 69% / 40** | ✅ PASS |
+| §6.3 dense-lattice | DISCOVERY-only concept (FAILED+waived §13) | — N/A on one-shot |
+| §6.5 capacity < 5% ADV | 0.025% | ✅ PASS |
+| **deflated Sharpe** (raw 1.141, K=69/85/100) | **−0.346 / −0.393 / −0.429** | ⚠️ **≤ 0 at every K** |
+| PBO | 0.00 (carried coarse, TBE7 2-fold; not re-computed — Rule 6, disclosed) | — |
+
+**§9 VERDICT: EXPLORATORY OOS PASS — DEFLATION-MARGINAL.** S3 held **all four hard gates out-of-sample**
+and beat the fair-costed Mom30 ~3× on Calmar at **both** cost levels through the post-2023 regime (the
+§6.4 forward risk did **not** sink it — OOS base Calmar 1.348 > DISCOVERY 0.575). **But the raw OOS Sharpe
+1.141, deflated for the K≈69–100 configs searched across the program, is ≤ 0 at every K — selection bias
+alone can produce it (`07` §7).** Per §13.1 the ceiling is **"exploratory / disclosed-deviation," NOT
+"validated"** (S3 reached the OOS via the §6.3 waiver). The conditional name-concentration caveat
+(classic §6.2 35%) and §6.4 regime concentration both stand. **Honest read: a striking, deploy-bar-clean
+OOS pass that the deflation math says is not yet distinguishable from search luck — it warrants a FRESH,
+properly pre-registered re-test (no §6.3 waiver, fresh OOS), NOT deployment.** `FINAL_OOS` is now spent.
 
 ---
 
@@ -351,7 +383,7 @@ transparent constant (ETF 0.30%/yr + 1.0×/yr index two-way turnover through `co
 - [x] R10.1 — dense §6.3 lattice; S3 plateau verdict **= FAIL** (U=400 neighbour 83% < 85%); FINAL_OOS untouched.
 - [x] §13 post-hoc deviation signed (Arafat 2026-06-21) — §5 null overridden; verdict ceiling capped "exploratory".
 - [x] R10.2 — full battery (§6.3 waived per §13); **S3 ADVANCES to OOS** (1,2,4,5 PASS); FINAL_OOS untouched.
-- [ ] R10.3 — one-shot FINAL_OOS + §9 verdict (exploratory ceiling); R10.2 deploy/capacity held → authorized.
+- [x] R10.3 — one-shot FINAL_OOS CONSUMED; **§9 = EXPLORATORY OOS PASS, DEFLATION-MARGINAL** (deploy PASS, DSR ≤ 0 ∀K).
 
 ---
 
