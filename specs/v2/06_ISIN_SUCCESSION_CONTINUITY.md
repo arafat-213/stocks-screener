@@ -2,8 +2,9 @@
 
 > **Status: IN PROGRESS — strategy locked (§9), tasks broken out (§10). T06.0 DONE
 > (2026-06-22, independent bookkeeping guard — see §10) + T06.1 DONE (2026-06-22, see §11)
-> + T06.2 DONE (2026-06-22, `instrument_id` materialised + store re-derived — see §12);
-> T06.3 → … → T06.6 not started.**
+> + T06.2 DONE (2026-06-22, `instrument_id` materialised + store re-derived — see §12)
+> + T06.3 DONE (2026-06-22, signal/factor/engine identity re-keyed onto `instrument_id` —
+> see §13); T06.4 → T06.5 → T06.6 not started.**
 > Decision (2026-06-22): canonical `instrument_id` (§9). Cold-session task chain
 > `T06.1 → … → T06.6` in §10; T06.1 is the unconditional gate. Surfaced 2026-06-22 during the v3/11
 > S3 forward-paper warm-start (`specs/v3/11_PROBATIONARY_DEPLOY_PREREG.md`). Deferred to a
@@ -312,6 +313,13 @@ mirroring `05`'s `unmatched`-audit discipline.
 - **Guardrails.** This is the big blast radius — keep the change *surgical* and behind the
   `instrument_id` resolution join; do not refactor adjacent factor/engine code (Rule 3).
 
+> **T06.3 DONE — 2026-06-22.** See §13 for the implementation + verification. All three
+> success gates met (momentum continuity, held-position sellable / ghost red→green,
+> no-succession parity byte-identical). Implemented as a **single resolution join**
+> (`backtest_v2/identity.collapse_to_instrument_id`) threaded through the four
+> identity-consuming primitives; **606→** full suites green (798 `backtest_v2`+`paper_v2`+`data`).
+> No FINAL_OOS interaction; the re-measure is T06.6.
+
 ---
 
 ### T06.4 — Extend `validate.py` with a succession-coverage check + re-validate the store
@@ -498,3 +506,71 @@ EASEMYTRIP INE07O001018→…026  one_id   357+881=1238 rows  2021-03-19..2026-0
 T06.2 success gate **MET**. Next on the critical path: **T06.3** (re-key signal/factor + engine
 identity onto `instrument_id` — the big blast radius). No FINAL_OOS interaction; no validation
 claim made here (re-measure is T06.6).
+
+---
+
+## 13. T06.3 results (2026-06-22)
+
+**Re-keyed the signal/factor + engine identity onto `instrument_id`.** The big-blast-radius
+task landed as the *smallest possible* change — Rule 3, "behind the `instrument_id` resolution
+join" (§10 guardrail): **one** join function, applied at four entry points, no refactor of the
+factor/engine internals, no `precompute_v3_signals` / `s3_config` / `portfolio.py` edit.
+
+### The key insight (why this is a relabel, not a rewrite)
+A succession's two legs trade on strictly **date-disjoint, consecutive** ranges (§3, verified in
+T06.1) and `05` already aligned their price space via `adj_factor`. So *relabelling* the identity
+column from raw `isin` to the chain-constant `instrument_id` is sufficient — on any given date
+exactly one leg is live, so:
+- every per-date lookup (`open`/`close`/`close_tr`/`adv_20`) and the universe-membership set
+  resolve to **that live leg** automatically (execution still happens at the live leg's prices);
+- the per-instrument *time series* (momentum, EMA, vol) becomes the **gap-free concatenation** of
+  both legs (the new leg is no longer momentum-blind);
+- a held position keyed on `instrument_id` is carried across the transition as the **same key**
+  → it is sellable at the live leg's open → **no ghost**.
+
+### What shipped
+- **`backend/app/backtest_v2/identity.py`** — new `collapse_to_instrument_id(prices)`: relabels
+  `isin → instrument_id`; **no-op** (returns the input object) when the column is absent (pre-T06.2
+  frames) or `instrument_id == isin` for every row (no succession); **fails loud** (Rule 12) if
+  collapsing yields overlapping `(isin, date)` rows (a §3 consecutive-day-invariant violation that
+  would silently corrupt the concatenated series). Never mutates the caller's frame.
+- **Self-collapsing primitives** (each calls the join at its top, idempotent + tolerant, so any
+  caller — `precompute_v3_signals`, `s3_config`, `r10_oos`, `floor` — gets consistent identity for
+  free with zero edits to *those* callers):
+  - `signals.precompute_signals` → continuous gate inputs (EMA_200, momentum_12_1) per chain.
+  - `factors.composite_rank` → composite columns are chain-constant; each factor's lookback spans
+    both legs.
+  - `stable_universe.build_stable_universe_mask` → one continuous membership per chain (adv_20 on
+    each review day is still the live leg's).
+  - `engine.build_context` → price lookups / membership / positions all key on `instrument_id`
+    (resolves the ghost + the live-leg execution).
+- **Tests** — `tests/backtest_v2/test_v3t06_3_instrument_identity.py` (8 tests):
+  - **gate (a)** momentum continuity — stitched chain has a *defined* `momentum_12_1` 3 days into
+    the new leg; the raw-isin frame has `NaN` there (the bug, asserted red);
+  - **gate (b)** held-position sellable — full backtest over a 2-leg chain: stitched ⇒ bought then
+    **sold cleanly, 0 final positions**; raw-isin ⇒ the OLD leg is bought then becomes a **frozen
+    ghost** (1 final position, logged to `suspension_log`) — the §2 ghost reproduced red→green;
+  - **gate (c)** parity — adding `instrument_id == isin` to a no-succession universe leaves the
+    equity curve and every fill **byte-identical**;
+  - the `collapse` contract (two no-op cases, relabel, fail-loud-on-overlap).
+
+### Success gate — **MET**
+| Gate | Result |
+|---|---|
+| (a) momentum defined + continuous through the transition | ✓ (stitched defined; raw-isin NaN — bug shown) |
+| (b) held position sellable across a transition (no ghost) | ✓ green (0 ghosts) / red (ghost reproduced) |
+| (c) zero-succession universe byte-identical | ✓ (full equity curve + fills identical) |
+| No-regression on the existing parity suites | ✓ **798 passed** (`backtest_v2`+`paper_v2`+`data`), 0 failures |
+
+### Notes / carried forward
+- **Fill labelling.** A fill carried across a succession is *labelled* with `instrument_id`, not
+  the raw live ISIN. Economically identical for the backtest; the **live paper book (T06.5)** maps
+  `instrument_id → tradeable ISIN/symbol` (via `sym_map`, latest = new leg) for order placement.
+- **Perf (T06.6).** Each of the four primitives collapses independently → up to 4 transient copies
+  of the ~4M-row real frame on a full run (zero copies on the no-op path). If T06.6's real re-run
+  is memory-bound, collapse once upstream and pass the collapsed frame down — the primitives stay
+  correct either way (idempotent). Not optimised now (no real run in T06.3; Rule 2).
+
+T06.3 success gate **MET**. Next on the critical path: **T06.4** (extend `validate.py` with a
+succession-coverage check). No FINAL_OOS interaction; no validation claim made here (re-measure is
+T06.6).

@@ -30,6 +30,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
+from app.backtest_v2.identity import collapse_to_instrument_id
 from app.backtest_v2.signals import _momentum_12_1
 from app.backtest_v2.v3_config import (
     FUNDAMENTAL_FACTOR_NAMES,
@@ -199,6 +200,11 @@ def composite_rank(
     If `cfg.rank_smoothing_months > 0`, the composite is smoothed with an
     N-month rolling mean (N × 21 trading days) (prereg §3.1).
     """
+    # Resolve identity to instrument_id (06 T06.3) so the composite's columns are
+    # chain-constant and each factor's lookback spans both legs of a succession —
+    # the new leg is no longer momentum-blind. No-op for non-succession frames.
+    prices = collapse_to_instrument_id(prices)
+
     active = list(cfg.active_factors)
     if not active:
         raise ValueError("V3Config.active_factors is empty")

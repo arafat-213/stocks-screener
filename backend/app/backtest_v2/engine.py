@@ -30,6 +30,7 @@ from app.backtest_v2.config import MomentumConfig
 from app.backtest_v2.costs import CostConfig, CostFn, CostLevel
 from app.backtest_v2.costs import effective_price as _effective_price
 from app.backtest_v2.costs import fill_cost as _default_fill_cost
+from app.backtest_v2.identity import collapse_to_instrument_id
 from app.backtest_v2.portfolio import Portfolio, build_rebalance_plan
 from app.backtest_v2.regime import RegimeConfig, RegimeOverlay
 from app.backtest_v2.schemas import DailySnapshot, Fill, RebalancePlan
@@ -185,6 +186,12 @@ def build_context(
         cost_cfg = CostConfig()
 
     # 1. Normalise the prices DataFrame
+    # Resolve identity to the chain-constant instrument_id (06 T06.3) FIRST, so the
+    # price lookups, universe membership, and positions all key on instrument_id:
+    # a held position carried across a succession resolves to the same key (no ghost),
+    # and per-date price lookups resolve to whichever leg is live. No-op for
+    # non-succession frames ⇒ run() stays byte-for-byte identical (parity suite).
+    prices = collapse_to_instrument_id(prices)
     prices = prices.copy()
     prices["date"] = pd.to_datetime(prices["date"])
 

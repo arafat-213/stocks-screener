@@ -18,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from app.backtest_v2.config import MomentumConfig
+from app.backtest_v2.identity import collapse_to_instrument_id
 from app.core.strategy import TechnicalStrategy
 
 # Column-case adapter required by TechnicalStrategy.calculate_indicators.
@@ -192,6 +193,11 @@ def precompute_signals(
       - momentum_12_1 via integer-position indexing (calendar-gap safe)
       - annualized_vol via rolling stdev of daily returns × √252
     """
+    # Resolve identity to the chain-constant instrument_id (06 T06.3) so the
+    # per-instrument indicator series (EMA_200, momentum_12_1) is the gap-free
+    # concatenation of both legs of a succession. No-op for non-succession frames.
+    prices = collapse_to_instrument_id(prices)
+
     skip: int = cfg.momentum_skip_days  # 21
     lookback: int = cfg.momentum_lookback_days + skip  # 273
     min_vol_periods = max(cfg.vol_lookback_days // 2, 1)

@@ -35,6 +35,8 @@ from datetime import date
 
 import pandas as pd
 
+from app.backtest_v2.identity import collapse_to_instrument_id
+
 
 class StableUniverseMask:
     """
@@ -129,6 +131,12 @@ def build_stable_universe_mask(
         )
     if lookback_td <= 0:
         raise ValueError(f"lookback_td must be > 0; got {lookback_td}")
+
+    # Resolve identity to instrument_id (06 T06.3) so a name keeps one continuous
+    # membership across a succession (the chain is ranked as one instrument; its
+    # adv_20 on each review day is still the live leg's). No-op for non-succession
+    # frames, so the C0/floor control stays byte-identical to every pre-08 run.
+    prices = collapse_to_instrument_id(prices)
 
     cols = prices[["isin", "date", "adv_20"]].copy()
     cols["date"] = pd.to_datetime(cols["date"])
