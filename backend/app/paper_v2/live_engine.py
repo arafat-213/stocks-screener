@@ -33,6 +33,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date
 
+import numpy as np
 import pandas as pd
 from sqlalchemy.orm import Session
 
@@ -173,7 +174,19 @@ def hydrate_state(session: Session, portfolio_id: int) -> engine.LoopState:
     if pf is None:
         raise ValueError(f"paper_v2 portfolio {portfolio_id} not found")
 
-    portfolio = Portfolio(cash=pf.cash)
+    # Snap float-noise-negative cash up to 0 (fidelity, not masking). The engine's
+    # buy-clamp (_clamp_buys_to_cash, "scaling buys ... to prevent leverage") drives cash
+    # to ~0, where binary rounding can land it a few e-10 BELOW zero. In the in-memory
+    # engine.run that residual is harmless: Portfolio is constructed once and cash is
+    # mutated by arithmetic thereafter, never re-validated. The live shell, however,
+    # round-trips cash through the DB and rebuilds Portfolio(cash=...) EACH day, and
+    # __init__ rejects cash < 0 — so an engine-identical state would falsely crash on
+    # hydrate. Snapping a sub-rupee negative to 0 reconstructs exactly the state the
+    # engine holds. Bounded so a genuine negative (a real overdraft bug) still raises.
+    cash = pf.cash
+    if -1e-6 < cash < 0:
+        cash = 0.0
+    portfolio = Portfolio(cash=cash)
     rows = (
         session.query(PaperV2Position)
         .filter(PaperV2Position.portfolio_id == portfolio_id)
@@ -224,33 +237,69 @@ def hydrate_state(session: Session, portfolio_id: int) -> engine.LoopState:
     )
 
 
-def _adj_factor_at(prices: pd.DataFrame, isin: str, entry_date: date) -> float | None:
+# isin → (ascending dates, aligned adj_factors). One per-ISIN sorted view, built ONCE
+# from the stored frame so the §5e factor lookup is an O(log n) searchsorted instead of a
+# full ~N-row scan of `prices` per held name per day (P11.2 warm-start perf fix).
+AdjFactorLookup = dict[str, "tuple[np.ndarray, np.ndarray]"]
+
+
+def build_adj_factor_lookup(prices: pd.DataFrame) -> AdjFactorLookup:
+    """Precompute the per-ISIN (dates, adj_factors) arrays used by ``_adj_factor_at``.
+
+    ``_adj_factor_at`` was scanning the whole ``prices`` frame (`isin == ... & date <= ...`)
+    for every held position, twice per day (§5e reconcile + persist). With 20+ holdings
+    over an ~8.6M-row frame that dominated the per-day cost. Since the replay reuses ONE
+    immutable frame, this lookup is built once and threaded through ``process_day`` →
+    O(days), not O(days × positions × N). Returns ``{}`` if the frame carries no
+    ``adj_factor`` (then ``_adj_factor_at`` yields None, matching the old behaviour).
+    """
+    if "adj_factor" not in prices.columns:
+        return {}
+    sub = prices[["isin", "date", "adj_factor"]].sort_values(["isin", "date"])
+    lookup: AdjFactorLookup = {}
+    for isin, g in sub.groupby("isin", sort=False):
+        lookup[isin] = (
+            g["date"].to_numpy(dtype="datetime64[ns]"),
+            g["adj_factor"].to_numpy(dtype=float),
+        )
+    return lookup
+
+
+def _adj_factor_at(
+    adj_lookup: AdjFactorLookup, isin: str, entry_date: date
+) -> float | None:
     """Back-adjustment factor for ``isin`` at its entry-date row (or the last row on or
-    before it). Used by §5e to detect a moving anchor on a held name."""
-    sub = prices[
-        (prices["isin"] == isin) & (prices["date"] <= pd.Timestamp(entry_date))
-    ]
-    if sub.empty or "adj_factor" not in sub.columns:
+    before it). Used by §5e to detect a moving anchor on a held name. O(log n) via
+    ``build_adj_factor_lookup`` — byte-identical to the former full-scan select (last row
+    with ``date <= entry_date``)."""
+    pair = adj_lookup.get(isin)
+    if pair is None:
         return None
-    return float(sub.sort_values("date").iloc[-1]["adj_factor"])
+    dates, factors = pair
+    ts = np.datetime64(pd.Timestamp(entry_date), "ns")
+    idx = int(np.searchsorted(dates, ts, side="right")) - 1
+    if idx < 0:
+        return None
+    return float(factors[idx])
 
 
 def reconcile_held_positions(
     state: engine.LoopState,
     db_factors: dict[str, float],
-    prices: pd.DataFrame,
+    adj_lookup: AdjFactorLookup,
 ) -> list[str]:
     """§5e — rescale every held position whose back-adjustment anchor moved since the
     last append, BEFORE the daily stop check. Returns the ISINs actually rescaled.
 
     ``db_factors`` maps isin → the ``last_adj_factor`` persisted for that held name. The
-    new factor is read at the position's entry date from the freshly-appended ``prices``.
-    Delegates the arithmetic to the P11.0-gated ``reconcile_position`` (Rule 5).
+    new factor is read at the position's entry date from ``adj_lookup`` (the precomputed
+    per-ISIN view of the freshly-appended frame). Delegates the arithmetic to the
+    P11.0-gated ``reconcile_position`` (Rule 5).
     """
     rescaled: list[str] = []
     new_positions: dict[str, Position] = {}
     for isin, pos in state.portfolio.positions.items():
-        new_factor = _adj_factor_at(prices, isin, pos.entry_date)
+        new_factor = _adj_factor_at(adj_lookup, isin, pos.entry_date)
         old_factor = db_factors.get(isin)
         if new_factor is None or old_factor is None:
             new_positions[isin] = pos
@@ -284,13 +333,14 @@ def persist_state(
     portfolio_id: int,
     state: engine.LoopState,
     process_date: date,
-    prices: pd.DataFrame,
+    adj_lookup: AdjFactorLookup,
     executed: list[Fill],
     is_rebalance: bool,
 ) -> None:
     """Write the post-step LoopState back to the DB: cash, positions (+ refreshed
-    ``last_adj_factor`` for §5e), the executed fills (mark prior queue ``filled``), and
-    the new pending-fills queue. ``last_processed_date`` advances the replay clock."""
+    ``last_adj_factor`` for §5e, read from ``adj_lookup``), the executed fills (mark prior
+    queue ``filled``), and the new pending-fills queue. ``last_processed_date`` advances
+    the replay clock."""
     pf = session.get(PaperV2Portfolio, portfolio_id)
     pf.cash = state.portfolio.cash
     pf.last_processed_date = process_date
@@ -307,7 +357,7 @@ def persist_state(
         if isin not in live_isins:
             session.delete(row)
     for isin, pos in state.portfolio.positions.items():
-        factor = _adj_factor_at(prices, isin, pos.entry_date)
+        factor = _adj_factor_at(adj_lookup, isin, pos.entry_date)
         row = existing.get(isin)
         if row is None:
             row = PaperV2Position(portfolio_id=portfolio_id, isin=isin)
@@ -369,12 +419,26 @@ def process_day(
     *,
     cost_level: CostLevel = "base",
     commit: bool = True,
+    ctx: engine.EngineContext | None = None,
+    adj_lookup: AdjFactorLookup | None = None,
 ) -> ProcessReport:
     """Process ONE trading day for the S3 paper book (11 §3e/§4a/§4b).
 
     Idempotent (Rule: Pipeline Laws): a date ``<= last_processed_date`` is skipped. The
     decision/fill logic is ``engine.step_day`` verbatim; this function only feeds data,
     reconciles the anchor (§5e), and persists. Returns a ProcessReport for the alerter.
+
+    ``ctx`` is the immutable S3 engine context (``build_live_context``). It is
+    deterministic in ``(prices, index_prices, cost_level)``, so a caller replaying many
+    days against the SAME stored frame should build it ONCE and pass it in — reusing it
+    is byte-identical to rebuilding per day (``step_day`` mutates only ``state``; this is
+    exactly what ``engine.run`` does). Passing ``ctx`` turns an N-day replay from O(N²)
+    (a full-frame signal-store rebuild per day) into O(N) (P11.2 warm-start perf fix). If
+    omitted it is built here, preserving the single-day live-beat call site.
+
+    ``adj_lookup`` is the precomputed §5e factor view (``build_adj_factor_lookup``), built
+    ONCE over the same frame for the same reason; omitted ⇒ built here for the single-day
+    path.
     """
     process_date = _to_date(process_date)
     pf = session.get(PaperV2Portfolio, portfolio_id)
@@ -388,7 +452,10 @@ def process_day(
         )
         return ProcessReport(process_date=process_date, skipped=True)
 
-    ctx, _calendar = build_live_context(prices, index_prices, cost_level=cost_level)
+    if ctx is None:
+        ctx, _calendar = build_live_context(prices, index_prices, cost_level=cost_level)
+    if adj_lookup is None:
+        adj_lookup = build_adj_factor_lookup(prices)
     day_ts = pd.Timestamp(process_date)
 
     # Snapshot the persisted per-ISIN factors BEFORE hydrating (for §5e).
@@ -400,7 +467,7 @@ def process_day(
     }
 
     state = hydrate_state(session, portfolio_id)
-    reconciled = reconcile_held_positions(state, db_factors, prices)
+    reconciled = reconcile_held_positions(state, db_factors, adj_lookup)
 
     engine.step_day(ctx, state, day_ts)
 
@@ -410,7 +477,7 @@ def process_day(
     snapshot = state.portfolio.snapshots[-1] if state.portfolio.snapshots else None
 
     persist_state(
-        session, portfolio_id, state, process_date, prices, executed, is_rebalance
+        session, portfolio_id, state, process_date, adj_lookup, executed, is_rebalance
     )
     if commit:
         session.commit()

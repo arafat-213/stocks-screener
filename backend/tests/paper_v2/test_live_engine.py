@@ -264,6 +264,117 @@ def test_dc1_dry_run_parity_byte_for_byte(db, parity_panel):
     assert rep.passed, rep.summary
 
 
+def test_passing_prebuilt_ctx_is_byte_identical_to_per_day_rebuild(db):
+    """P11.2 warm-start hoist (perf fix) must NOT change a single decision.
+
+    The warm-start replay builds the S3 context ONCE and passes it to every
+    ``process_day`` (``ctx=``) instead of rebuilding the full-frame signal store per day
+    — turning an O(days²) replay into O(days). This is only legitimate because the
+    context is deterministic in ``(prices, index)`` and ``step_day`` mutates only
+    ``state``. This test pins that: a replay reusing one prebuilt ctx yields the exact
+    same equity curve, final book, and cash as a replay that rebuilds context every day
+    (the real, un-monkeypatched build path). If the hoist ever drifts, fidelity breaks
+    here, not silently in the live book.
+    """
+    isins = [f"ISIN{i:02d}" for i in range(25)]
+    prices = _make_panel(isins, n_days=400)
+    index = _make_index(prices)
+    ctx, calendar = live_engine.build_live_context(prices, index)
+
+    # A: reuse the single prebuilt ctx (the hoisted warm-start path).
+    pf_a = _new_portfolio(db)
+    curve_a = [
+        live_engine.process_day(
+            db, pf_a.id, prices, index, day, commit=False, ctx=ctx
+        ).snapshot.equity
+        for day in calendar
+    ]
+
+    # B: rebuild context per day (ctx omitted — the original O(days²) path).
+    pf_b = _new_portfolio(db)
+    curve_b = [
+        live_engine.process_day(
+            db, pf_b.id, prices, index, day, commit=False
+        ).snapshot.equity
+        for day in calendar
+    ]
+
+    assert curve_a == pytest.approx(curve_b, rel=1e-12, abs=1e-9)
+
+    pos_a = {
+        r.isin: r
+        for r in db.query(PaperV2Position).filter(
+            PaperV2Position.portfolio_id == pf_a.id
+        )
+    }
+    pos_b = {
+        r.isin: r
+        for r in db.query(PaperV2Position).filter(
+            PaperV2Position.portfolio_id == pf_b.id
+        )
+    }
+    assert set(pos_a) == set(pos_b)
+    assert any(pos_a), "the strategy must actually hold names for this to be meaningful"
+    for isin in pos_a:
+        assert pos_a[isin].shares == pytest.approx(pos_b[isin].shares, rel=1e-12)
+        assert pos_a[isin].cost_basis == pytest.approx(
+            pos_b[isin].cost_basis, rel=1e-12
+        )
+    assert db.get(PaperV2Portfolio, pf_a.id).cash == pytest.approx(
+        db.get(PaperV2Portfolio, pf_b.id).cash, rel=1e-12
+    )
+
+
+def test_hydrate_snaps_float_noise_negative_cash_to_zero(db):
+    """Regression (P11.2 warm-start surfaced this on real data).
+
+    The engine's buy-clamp drives cash to ~0, where binary rounding can land it a few
+    e-10 BELOW zero. ``engine.run`` tolerates it (Portfolio built once, cash mutated by
+    arithmetic thereafter). The live shell rebuilds ``Portfolio(cash=...)`` on EVERY
+    hydrate, and ``__init__`` rejects cash<0 — so an engine-identical state would falsely
+    crash. ``hydrate_state`` must snap a sub-rupee negative to 0, while a genuine
+    overdraft must still raise (not be silently masked).
+    """
+    pf = _new_portfolio(db)
+    pf.cash = -1.6007106751203537e-10  # the exact value the real warm-start produced
+    db.flush()
+    state = live_engine.hydrate_state(db, pf.id)
+    assert state.portfolio.cash == 0.0
+
+    pf.cash = -50.0  # a real overdraft, far beyond float noise — must NOT be masked
+    db.flush()
+    with pytest.raises(ValueError):
+        live_engine.hydrate_state(db, pf.id)
+
+
+def test_adj_factor_lookup_asof_semantics():
+    """P11.2 perf fix: build_adj_factor_lookup + _adj_factor_at must return the last
+    adj_factor on or BEFORE the query date — byte-identical to the former full-frame scan
+    (`isin == ... & date <= ...`, take latest), now O(log n) so it stops scaling with
+    frame×positions per day. A CA splits the factor mid-series; we pin every boundary.
+    """
+    df = pd.DataFrame(
+        {
+            "isin": ["A", "A", "A", "B", "B"],
+            "date": pd.to_datetime(
+                ["2020-01-01", "2020-06-01", "2020-06-02", "2020-01-01", "2020-02-01"]
+            ),
+            "adj_factor": [0.5, 0.5, 1.0, 0.25, 1.0],
+        }
+    )
+    lk = live_engine.build_adj_factor_lookup(df)
+    aaf = live_engine._adj_factor_at
+    assert aaf(lk, "A", date(2020, 1, 1)) == 0.5  # exact first row
+    assert aaf(lk, "A", date(2020, 5, 31)) == 0.5  # before the CA → prior factor
+    assert aaf(lk, "A", date(2020, 6, 2)) == 1.0  # on the CA ex-date
+    assert aaf(lk, "A", date(2020, 12, 31)) == 1.0  # after last → carry last
+    assert aaf(lk, "A", date(2019, 12, 31)) is None  # before first row → None
+    assert aaf(lk, "B", date(2020, 1, 15)) == 0.25
+    assert aaf(lk, "C", date(2020, 1, 1)) is None  # unknown isin → None
+    # No adj_factor column ⇒ empty lookup ⇒ None (matches the old guard).
+    assert live_engine.build_adj_factor_lookup(df.drop(columns=["adj_factor"])) == {}
+
+
 # ---------------------------------------------------------------------------
 # DC2 — resumable two-batch backfill across a rebalance boundary
 # ---------------------------------------------------------------------------

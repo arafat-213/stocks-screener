@@ -123,9 +123,14 @@ def execute_paper_daily_task(process_date: str | None = None):
             if to_process
             else None
         )
+        # Same once-not-per-day rationale for the §5e factor lookup: precompute the
+        # per-ISIN adj_factor view once so reconcile/persist don't full-scan the frame per
+        # held name per day (P11.2 warm-start perf fix; the per-day hotspot once the book
+        # holds positions).
+        adj_lookup = live_engine.build_adj_factor_lookup(prices) if to_process else None
         for d in to_process:
             report = live_engine.process_day(
-                db, pf.id, prices, index_prices, d, ctx=ctx
+                db, pf.id, prices, index_prices, d, ctx=ctx, adj_lookup=adj_lookup
             )
             if report.skipped:
                 continue
