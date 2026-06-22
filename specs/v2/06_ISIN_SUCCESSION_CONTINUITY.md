@@ -1,6 +1,6 @@
 # Spec 06 — ISIN-Succession *Identity* Continuity (open data-layer gap)
 
-> **Status: IN PROGRESS — strategy locked (§9), tasks broken out (§10). T06.0 DONE
+> **Status: COMPLETE (T06.1–T06.6 green) — strategy locked (§9), tasks broken out (§10). T06.0 DONE
 > (2026-06-22, independent bookkeeping guard — see §10) + T06.1 DONE (2026-06-22, see §11)
 > + T06.2 DONE (2026-06-22, `instrument_id` materialised + store re-derived — see §12)
 > + T06.3 DONE (2026-06-22, signal/factor/engine identity re-keyed onto `instrument_id` —
@@ -9,7 +9,11 @@
 > stitched data; the 4 face-value-succession ghosts ELIMINATED, full ~20-name book in
 > risk-on regimes, shadow-parity 0.0 bps — but two honest caveats surfaced: the edge state
 > is genuine risk-off cash, and 3 NEW out-of-scope **merger/cancellation** ghosts remain;
-> see §15) ; T06.6 not started.**
+> see §15) + T06.6 DONE (2026-06-22, frozen-S3 re-measure on stitched vs identity-broken data,
+> same code: Calmar 0.575→0.496, Sharpe 0.788→0.722, maxDD 23.7%→24.8%, §6.2 retention 35%→35%
+> — the §9 pre-declared-unknown direction came out net-NEGATIVE on return + slightly worse on
+> risk; succession-clean but still merger-dirty; NO re-validation, FINAL_OOS stays spent — see
+> §16). **`06` COMPLETE (T06.1–T06.6 green; merger fix in `07` blocks arming `11`).**
 > Decision (2026-06-22): canonical `instrument_id` (§9). Cold-session task chain
 > `T06.1 → … → T06.6` in §10; T06.1 is the unconditional gate. Surfaced 2026-06-22 during the v3/11
 > S3 forward-paper warm-start (`specs/v3/11_PROBATIONARY_DEPLOY_PREREG.md`). Deferred to a
@@ -405,6 +409,13 @@ warm-start on identity-continuous data, and re-prove fidelity.
 - **Guardrails.** **No** new "validated/deployable" claim from this run. Do not consume or
   re-open FINAL_OOS. This closes the §5 contamination as *measured*, nothing more.
 
+> **T06.6 DONE — 2026-06-22.** See §16. Same-code A/B (identity-broken vs stitched, frozen S3,
+> DISCOVERY, base cost) isolates the succession effect; the broken run reproduces the recorded
+> baseline (Calmar 0.574≈0.575). Stitching moved **Calmar 0.575→0.496, Sharpe 0.788→0.722, maxDD
+> 23.7%→24.8%, §6.2 retention 35%→35%** — net-negative on return, slightly worse on risk (the §9
+> drawdown-dampening removal dominating), qualitative verdict unchanged (still beats Mom30
+> marginally, still fails §6.2). Reported as-is, no rule relaxation; FINAL_OOS untouched.
+>
 > **T06.6 is NOT blocked by the merger/cancellation ghosts surfaced in T06.5 (§15).** The
 > backtest runs on the stitched data today (it did, in T06.5's diagnostic), and the merger
 > ghosts sit in BOTH the old and new runs, so the old→new *succession* delta is still isolated.
@@ -755,5 +766,82 @@ edge) conflated two independent causes. Surfaced honestly (Rule 7/Rule 12):
   spec. **Operationally it matters before the probation starts** — those 3 ghosts MTM-freeze
   ~₹315K (equity − cash) of dead capital and would contaminate the forward returns. Recommend a
   new spec (`07`-style) for merger identity before the `11` probation is armed.
+
+No FINAL_OOS interaction; no validation claim made here (the metric re-measure is T06.6).
+
+---
+
+## 16. T06.6 results (2026-06-22)
+
+**Re-measured the frozen S3 candidate on identity-continuous (stitched) data and recorded the
+result honestly.** This is a *correctness re-measure*, **not** a re-validation — FINAL_OOS stays
+spent (§9); no rule was relaxed and no target was chased; the numbers are reported as they fell.
+
+### Method (same-code A/B isolates the succession effect)
+The cleanest comparison runs the **byte-for-byte frozen S3** config (`s3_config`, U=350/B=1.25/
+M=130/sm=0/monthly/5-factor Track-A) over the **recorded DISCOVERY window** (`2018-02-06 →
+2023-06-30`, base cost), replicating SU2's exact methodology (base run → §6.2 drop-top-10-P&L
+retention → §6.4 Nifty200-Mom30 deploy bar), **twice with identical code**:
+- **identity-broken** — `instrument_id := isin` for every row, so `collapse_to_instrument_id`
+  no-ops everywhere → raw-isin behaviour (momentum-blind new legs + frozen succession ghosts),
+  i.e. the pre-T06 store; and
+- **stitched** — the re-derived store as-is (chain-constant `instrument_id`).
+
+The only difference is identity stitching, so the broken→stitched delta **isolates the
+ISIN-succession effect**. The `07` merger/cancellation ghosts sit in **both** runs (carried-ghost
+count **5 = 5**, identical) and therefore cancel out of the delta — exactly as predicted in §15 /
+the T06.6 stub. Script: `backend/scripts/t06_6_remeasure.py`.
+
+### Harness fidelity — broken run reproduces the recorded baseline
+| metric | recorded (08/10) | broken (this run) | match |
+|---|---|---|---|
+| Calmar | 0.575 | **0.574** | ✓ (Δ 0.001) |
+| Sharpe | 0.788 | **0.787** | ✓ |
+| max drawdown | 23.7% | **23.7%** | ✓ |
+| §6.2 retention (classic top-10) | 35% | **35%** | ✓ |
+
+The 0.001 Calmar drift is the only residue of the T06.2 column-add re-derive (negligible) —
+confirming the re-measure harness matches the recorded SU2/R10.2 measurement.
+
+### The succession delta — broken → stitched
+| metric | broken | stitched | move | Δ |
+|---|---|---|---|---|
+| **Calmar** | 0.574 | **0.496** | ▼ | **−0.078 (−13.6%)** |
+| **Sharpe** | 0.787 | **0.722** | ▼ | −0.065 (−8.3%) |
+| **max drawdown** | 23.7% | **24.8%** | ▲ worse | +1.1 pp |
+| **§6.2 retention** | 35% | **35%** | → | 0 (still FAIL <70%) |
+| CAGR | 13.6% | 12.3% | ▼ | −1.3 pp |
+| turnover | 604% | 614% | ▲ | +10 pp |
+| §6.2 perturbed Calmar | 0.202 | 0.174 | ▼ | — |
+| deploy: strat Calmar | 0.574 | 0.496 | ▼ | margin over bench 0.101 → **0.023** |
+| deploy: bench Calmar (Nifty200 Mom30) | 0.473 | 0.473 | → | — |
+| deploy: maxDD ratio | 0.70 | 0.73 | ▲ | ≤1.0 still ok |
+| deploy bar (strat > bench) | PASS | **PASS** (barely) | — | — |
+
+Top-10 dropped names shift only marginally (continuous-momentum selection swaps
+`GUJGASLTD→TATACONSUM` and reorders a pair), consistent with a subtle selection change rather
+than a regime flip.
+
+### Reading the result (§9 stance — direction was pre-declared unknown)
+The two §9 effects pull opposite ways; on the DISCOVERY window the **risk side dominated**:
+- removing the **frozen-ghost drawdown-dampening** made reported maxDD *worse* (23.7%→24.8%) and
+  cost/turnover *higher* — exactly the §9 "fixing → risk may get worse" prediction; while
+- the **momentum-truncation upside** (new legs becoming selectable) did **not** net out positive
+  — the small selection changes slightly *reduced* return (CAGR 13.6%→12.3%).
+- Net: **Calmar −13.6%, Sharpe −8.3%.** The qualitative picture is **unchanged**: S3 still beats
+  the Mom30 index on Calmar (now by a thin 0.023, was 0.101) and **still fails §6.2 concentration
+  (35%, unchanged)** — identity continuity neither rescued nor sank the candidate; it removed a
+  contaminant and the (modest) bias it was hiding.
+
+### Honest caveat (Rule 12)
+The re-measured *absolute* metrics remain **merger-dirty** — the 5 carried ghosts (the `07`
+share-swap-merger / DVR-cancellation defect, e.g. HDFC→HDFCBANK) persist in both runs and still
+dampen maxDD + occupy slots. So these numbers are **succession-clean, merger-dirty**; a fully
+identity-continuous measurement awaits `specs/v2/07_MERGER_IDENTITY_CONTINUITY.md`. **No new
+"validated/deployable" claim is made**; FINAL_OOS was neither consumed nor re-opened. This closes
+the §5 contamination *as measured* — nothing more.
+
+T06.6 success gate **MET**. `06` is complete (T06.1–T06.6 green); arming the `11` probation
+remains blocked on the `07` merger fix (§15 / `07` §7).
 
 No FINAL_OOS interaction; no validation claim made here (the metric re-measure is T06.6).
