@@ -479,6 +479,102 @@ class DailyDigestLog(Base):
     )
 
 
+class PaperV2Portfolio(Base):
+    """v2-native paper book for the S3 forward probation (specs/v3/11 §6).
+
+    Distinct from the v1 ``paper_portfolio`` (swing-trade, symbol/ATR/EMA) which
+    is left untouched — v1 removal is a separate later sprint (11 §2/§9). This
+    book is ISIN-keyed and mirrors ``backtest_v2`` portfolio state.
+    """
+
+    __tablename__ = "paper_v2_portfolio"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    name = Column(String, nullable=False, default="s3_probation")
+    starting_capital = Column(Float, nullable=False, default=1000000.0)
+    cash = Column(Float, nullable=False, default=1000000.0)
+    is_active = Column(Boolean, nullable=False, default=True)
+    # Last trading date whose daily post-close job was applied (the replay clock, 11 §4c).
+    last_processed_date = Column(Date, nullable=True)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+
+class PaperV2Position(Base):
+    """An open S3 paper holding — mirrors ``backtest_v2.schemas.Position`` plus the
+    selection metadata and the last-seen ``adj_factor`` the 11 §5e CA-reconciliation
+    needs to detect a moving back-adjustment anchor on a held name.
+    """
+
+    __tablename__ = "paper_v2_positions"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    isin = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+
+    # Portfolio state (backtest_v2 Position).
+    shares = Column(Float, nullable=False)
+    cost_basis = Column(Float, nullable=False)  # adjusted-space avg cost incl. fees
+    last_price = Column(Float, nullable=True)  # close_tr at last MTM
+    entry_date = Column(Date, nullable=False)
+    days_held = Column(Integer, nullable=False, default=0)
+
+    # Selection metadata at entry (S3 ranking).
+    rank = Column(Integer, nullable=True)
+    composite_score = Column(Float, nullable=True)
+    target_weight = Column(Float, nullable=True)
+    regime_state_at_entry = Column(String, nullable=True)
+
+    # Last back-adjustment factor seen for this ISIN; a change vs. the freshly
+    # appended series signals a CA hit that day → 11 §5e rescale before the stop check.
+    last_adj_factor = Column(Float, nullable=False, default=1.0)
+
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("portfolio_id", "isin", name="uq_paper_v2_pos_portfolio_isin"),
+        Index("ix_paper_v2_pos_portfolio", "portfolio_id"),
+    )
+
+
+class PaperV2PendingFill(Base):
+    """The persisted pending-fills queue (11 §3e). A decision at day D's close
+    queues a row here; the next session's post-close job executes it at D+1's open
+    and marks it ``filled`` — reproducing the engine's D→D+1 fill discipline across
+    process restarts.
+    """
+
+    __tablename__ = "paper_v2_pending_fills"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    isin = Column(String, nullable=False)
+    symbol = Column(String, nullable=False)
+    side = Column(String, nullable=False)  # buy | sell | trim
+    qty = Column(Float, nullable=False)  # shares (positive)
+    reason = Column(String, nullable=False)  # rebalance | catastrophic_stop
+
+    decision_date = Column(Date, nullable=False)  # day D close that queued it
+    status = Column(String, nullable=False, default="pending")  # pending | filled
+
+    # Populated on execution (next session's open).
+    fill_date = Column(Date, nullable=True)
+    fill_price = Column(Float, nullable=True)
+    cost_rupees = Column(Float, nullable=True)
+
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("ix_paper_v2_fill_portfolio_status", "portfolio_id", "status"),
+    )
+
+
 class MarketBreadth(Base):
     __tablename__ = "market_breadth"
     date = Column(Date, primary_key=True)

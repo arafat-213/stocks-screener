@@ -412,6 +412,9 @@ Confirm or redline each before any code:
 > Session log, check off Done-criteria. Do not mark Done if anything was skipped (Rule 12).
 
 ### P11.0 — data + schema foundation (reuse existing pipeline; no engine wiring, no live)
+> **Status: DONE (2026-06-22).** Migration + incremental append + §5d guard + §5e rescale all
+> built and test-gated; full data suite green (167) + 13 new P11.0 tests; migration up→down→up
+> verified clean on Postgres. No engine wiring, no live trading (those are P11.1).
 - **Do:** Alembic migration (§6). Operationalize **daily incremental append** on the existing
   `app/data/bhavcopy/build` (`build(today, today)`) + the §5d reconciliation guard. Write the
   split-injection regression test (§5b), the daily-reconciliation test, and the **§5e held-position
@@ -422,6 +425,34 @@ Confirm or redline each before any code:
   byte-for-byte across an injected split (§5b); reconciliation test green; **§5e CA-reconciliation
   test green** (no false stop; position value invariant; reconciled `cost_basis` == shadow);
   mocked data only (no live NSE).
+
+> **⚠️ §5a correction (surfaced during P11.0 — Rule 1/7).** §5a sketches the daily append as
+> `build(start=today, end=today)`. That is **wrong** against the real pipeline: `build.run_build`
+> documents that a sub-range call **silently clobbers** prior data (Stage 6 `delete_matching` is
+> per-ISIN, not per-date; `adv_20`'s rolling window loses history) and CA back-adjustment is
+> *retroactive* (a split rewrites the ISIN's entire prior series). The faithful append therefore
+> re-runs **`run_build(inception, today)`** every day: the per-day checkpoint makes all prior days
+> free (zero network), only the new day is fetched, and Stages 4–8 re-derive CA+adjust+`adv_20`
+> over the full history — so the incremental append is **byte-identical to a full rebuild by
+> construction**, which is exactly what §5b requires. Implemented in
+> `app/data/bhavcopy/incremental.py`; §5a's literal one-day call is NOT used.
+
+> **Session log (2026-06-22):**
+> - **Migration** `9ced06257609_add_paper_v2_tables_s3_probation` (head `a3f8e2d1c094` → ...) — three
+>   v2-native, ISIN-keyed tables: `paper_v2_portfolio`, `paper_v2_positions` (backtest_v2 Position
+>   fields + S3 selection metadata + **`last_adj_factor`** for §5e anchor-change detection),
+>   `paper_v2_pending_fills` (the persisted §3e queue). v1 `paper_*` left untouched (§2/§9, additive).
+>   Autogen drift (`screen_results`/`technical_signals`) pruned — migration is the 3 tables only.
+>   ORM models added to `app/db/models.py`. up→down→up clean on Postgres; `create_all` clean on sqlite.
+> - **Incremental append** `app/data/bhavcopy/incremental.py`: `incremental_append(through, …)`
+>   (inception-anchored full rebuild, see correction above) + `reconcile_appended_series` (§5d guard;
+>   halts on retroactive drift on a non-CA ISIN via `IncrementalReconciliationError`).
+> - **§5e reconciliation** `app/paper_v2/ca_reconcile.py`: `reconcile_position` (pure, deterministic —
+>   `cost_basis *= r`, `shares /= r`, `r = new/old`; non-positive factor → `UnreconcilableCorporateActionError`)
+>   + `would_stop_fire` mirror of `engine.py` §5.iii. Applied-before-stop wiring is P11.1 (no engine yet).
+> - **Tests (13 new, all green):** `tests/data/test_bhavcopy_incremental.py` (§5b byte-for-byte
+>   across an injected split; §5d explained/unexplained drift + halt); `tests/paper_v2/test_ca_reconcile.py`
+>   (§5e a/b/c — no false stop, value invariant, reconciled basis == independently-derived shadow basis).
 
 ### P11.1 — live engine as a v2-wrapper + parity harness (dry-run, still no live capital)
 - **Do:** build the v2-native shell (data feeder + state persistence + **persisted pending-fills
@@ -454,7 +485,7 @@ Confirm or redline each before any code:
 
 ## Exit criteria
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
-- [ ] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green.
+- [x] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green (2026-06-22; §5a corrected to inception-anchored append).
 - [ ] P11.1 — v2-native wrapper + persisted queue + parity harness; historical dry-run reproduces backtest (decision + fill) byte-for-byte.
 - [ ] P11.2 — 6 consecutive clean monthly paper rebalances.
 - [ ] P11.3 — verdict against §7/§8; "exploratory" ceiling restated.
