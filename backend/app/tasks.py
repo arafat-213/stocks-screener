@@ -1,13 +1,20 @@
 import logging
 
+import redis as _redis
+
 from app.backtest.engine import run_backtest as execute_backtest_engine
-from app.core.celery_app import celery_app
+from app.core.celery_app import celery_app, redis_url
 from app.core.trading_config import UnifiedTradingConfig as BacktestConfig
 from app.db.session import SessionLocal
 from app.pipeline.cleanup import run_cleanup
 from app.pipeline.orchestrator import run_pipeline
 
 logger = logging.getLogger(__name__)
+
+# Advisory lock for the paper daily task (CLAUDE.md Pipeline Law §1 / 11 §4).
+# TTL auto-expires a stale lock left by a crashed process (zombie cleanup).
+_PAPER_LOCK_KEY = "paper_daily_task_running"
+_PAPER_LOCK_TTL = 7200  # 2 hours
 
 
 @celery_app.task(name="app.tasks.execute_backtest_task")
@@ -50,12 +57,24 @@ def execute_paper_daily_task(process_date: str | None = None):
     month-end it runs the shadow-parity check and HALTS the run on a break (11 §8/§7.1).
     """
     import datetime as _dt
+    from zoneinfo import ZoneInfo
 
     import pandas as pd
 
     from app.backtest_v2 import benchmark
     from app.data.bhavcopy import incremental, store
     from app.paper_v2 import alerter, live_engine, parity
+
+    # Concurrency guard: a beat fire that races a still-running replay must skip,
+    # not corrupt the book. TTL auto-expires a lock left by a crashed process.
+    _r = _redis.from_url(redis_url)
+    if not _r.set(_PAPER_LOCK_KEY, "1", nx=True, ex=_PAPER_LOCK_TTL):
+        logger.warning(
+            "execute_paper_daily_task: another instance is already running — skipping "
+            "(concurrency guard; lock TTL=%ds)",
+            _PAPER_LOCK_TTL,
+        )
+        return
 
     target = (
         _dt.date.fromisoformat(process_date)
@@ -75,6 +94,20 @@ def execute_paper_daily_task(process_date: str | None = None):
 
         pf = live_engine.get_or_create_book(db)
 
+        # Go-live = the IST date the probation book was armed (11 §1/P11.2 warm-start
+        # semantics). Days BEFORE it are the warm-start replay (inception → today's S3
+        # holdings), NOT the counted probation. Two things are therefore gated to the
+        # counted forward window (date >= go_live):
+        #   * §2 shadow-parity (the fidelity deliverable P11.3 evaluates) — during a single
+        #     continuous replay the live book and the shadow are the identical step_day
+        #     sequence over the identical context, so warm-start parity is true by
+        #     construction; gating also stops a NULL-start from running ~115 full shadow
+        #     backtests (the second O(N²), P11.2 perf fix).
+        #   * alerts — warm-start would otherwise email a rebalance preview + fills-executed
+        #     for every historical month-end (~115×2 emails for 2017→today), pure inbox
+        #     noise about trades that never happened live. Only forward days alert.
+        go_live = pf.created_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
+
         # 2. Ordered replay of every CONFIRMED unprocessed trading day (§4c). The latest
         #    stored day is an unconfirmed month-end (no successor yet) and is held back
         #    until the next run confirms it — holiday-proof, fidelity-neutral (§7.2).
@@ -82,12 +115,23 @@ def execute_paper_daily_task(process_date: str | None = None):
         to_process = live_engine.confirmed_replay_days(
             cal, pf.last_processed_date, target
         )
+        # Build the S3 engine context ONCE and reuse it across the whole replay (engine.run
+        # does the same — ctx is immutable, step_day mutates only state). Hoisted out of the
+        # per-day loop so the warm-start replay is O(days), not O(days²) (P11.2 perf fix).
+        ctx = (
+            live_engine.build_live_context(prices, index_prices)[0]
+            if to_process
+            else None
+        )
         for d in to_process:
-            report = live_engine.process_day(db, pf.id, prices, index_prices, d)
+            report = live_engine.process_day(
+                db, pf.id, prices, index_prices, d, ctx=ctx
+            )
             if report.skipped:
                 continue
-            alerter.emit_alerts(report)
-            if report.is_rebalance:
+            if d >= go_live:
+                alerter.emit_alerts(report)
+            if report.is_rebalance and d >= go_live:
                 par = parity.shadow_parity(db, pf.id, prices, index_prices, d)
                 logger.info(par.summary)
                 if not par.passed:
@@ -101,6 +145,7 @@ def execute_paper_daily_task(process_date: str | None = None):
         raise
     finally:
         db.close()
+        _r.delete(_PAPER_LOCK_KEY)
 
 
 @celery_app.task(name="app.tasks.execute_cleanup_task")
