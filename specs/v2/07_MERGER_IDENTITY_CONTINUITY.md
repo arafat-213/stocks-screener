@@ -140,12 +140,13 @@ to "zero *succession* ghosts").
 Designed like `06` §10 — each a self-contained cold session, honoring the project laws
 (idempotency, checkpoint/resume, tests mock all feeds, regression-first, surgical changes).
 
-- **T07.1 — Classify the 75 liquid terminations by sub-type.** Read-only audit. Partition the
-  §3 set into {share-swap merger, cancellation, delisting/insolvency, false-positive
-  data-gap}. Tighten the termination definition (the §3 cutoff caveat). Deliverable: a
-  `terminations.parquet` audit (mirroring `successor_unmatched`), with a `subtype` column and
-  the false-positive cluster (2026-05-18 batch) resolved. **Gate:** the 3 T06.5 ghosts classify
-  as {merger, merger, cancellation}; counts reproduced ± the tightened-definition delta.
+- **T07.1 — Classify the 75 liquid terminations by sub-type.** ✅ **DONE 2026-06-22** (see §10).
+  Read-only audit. Partition the §3 set into {share-swap merger, cancellation,
+  delisting/insolvency, false-positive data-gap}. Tighten the termination definition (the §3
+  cutoff caveat). Deliverable: a `terminations.parquet` audit (mirroring `successor_unmatched`),
+  with a `subtype` column and the false-positive cluster (2026-05-18 batch) resolved. **Gate:**
+  the 3 T06.5 ghosts classify as {merger, merger, cancellation}; counts reproduced ± the
+  tightened-definition delta. **Gate PASSED.**
 - **T07.2 — (if approach A) force-exit-at-termination in the engine.** On an instrument's last
   trade with no `instrument_id` successor and no resume within K days, liquidate to cash at the
   last price; bar re-entry. Surgical, behind a flag (default off → parity-preserving), AND-ed
@@ -177,3 +178,69 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
   the 3 merger/cancellation ghosts above (risk-off edge ⇒ mostly cash; see `06` §15).
 - **Worker + Celery beat remain STOPPED** — the daily job will not auto-fire.
 - Forward probation **NOT eligible** to start until `07` (≥ approach A) lands.
+- T07.1 audit landed (read-only): `terminations.parquet` written; the 3 ghosts classified
+  {merger, merger, cancellation}. No engine/book state changed. T07.2 (force-exit) still gated
+  on the §6 owner decision.
+
+---
+
+## 10. T07.1 — classification audit (DONE 2026-06-22)
+
+**Artifacts.** `backend/app/data/bhavcopy/terminations.py` (pure classifier
+`classify_terminations`), `backend/scripts/t07_1_classify_terminations.py` (runner →
+writes `terminations.parquet`), `store.TERMINATIONS_SCHEMA` + `write/read_terminations`,
+`tests/data/test_bhavcopy_terminations.py` (6 tests green; full data-layer suite 74 green).
+
+**§3 counts reproduced exactly** (store edge 2026-06-19, 15-day cutoff): 3,472 distinct ISINs →
+672 terminated-no-successor → **75 liquid-at-death** (≥₹5cr ADV) → 53 also recent (≥2023).
+
+### Sub-type breakdown of the 75 (the deliverable)
+
+| subtype | curated | heuristic | total |
+|---|---:|---:|---:|
+| **merger** (share-swap / acquisition) | 11 | 34 | **45** |
+| **data_gap_suspect** (false-positive) | 0 | 17 | **17** |
+| **delisting_insolvency** | 2 | 10 | **12** |
+| **cancellation** (DVR scrap) | 1 | 0 | **1** |
+
+**Gate PASS** — the 3 T06.5 ghosts classify as expected: HDFC → merger, INOXLEISUR → merger,
+TATAMTRDVR → cancellation.
+
+### Tightened-definition delta (the §3 cutoff caveat, resolved)
+
+The 15-day cutoff caught **17 false-positives** — names whose last trade sits near the edge yet
+the market kept trading daily afterward. These are an **ingest-gap signature**, not real
+delistings: 12 of them share the single date **2026-05-18** (the exact §3 cluster — IDEAFORGE,
+QPOWER, KRN, INDOTECH, STYLEBAAZA, DEEDEV…), and the rest cluster on 2026-05-11/12/13/14. Real
+delistings do not co-occur on one calendar day for dozens of liquid names. **Tightened true count:
+75 → 58** genuine liquid terminations (45 merger + 12 insolvency + 1 cancellation). The 17
+`data_gap_suspect` rows are retained in the parquet (flagged, not dropped) so T07.4's validator
+and any re-ingest can re-confirm them rather than silently trust the cutoff.
+
+### How classification works (and its honest limits — Rule 12)
+
+§5's data constraint proved **stronger** than drafted: not only is there no structured merger
+event, the free-text `ca_unmatched` "Scheme of Arrangement" rows do **not** cover the actual
+merged names (HDFC/INOXLEISUR/TATAMTRDVR have *no* merger CA text). So sub-type is **not**
+authoritatively derivable from on-disk data. Every row therefore carries a `confidence` flag:
+
+- **`curated`** — a 14-name seed of fates already documented in §3 (in-repo knowledge / public
+  record), carrying the acquirer where known (HDFC→HDFCBANK, IDFC→IDFCFIRSTB, CAIRN→VEDL…).
+  Authoritative.
+- **`heuristic`** — data-derived inference from the two clean axes the data *does* give:
+  (1) **`last_peak_ratio`** = last close ÷ all-time-peak close — value **destroyed** (<0.5) ⇒
+  delisting/insolvency (JETAIRWAYS 0.08, GENSOL 0.10, DHANI 0.10); value **preserved** ⇒
+  merger/acquisition; (2) a **shared near-edge `last_date` cluster** ⇒ data-gap; (3) a **`DVR`**
+  symbol suffix ⇒ cancellation. Inferred, not confirmed.
+
+**Known heuristic imperfections** (acceptable for an audit; all `confidence=heuristic` and the
+`last_peak_ratio`/`evidence` columns let a consumer judge): a handful of ETF unit migrations
+(GROWWSLVR/SILVER1/GROWWGOLD) land in `merger` by value-preservation; VIJAYABANK (a real merger
+into Bank of Baroda) trips the <0.5 insolvency ratio; a few `data_gap_suspect` names with low
+ratios (IBULLSLTD 0.04) may be genuine collapses coinciding with the gap date. None affect the
+gate or the 3 ghosts; a §5-B merger-ratio ingest (separate prereg) would replace the heuristic
+tier with ground truth.
+
+**Scope honoured:** read-only — no engine state, prices, or holdings mutated; FINAL_OOS
+untouched. This audit only *labels* the population; the force-exit fix is T07.2 (gated on the §6
+owner decision, still unsigned).

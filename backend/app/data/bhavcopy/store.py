@@ -128,6 +128,27 @@ SUCCESSOR_UNMATCHED_SCHEMA: dict[str, str] = {
     "reason": "string",
 }
 
+# Terminated-no-successor audit (specs/v2/07_MERGER_IDENTITY_CONTINUITY.md, T07.1).
+# One row per liquid-at-death ISIN that stops trading with no face-value successor
+# (06 stitches those) — the merger / cancellation / insolvency ghost population.
+# ``subtype`` partitions §3's set; ``confidence`` = curated (in-repo documented fate,
+# 07 §3) vs heuristic (data-derived inference — sub-type is NOT authoritatively
+# derivable from the on-disk CA feed, which carries no merger event; 07 §5).
+TERMINATIONS_SCHEMA: dict[str, str] = {
+    "isin": "string",  # terminated (dead) ISIN
+    "symbol": "string",  # NSE symbol as of its last trading day
+    "instrument_id": "string",  # T06.2 chain root (== isin if no succession)
+    "last_date": "datetime64[ns]",  # last trading day before termination
+    "adv_last": "float64",  # adv_20 on the last trading day (₹); liquidity-at-death
+    "last_peak_ratio": "float64",  # last close_raw / peak close_raw (value-destroyed signal)
+    "days_before_edge": "int64",  # calendar days from last_date to the store edge
+    "cluster_size": "int64",  # terminated ISINs sharing this exact last_date (ingest-gap signal)
+    "subtype": "string",  # merger | cancellation | delisting_insolvency | data_gap_suspect
+    "confidence": "string",  # curated | heuristic
+    "acquirer": "string",  # documented acquirer (curated mergers; 07 §3), else ""
+    "evidence": "string",  # short human-readable basis for the classification
+}
+
 # Subdir / file names under the storage root.
 _PRICES_DIR = "prices_adjusted"
 _MEMBERSHIP_DIR = "universe_membership"
@@ -136,6 +157,7 @@ _CA_EVENTS_FILE = "corporate_actions.parquet"
 _CA_UNMATCHED_FILE = "ca_unmatched.parquet"
 _SUCCESSOR_MAP_FILE = "successor_map.parquet"
 _SUCCESSOR_UNMATCHED_FILE = "successor_unmatched.parquet"
+_TERMINATIONS_FILE = "terminations.parquet"
 
 # Partition columns.
 _PRICES_PARTITION = "isin"
@@ -399,3 +421,21 @@ def read_successor_unmatched(root: str | Path | None = None) -> pd.DataFrame:
         return _empty(SUCCESSOR_UNMATCHED_SCHEMA)
     df = pd.read_parquet(path)
     return _conform(df, SUCCESSOR_UNMATCHED_SCHEMA, "successor_unmatched")
+
+
+# --------------------------------------------------------------------------- #
+# terminations audit (merger / cancellation identity, T07.1)                   #
+# --------------------------------------------------------------------------- #
+def write_terminations(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, TERMINATIONS_SCHEMA, "terminations")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _TERMINATIONS_FILE, index=False)
+
+
+def read_terminations(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _TERMINATIONS_FILE
+    if not path.exists():
+        return _empty(TERMINATIONS_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, TERMINATIONS_SCHEMA, "terminations")
