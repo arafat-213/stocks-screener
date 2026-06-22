@@ -405,6 +405,15 @@ warm-start on identity-continuous data, and re-prove fidelity.
 - **Guardrails.** **No** new "validated/deployable" claim from this run. Do not consume or
   re-open FINAL_OOS. This closes the §5 contamination as *measured*, nothing more.
 
+> **T06.6 is NOT blocked by the merger/cancellation ghosts surfaced in T06.5 (§15).** The
+> backtest runs on the stitched data today (it did, in T06.5's diagnostic), and the merger
+> ghosts sit in BOTH the old and new runs, so the old→new *succession* delta is still isolated.
+> **But record the caveat (Rule 12):** the re-measured *absolute* metrics remain
+> merger-contaminated (3 frozen ghosts still dampen maxDD + occupy slots) ⇒ they are
+> *succession-clean, merger-dirty*; a fully identity-continuous measurement awaits
+> **`specs/v2/07_MERGER_IDENTITY_CONTINUITY.md`** (§7 there explains why, and why the merger
+> fix — not T06.6 — is the hard blocker for arming the `11` probation).
+
 ---
 
 ### Done-criteria for `06`
