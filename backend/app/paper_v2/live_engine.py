@@ -71,6 +71,7 @@ def build_live_context(
     index_prices: pd.Series | None,
     *,
     cost_level: CostLevel = "base",
+    terminate_after_silent_days: int = s3_config.S3_TERMINATE_AFTER_SILENT_DAYS,
 ) -> tuple[engine.EngineContext, list[pd.Timestamp]]:
     """Build the S3 engine context + calendar over the full stored ``prices`` frame.
 
@@ -87,6 +88,12 @@ def build_live_context(
         index_prices=index_prices,
         cost_level=cost_level,
         signal_store=ss,
+        # 07 §6 force-exit: ON for the live book (default) so a merged-away / cancelled
+        # holding is liquidated rather than carried as an MTM-frozen ghost (the T06.5
+        # blocker). The shadow-parity re-derivation also routes through this function, so
+        # the book and its parity shadow stay byte-identical. A caller may pass 0 to
+        # isolate a different layer (e.g. the 06 raw-isin ghost regression).
+        terminate_after_silent_days=terminate_after_silent_days,
     )
 
 

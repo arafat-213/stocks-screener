@@ -27,6 +27,13 @@ S3_CADENCE = "monthly"
 S3_CATASTROPHIC_STOP_PCT = 25.0
 S3_LIQUIDITY_FLOOR_CR = 5.0
 
+# 07 §6 (Approach A) — force-exit a held name that has gone price-silent for this many
+# trading days with no `instrument_id` successor (merged-away / cancelled / delisted).
+# ~15 trading days (≈3 weeks) tolerates a transient data/holiday gap while still clearing
+# a true termination well before it freezes capital. NOT a strategy knob — it is the
+# identity-continuity correctness fix (07 §6); it removes ghosts, it does not tune edge.
+S3_TERMINATE_AFTER_SILENT_DAYS = 15
+
 
 def make_s3_v3config(
     date_from: date | None = None, date_to: date | None = None

@@ -20,8 +20,9 @@ Invariants (02 §3):
 
 from __future__ import annotations
 
+import bisect
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date
 
 import pandas as pd
@@ -73,6 +74,15 @@ class EngineContext:
     signal_store: SignalStore
     overlay: RegimeOverlay | None
 
+    # --- 07 (Merger/Cancellation identity continuity) — force-exit at termination ---
+    # K = trading days of price-silence after which a held instrument with no
+    # `instrument_id` successor (06) is declared TERMINATED and force-liquidated to cash
+    # at its last price (07 §6, Approach A). 0 ⇒ feature OFF ⇒ run() byte-for-byte
+    # unchanged (parity suite). The two lookups below are built only when K > 0.
+    terminate_after_silent_days: int = 0
+    cal_ord: dict[pd.Timestamp, int] = field(default_factory=dict)
+    inst_trade_ords: dict[str, list[int]] = field(default_factory=dict)
+
 
 @dataclass
 class LoopState:
@@ -97,6 +107,7 @@ def run(
     cost_cfg: CostConfig | None = None,
     cost_level: CostLevel | None = None,
     signal_store: SignalStore | None = None,
+    terminate_after_silent_days: int = 0,
 ) -> EngineResult:
     """
     Execute the v2 daily loop over `prices` and return an EngineResult.
@@ -127,6 +138,11 @@ def run(
     signal_store : SignalStore | None
         Pre-built SignalStore; if None, precompute_signals is called here.
         Pass a pre-built store to avoid recomputing in tests or sweeps.
+    terminate_after_silent_days : int
+        07 force-exit-at-termination control (Approach A). 0 (default) disables it,
+        so run() is byte-for-byte identical to its pre-07 behaviour. When > 0, a held
+        instrument with no `instrument_id` successor that has been price-silent for at
+        least this many trading days is force-liquidated to cash at its last price.
     """
     ctx, calendar = build_context(
         prices,
@@ -137,6 +153,7 @@ def run(
         cost_cfg=cost_cfg,
         cost_level=cost_level,
         signal_store=signal_store,
+        terminate_after_silent_days=terminate_after_silent_days,
     )
 
     state = LoopState(
@@ -170,6 +187,7 @@ def build_context(
     cost_cfg: CostConfig | None = None,
     cost_level: CostLevel | None = None,
     signal_store: SignalStore | None = None,
+    terminate_after_silent_days: int = 0,
 ) -> tuple[EngineContext, list[pd.Timestamp]]:
     """
     Build the immutable per-run lookups + trading calendar shared by run() and the
@@ -244,6 +262,21 @@ def build_context(
     for isin, group in prices.groupby("isin"):
         _membership[str(isin)] = set(pd.to_datetime(group["date"]))
 
+    # 7. Termination lookups (07 §6 force-exit) — built only when the feature is on,
+    # so the default (K=0) run pays nothing and stays byte-for-byte identical.
+    # cal_ord maps every trading date to its ordinal in the FULL price calendar (not
+    # the windowed run calendar), so price-silence is counted in true trading days;
+    # inst_trade_ords is each instrument's sorted print ordinals (for an O(log n)
+    # "most-recent print ≤ day" lookup in step_day).
+    _cal_ord: dict[pd.Timestamp, int] = {}
+    _inst_trade_ords: dict[str, list[int]] = {}
+    if terminate_after_silent_days > 0:
+        full_cal = sorted(pd.to_datetime(prices["date"]).unique())
+        _cal_ord = {pd.Timestamp(ts): i for i, ts in enumerate(full_cal)}
+        for isin, dates in _membership.items():
+            ords = sorted(_cal_ord[d] for d in dates if d in _cal_ord)
+            _inst_trade_ords[isin] = ords
+
     ctx = EngineContext(
         config=config,
         cost_fn=cost_fn,
@@ -257,6 +290,9 @@ def build_context(
         rebalance_dates=rebalance_dates,
         signal_store=signal_store,
         overlay=overlay,
+        terminate_after_silent_days=terminate_after_silent_days,
+        cal_ord=_cal_ord,
+        inst_trade_ords=_inst_trade_ords,
     )
     return ctx, calendar
 
@@ -303,6 +339,17 @@ def step_day(ctx: EngineContext, state: LoopState, day: pd.Timestamp) -> None:
     # ---- 5.ii: MTM at today's close_tr --------------------------------
     close_tr_today: dict[str, float] = ctx.close_tr.get(day, {})
     portfolio.mark_to_market(day_date, close_tr_today)
+
+    # ---- 5.ii-b: 07 force-exit at termination (Approach A) ------------
+    # A held instrument with no `instrument_id` successor that has been price-silent
+    # for >= K trading days is TERMINATED (merged-away / cancelled / delisted, 07 §1):
+    # it has no forward price, so a queued sell would be dropped (_stamp_fills) and the
+    # position carried forever as an MTM-frozen ghost. Liquidate it to cash at its last
+    # price NOW — after MTM (so last_price is current) and BEFORE the stop/rebalance
+    # steps (so no doomed sell is queued for it). Re-entry needs no explicit bar: a dead
+    # ISIN never prints again, so it can never re-enter universe_today (07 §6.3).
+    if ctx.terminate_after_silent_days > 0:
+        _force_exit_terminated(ctx, portfolio, day, day_date)
 
     # ---- 5.iii: catastrophic stop check (close-based, next open fill) --
     close_today: dict[str, float] = ctx.close.get(day, {})
@@ -381,6 +428,79 @@ def step_day(ctx: EngineContext, state: LoopState, day: pd.Timestamp) -> None:
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
+
+
+def _silent_trading_days(
+    ctx: EngineContext, isin: str, day: pd.Timestamp
+) -> int | None:
+    """Trading days of price-silence for `isin` as of `day` (07 §6 force-exit).
+
+    Returns `day_ord − (ordinal of the most recent print on or before `day`)` using the
+    full-calendar ordinals precomputed in build_context. Live-safe: it only observes the
+    ABSENCE of prints up to `day` (no future knowledge), so the backtest and the live
+    shell — both stepping the same ctx — declare termination on the identical day.
+
+    Returns None when it cannot be determined (day not in the calendar, instrument has no
+    print history, or no print on/before `day`); callers then leave the position untouched.
+    """
+    day_ord = ctx.cal_ord.get(day)
+    ords = ctx.inst_trade_ords.get(isin)
+    if day_ord is None or not ords:
+        return None
+    i = bisect.bisect_right(ords, day_ord) - 1
+    if i < 0:
+        return None  # no print on or before `day`
+    return day_ord - ords[i]
+
+
+def _force_exit_terminated(
+    ctx: EngineContext,
+    portfolio: Portfolio,
+    day: pd.Timestamp,
+    day_date: date,
+) -> None:
+    """Liquidate every held position that has terminated as of `day` (07 §6, Approach A).
+
+    A position is terminated when its instrument has been price-silent for at least
+    `ctx.terminate_after_silent_days` trading days (no `instrument_id` successor — a real
+    succession keeps printing under the same id, so it is never silent). Exit is at the
+    position's last MTM price (flat last-traded close_tr; no haircut — 07 §6.2), executed
+    immediately through the normal `apply_fills` path so the exit is recorded in fills_log
+    and pays standard statutory cost (zero ADV ⇒ base-slippage floor only, no divide).
+    """
+    K = ctx.terminate_after_silent_days
+    adv_today = ctx.adv_20.get(day, {})
+    exits: list[Fill] = []
+    for isin, pos in list(portfolio.positions.items()):
+        silent = _silent_trading_days(ctx, isin, day)
+        if silent is None or silent < K:
+            continue
+        log.info(
+            "07 force-exit: %s (%s) price-silent %d trading days ≥ K=%d on %s — "
+            "liquidating %.4f shares at last price %.4f.",
+            isin,
+            pos.symbol,
+            silent,
+            K,
+            day_date,
+            pos.shares,
+            pos.last_price,
+        )
+        exits.append(
+            Fill(
+                isin=isin,
+                symbol=pos.symbol,
+                side="sell",
+                qty=pos.shares,
+                price=pos.last_price,
+                date=day_date,
+                cost_rupees=0.0,
+            )
+        )
+    if exits:
+        portfolio.apply_fills(
+            exits, cost_fn=ctx.cost_fn, cost_cfg=ctx.cost_cfg, adv_lookup=adv_today
+        )
 
 
 def _pivot(prices: pd.DataFrame, col: str) -> dict[pd.Timestamp, dict[str, float]]:

@@ -151,15 +151,21 @@ def _new_book(db) -> PaperV2Portfolio:
 
 
 def _warm_start(
-    db, prices: pd.DataFrame, index: pd.Series
+    db, prices: pd.DataFrame, index: pd.Series, *, terminate_after_silent_days: int = 15
 ) -> tuple[PaperV2Portfolio, date]:
     """Run the inception→confirmed-edge replay exactly as tasks.py does (ctx + adj_lookup
-    built once, reused across the loop) and return (book, last_processed_day)."""
+    built once, reused across the loop) and return (book, last_processed_day).
+
+    ``terminate_after_silent_days`` defaults to the production S3 value; the RED test
+    passes 0 to disable 07's force-exit so the 06 raw-isin ghost is shown in isolation
+    (07's net would otherwise liquidate the silent old leg — see the RED test docstring)."""
     pf = _new_book(db)
     cal = sorted(d.date() for d in prices["date"].drop_duplicates())
     target = cal[-1]
     to_process = live_engine.confirmed_replay_days(cal, None, target)
-    ctx = live_engine.build_live_context(prices, index)[0]
+    ctx = live_engine.build_live_context(
+        prices, index, terminate_after_silent_days=terminate_after_silent_days
+    )[0]
     adj_lookup = live_engine.build_adj_factor_lookup(prices)
     for d in to_process:
         live_engine.process_day(
@@ -208,11 +214,16 @@ def test_t06_5_warmstart_ghost_without_stitching_red(db):
     """The pre-fix store shape (no instrument_id). The chain name is bought and held on
     the OLD leg; after the split OLD stops trading and — with no chain-constant identity —
     the held position has no forward price and cannot be sold. It is carried as the exact
-    ghost §2 describes. This is the failure the GREEN test proves fixed."""
+    ghost §2 describes. This is the failure the GREEN test proves fixed.
+
+    07's force-exit is disabled here (``terminate_after_silent_days=0``): with it ON, the
+    silent old leg would be liquidated as a termination (07 §6), masking the 06 ghost this
+    test isolates. 07's net catching the same leg is correct production behaviour — it is
+    a *separate* identity layer — but it is not what this 06 regression is asserting."""
     prices = _succession_panel(stitched=False)
     index = _rising_index(prices)
 
-    pf, last_day = _warm_start(db, prices, index)
+    pf, last_day = _warm_start(db, prices, index, terminate_after_silent_days=0)
 
     positions = db.query(PaperV2Position).filter_by(portfolio_id=pf.id).all()
     held = {p.isin for p in positions}

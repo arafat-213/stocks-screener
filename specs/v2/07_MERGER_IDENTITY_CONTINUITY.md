@@ -1,7 +1,9 @@
 # Spec 07 — Merger / Cancellation *Identity* Continuity (open data-layer gap)
 
 > **Status: §6 LOCKED 2026-06-22 — Approach A (write-off / force-exit at termination)
-> signed by owner (Arafat).** T07.2–T07.6 are now unblocked. Surfaced
+> signed by owner (Arafat). T07.1 + T07.2 DONE 2026-06-22 (engine force-exit landed,
+> test-green; see §10 + §11). Next = T07.4 (validator); T07.3 (merger-ratio remap) stays
+> data-gated / out-of-scope.** Surfaced
 > 2026-06-22 by `06` T06.5's re-warm-start (`specs/v2/06_ISIN_SUCCESSION_CONTINUITY.md` §15).
 > This is the **third layer** of the same identity root cause: `05` fixed CA price-adjustment
 > across an ISIN change; `06` stitched **face-value successions** (one company, new ISIN) into
@@ -174,12 +176,14 @@ Designed like `06` §10 — each a self-contained cold session, honoring the pro
   with a `subtype` column and the false-positive cluster (2026-05-18 batch) resolved. **Gate:**
   the 3 T06.5 ghosts classify as {merger, merger, cancellation}; counts reproduced ± the
   tightened-definition delta. **Gate PASSED.**
-- **T07.2 — (if approach A) force-exit-at-termination in the engine.** On an instrument's last
-  trade with no `instrument_id` successor and no resume within K days, liquidate to cash at the
-  last price; bar re-entry. Surgical, behind a flag (default off → parity-preserving), AND-ed
-  into the existing fill model. Regression: the §2 merger ghost reproduced RED (carried), GREEN
-  (exited clean); no-termination parity byte-identical. **Gate:** the 3 T06.5 ghosts exit; book
-  has 0 carried-unsellable holdings on re-warm-start.
+- **T07.2 — force-exit-at-termination in the engine.** ✅ **DONE 2026-06-22** (see §11). On an
+  instrument's last trade with no `instrument_id` successor and no resume within K trading days,
+  liquidate to cash at the last price; re-entry is barred structurally. Behind a flag
+  (`terminate_after_silent_days`, default 0 → OFF → `engine.run` byte-for-byte unchanged).
+  Regression: the §1 ghost reproduced RED (carried) + GREEN (exited clean), boundary-at-K,
+  succession-immune, no-termination parity byte-identical. **Gate:** the engine-level RED/GREEN
+  passes; the full re-warm-start (book has 0 carried-unsellable holdings) is verified in T07.5.
+  **Gate PASSED at the engine level.**
 - **T07.3 — (if approach B, data-gated) ingest merger events + acquirer/ratio; remap.** Blocked
   on an external merger-ratio source — a *separate* ingest prereg first. Out of scope until that
   data exists.
@@ -208,8 +212,10 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
 - T07.1 audit landed (read-only): `terminations.parquet` written; the 3 ghosts classified
   {merger, merger, cancellation}. No engine/book state changed.
 - **§6 decision LOCKED 2026-06-22 (Approach A, flat last-price, ISIN-scoped re-entry bar).**
-  T07.2 (force-exit in the engine) is now unblocked and is the next task. No engine/book state
-  changed yet.
+- **T07.2 force-exit landed 2026-06-22 (engine code + tests; see §11).** The capability is ON
+  for the live S3 book (`build_live_context`, K=15 trading days) and OFF by default everywhere
+  else (parity-preserving). **No book state re-warm-started yet** — that is T07.5, which stays
+  blocked until T07.4's validator lands. Worker + beat remain STOPPED.
 
 ---
 
@@ -273,3 +279,76 @@ tier with ground truth.
 **Scope honoured:** read-only — no engine state, prices, or holdings mutated; FINAL_OOS
 untouched. This audit only *labels* the population; the force-exit fix is T07.2 (gated on the §6
 owner decision, still unsigned).
+
+---
+
+## 11. T07.2 — force-exit at termination (DONE 2026-06-22)
+
+**Artifacts.**
+- `backend/app/backtest_v2/engine.py` — the flag `EngineContext.terminate_after_silent_days`
+  (plumbed through `build_context`/`run`, **default 0 = OFF**), the precomputed lookups
+  (`cal_ord`, `inst_trade_ords`, built only when the flag > 0), the pure helper
+  `_silent_trading_days`, and the `step_day` step **5.ii-b** (`_force_exit_terminated`).
+- `backend/app/paper_v2/s3_config.py` — `S3_TERMINATE_AFTER_SILENT_DAYS = 15`.
+- `backend/app/paper_v2/live_engine.py` — `build_live_context` turns the feature ON for the
+  live S3 book (the value is now a parameter, default = the S3 constant, so a caller can
+  isolate a different layer with `0`).
+- `backend/tests/backtest_v2/test_v3t07_2_force_exit.py` — 6 new tests (all green).
+- `backend/tests/paper_v2/test_v3t06_5_warmstart_succession.py` — the `06` RED test now passes
+  `terminate_after_silent_days=0` to isolate the `06` ghost (see "Interaction with `06`").
+
+**How termination is detected (live-safe, stateless).** After `collapse_to_instrument_id`
+(`06` T06.3) a *real* succession keeps printing under the same `instrument_id`, so a held
+instrument with **no successor** is exactly one that goes **price-silent**. So §6 point 1's
+two conditions ("no `instrument_id` successor" **and** "no resume within K days") collapse to a
+single observable: **K trading days of silence.** `_silent_trading_days` computes
+`day_ord − ordinal(most-recent print ≤ day)` from the full-calendar ordinals precomputed in
+`build_context`. It only ever reads the *absence* of prints up to `day` — no future knowledge —
+so the backtest and the live shell (both stepping the **same** `ctx`) declare termination on the
+identical day. This is why no per-position counter or new persisted state was needed (the live
+`LoopState` / `paper_v2` schema are untouched — no migration).
+
+**The exit (Approach A, §6.2/§6.3).** In `step_day`, right after MTM (so `last_price` is the
+carried last-traded close_tr) and **before** the stop/rebalance steps (so no doomed sell is
+queued for the dead name), every held position silent ≥ K is liquidated via the normal
+`apply_fills` path: a `sell` Fill at the **flat last price** (no haircut). Reusing `apply_fills`
+means the exit is recorded in `fills_log`, removes the position, and pays the standard statutory
+cost (zero ADV ⇒ base-slippage floor only, no divide-by-zero). **Re-entry needs no explicit
+bar:** a dead ISIN never prints again, so it can never re-enter `universe_today` — §6.3's
+"trivially true" bar is enforced structurally by the data.
+
+**Parity (the flag is genuinely off by default).** `engine.run`'s new parameter defaults to 0,
+the lookups are skipped, and `step_day`'s 5.ii-b is guarded — so every pre-`07` backtest path is
+byte-for-byte unchanged. Proven by `test_no_termination_parity_off_vs_on` (a continuous panel
+runs identically at K=0 vs K=15) and by the unchanged full suite (**backtest_v2 + paper_v2 all
+green**; the only break — the `06` RED test — was the expected interaction below, now resolved).
+
+**Tests (Rule 9 — they encode WHY).** RED: a terminated holding stays held forever with the
+feature OFF (the §1 ghost). GREEN: with K=15 it is sold once, at its flat last price, freeing the
+slot + capital. Boundary: the exit fires on the **K-th** silent day, not the (K−1)-th. Helper:
+`_silent_trading_days` counts true trading-day silence (0 while trading, None when unknown). And
+the succession-immunity test: a stitched chain (`instrument_id` keeps printing) has silence 0 and
+is **never** force-exited — proving the "no successor" gate is what separates a termination from a
+`06` re-issue.
+
+**Interaction with `06` (surfaced + resolved).** Turning the feature ON in `build_live_context`
+made the `06` T06.5 **RED** test fail: that test deliberately replays the *raw-isin* (pre-`06`)
+store where the old leg goes silent at the split — which `07` now (correctly) force-exits, masking
+the `06` ghost the test isolates. `07`'s net catching the same leg is **correct production
+behaviour** (it is a separate identity layer), so the fix is not to weaken `07` but to run that
+one `06` regression with `terminate_after_silent_days=0`. In production both layers are on: `06`
+stitches real successions (never silent → never force-exited) and `07` catches true terminations.
+
+**Honest notes (Rule 12).**
+- **K = 15 trading days is a chosen default, not pinned in §6.** ≈3 weeks tolerates a transient
+  data/holiday gap while clearing a true termination well before it freezes capital. The
+  `data_gap_suspect` cluster (§10) is the population this K is meant to *not* prematurely exit;
+  a genuine >15-day data gap that later resumes would be force-exited (and, being silent, also
+  invisible to re-entry until it prints again) — an accepted edge of the silence rule.
+- **The exit pays standard statutory cost** (consistent with every other sell); §6.2's "no
+  haircut" governs the *price* (flat last-traded), not the fee. The insolvency-optimism bias
+  (last price > realisable for names that gapped toward zero) is carried per §6.2 and will be
+  re-stated in the T07.6 re-measure.
+- **No book/metrics state changed by T07.2** — it is engine capability + tests only. The
+  re-warm-start that proves "0 carried-unsellable holdings on the live book" is **T07.5**
+  (blocked on T07.4's validator). FINAL_OOS untouched.
