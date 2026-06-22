@@ -1,6 +1,6 @@
 # v3 / 11 — Probationary Forward Paper-Trade of S3 (6-month live OOS before real capital)
 
-> **Status: LOCKED (2026-06-21) — §10 signed by Arafat; tolerances confirmed; P11.0 authorized.** Authorizes a
+> **Status: LOCKED (2026-06-21; rev.3 signed 2026-06-22) — §10 signed by Arafat; tolerances confirmed; §5e CA-reconciliation added & approved; P11.0 authorized.** Authorizes a
 > 6-month forward **paper** trade of the byte-frozen `10` S3 candidate as a fresh, real-time OOS
 > that accrues *after* the spent `FINAL_OOS`, before any real capital is risked. Written BEFORE
 > the forward data exists (`00` §1 / `04` §5): the success bar, the kill bar, the frozen config,
@@ -28,6 +28,16 @@
 > running**: punctuality is replaced by *ordered replay completeness* — missed days are backfilled
 > deterministically (EOD replay is fidelity-neutral for a paper book), so a missed day or two does
 > NOT break the run and does NOT force early deployment.
+>
+> **rev.3 changes (Arafat review):** (§5e — NEW) a **corporate-action portfolio-state reconciliation**
+> invariant is added. Back-adjustment anchors the *latest* date to factor 1.0 and rescales all prior
+> history (`adjust.py` convention), so in a single-anchor backtest a split is invisible — but **live**
+> the anchor moves daily, and a new CA retroactively rescales the stored price series while the
+> *persisted* portfolio `cost_basis`/`shares` stay in the **old** anchor. Unreconciled, a clean 2:1
+> split reads as a −50% crash and **falsely trips the daily catastrophic stop** (`engine.py:219`), and
+> MTM equity halves silently. §5e requires rescaling held-position state by the CA factor ratio
+> *before* the same-day stop check, gated by a regression test in P11.0. The monthly §2 parity check
+> does **not** cover this (the stop is daily; a false stop can fire intra-month before parity runs).
 
 ---
 
@@ -243,14 +253,55 @@ stays at the pipeline edge.
 adjusted closes byte-for-byte — except for ISINs with a logged corporate action that day. Any
 unexplained retroactive drift halts the run (§8). (Leans on `validate.py` where it already covers this.)
 
+**5e. Corporate-action portfolio-state reconciliation (HARD — resolves the moving-anchor / false-stop
+gotcha).** Back-adjustment pins the **latest** date to `adj_factor = 1.0` and rescales **all earlier
+dates** whenever a CA exists (`adjust.py` docstring; convention: latest → 1.0, earlier < 1.0). In a
+backtest the whole series is adjusted **once** against a fixed anchor, so a split is **invisible** —
+`cost_basis`, `shares`, and `close` all live in one frozen adjusted space and the catastrophic stop
+(`engine.py:219`, `stop_level = cost_basis × 0.75`) stays comparable to today's `close`. **Live, the
+anchor moves every day.** Per §5b the daily append re-adjusts the stored series to byte-match a full
+rebuild, so a new CA on ex-date D **retroactively rescales the entire prior adjusted series** — but the
+*persisted* portfolio's `cost_basis`/`shares` were recorded against the **old** anchor and are **not**
+rescaled by the data pipeline. Two failures result, neither caught by the monthly §2 parity (the stop
+is **daily**; a false stop can fire intra-month, before parity runs):
+
+- **False catastrophic stop.** A name held at adjusted `cost_basis = 1000` that splits 2:1 now prints
+  `close ≈ 500` (re-adjusted). `stop_level = 1000 × 0.75 = 750`; `500 ≤ 750` ⇒ the stop fires — a
+  clean split reads as a −50% crash and silently exits a healthy position.
+- **Wrong MTM/equity/weights.** `mark_to_market` (`portfolio.py:113`) values `shares × close_tr`;
+  `close_tr` is also retroactively rescaled, so without rescaling `shares` the position value halves.
+
+**Invariant (deterministic — Rule 5).** On each daily append, for every ISIN **held in the live book**
+whose stored `adj_factor` changed vs. the prior series (a CA hit that day), compute the factor ratio
+`r = new_factor / old_factor` and rescale the persisted position **before the §3e step-3 stop check**:
+
+```
+cost_basis *= r        # price space   (×0.5 for a 2:1 split)
+shares     /= r        # share space   (×2)  → position value (shares × price) invariant
+```
+
+`last_price` (recomputed at MTM) and `target_weight` (scale-invariant) need no rescale. This puts the
+live state back in the **same anchor** as the freshly-adjusted price series — reproducing what the
+single-fixed-anchor backtest gets for free. The shadow backtest (§2) re-derives `cost_basis` from
+scratch in the current anchor, so post-rescale the live `cost_basis` must equal the shadow's — making
+this reconciliation a *precondition* of monthly parity, not a substitute for it.
+
+**Pre-reg gate (P11.0).** A regression test that seeds a held position, injects a 2:1 split on day D,
+and asserts: (a) **no** catastrophic stop fires from the split alone; (b) post-rescale
+`shares × cost_basis` equals the pre-split value (position value invariant); (c) the reconciled live
+`cost_basis` byte-matches what a from-scratch shadow backtest derives in the new anchor. MUST pass
+before go-live. A held-name CA that cannot be cleanly reconciled **halts the run** (§8).
+
 ---
 
 ## 6. Schema migration (gotcha 5 — migrations are holy)
 
 A new Alembic migration adds S3-style paper-position fields (rank, composite_score, target_weight,
 cost_basis, shares, entry_date, days_held, regime_state_at_entry) and a **persisted pending-fills
-queue** table (§3e) — augmenting/replacing the v1-only ATR/pullback/EMA21 columns. No direct DB
-manipulation; idempotent; reversible.
+queue** table (§3e) — augmenting/replacing the v1-only ATR/pullback/EMA21 columns. The position row
+also persists the **last-seen `adj_factor`** per held ISIN so the §5e daily job can detect an anchor
+change (`r = new_factor / old_factor`) and reconcile before the stop check. No direct DB manipulation;
+idempotent; reversible.
 
 ---
 
@@ -295,6 +346,11 @@ small real capital under a separate, future prereg.
   halt, investigate.
 - **Data-integrity failure** (unexplained parquet drift, or a missed/mis-applied corporate action) →
   halt until fixed and re-reconciled.
+- **Unreconciled held-name corporate action** — a CA on a currently-held ISIN whose §5e portfolio-state
+  reconciliation cannot be cleanly applied (factor ratio missing/ambiguous, or post-rescale `cost_basis`
+  diverges from the shadow backtest) → **halt before the daily stop check** until reconciled. (Safety
+  interlock protecting the daily catastrophic stop from a false split-driven trigger; not a probation
+  failure.)
 - **Unbackfilled gap reaching a month-end** — if missed trading days are not replayed before a
   month-end rebalance, the rebalance MUST NOT run on incomplete history. **Block the rebalance and
   alert** until the gap is backfilled in order (§4c/§7.2). (Not a probation failure — a safety
@@ -334,7 +390,9 @@ Confirm or redline each before any code:
    beat entry, §4c), month-end detected from the trading calendar of the processed date.
 5. Data = **reuse the existing `app/data/bhavcopy/` v2 pipeline** (`build`, `adjust`, CA, `validate`),
    never v1; incremental-append back-adjustment correctness gated by a passing split-injection
-   regression test before go-live (§5).
+   regression test before go-live (§5b); **§5e corporate-action portfolio-state reconciliation**
+   (rescale held `cost_basis`/`shares` by the CA factor ratio before the daily stop check) gated by
+   its own held-position regression test, with an unreconciled held-name CA halting the run (§8).
 6. Alembic migration for S3 position fields + the pending-fills queue table (§6).
 7. Graduation = §7 items 1–4 over **6 clean months** (where "clean operational" = **replay-complete,
    not zero-gap** — local running with backfilled gaps is allowed, §7.2); a parity break resets the
@@ -344,6 +402,7 @@ Confirm or redline each before any code:
    **Z = 10 pp** DD-breach, **K = 5** stop-cascade, and the **clock-reset-on-parity-break** rule (§7.1).
 
 > **Signed:** Arafat — date 2026-06-21  (DRAFT → LOCKED; P11.0 authorized)
+> **rev.3 signed:** Arafat — date 2026-06-22  (§5e corporate-action portfolio-state reconciliation added: rescale held `cost_basis`/`shares` by the CA factor ratio before the daily stop check; P11.0 gate + §8 interlock; locked)
 
 ---
 
@@ -355,9 +414,14 @@ Confirm or redline each before any code:
 ### P11.0 — data + schema foundation (reuse existing pipeline; no engine wiring, no live)
 - **Do:** Alembic migration (§6). Operationalize **daily incremental append** on the existing
   `app/data/bhavcopy/build` (`build(today, today)`) + the §5d reconciliation guard. Write the
-  split-injection regression test (§5b) and the daily-reconciliation test.
+  split-injection regression test (§5b), the daily-reconciliation test, and the **§5e held-position
+  CA-reconciliation regression test** (split on a held name ⇒ no false stop, value invariant,
+  `cost_basis` matches shadow). Implement the §5e rescale (`cost_basis *= r`, `shares /= r`) applied
+  before the §3e stop check.
 - **Done-criteria:** migration up/down clean; incremental append reproduces a full-history rebuild
-  byte-for-byte across an injected split (§5b); reconciliation test green; mocked data only (no live NSE).
+  byte-for-byte across an injected split (§5b); reconciliation test green; **§5e CA-reconciliation
+  test green** (no false stop; position value invariant; reconciled `cost_basis` == shadow);
+  mocked data only (no live NSE).
 
 ### P11.1 — live engine as a v2-wrapper + parity harness (dry-run, still no live capital)
 - **Do:** build the v2-native shell (data feeder + state persistence + **persisted pending-fills
