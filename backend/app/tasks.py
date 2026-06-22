@@ -55,7 +55,6 @@ def execute_paper_daily_task(process_date: str | None = None):
 
     from app.backtest_v2 import benchmark
     from app.data.bhavcopy import incremental, store
-    from app.db.models import PaperV2Portfolio
     from app.paper_v2 import alerter, live_engine, parity
 
     target = (
@@ -74,20 +73,15 @@ def execute_paper_daily_task(process_date: str | None = None):
         inception = prices["date"].min().date()
         index_prices = benchmark.load_price_index(inception, target)
 
-        pf = (
-            db.query(PaperV2Portfolio)
-            .filter(PaperV2Portfolio.name == "s3_probation")
-            .one_or_none()
-        )
-        if pf is None:
-            pf = PaperV2Portfolio(name="s3_probation")
-            db.add(pf)
-            db.commit()
+        pf = live_engine.get_or_create_book(db)
 
-        # 2. Ordered replay of every unprocessed trading day up to target (§4c).
+        # 2. Ordered replay of every CONFIRMED unprocessed trading day (§4c). The latest
+        #    stored day is an unconfirmed month-end (no successor yet) and is held back
+        #    until the next run confirms it — holiday-proof, fidelity-neutral (§7.2).
         cal = sorted(d.date() for d in prices["date"].drop_duplicates())
-        last = pf.last_processed_date
-        to_process = [d for d in cal if d <= target and (last is None or d > last)]
+        to_process = live_engine.confirmed_replay_days(
+            cal, pf.last_processed_date, target
+        )
         for d in to_process:
             report = live_engine.process_day(db, pf.id, prices, index_prices, d)
             if report.skipped:

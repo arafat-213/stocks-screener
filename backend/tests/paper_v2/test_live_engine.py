@@ -628,3 +628,70 @@ def test_dc6_emit_alerts_render_without_io():
     assert "BBB" in alerter.build_rebalance_preview_html(reb)
     assert "EEE" in alerter.build_stop_alert_html(stop)
     assert "AAA" in alerter.build_fill_confirm_html(reb)
+
+
+# ---------------------------------------------------------------------------
+# DC7 — forward-aware replay window: the live trailing edge is held back (§4c)
+# ---------------------------------------------------------------------------
+
+
+def test_dc7_trailing_month_end_is_held_back_then_confirmed():
+    """The blocker P11.2 resolves: live, the stored frame ends at the latest bhavcopy,
+    so its trailing day is an UNCONFIRMED month-end. ``_month_end_dates`` would mark it
+    the last trading day of its month every single day → a false rebalance daily.
+
+    ``confirmed_replay_days`` must hold that trailing edge back until a later trading day
+    confirms it, then process the real month-end on its correct historical date — so the
+    rebalance fires exactly once, on the month-end, not every day."""
+    jan = [
+        date(2026, 1, 28),
+        date(2026, 1, 29),
+        date(2026, 1, 30),
+    ]  # Jan 30 = month-end
+
+    # Frame ends ON the month-end (it is the trailing edge): it MUST be held back, so the
+    # month-end is NOT (yet) processed and no false rebalance can fire.
+    held = live_engine.confirmed_replay_days(jan, None, date(2026, 1, 30))
+    assert held == [date(2026, 1, 28), date(2026, 1, 29)]
+    assert date(2026, 1, 30) not in held
+
+    # Next run: February data arrives → Jan 30 now has a successor and is confirmed. It is
+    # processed (as the month-end) and Feb 2 becomes the new held-back trailing edge.
+    feb = jan + [date(2026, 2, 2)]
+    confirmed = live_engine.confirmed_replay_days(
+        feb, date(2026, 1, 29), date(2026, 2, 2)
+    )
+    assert confirmed == [date(2026, 1, 30)]
+
+
+def test_dc7_replay_window_respects_last_processed_and_target_and_order():
+    cal = [
+        date(2026, 1, 28),
+        date(2026, 1, 29),
+        date(2026, 1, 30),
+        date(2026, 2, 2),
+        date(2026, 2, 3),
+    ]
+    # last_processed bounds the low end (only strictly-after days); target bounds the high
+    # end; the trailing edge (Feb 3) is always excluded; result is ascending.
+    win = live_engine.confirmed_replay_days(cal, date(2026, 1, 28), date(2026, 2, 2))
+    assert win == [date(2026, 1, 29), date(2026, 1, 30), date(2026, 2, 2)]
+    assert win == sorted(win)
+
+
+def test_dc7_historical_replay_holds_nothing_back():
+    """When ``target`` is well before the frame's end (an ordered backfill), every day
+    ≤ target already has a successor, so none is held back — the month-end inside the
+    window is processed on time (matching the backfill path P11.1 already proves)."""
+    cal = [
+        date(2026, 1, 29),
+        date(2026, 1, 30),  # month-end, has successors in-frame
+        date(2026, 2, 2),
+        date(2026, 2, 3),
+    ]
+    win = live_engine.confirmed_replay_days(cal, None, date(2026, 1, 30))
+    assert win == [date(2026, 1, 29), date(2026, 1, 30)]  # month-end NOT held back
+
+
+def test_dc7_empty_calendar_is_empty():
+    assert live_engine.confirmed_replay_days([], None, date(2026, 1, 30)) == []

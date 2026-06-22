@@ -17,10 +17,14 @@ The §5e reconcile runs BEFORE ``step_day`` so a moving-anchor corporate action 
 held name cannot falsely trip the daily catastrophic stop inside 5.iii (11 §5e).
 
 Month-end / rebalance detection uses ``ctx.rebalance_dates`` (the last trading day of
-each month in the *stored* trading calendar). For the P11.1 dry-run / ordered backfill
-the stored frame extends past ``process_date`` so the detection is exact. The genuine
-latest forward day (no forward data yet) needs a forward-aware calendar — deferred to
-the P11.2 real-forward concern (11 §4c); not used by P11.1.
+each month in the *stored* trading calendar). ``_month_end_dates`` marks day D a
+month-end iff D is the max date of its (year, month) group — which is only trustworthy
+once a *later* trading day exists in the frame. Live, the stored frame ends at the
+latest published bhavcopy, so its trailing day is an UNCONFIRMED month-end and would
+falsely rebalance every single day. ``confirmed_replay_days`` (P11.2 §4c, holiday-proof)
+resolves this by holding the trailing edge back until its successor confirms it: the
+book trails one trading day in wall-clock, but every decision/fill is byte-identical to
+the backtest and to the ordered-backfill path (paper replay is fidelity-neutral, §7.2).
 """
 
 from __future__ import annotations
@@ -83,6 +87,75 @@ def build_live_context(
         cost_level=cost_level,
         signal_store=ss,
     )
+
+
+# ---------------------------------------------------------------------------
+# Forward-aware replay window (11 §4c) — holiday-proof month-end confirmation
+# ---------------------------------------------------------------------------
+
+
+def confirmed_replay_days(
+    calendar: list[date | pd.Timestamp],
+    last_processed: date | None,
+    target: date,
+) -> list[date]:
+    """The unprocessed trading days whose month-end status is FINAL (11 §4c).
+
+    A day D's rebalance status is final only once a *later* trading day exists in the
+    stored frame: ``_month_end_dates`` flags D a month-end iff D is the max date of its
+    (year, month) group, and that is trustworthy only when D has a successor. Live, the
+    stored frame ends at the latest published bhavcopy, so its **trailing day is an
+    unconfirmed month-end** — processed as-is it would fire a false rebalance every day
+    of the trailing month (the blocker this resolves).
+
+    The holiday-proof fix (no future trading calendar exists in the repo — the bhavcopy
+    pipeline only skips weekends and tolerates holiday gaps): **hold the trailing edge
+    back** until a later stored day confirms it. The book trails one trading day in
+    wall-clock, but the held-back day is processed on the next run with the SAME
+    information set (decision from data ≤ D, fill at D+1's open), so it is byte-identical
+    to the backtest and to the ordered-backfill path — paper replay is fidelity-neutral
+    (§7.2). For a historical replay (``target`` well before the frame's end) nothing is
+    held back: every day ≤ target already has a successor.
+
+    Returns the ascending dates D with ``last_processed < D ≤ target`` and
+    ``D < max(calendar)`` (the trailing edge excluded).
+    """
+    if not calendar:
+        return []
+    days = sorted(_to_date(d) for d in calendar)
+    trailing_edge = days[-1]  # unconfirmed: no successor in the stored frame yet
+    return [
+        d
+        for d in days
+        if d < trailing_edge
+        and d <= target
+        and (last_processed is None or d > last_processed)
+    ]
+
+
+# The single forward S3 paper book (11 §1). One row, created cash-only at inception; the
+# warm-start replay (inception → confirmed edge) then brings it to today's S3 holdings,
+# after which the counted forward months accrue (P11.2). Its cash default equals the
+# engine ``starting_capital`` (1e6) so the monthly shadow re-derivation (parity) matches.
+PROBATION_BOOK_NAME = "s3_probation"
+
+
+def get_or_create_book(session: Session) -> PaperV2Portfolio:
+    """Idempotently fetch (or create cash-only) the S3 probation paper book (11 §1).
+
+    Created with the model defaults (starting_capital == cash == 1e6 == the engine
+    default), so the live book and the parity shadow start from the same capital.
+    """
+    pf = (
+        session.query(PaperV2Portfolio)
+        .filter(PaperV2Portfolio.name == PROBATION_BOOK_NAME)
+        .one_or_none()
+    )
+    if pf is None:
+        pf = PaperV2Portfolio(name=PROBATION_BOOK_NAME)
+        session.add(pf)
+        session.commit()
+    return pf
 
 
 # ---------------------------------------------------------------------------

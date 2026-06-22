@@ -484,6 +484,42 @@ Confirm or redline each before any code:
   render; idempotent/resumable.
 
 ### P11.2 — go live (paper), 6-month window
+> **Status: RUNNING (started 2026-06-22).** The forward-aware month-end blocker P11.1 deferred is
+> resolved (holiday-proof), the `s3_probation` book is armed cash-only at inception, the post-close
+> Celery beat is live, and the 6 counted forward months now accrue. No knob moved (§1); the `10`
+> "exploratory" ceiling is unchanged. Verdict is P11.3.
+>
+> **Forward-calendar blocker (resolved — the concrete P11.2 code item).** Live, the stored bhavcopy
+> frame ends at the latest published day, so `_month_end_dates` (max-date-per-month) marks that
+> **trailing day a month-end every single day** → a false rebalance daily. There is **no holiday
+> calendar in the repo** (the bhavcopy pipeline only skips weekends + tolerates holiday gaps), so the
+> fix is the **holiday-proof late-detect** Arafat chose (2026-06-22): `live_engine.confirmed_replay_days`
+> **holds the trailing edge back** until a *later* stored trading day confirms it, then processes the
+> real month-end on its correct historical date. The book trails **one trading day** in wall-clock,
+> but every decision uses data ≤ D and fills at D+1's open — **byte-identical** to the backtest and to
+> the ordered-backfill path P11.1 already proves (paper replay is fidelity-neutral, §7.2). The
+> one-day wall-clock lag is a paper-phase affordance ONLY; the future real-capital prereg must
+> reinstate same-day execution (§7.2 caveat).
+>
+> **Warm-start semantics (for the P11.3 reader).** The first beat run replays inception → confirmed
+> edge to bring the book to today's S3 holdings (byte-identical to the backtest by construction); those
+> historical rebalances are warm-start, NOT the probation. The **6 counted forward months** are the
+> first 6 month-ends with date ≥ the 2026-06-22 go-live. P11.3 evaluates only those against §7/§8.
+>
+> **Session log (2026-06-22):**
+> - **`live_engine.confirmed_replay_days`** (+ docstring resolving the P11.1 deferral): forward-aware
+>   replay window — excludes the unconfirmed trailing edge; no-op hold-back on a historical backfill
+>   (`target` < frame end). Wired into `execute_paper_daily_task` (replaces the unbounded
+>   `d <= target` selection). Engine code untouched (Rule 3) — fidelity stays by construction.
+> - **`live_engine.get_or_create_book`** + `PROBATION_BOOK_NAME = "s3_probation"`: idempotent cash-only
+>   book creation (cash == starting_capital == 1e6 ⇒ the monthly shadow-parity re-derivation matches);
+>   task now uses it instead of an inline create.
+> - **Book armed** on Postgres: `s3_probation` id=1, cash 1e6, `last_processed_date=None`, active.
+>   DB migrated to head (`b7c4f1a2d3e8` — the `decision_price` column was pending; applied).
+> - **Beat live:** `s3-paper-daily-postclose` (`celery_app.py`, weekday 19:30 IST) already wired in
+>   P11.1; confirmed registered. No scheduler added (§4c infra reuse).
+> - **Tests:** 4 new DC7 cases (trailing-edge held back then confirmed; last_processed/target/order;
+>   historical-replay no hold-back; empty calendar). **20 paper_v2 tests green.**
 - **Do:** enable the daily post-close Celery job forward. Daily order (§3e): append → **execute prior
   queue at today's open** → MTM → stop-check → (month-end) rebalance → persist. Each month-end: parity
   assert → rebalance preview → next-session fill + confirm. **Missed days are backfilled in order
@@ -504,5 +540,5 @@ Confirm or redline each before any code:
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green (2026-06-22; §5a corrected to inception-anchored append).
 - [x] P11.1 — v2-native wrapper + persisted queue + parity harness; dry-run reproduces backtest (decision + fill) byte-for-byte (2026-06-22; shared `step_day` extraction + `decision_price` fidelity fix; 9 new tests, 763 green).
-- [ ] P11.2 — 6 consecutive clean monthly paper rebalances.
+- [~] P11.2 — **STARTED 2026-06-22**: forward-calendar blocker resolved (holiday-proof `confirmed_replay_days` hold-back), `s3_probation` book armed cash-only, post-close beat live; 6 forward months accruing (DC7 ×4, 20 paper_v2 green). Awaiting 6 consecutive clean monthly rebalances.
 - [ ] P11.3 — verdict against §7/§8; "exploratory" ceiling restated.
