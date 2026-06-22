@@ -1,6 +1,7 @@
 # Spec 07 — Merger / Cancellation *Identity* Continuity (open data-layer gap)
 
-> **Status: DRAFT — awaiting owner decision (§5 strategy is NOT locked).** Surfaced
+> **Status: §6 LOCKED 2026-06-22 — Approach A (write-off / force-exit at termination)
+> signed by owner (Arafat).** T07.2–T07.6 are now unblocked. Surfaced
 > 2026-06-22 by `06` T06.5's re-warm-start (`specs/v2/06_ISIN_SUCCESSION_CONTINUITY.md` §15).
 > This is the **third layer** of the same identity root cause: `05` fixed CA price-adjustment
 > across an ISIN change; `06` stitched **face-value successions** (one company, new ISIN) into
@@ -107,12 +108,38 @@ probation; record it as a *correctness* fix (not edge-tuning), pre-accepted-null
 Revisit **B** only if/when a merger-ratio data source is ingested (a separate prereg), the same
 way value/quality was deferred pending a balance-sheet re-ingest.
 
-## 6. Decision (NOT locked — owner to sign before any T07.x code)
+## 6. Decision — **LOCKED 2026-06-22 (Approach A), signed by owner (Arafat)**
 
-`06` §9 was an explicit owner decision; `07` needs the same. Open question: **A vs B vs C** (§5),
-the treatment of insolvency-vs-merger sub-types (§3), and whether the force-exit price is
-last-trade or a haircut. **Do not write T07.x code until this is signed** (mirrors `08`'s
-"DRAFTED → §12 lock" discipline).
+`06` §9 was an explicit owner decision; `07` got the same. After reviewing the A/B/C trade-offs
+(§5) against the T07.1 audit (§10), the owner **locks Approach A — write-off / force-exit at
+termination.** The three sub-questions of §5 are resolved as follows:
+
+1. **Strategy = A (write-off / force-exit).** On an instrument's last trade with no
+   `instrument_id` successor and no resume within K days, liquidate the held position to cash at
+   the **last price** and bar re-entry. **Rationale:** A is the only approach that is *not*
+   data-blocked — B (merger-ratio remap) needs an external swap-ratio dataset that demonstrably
+   does not exist in the repo (§5, confirmed by T07.1: even the free-text "Scheme of Arrangement"
+   rows don't cover the actual names), and C (universe exclusion) *also* needs a termination
+   calendar **and** introduces look-ahead bias — unacceptable for a forward paper-trade. A removes
+   100% of the ghosts, frees the slot + capital, and is the only thing that unblocks the `11`
+   probation. This is a **correctness** fix, pre-accepted-null on metrics.
+
+2. **Exit price = flat last-traded price for ALL sub-types in v1 (no haircut).** Although §10's
+   audit shows insolvencies (e.g. JETAIRWAYS, JPASSOCIAT) gapped toward zero — so last-price is
+   *optimistic* for that sub-type — the sub-type label is `heuristic` for most names and known to
+   misclassify (VIJAYABANK→insolvency, ETF units→merger). Building a per-sub-type haircut on top of
+   a label we don't fully trust would add more error than it removes. **Decision: flat last-price
+   for v1; record the insolvency-optimism as a known, pre-accepted bias in the T07.6 re-measure
+   (Rule 12).** A haircut is revisited only if/when a §5-B ground-truth merger/insolvency dataset
+   is ingested (separate prereg).
+
+3. **Re-entry bar is scoped to the terminated ISIN only, NOT the broader `instrument_id` chain.**
+   The dead ISIN stops trading so its bar is trivially true; a *different* still-trading
+   instrument (e.g. a merger acquirer) remains independently eligible on its own momentum. The bar
+   does not propagate up the identity chain.
+
+**B is deferred** to a future merger-ratio ingest prereg (the way value/quality was deferred
+pending a balance-sheet re-ingest). **C is rejected** (data-blocked *and* look-ahead-dirty).
 
 ## 7. Relationship to `06` T06.6 (the re-measure) — **NOT a blocker**
 
@@ -179,8 +206,10 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
 - **Worker + Celery beat remain STOPPED** — the daily job will not auto-fire.
 - Forward probation **NOT eligible** to start until `07` (≥ approach A) lands.
 - T07.1 audit landed (read-only): `terminations.parquet` written; the 3 ghosts classified
-  {merger, merger, cancellation}. No engine/book state changed. T07.2 (force-exit) still gated
-  on the §6 owner decision.
+  {merger, merger, cancellation}. No engine/book state changed.
+- **§6 decision LOCKED 2026-06-22 (Approach A, flat last-price, ISIN-scoped re-entry bar).**
+  T07.2 (force-exit in the engine) is now unblocked and is the next task. No engine/book state
+  changed yet.
 
 ---
 
