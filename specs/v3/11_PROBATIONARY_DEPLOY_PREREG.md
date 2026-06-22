@@ -455,6 +455,23 @@ Confirm or redline each before any code:
 >   (§5e a/b/c — no false stop, value invariant, reconciled basis == independently-derived shadow basis).
 
 ### P11.1 — live engine as a v2-wrapper + parity harness (dry-run, still no live capital)
+> **Status: DONE (2026-06-22).** Fidelity achieved by *construction*, not re-implementation: the
+> engine loop was split into `engine.build_context` + `engine.step_day` (the live shell and
+> `engine.run` now call the SAME per-day code — 580 engine parity tests unchanged ⇒ byte-for-byte).
+> New `app/paper_v2/`: `s3_config` (single-source frozen S3, mirrors `r10_oos`), `live_engine`
+> (hydrate→§5e reconcile→step_day→persist), `parity` (monthly shadow re-derivation, 25bps tol), and
+> `alerter` (reuses v1 `send_alert_email`). `execute_paper_daily_task` + beat entry wired (§4c).
+> **Fidelity bug found + fixed (Rule 1/7):** a queued BUY lost its decision-close price across the DB
+> round-trip (`hydrate` read it back as 0 ⇒ zero notional ⇒ buy silently dropped). Added a nullable
+> `decision_price` column (migration `b7c4f1a2d3e8`) so the live book matches the engine.
+> **9 new P11.1 tests + 763 green** across paper_v2/backtest_v2/data: DC1 dry-run parity (full
+> day-by-day live replay == in-memory engine: equity curve + final book identical + §2 shadow-parity
+> passes); DC2 resumable backfill (split ON a rebalance boundary, session expunged between batches ⇒
+> identical end state) + idempotent re-replay no-op; DC3 §3e ordering (buy@open then −25% close ⇒
+> same-evening stop, survives persist/hydrate) + buy-notional-survives-rehydrate regression; DC4 §5e
+> split-on-held-name (no false stop, value invariant, anchor refreshed); DC5 daily 25%-stop +
+> healthy-name control; DC6 alerts render with no I/O. **Still a dry-run — no live capital (that is
+> P11.2). The `10` "exploratory" ceiling is unchanged.**
 - **Do:** build the v2-native shell (data feeder + state persistence + **persisted pending-fills
   queue** + order differ + paper executor + alerter) delegating to `backtest_v2`; register the
   `app.tasks.execute_paper_daily_task` Celery task + beat entry (§4c); build the monthly shadow-parity
@@ -486,6 +503,6 @@ Confirm or redline each before any code:
 ## Exit criteria
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green (2026-06-22; §5a corrected to inception-anchored append).
-- [ ] P11.1 — v2-native wrapper + persisted queue + parity harness; historical dry-run reproduces backtest (decision + fill) byte-for-byte.
+- [x] P11.1 — v2-native wrapper + persisted queue + parity harness; dry-run reproduces backtest (decision + fill) byte-for-byte (2026-06-22; shared `step_day` extraction + `decision_price` fidelity fix; 9 new tests, 763 green).
 - [ ] P11.2 — 6 consecutive clean monthly paper rebalances.
 - [ ] P11.3 — verdict against §7/§8; "exploratory" ceiling restated.

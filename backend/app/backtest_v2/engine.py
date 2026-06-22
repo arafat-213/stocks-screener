@@ -54,6 +54,38 @@ class EngineResult:
     total_cost_paid: float
 
 
+@dataclass
+class EngineContext:
+    """Immutable per-run lookups + collaborators shared by run() and the live paper
+    shell (11 §2/§3e). Built once by build_context(); consumed by step_day()."""
+
+    config: MomentumConfig
+    cost_fn: CostFn
+    cost_cfg: CostConfig
+    close_tr: dict[pd.Timestamp, dict[str, float]]
+    close: dict[pd.Timestamp, dict[str, float]]
+    open: dict[pd.Timestamp, dict[str, float]]
+    adv_20: dict[pd.Timestamp, dict[str, float]]
+    sym_map: dict[str, str]
+    membership: dict[str, set[pd.Timestamp]]
+    rebalance_dates: set[pd.Timestamp]
+    signal_store: SignalStore
+    overlay: RegimeOverlay | None
+
+
+@dataclass
+class LoopState:
+    """Mutable loop state carried across days. In a backtest this lives in memory for
+    the whole run; in the live shell (11 §3e) it is hydrated from / persisted to the
+    paper_v2 tables each day, so the persisted pending_fills queue reproduces the
+    engine's D→D+1 fill discipline across process restarts."""
+
+    portfolio: Portfolio
+    pending_fills: list[Fill]
+    rebalance_dates_used: list[date]
+    per_rebalance_turnover: list[tuple[date, float]]
+
+
 def run(
     prices: pd.DataFrame,
     config: MomentumConfig,
@@ -95,14 +127,64 @@ def run(
         Pre-built SignalStore; if None, precompute_signals is called here.
         Pass a pre-built store to avoid recomputing in tests or sweeps.
     """
+    ctx, calendar = build_context(
+        prices,
+        config,
+        index_prices=index_prices,
+        regime_config=regime_config,
+        cost_fn=cost_fn,
+        cost_cfg=cost_cfg,
+        cost_level=cost_level,
+        signal_store=signal_store,
+    )
+
+    state = LoopState(
+        portfolio=Portfolio(cash=config.starting_capital),
+        pending_fills=[],  # fills queued on day D, applied on D+1
+        rebalance_dates_used=[],
+        per_rebalance_turnover=[],
+    )
+
+    for day in calendar:
+        step_day(ctx, state, day)
+
+    return EngineResult(
+        snapshots=state.portfolio.snapshots,
+        fills_log=state.portfolio.fills_log,
+        suspension_log=state.portfolio.suspension_log,
+        rebalance_dates_used=state.rebalance_dates_used,
+        per_rebalance_turnover=state.per_rebalance_turnover,
+        config=config,
+        total_cost_paid=state.portfolio._total_cost_paid,
+    )
+
+
+def build_context(
+    prices: pd.DataFrame,
+    config: MomentumConfig,
+    *,
+    index_prices: pd.Series | None = None,
+    regime_config: RegimeConfig | None = None,
+    cost_fn: CostFn = _default_fill_cost,
+    cost_cfg: CostConfig | None = None,
+    cost_level: CostLevel | None = None,
+    signal_store: SignalStore | None = None,
+) -> tuple[EngineContext, list[pd.Timestamp]]:
+    """
+    Build the immutable per-run lookups + trading calendar shared by run() and the
+    live paper shell (11 §2/§3e).
+
+    Extracted verbatim from run()'s former setup block (steps 1–6) so the live shell
+    drives the SAME per-day logic (step_day) over the SAME context — fidelity by
+    construction, not re-implementation (11 §2). run() is byte-for-byte unchanged
+    (proven by the parity suite).
+    """
     if cost_level is not None:
         cost_cfg = _cfg_for_level(cost_level)
     elif cost_cfg is None:
         cost_cfg = CostConfig()
 
-    # ------------------------------------------------------------------ #
     # 1. Normalise the prices DataFrame
-    # ------------------------------------------------------------------ #
     prices = prices.copy()
     prices["date"] = pd.to_datetime(prices["date"])
 
@@ -121,9 +203,7 @@ def run(
         .to_dict()
     )
 
-    # ------------------------------------------------------------------ #
     # 2. Trading calendar (sorted distinct dates in prices)
-    # ------------------------------------------------------------------ #
     calendar: list[pd.Timestamp] = sorted(_close_tr.keys())
     if not calendar:
         raise ValueError("prices DataFrame has no valid dates.")
@@ -134,20 +214,14 @@ def run(
     if not calendar:
         raise ValueError(f"No trading dates in [{config.date_from}, {config.date_to}].")
 
-    # ------------------------------------------------------------------ #
     # 3. Rebalance dates (last trading day per cadence period within the run)
-    # ------------------------------------------------------------------ #
     rebalance_dates: set[pd.Timestamp] = _rebalance_dates(calendar, config.rebalance)
 
-    # ------------------------------------------------------------------ #
     # 4. Signals (precomputed once)
-    # ------------------------------------------------------------------ #
     if signal_store is None:
         signal_store = precompute_signals(prices, config)
 
-    # ------------------------------------------------------------------ #
     # 5. Regime overlay
-    # ------------------------------------------------------------------ #
     if config.use_regime_overlay and index_prices is not None:
         overlay = RegimeOverlay(index_prices, cfg=regime_config)
     else:
@@ -158,142 +232,143 @@ def run(
             )
         overlay = None
 
-    # ------------------------------------------------------------------ #
-    # 6. Universe (all ISINs present in prices — point-in-time filter is
-    #    done per day via universe_membership from the prices frame itself)
-    # ------------------------------------------------------------------ #
-    # isin → set of dates it traded (for point-in-time membership)
+    # 6. Universe membership (point-in-time, from the prices frame itself)
     _membership: dict[str, set[pd.Timestamp]] = {}
     for isin, group in prices.groupby("isin"):
         _membership[str(isin)] = set(pd.to_datetime(group["date"]))
 
-    # ------------------------------------------------------------------ #
-    # 7. Main loop
-    # ------------------------------------------------------------------ #
-    portfolio = Portfolio(cash=config.starting_capital)
-    pending_fills: list[Fill] = []  # fills queued on day D, applied on D+1
-
-    rebalance_dates_used: list[date] = []
-    per_rebalance_turnover: list[tuple[date, float]] = []
-
-    for i, day in enumerate(calendar):
-        day_date = day.date()
-
-        # ---- 5.i: apply fills queued on the prior day (at today's open) -----
-        if pending_fills:
-            open_prices_today = _open.get(day, {})
-            adv_today = _adv_20.get(day, {})
-            # Sort: sells/trims before buys so exits replenish cash before new purchases.
-            _side_order = {"sell": 0, "trim": 1, "buy": 2}
-            pending_fills.sort(key=lambda f: _side_order.get(f.side, 9))
-            # Stamp fills with next-open price and apply slippage as an effective
-            # price adjustment (spec 03 §1.3 option a — slippage moves cost basis).
-            stamped_fills = _stamp_fills(
-                pending_fills, open_prices_today, day_date, adv_today, cost_cfg
-            )
-            # Clamp buys to projected cash (sell proceeds + current cash, net of all
-            # costs) to prevent implicit leverage when buys were sized against equity
-            # that includes positions sold on the same rebalance day.
-            stamped_fills = _clamp_buys_to_cash(
-                stamped_fills, portfolio.cash, cost_fn, cost_cfg
-            )
-            portfolio.apply_fills(
-                stamped_fills,
-                cost_fn=cost_fn,
-                cost_cfg=cost_cfg,
-                adv_lookup=adv_today,
-            )
-            pending_fills = []
-
-        # ---- 5.ii: MTM at today's close_tr --------------------------------
-        close_tr_today: dict[str, float] = _close_tr.get(day, {})
-        portfolio.mark_to_market(day_date, close_tr_today)
-
-        # ---- 5.iii: catastrophic stop check (close-based, next open fill) --
-        close_today: dict[str, float] = _close.get(day, {})
-        if config.catastrophic_stop_pct > 0:
-            for isin, pos in list(portfolio.positions.items()):
-                c = close_today.get(isin)
-                if c is None:
-                    continue
-                stop_level = pos.cost_basis * (
-                    1.0 - config.catastrophic_stop_pct / 100.0
-                )
-                if c <= stop_level:
-                    log.info(
-                        "Catastrophic stop triggered: %s close=%.4f ≤ stop=%.4f on %s",
-                        isin,
-                        c,
-                        stop_level,
-                        day_date,
-                    )
-                    pending_fills.append(
-                        Fill(
-                            isin=isin,
-                            symbol=pos.symbol,
-                            side="sell",
-                            qty=pos.shares,
-                            price=pos.last_price,  # placeholder; stamped to next open
-                            date=day_date,
-                            cost_rupees=0.0,
-                        )
-                    )
-
-        # ---- 5.iv: regime deployable fraction for today -------------------
-        deployable_fraction = overlay.deployable_fraction(day) if overlay else 1.0
-
-        # ---- 5.v: rebalance (decision at close, fills queued for next open) -
-        if day in rebalance_dates:
-            # Point-in-time universe: ISINs that have a price print today
-            universe_today = [
-                isin for isin, dates in _membership.items() if day in dates
-            ]
-            # Entry gate and ranking
-            ranked = signal_store.eligible_ranked(day, universe_today)
-            # Entry gate map for build_rebalance_plan
-            entry_gate_map = {
-                isin: signal_store.entry_gate(day, isin) for isin in universe_today
-            }
-            prev_weights = _current_weights(portfolio)
-
-            plan: RebalancePlan = build_rebalance_plan(
-                portfolio=portfolio,
-                ranked=ranked,
-                deployable_fraction=deployable_fraction,
-                config=config,
-                entry_gate_map=entry_gate_map,
-                prices=close_today,
-                symbols=_sym_map,
-                decision_date=day_date,
-            )
-
-            rebalance_fills = plan.sells + plan.buys + plan.trims
-
-            # Record turnover before queuing (using decision-date weights).
-            equity_now = portfolio.equity
-            turnover = _compute_turnover(
-                plan, prev_weights, config.target_positions, equity_now
-            )
-            per_rebalance_turnover.append((day_date, turnover))
-            rebalance_dates_used.append(day_date)
-
-            # De-duplicate: if a catastrophic stop already queued a sell for
-            # the same ISIN, drop it from the rebalance sells to avoid double-exit.
-            stop_isins = {f.isin for f in pending_fills if f.side == "sell"}
-            for f in rebalance_fills:
-                if f.isin in stop_isins and f.side == "sell":
-                    continue  # already queued via stop
-                pending_fills.append(f)
-
-    return EngineResult(
-        snapshots=portfolio.snapshots,
-        fills_log=portfolio.fills_log,
-        suspension_log=portfolio.suspension_log,
-        rebalance_dates_used=rebalance_dates_used,
-        per_rebalance_turnover=per_rebalance_turnover,
+    ctx = EngineContext(
         config=config,
-        total_cost_paid=portfolio._total_cost_paid,
+        cost_fn=cost_fn,
+        cost_cfg=cost_cfg,
+        close_tr=_close_tr,
+        close=_close,
+        open=_open,
+        adv_20=_adv_20,
+        sym_map=_sym_map,
+        membership=_membership,
+        rebalance_dates=rebalance_dates,
+        signal_store=signal_store,
+        overlay=overlay,
     )
+    return ctx, calendar
+
+
+def step_day(ctx: EngineContext, state: LoopState, day: pd.Timestamp) -> None:
+    """
+    Execute ONE trading day of the v2 loop (02 §3) against mutable `state` using the
+    immutable `ctx`. This is the exact former body of run()'s per-day loop, extracted
+    so the live paper shell (11 §3e) drives identical logic across process restarts
+    via a persisted pending-fills queue.
+
+    HARD ORDERING INVARIANT (11 §3e): execute the prior session's queued fills (5.i)
+    ALWAYS runs BEFORE the catastrophic-stop check (5.iii), so a name bought at today's
+    open with its cost_basis set in 5.i is stop-eligible on the same day's close.
+    """
+    config = ctx.config
+    portfolio = state.portfolio
+    day_date = day.date()
+
+    # ---- 5.i: apply fills queued on the prior day (at today's open) -----
+    if state.pending_fills:
+        open_prices_today = ctx.open.get(day, {})
+        adv_today = ctx.adv_20.get(day, {})
+        # Sort: sells/trims before buys so exits replenish cash before new purchases.
+        _side_order = {"sell": 0, "trim": 1, "buy": 2}
+        state.pending_fills.sort(key=lambda f: _side_order.get(f.side, 9))
+        # Stamp fills with next-open price and apply slippage as an effective
+        # price adjustment (spec 03 §1.3 option a — slippage moves cost basis).
+        stamped_fills = _stamp_fills(
+            state.pending_fills, open_prices_today, day_date, adv_today, ctx.cost_cfg
+        )
+        # Clamp buys to projected cash to prevent implicit leverage.
+        stamped_fills = _clamp_buys_to_cash(
+            stamped_fills, portfolio.cash, ctx.cost_fn, ctx.cost_cfg
+        )
+        portfolio.apply_fills(
+            stamped_fills,
+            cost_fn=ctx.cost_fn,
+            cost_cfg=ctx.cost_cfg,
+            adv_lookup=adv_today,
+        )
+        state.pending_fills = []
+
+    # ---- 5.ii: MTM at today's close_tr --------------------------------
+    close_tr_today: dict[str, float] = ctx.close_tr.get(day, {})
+    portfolio.mark_to_market(day_date, close_tr_today)
+
+    # ---- 5.iii: catastrophic stop check (close-based, next open fill) --
+    close_today: dict[str, float] = ctx.close.get(day, {})
+    if config.catastrophic_stop_pct > 0:
+        for isin, pos in list(portfolio.positions.items()):
+            c = close_today.get(isin)
+            if c is None:
+                continue
+            stop_level = pos.cost_basis * (1.0 - config.catastrophic_stop_pct / 100.0)
+            if c <= stop_level:
+                log.info(
+                    "Catastrophic stop triggered: %s close=%.4f ≤ stop=%.4f on %s",
+                    isin,
+                    c,
+                    stop_level,
+                    day_date,
+                )
+                state.pending_fills.append(
+                    Fill(
+                        isin=isin,
+                        symbol=pos.symbol,
+                        side="sell",
+                        qty=pos.shares,
+                        price=pos.last_price,  # placeholder; stamped to next open
+                        date=day_date,
+                        cost_rupees=0.0,
+                    )
+                )
+
+    # ---- 5.iv: regime deployable fraction for today -------------------
+    deployable_fraction = ctx.overlay.deployable_fraction(day) if ctx.overlay else 1.0
+
+    # ---- 5.v: rebalance (decision at close, fills queued for next open) -
+    if day in ctx.rebalance_dates:
+        # Point-in-time universe: ISINs that have a price print today
+        universe_today = [
+            isin for isin, dates in ctx.membership.items() if day in dates
+        ]
+        # Entry gate and ranking
+        ranked = ctx.signal_store.eligible_ranked(day, universe_today)
+        entry_gate_map = {
+            isin: ctx.signal_store.entry_gate(day, isin) for isin in universe_today
+        }
+        prev_weights = _current_weights(portfolio)
+
+        plan: RebalancePlan = build_rebalance_plan(
+            portfolio=portfolio,
+            ranked=ranked,
+            deployable_fraction=deployable_fraction,
+            config=config,
+            entry_gate_map=entry_gate_map,
+            prices=close_today,
+            symbols=ctx.sym_map,
+            decision_date=day_date,
+        )
+
+        rebalance_fills = plan.sells + plan.buys + plan.trims
+
+        # Record turnover before queuing (using decision-date weights).
+        equity_now = portfolio.equity
+        turnover = _compute_turnover(
+            plan, prev_weights, config.target_positions, equity_now
+        )
+        state.per_rebalance_turnover.append((day_date, turnover))
+        state.rebalance_dates_used.append(day_date)
+
+        # De-duplicate: if a catastrophic stop already queued a sell for the same
+        # ISIN, drop it from the rebalance sells to avoid double-exit.
+        stop_isins = {f.isin for f in state.pending_fills if f.side == "sell"}
+        for f in rebalance_fills:
+            if f.isin in stop_isins and f.side == "sell":
+                continue  # already queued via stop
+            state.pending_fills.append(f)
 
 
 # ---------------------------------------------------------------------------

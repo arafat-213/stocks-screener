@@ -558,6 +558,10 @@ class PaperV2PendingFill(Base):
     reason = Column(String, nullable=False)  # rebalance | catastrophic_stop
 
     decision_date = Column(Date, nullable=False)  # day D close that queued it
+    # Decision-close price the order was sized against (11 §3e). Buys need it to
+    # rebuild target notional (qty × price) when the queue is rehydrated after a
+    # restart; without it a rehydrated buy collapses to zero notional and is dropped.
+    decision_price = Column(Float, nullable=True)
     status = Column(String, nullable=False, default="pending")  # pending | filled
 
     # Populated on execution (next session's open).

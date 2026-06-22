@@ -24,5 +24,10 @@ celery_app.conf.update(
             "task": "app.tasks.execute_cleanup_task",
             "schedule": crontab(hour=2, minute=30),
         },
+        # v3/11 §4c — S3 forward paper book; weekday post-close, after bhavcopy publishes.
+        "s3-paper-daily-postclose": {
+            "task": "app.tasks.execute_paper_daily_task",
+            "schedule": crontab(day_of_week="1-5", hour=19, minute=30),
+        },
     },
 )
