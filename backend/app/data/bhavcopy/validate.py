@@ -23,6 +23,12 @@ Checks (01 §7):
      _CHECK7_TOLERANCE (295). Measured post-Phase-1 residual: 287 events
      full-range (269 in-window) from ~180 permanently-absent ISINs in NSE CA
      feed (spec 05 §11.3). Added: spec 05 Phase 2.
+  8. Succession coverage (T06.4): every asserted succession chain in
+     successor_map.parquet resolves to exactly one instrument_id in
+     prices_adjusted; both old and new legs must be present and share the
+     chain-constant root_isin. Fails if any asserted successor is absent or
+     mis-keyed. Skipped gracefully when successor_map is absent (pre-T06.1 stores).
+     Added: spec 06 T06.4.
 """
 
 import logging
@@ -148,6 +154,10 @@ class ValidationReport:
     ca_events_applied: int | None = None
     ca_events_unmatched: int | None = None
     checks_skipped: list[str] = field(default_factory=list)
+    # Check 8 — succession coverage (T06.4)
+    succession_chains_asserted: int = 0
+    succession_liquid_ghost_risk: int = 0
+    succession_liquid_resolved: int = 0
 
     def print_coverage(self) -> None:
         ca_line = (
@@ -161,6 +171,13 @@ class ValidationReport:
             if self.checks_skipped
             else ""
         )
+        succession_line = (
+            f"  Succession chains: {self.succession_chains_asserted} asserted "
+            f"({self.succession_liquid_resolved}/{self.succession_liquid_ghost_risk} "
+            f"liquid ghost-risk legs resolved)\n"
+            if self.succession_chains_asserted > 0
+            else ""
+        )
         print(
             f"\n=== Data Layer Coverage Report ===\n"
             f"  Rows:              {self.rows:,}\n"
@@ -169,6 +186,7 @@ class ValidationReport:
             f"  Date range:        {self.date_range_start} → {self.date_range_end}\n"
             f"  Days with gaps:    {self.pct_days_with_gaps:.1f}%\n"
             f"{ca_line}"
+            f"{succession_line}"
             f"{skipped}"
             f"=================================="
         )
@@ -489,6 +507,104 @@ def _check_7_unadjusted_action_scan(
     logger.info("check_7 PASS: %d ≤ tolerance %d", n_flagged, tolerance)
 
 
+def _check_8_succession_coverage(
+    successor_map: pd.DataFrame,
+    prices: pd.DataFrame,
+    report: ValidationReport,
+) -> None:
+    """Every asserted succession chain resolves to one instrument_id in prices_adjusted.
+
+    For each asserted OLD→NEW edge in ``successor_map``:
+    - The new leg's ISIN must be present in ``prices_adjusted`` (otherwise the old
+      leg becomes a ghost: held but un-sellable with no forward prices).
+    - Both old and new legs must carry ``instrument_id == root_isin`` (the chain-
+      constant identity from T06.2). A mismatch means T06.2 was not applied or the
+      re-derive was partial — momentum is still truncated on the new leg.
+
+    Fails loud (Rule 12) if any asserted edge violates either condition. Skips
+    gracefully when ``successor_map`` is absent or empty (pre-T06.1 stores).
+    """
+    if successor_map.empty:
+        report.checks_skipped.append("8-succession-coverage (no successor_map)")
+        logger.info("check_8: no successor_map — skipping")
+        return
+
+    asserted = successor_map[successor_map["asserted"]]
+    if asserted.empty:
+        report.checks_skipped.append("8-succession-coverage (no asserted links)")
+        logger.info("check_8: no asserted links in successor_map — skipping")
+        return
+
+    isins_in_prices: set[str] = (
+        set(prices["isin"].unique()) if not prices.empty else set()
+    )
+
+    # Per-ISIN instrument_id lookup (first row is sufficient — invariant within an ISIN).
+    if "instrument_id" in prices.columns and not prices.empty:
+        id_by_isin: dict[str, str] = (
+            prices.groupby("isin")["instrument_id"].first().to_dict()
+        )
+    else:
+        id_by_isin = {}
+
+    failures: list[str] = []
+    liquid_old_legs = 0
+    liquid_resolved = 0
+
+    for row in asserted.itertuples(index=False):
+        old = str(row.old_isin)
+        new = str(row.new_isin)
+        root = str(row.root_isin)
+        liquid = bool(row.liquid_old_leg)
+
+        if liquid:
+            liquid_old_legs += 1
+
+        # Gate 1: new leg must be present in prices_adjusted.
+        if new not in isins_in_prices:
+            failures.append(
+                f"  {old}→{new}: new leg {new!r} absent from prices_adjusted"
+            )
+            continue
+
+        # Gate 2: old leg instrument_id must equal root_isin.
+        old_id = id_by_isin.get(old, old)
+        if old_id != root:
+            failures.append(
+                f"  {old}→{new}: old leg instrument_id={old_id!r} ≠ root={root!r}"
+            )
+            continue
+
+        # Gate 3: new leg instrument_id must equal root_isin.
+        new_id = id_by_isin.get(new, new)
+        if new_id != root:
+            failures.append(
+                f"  {old}→{new}: new leg instrument_id={new_id!r} ≠ root={root!r}"
+            )
+            continue
+
+        if liquid:
+            liquid_resolved += 1
+
+    report.succession_chains_asserted = len(asserted)
+    report.succession_liquid_ghost_risk = liquid_old_legs
+    report.succession_liquid_resolved = liquid_resolved
+
+    assert not failures, (
+        f"check_8 FAIL: {len(failures)} asserted succession chain(s) not resolved "
+        f"correctly in prices_adjusted:\n"
+        + "\n".join(failures[:10])
+        + (f"\n  ... ({len(failures) - 10} more)" if len(failures) > 10 else "")
+    )
+
+    logger.info(
+        "check_8 PASS: %d asserted chains OK; %d/%d liquid ghost-risk legs resolved",
+        len(asserted),
+        liquid_resolved,
+        liquid_old_legs,
+    )
+
+
 def _build_coverage_report(
     prices: pd.DataFrame,
     membership: pd.DataFrame,
@@ -577,6 +693,7 @@ def run_validation(
     prices = store_mod.read_prices_adjusted(root)
     membership = store_mod.read_universe_membership(root)
     isin_map = store_mod.read_isin_symbol_map(root)
+    successor_map = store_mod.read_successor_map(root)
 
     report = ValidationReport()
 
@@ -608,6 +725,9 @@ def run_validation(
 
     logger.info("validate: running check 7 — universe-wide unadjusted-split scan")
     _check_7_unadjusted_action_scan(prices, report, tolerance=check7_tolerance)
+
+    logger.info("validate: running check 8 — succession coverage")
+    _check_8_succession_coverage(successor_map, prices, report)
 
     report.print_coverage()
     logger.info("validate: all checks passed")

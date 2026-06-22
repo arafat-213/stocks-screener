@@ -23,6 +23,7 @@ from app.data.bhavcopy.validate import (
     _check_4_no_lookahead,
     _check_5_tr_ge_price_adjusted,
     _check_7_unadjusted_action_scan,
+    _check_8_succession_coverage,
     run_validation,
 )
 
@@ -818,3 +819,271 @@ class TestRunValidationCheck7Integration:
         self._write_passing_dataset(tmp_path, today)
         report = run_validation(root=tmp_path, today=today)
         assert isinstance(report, ValidationReport)
+
+
+# ---------------------------------------------------------------------------
+# Check 8 — Succession coverage (T06.4)
+# ---------------------------------------------------------------------------
+
+_OLD = "INE100A01011"  # old leg of a face-value-split chain
+_NEW = "INE100A01029"  # new leg (successor)
+_ROOT = _OLD  # root_isin = oldest ISIN in the chain
+
+
+def _make_successor_map_row(
+    old: str = _OLD,
+    new: str = _NEW,
+    root: str = _ROOT,
+    asserted: bool = True,
+    liquid: bool = True,
+) -> pd.DataFrame:
+    return store_mod._conform(
+        pd.DataFrame(
+            [
+                {
+                    "old_isin": old,
+                    "new_isin": new,
+                    "transition_date": pd.Timestamp("2020-06-02"),
+                    "sig_consecutive": True,
+                    "sig_prefix": True,
+                    "sig_ca_split": False,
+                    "signals_matched": 2,
+                    "asserted": asserted,
+                    "root_isin": root if asserted else "",
+                    "liquid_old_leg": liquid,
+                }
+            ]
+        ),
+        store_mod.SUCCESSOR_MAP_SCHEMA,
+        "successor_map",
+    )
+
+
+def _make_prices_with_id(
+    isin: str, instrument_id: str, n: int = 10, start: str = "2020-01-02"
+) -> pd.DataFrame:
+    """One ISIN's prices with an explicit instrument_id."""
+    base = _make_prices(isin=isin, symbol="SYM", n=n, start=pd.Timestamp(start))
+    base["instrument_id"] = instrument_id
+    return base
+
+
+class TestCheck8SuccessionCoverage:
+    """Check 8 — asserted chains must resolve in prices_adjusted (T06.4).
+
+    WHY: if the new leg's ISIN is absent or its instrument_id isn't set to the
+    chain root, the signal layer is still momentum-blind on the new leg and the
+    old leg remains a sellable ghost — the exact defect that 06 closes.
+    """
+
+    def test_stitched_chain_passes(self):
+        """Both legs present + correct instrument_id → check 8 passes."""
+        smap = _make_successor_map_row()
+        prices = pd.concat(
+            [
+                _make_prices_with_id(_OLD, _ROOT, n=10, start="2020-01-02"),
+                _make_prices_with_id(_NEW, _ROOT, n=10, start="2020-06-02"),
+            ],
+            ignore_index=True,
+        )
+        report = ValidationReport()
+        _check_8_succession_coverage(smap, prices, report)  # must not raise
+
+        assert report.succession_chains_asserted == 1
+        assert report.succession_liquid_ghost_risk == 1
+        assert report.succession_liquid_resolved == 1
+
+    def test_broken_missing_new_isin_fails(self):
+        """New leg absent from prices_adjusted → check 8 fails (ghost risk not resolved).
+
+        WHY: the old leg held by the book has no future prices once it goes
+        dark — fills are dropped and the position is carried forever. The check
+        must catch this regression before it contaminates a warm-start.
+        """
+        smap = _make_successor_map_row()
+        # Only the old leg; new leg (successor) is entirely absent.
+        prices = _make_prices_with_id(_OLD, _ROOT, n=10, start="2020-01-02")
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_8"):
+            _check_8_succession_coverage(smap, prices, report)
+
+    def test_broken_wrong_instrument_id_mid_leg_fails(self):
+        """Mid-chain leg instrument_id ≠ root_isin → check 8 fails (multi-hop not stitched).
+
+        WHY: in a multi-hop chain A→B→C the B→C edge has old_isin=B, root=A.
+        If B's instrument_id was never updated (still "B"), the momentum series
+        for B's data is not joined to A's — the B leg is effectively invisible
+        to A's signal computation. This tests the old-leg gate for the non-trivial
+        case where old_isin != root_isin.
+        """
+        A = "INE100A01011"  # chain root
+        B = "INE100A01029"  # middle leg
+        C = "INE100A01037"  # newest leg
+        # B→C edge asserted, root = A.
+        smap = _make_successor_map_row(old=B, new=C, root=A, liquid=True)
+        prices = pd.concat(
+            [
+                # B leg: instrument_id NOT updated to root A (still its own ISIN B).
+                _make_prices_with_id(B, B, n=10, start="2019-06-01"),
+                _make_prices_with_id(C, A, n=10, start="2020-06-02"),
+            ],
+            ignore_index=True,
+        )
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_8"):
+            _check_8_succession_coverage(smap, prices, report)
+
+    def test_broken_wrong_instrument_id_new_leg_fails(self):
+        """New leg instrument_id ≠ root_isin → check 8 fails (un-stitched new leg).
+
+        WHY: the new leg carrying its own raw ISIN as instrument_id means
+        T06.2 rederive was not applied — the new leg is momentum-blind for
+        the full lookback window after the transition.
+        """
+        smap = _make_successor_map_row()
+        prices = pd.concat(
+            [
+                _make_prices_with_id(_OLD, _ROOT, n=10, start="2020-01-02"),
+                # New leg: instrument_id NOT updated (still its own ISIN, not root).
+                _make_prices_with_id(_NEW, _NEW, n=10, start="2020-06-02"),
+            ],
+            ignore_index=True,
+        )
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_8"):
+            _check_8_succession_coverage(smap, prices, report)
+
+    def test_no_map_skips_gracefully(self):
+        """Empty successor_map → check 8 skipped, noted in report, no raise."""
+        empty_smap = store_mod._empty(store_mod.SUCCESSOR_MAP_SCHEMA)
+        prices = _make_prices_with_id(_OLD, _OLD, n=10)
+        report = ValidationReport()
+        _check_8_succession_coverage(empty_smap, prices, report)  # must not raise
+        assert any("8-succession" in s for s in report.checks_skipped)
+
+    def test_unasserted_links_ignored(self):
+        """Non-asserted candidates in the map are not checked (only asserted matter)."""
+        smap = _make_successor_map_row(asserted=False)
+        # Only old leg present; if the unasserted link were checked this would fail.
+        prices = _make_prices_with_id(_OLD, _OLD, n=10)
+        report = ValidationReport()
+        _check_8_succession_coverage(smap, prices, report)  # must not raise
+        assert any("8-succession" in s for s in report.checks_skipped)
+
+    def test_liquid_ghost_risk_counts(self):
+        """Report correctly counts liquid vs non-liquid resolved chains."""
+        # One liquid asserted edge (resolved), one non-liquid asserted edge (resolved).
+        liq_row = _make_successor_map_row(
+            old="INE111A01011", new="INE111A01029", root="INE111A01011", liquid=True
+        )
+        non_liq_row = _make_successor_map_row(
+            old="INE222A01011", new="INE222A01029", root="INE222A01011", liquid=False
+        )
+        smap = pd.concat([liq_row, non_liq_row], ignore_index=True)
+        prices = pd.concat(
+            [
+                _make_prices_with_id("INE111A01011", "INE111A01011", n=5),
+                _make_prices_with_id("INE111A01029", "INE111A01011", n=5),
+                _make_prices_with_id("INE222A01011", "INE222A01011", n=5),
+                _make_prices_with_id("INE222A01029", "INE222A01011", n=5),
+            ],
+            ignore_index=True,
+        )
+        report = ValidationReport()
+        _check_8_succession_coverage(smap, prices, report)
+
+        assert report.succession_chains_asserted == 2
+        assert report.succession_liquid_ghost_risk == 1
+        assert report.succession_liquid_resolved == 1
+
+
+class TestRunValidationCheck8Integration:
+    """End-to-end run_validation integration for Check 8."""
+
+    def _write_base_dataset(self, tmp_path: Path, today: date) -> None:
+        """Minimal dataset that passes checks 1-7 (reused from Check 7 tests)."""
+        live_start = pd.Timestamp(today - timedelta(days=50))
+        old_start = pd.Timestamp(today - timedelta(days=800))
+        prices_live = _make_prices(
+            isin="INE000000001", symbol="LIVE", n=30, start=live_start, vary_tv=True
+        )
+        prices_del = _make_prices(
+            isin="INE000000002", symbol="GONE", n=30, start=old_start
+        )
+        prices = pd.concat([prices_live, prices_del], ignore_index=True)
+        membership = pd.concat(
+            [_make_membership(prices_live), _make_membership(prices_del)],
+            ignore_index=True,
+        )
+        isin_map = pd.DataFrame(
+            {
+                "isin": ["INE000000001", "INE000000002"],
+                "symbol": ["LIVE", "GONE"],
+                "first_date": [prices_live["date"].min(), prices_del["date"].min()],
+                "last_date": [prices_live["date"].max(), prices_del["date"].max()],
+                "instrument_id": ["INE000000001", "INE000000002"],
+            }
+        )
+        store_mod.write_prices_adjusted(prices, root=tmp_path)
+        store_mod.write_universe_membership(membership, root=tmp_path)
+        store_mod.write_isin_symbol_map(isin_map, root=tmp_path)
+
+    def test_stitched_chain_passes_run_validation(self, tmp_path):
+        """A fully stitched chain in prices_adjusted + successor_map → run_validation passes."""
+        today = date(2026, 6, 14)
+        self._write_base_dataset(tmp_path, today)
+
+        # Add a stitched succession chain.
+        old_prices = _make_prices_with_id(
+            _OLD,
+            _ROOT,
+            n=15,
+            start=str((pd.Timestamp(today) - pd.tseries.offsets.BDay(35)).date()),
+        )
+        new_prices = _make_prices_with_id(
+            _NEW,
+            _ROOT,
+            n=10,
+            start=str((pd.Timestamp(today) - pd.tseries.offsets.BDay(15)).date()),
+        )
+        chain_prices = pd.concat([old_prices, new_prices], ignore_index=True)
+
+        existing = store_mod.read_prices_adjusted(root=tmp_path)
+        all_prices = pd.concat([existing, chain_prices], ignore_index=True)
+        store_mod.write_prices_adjusted(all_prices, root=tmp_path)
+
+        store_mod.write_successor_map(_make_successor_map_row(), root=tmp_path)
+
+        report = run_validation(root=tmp_path, today=today)
+        assert report.succession_chains_asserted == 1
+        assert report.succession_liquid_resolved == 1
+
+    def test_unstitched_chain_fails_run_validation(self, tmp_path):
+        """An asserted edge where the new leg is absent breaks run_validation.
+
+        WHY: end-to-end gate — the full validation pipeline must detect a
+        succession that was asserted but not materialised in prices_adjusted,
+        so any future re-derive regression is caught immediately.
+        """
+        today = date(2026, 6, 14)
+        self._write_base_dataset(tmp_path, today)
+
+        # Old leg present in prices, but new leg absent (broken / un-stitched).
+        old_prices = _make_prices_with_id(_OLD, _ROOT, n=10)
+        existing = store_mod.read_prices_adjusted(root=tmp_path)
+        store_mod.write_prices_adjusted(
+            pd.concat([existing, old_prices], ignore_index=True), root=tmp_path
+        )
+        store_mod.write_successor_map(_make_successor_map_row(), root=tmp_path)
+
+        with pytest.raises(AssertionError, match="check_8"):
+            run_validation(root=tmp_path, today=today)
+
+    def test_no_successor_map_passes_run_validation(self, tmp_path):
+        """Absence of successor_map → check 8 skipped; run_validation still passes."""
+        today = date(2026, 6, 14)
+        self._write_base_dataset(tmp_path, today)
+        # No successor_map written — pre-T06.1 store shape.
+        report = run_validation(root=tmp_path, today=today)
+        assert report.succession_chains_asserted == 0
+        assert any("8-succession" in s for s in report.checks_skipped)

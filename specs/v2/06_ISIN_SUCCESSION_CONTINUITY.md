@@ -4,7 +4,8 @@
 > (2026-06-22, independent bookkeeping guard — see §10) + T06.1 DONE (2026-06-22, see §11)
 > + T06.2 DONE (2026-06-22, `instrument_id` materialised + store re-derived — see §12)
 > + T06.3 DONE (2026-06-22, signal/factor/engine identity re-keyed onto `instrument_id` —
-> see §13); T06.4 → T06.5 → T06.6 not started.**
+> see §13) + T06.4 DONE (2026-06-22, succession-coverage check + clean validation run —
+> see §14); T06.5 → T06.6 not started.**
 > Decision (2026-06-22): canonical `instrument_id` (§9). Cold-session task chain
 > `T06.1 → … → T06.6` in §10; T06.1 is the unconditional gate. Surfaced 2026-06-22 during the v3/11
 > S3 forward-paper warm-start (`specs/v3/11_PROBATIONARY_DEPLOY_PREREG.md`). Deferred to a
@@ -337,6 +338,13 @@ mirroring `05`'s `unmatched`-audit discipline.
 - **Tests.** Fixture with one stitched + one broken chain; assert pass/fail respectively.
 - **Guardrails.** Validator is read-only; it reports, it does not mutate the store.
 
+> **T06.4 DONE — 2026-06-22.** See §14 for the implementation + verification. All success
+> gates met: `validate.py` passes on the re-derived store; the new check fails on three
+> deliberately broken fixtures; 146/146 liquid ghost-risk legs resolve (note: 146 asserted
+> liquid, 4 non-asserted liquid legs remain in `successor_unmatched` for manual triage —
+> the 150 §3 count includes those 4 which cannot be validated automatically). **194 data-suite
+> tests green** (was 184; +10). 0 regressions in `backtest_v2`+`paper_v2` suites.
+
 ---
 
 ### T06.5 — Reset + re-warm-start the `v3/11` paper book on stitched data
@@ -574,3 +582,78 @@ exactly one leg is live, so:
 T06.3 success gate **MET**. Next on the critical path: **T06.4** (extend `validate.py` with a
 succession-coverage check). No FINAL_OOS interaction; no validation claim made here (re-measure is
 T06.6).
+
+---
+
+## 14. T06.4 results (2026-06-22)
+
+**Extended `validate.py` with a succession-coverage check (Check 8) and ran full validation on
+the re-derived, identity-continuous store.** Validator is read-only; it reports but never mutates
+the store (per the T06.4 guardrail).
+
+### What shipped
+
+- **`backend/app/data/bhavcopy/validate.py`** — Check 8 (`_check_8_succession_coverage`):
+  for every asserted `old → new` edge in `successor_map.parquet`, enforces three gates:
+  (1) the new leg's ISIN must be present in `prices_adjusted` (else the old leg becomes a
+  ghost with no forward prices); (2) the old leg's `instrument_id` must equal `root_isin`
+  (catches multi-hop middle legs that weren't re-derived); (3) the new leg's `instrument_id`
+  must equal `root_isin` (the primary T06.2 correctness invariant — a new leg carrying its
+  own raw ISIN means T06.2 wasn't applied and the leg is momentum-blind). Skips gracefully
+  (noted in `report.checks_skipped`) when `successor_map` is absent (pre-T06.1 stores) or
+  contains no asserted links. `ValidationReport` extended with three new fields:
+  `succession_chains_asserted`, `succession_liquid_ghost_risk`, `succession_liquid_resolved`;
+  `print_coverage()` surfaces them when non-zero. `run_validation` reads `successor_map` from
+  the store and calls the new check between Check 7 and the coverage print.
+- **`tests/data/test_bhavcopy_validate.py`** — 10 new tests in `TestCheck8SuccessionCoverage`
+  and `TestRunValidationCheck8Integration`:
+  - `test_stitched_chain_passes` — both legs + correct `instrument_id` → no raise; report
+    counts verified.
+  - `test_broken_missing_new_isin_fails` — new leg absent → `AssertionError("check_8")`.
+  - `test_broken_wrong_instrument_id_mid_leg_fails` — multi-hop middle leg with stale
+    `instrument_id` → `AssertionError("check_8")` (tests the old-leg gate on the non-trivial
+    B→C edge where `old_isin ≠ root_isin`).
+  - `test_broken_wrong_instrument_id_new_leg_fails` — new leg `instrument_id` not updated →
+    `AssertionError("check_8")`.
+  - `test_no_map_skips_gracefully` — empty map → skip, noted in report.
+  - `test_unasserted_links_ignored` — non-asserted candidate → skip (Rule 12: don't validate
+    what was never asserted).
+  - `test_liquid_ghost_risk_counts` — two asserted edges (one liquid, one non-liquid) →
+    report counts are accurate.
+  - End-to-end `TestRunValidationCheck8Integration`: stitched-chain passes, unstitched fails
+    at full `run_validation` level, no-map skips.
+
+### Real store validation run — success gate **MET**
+
+```
+=== Data Layer Coverage Report ===
+  Rows:              4,020,618
+  Distinct ISINs:    3,472
+  Delisted ISINs:    741
+  Date range:        2017-01-02 → 2026-06-19
+  Days with gaps:    5.4%
+  CA events:         (not supplied)
+  Succession chains: 333 asserted (146/146 liquid ghost-risk legs resolved)
+==================================
+```
+
+All 7 pre-existing checks pass + the new Check 8 is clean. **No checks skipped.**
+
+| Gate | Result |
+|---|---|
+| `validate.py` passes on re-derived store | ✓ |
+| New check fails on broken fixture (missing new leg) | ✓ red-before / green-after |
+| New check fails on broken fixture (wrong `instrument_id` new leg) | ✓ red-before / green-after |
+| New check fails on broken fixture (multi-hop mid-leg not stitched) | ✓ red-before / green-after |
+| **Liquid ghost-risk legs resolved** | ✓ **146/146** |
+| No-regression (data suite) | ✓ **194 passed** (was 184; +10) |
+| No-regression (`backtest_v2`+`paper_v2`) | ✓ (verified) |
+
+> **Liquid count note.** The §3 "150 liquid ghost-risk legs" includes 4 non-asserted liquid
+> old legs (in `successor_unmatched`, left for manual triage per Rule 12). Check 8 validates
+> only asserted links — 146 of the 150. The 4 unmatched are correctly surfaced in the audit
+> artifact, not silently checked in.
+
+T06.4 success gate **MET**. Next on the critical path: **T06.5** (reset + re-warm-start the
+`v3/11` paper book on stitched data). No FINAL_OOS interaction; no validation claim made here
+(re-measure is T06.6).
