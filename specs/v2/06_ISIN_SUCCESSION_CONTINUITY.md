@@ -1,7 +1,8 @@
 # Spec 06 — ISIN-Succession *Identity* Continuity (open data-layer gap)
 
-> **Status: IN PROGRESS — strategy locked (§9), tasks broken out (§10). T06.1 DONE
-> (2026-06-22, see §11); T06.2 → … → T06.6 not started.**
+> **Status: IN PROGRESS — strategy locked (§9), tasks broken out (§10). T06.0 DONE
+> (2026-06-22, independent bookkeeping guard — see §10) + T06.1 DONE (2026-06-22, see §11);
+> T06.2 → … → T06.6 not started.**
 > Decision (2026-06-22): canonical `instrument_id` (§9). Cold-session task chain
 > `T06.1 → … → T06.6` in §10; T06.1 is the unconditional gate. Surfaced 2026-06-22 during the v3/11
 > S3 forward-paper warm-start (`specs/v3/11_PROBATIONARY_DEPLOY_PREREG.md`). Deferred to a
@@ -113,7 +114,8 @@ identity-continuous data.** Record alongside the `11` "exploratory" ceiling.
   "ok" but `prices_adjusted` max date is `2026-06-19` (today's bhavcopy not yet
   published/landed at append time). Cosmetic, but the incremental append should not mark a
   date "ok" when it produced zero stored rows — worth a guard so the checkpoint can't claim
-  coverage it doesn't have.
+  coverage it doesn't have. **FIXED by T06.0 (2026-06-22):** zero-row days are now marked
+  `"empty"` (new status) and never counted as coverage — see §10 T06.0.
 
 ## 8. Current operational state (as of 2026-06-22)
 
@@ -192,6 +194,21 @@ cleanup that can run any time.
 - **Success gate.** New test red-before/green-after; existing `incremental` tests stay green.
 - **Out of scope.** Anything about ISIN identity — this is a pure bookkeeping fix. Sequence it
   whenever; not on the T06.1→…→6 critical path.
+
+> **T06.0 DONE — 2026-06-22.** Root cause located: `build._process_day` marked a day `"ok"`
+> whenever the download+parse succeeded — **even when the parsed frame was empty** (the
+> "write per-day parquet even if empty" path). A not-yet-final EOD file that parses to zero
+> in-scope EQ rows therefore claimed coverage while `prices_adjusted` stored nothing — exactly
+> the §7 `2026-06-22 "ok"` vs max-date `2026-06-19` over-claim. (The 404 path already correctly
+> marked `"missing"`, so NSE holidays were never the over-claim source — no holiday set needed.)
+> **Fix:** new `_STATUS_EMPTY = "empty"` status — a zero-row day is recorded but **never counted
+> as coverage** (`BuildReport.days_empty`, surfaced in `summary()`); it is terminal-on-resume like
+> `"missing"` (its cached `.zip` is reused by `download` anyway, so re-parsing every run buys
+> nothing) — consistent with the existing idempotency model, not a new re-fetch path. **Tests:**
+> `TestZeroRowCoverageGuard` in `tests/data/test_bhavcopy_build.py` — red-before/green-after on a
+> valid-zip-but-zero-EQ-row day (asserts checkpoint is `"empty"`, not `"ok"`; row not stored) +
+> a resume-idempotency test (stays `"empty"`, not double-counted, no network). **177 data-suite
+> tests green** (was 175; +2). No ISIN-identity work — pure bookkeeping, per the guardrail.
 
 ---
 

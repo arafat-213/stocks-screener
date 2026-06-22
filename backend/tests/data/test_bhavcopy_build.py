@@ -415,6 +415,82 @@ class TestErrorHandling:
         assert _DAY1.isoformat() in cp["errors"]
 
 
+class TestZeroRowCoverageGuard:
+    """T06.0 (§7): a downloaded-but-zero-row day must NOT claim coverage.
+
+    The §7 over-claim: ``.build_checkpoint.json`` marked a date ``ok`` while
+    ``prices_adjusted`` stored no rows for it (a not-yet-final EOD file that
+    parses to zero in-scope EQ rows). Such a day must be marked ``empty``
+    (provisional, re-attempted next run), never ``ok``.
+    """
+
+    def _zero_row_zip(self, trad_dt: str) -> bytes:
+        # Valid UDiFF zip whose only row is an out-of-scope series (BE) → parses
+        # to zero in-scope EQ rows (simulates a placeholder / not-yet-final file).
+        csv = (
+            _UDIFF_HEADER
+            + "\n"
+            + _udiff_row(TradDt=trad_dt, BizDt=trad_dt, SctySrs="BE")
+            + "\n"
+        )
+        fn = f"BhavCopy_NSE_CM_0_0_0_{trad_dt.replace('-', '')}_F_0000.csv"
+        return _zip(csv, fn)
+
+    def test_zero_row_day_marked_empty_not_ok(self, tmp_path):
+        sess = _session_serving(
+            {
+                _DAY1: _udiff_zip(_DAY1.isoformat()),
+                _DAY2: self._zero_row_zip(_DAY2.isoformat()),  # downloads, 0 EQ rows
+            }
+        )
+        report = bld.run_build(
+            _DAY1,
+            _DAY2,
+            root=tmp_path / "store",
+            raw_root=tmp_path / "raw",
+            sleep=_noop,
+            _session=sess,
+            _ca_records=[],
+        )
+
+        # Day2 stored nothing → must not be counted as covered.
+        assert report.days_ok == 1, report
+        assert report.days_empty == 1, report
+        assert report.days_error == 0, report
+
+        cp = bld._load_checkpoint(tmp_path / "store")
+        assert cp["days"][_DAY2.isoformat()] == "empty"
+        assert cp["days"][_DAY2.isoformat()] != "ok"  # the §7 over-claim, guarded
+
+        prices = store_mod.read_prices_adjusted(root=tmp_path / "store")
+        assert _DAY2 not in set(prices["date"].dt.date)
+
+    def test_empty_day_stays_empty_and_not_re_counted_on_resume(self, tmp_path):
+        """Idempotency: an 'empty' day is terminal-on-resume (like 'missing') — a
+        second run does not silently flip it to 'ok' nor double-count it."""
+        root = tmp_path / "store"
+        kwargs = dict(root=root, raw_root=tmp_path / "raw", sleep=_noop, _ca_records=[])
+
+        sess1 = _session_serving(
+            {
+                _DAY1: _udiff_zip(_DAY1.isoformat()),
+                _DAY2: self._zero_row_zip(_DAY2.isoformat()),
+            }
+        )
+        r1 = bld.run_build(_DAY1, _DAY2, _session=sess1, **kwargs)
+        assert (r1.days_ok, r1.days_empty) == (1, 1)
+
+        # Second run: everything cached → no HTTP calls; counts unchanged; Day2 still
+        # 'empty' (never promoted to coverage).
+        sess2 = FakeSession(lambda url: FakeResp(500, b""))  # must not be called
+        r2 = bld.run_build(_DAY1, _DAY2, _session=sess2, **kwargs)
+        assert sess2.calls == [], f"unexpected HTTP calls: {sess2.calls}"
+        assert (r2.days_ok, r2.days_empty) == (1, 1)
+
+        cp = bld._load_checkpoint(root)
+        assert cp["days"][_DAY2.isoformat()] == "empty"
+
+
 class TestIdempotency:
     """Running twice over the same range produces identical output (no duplicates)."""
 

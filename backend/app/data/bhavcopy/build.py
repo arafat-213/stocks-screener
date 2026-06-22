@@ -18,7 +18,8 @@ A JSON file (``{root}/.build_checkpoint.json``) records per-date status::
         "days": {
             "2024-01-02": "ok",       # downloaded + parsed; per-day parquet written
             "2024-01-03": "missing",  # both format 404s (holiday / not yet published)
-            "2024-01-04": "error"     # non-retryable failure
+            "2024-01-04": "error",    # non-retryable failure
+            "2024-01-05": "empty"     # downloaded but 0 in-scope rows → provisional
         },
         "errors": {
             "2024-01-04": "<detail string>"
@@ -27,6 +28,9 @@ A JSON file (``{root}/.build_checkpoint.json``) records per-date status::
 
 On resume, dates already ``ok`` or ``missing`` load from their per-day parquet
 (``{root}/raw_parsed/YYYY-MM-DD.parquet``) without re-downloading or re-parsing.
+``empty`` (a date that downloaded but parsed to 0 in-scope rows, e.g. a not-yet-
+final EOD file) is recorded but **never counted as coverage** — guarding the §7
+over-claim where a date showed ``ok`` while ``prices_adjusted`` stored no rows.
 Stages 4–6 always re-run from the assembled raw data — this ensures adv_20 rolling
 windows are consistent across the full date range on every run.
 
@@ -85,6 +89,7 @@ _RAW_PARSED_DIR = "raw_parsed"
 _STATUS_OK = "ok"
 _STATUS_MISSING = "missing"
 _STATUS_ERROR = "error"
+_STATUS_EMPTY = "empty"  # downloaded + parsed but 0 in-scope rows → no coverage
 
 
 # --------------------------------------------------------------------------- #
@@ -108,6 +113,7 @@ class BuildReport:
     days_ok: int = 0
     days_missing: int = 0
     days_error: int = 0
+    days_empty: int = 0
     ca_events: int = 0
     ca_unmatched: int = 0
     rows_written: int = 0
@@ -118,7 +124,7 @@ class BuildReport:
         return (
             f"Build {self.start}→{self.end}: "
             f"{self.days_ok} days ok, {self.days_missing} missing, "
-            f"{self.days_error} errors | "
+            f"{self.days_empty} empty, {self.days_error} errors | "
             f"{self.rows_written:,} rows, {self.distinct_isins} ISINs | "
             f"CA: {self.ca_events} events, {self.ca_unmatched} unmatched"
         )
@@ -176,8 +182,14 @@ def _process_day(
     date_str = d.isoformat()
     days = checkpoint["days"]
 
-    # Already processed — load from disk (no network).
-    if date_str in days and days[date_str] in (_STATUS_OK, _STATUS_MISSING):
+    # Already processed — load from disk (no network). ``empty`` is terminal-on-
+    # resume like ``missing`` (its cached .zip is reused by download anyway), so it
+    # is recorded once and not re-parsed every run.
+    if date_str in days and days[date_str] in (
+        _STATUS_OK,
+        _STATUS_MISSING,
+        _STATUS_EMPTY,
+    ):
         return DayResult(d, days[date_str])
 
     # Download.
@@ -213,6 +225,14 @@ def _process_day(
     parsed_p = _parsed_path(store_root, d)
     parsed_p.parent.mkdir(parents=True, exist_ok=True)
     raw_df.to_parquet(parsed_p, index=False)
+
+    # T06.0 coverage guard (§7): a downloaded-but-zero-row day (e.g. a not-yet-final
+    # EOD file that parses to no in-scope EQ rows) must NOT claim coverage. Mark it
+    # "empty" — recorded but never counted as covered — rather than "ok", which would
+    # over-claim a date that stored nothing.
+    if raw_df.empty:
+        days[date_str] = _STATUS_EMPTY
+        return DayResult(d, _STATUS_EMPTY)
 
     days[date_str] = _STATUS_OK
     return DayResult(d, _STATUS_OK)
@@ -328,6 +348,8 @@ def run_build(
                 ok_dates.append(d)
             elif result.status == _STATUS_MISSING:
                 report.days_missing += 1
+            elif result.status == _STATUS_EMPTY:
+                report.days_empty += 1
             else:
                 report.days_error += 1
                 report.error_details.append(result.detail)
