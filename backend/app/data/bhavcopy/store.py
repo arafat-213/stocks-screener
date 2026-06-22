@@ -95,12 +95,40 @@ CA_UNMATCHED_SCHEMA: dict[str, str] = {
     "reason": "string",
 }
 
+# ISIN-succession map (specs/v2/06_ISIN_SUCCESSION_CONTINUITY.md, T06.1). One row
+# per adjacent same-symbol ISIN pair; ``asserted`` marks the >=2-signal links that
+# T06.2 collapses onto a chain-constant ``instrument_id`` (= ``root_isin``).
+SUCCESSOR_MAP_SCHEMA: dict[str, str] = {
+    "old_isin": "string",
+    "new_isin": "string",
+    "transition_date": "datetime64[ns]",  # new leg's first trading date
+    "sig_consecutive": "bool",  # old leg ends on the trading day before new leg begins
+    "sig_prefix": "bool",  # INE######01NN issuer-prefix match w/ incrementing suffix
+    "sig_ca_split": "bool",  # face-value-split CA event under old ISIN near transition
+    "signals_matched": "int64",  # count of the three signals above
+    "asserted": "bool",  # signals_matched >= 2 (the succession is asserted)
+    "root_isin": "string",  # union-find chain root (oldest ISIN); "" if not asserted
+    "liquid_old_leg": "bool",  # old leg adv_20 on its last day >= 5cr (ghost-risk)
+}
+
+# Succession candidates that could not be asserted (only 0-1 signals) or conflict
+# (ambiguous successor). Surfaced for manual triage, never silently dropped.
+SUCCESSOR_UNMATCHED_SCHEMA: dict[str, str] = {
+    "old_isin": "string",
+    "new_isin": "string",
+    "transition_date": "datetime64[ns]",
+    "signals_matched": "int64",
+    "reason": "string",
+}
+
 # Subdir / file names under the storage root.
 _PRICES_DIR = "prices_adjusted"
 _MEMBERSHIP_DIR = "universe_membership"
 _ISIN_MAP_FILE = "isin_symbol_map.parquet"
 _CA_EVENTS_FILE = "corporate_actions.parquet"
 _CA_UNMATCHED_FILE = "ca_unmatched.parquet"
+_SUCCESSOR_MAP_FILE = "successor_map.parquet"
+_SUCCESSOR_UNMATCHED_FILE = "successor_unmatched.parquet"
 
 # Partition columns.
 _PRICES_PARTITION = "isin"
@@ -324,3 +352,36 @@ def read_ca_unmatched(root: str | Path | None = None) -> pd.DataFrame:
         return _empty(CA_UNMATCHED_SCHEMA)
     df = pd.read_parquet(path)
     return _conform(df, CA_UNMATCHED_SCHEMA, "ca_unmatched")
+
+
+# --------------------------------------------------------------------------- #
+# successor_map / successor_unmatched (ISIN-succession identity, T06.1)        #
+# --------------------------------------------------------------------------- #
+def write_successor_map(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, SUCCESSOR_MAP_SCHEMA, "successor_map")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _SUCCESSOR_MAP_FILE, index=False)
+
+
+def read_successor_map(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _SUCCESSOR_MAP_FILE
+    if not path.exists():
+        return _empty(SUCCESSOR_MAP_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, SUCCESSOR_MAP_SCHEMA, "successor_map")
+
+
+def write_successor_unmatched(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, SUCCESSOR_UNMATCHED_SCHEMA, "successor_unmatched")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _SUCCESSOR_UNMATCHED_FILE, index=False)
+
+
+def read_successor_unmatched(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _SUCCESSOR_UNMATCHED_FILE
+    if not path.exists():
+        return _empty(SUCCESSOR_UNMATCHED_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, SUCCESSOR_UNMATCHED_SCHEMA, "successor_unmatched")
