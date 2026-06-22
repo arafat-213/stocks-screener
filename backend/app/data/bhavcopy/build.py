@@ -75,6 +75,7 @@ from app.data.bhavcopy import corporate_actions as ca_mod
 from app.data.bhavcopy import download as dl_mod
 from app.data.bhavcopy import parse as parse_mod
 from app.data.bhavcopy import store as store_mod
+from app.data.bhavcopy import succession as succ_mod
 from app.data.bhavcopy import universe as uni_mod
 from app.data.bhavcopy import validate as val_mod
 
@@ -415,7 +416,12 @@ def run_build(
     # Stages 5–6: Universe (adv_20 + membership + isin_symbol_map)        #
     # ------------------------------------------------------------------ #
     logger.info("build: Stages 5–6 — universe + liquidity")
-    prices_df, membership_df, isin_map_df = uni_mod.build_universe(adjusted_df)
+    # Chain-constant identity (06_ISIN_SUCCESSION_CONTINUITY, T06.2): if a successor
+    # map already exists (built by T06.1 / succession.run_succession_build), collapse
+    # each asserted chain onto its root ISIN so the rebuilt store carries
+    # instrument_id natively. Absent (e.g. a first build) ⇒ identity for every ISIN.
+    id_map = succ_mod.instrument_id_map(store_mod.read_successor_map(root))
+    prices_df, membership_df, isin_map_df = uni_mod.build_universe(adjusted_df, id_map)
 
     # ------------------------------------------------------------------ #
     # Stage 7: Store parquet tables                                        #

@@ -34,6 +34,7 @@ def _prices_frame() -> pd.DataFrame:
                     "adj_factor": 1.0,
                     "tr_factor": 1.0,
                     "series": "EQ",
+                    "instrument_id": isin,  # standalone → instrument_id == isin
                 }
             )
     return pd.DataFrame(rows)
@@ -57,12 +58,14 @@ def _isin_map_frame() -> pd.DataFrame:
                 "symbol": "AAA",
                 "first_date": pd.Timestamp("2020-01-01"),
                 "last_date": pd.Timestamp("2020-01-03"),
+                "instrument_id": "INE111A01011",
             },
             {
                 "isin": "INE222B01012",
                 "symbol": "BBB",
                 "first_date": pd.Timestamp("2020-01-01"),
                 "last_date": pd.Timestamp("2020-01-03"),
+                "instrument_id": "INE222B01012",
             },
         ]
     )

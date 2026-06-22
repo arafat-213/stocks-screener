@@ -37,6 +37,7 @@ import logging
 
 import numpy as np
 import pandas as pd
+import pyarrow.dataset as pa_ds
 
 from app.data.bhavcopy import store
 from app.data.bhavcopy.corporate_actions import SPLIT
@@ -273,6 +274,80 @@ def build_successor_map(
     ].reset_index(drop=True)
 
     return successor_map, successor_unmatched
+
+
+# --------------------------------------------------------------------------- #
+# T06.2 — instrument_id materialisation                                        #
+# --------------------------------------------------------------------------- #
+def instrument_id_map(successor_map: pd.DataFrame) -> dict[str, str]:
+    """``isin -> instrument_id`` for every ISIN in an asserted succession chain.
+
+    The chain-constant ``instrument_id`` is the chain's ``root_isin`` (oldest leg).
+    Both legs of each asserted edge (old and new) are mapped to that root, so a
+    multi-hop chain A→B→C yields ``{A: A, B: A, C: A}``. ISINs absent from the map
+    are standalone instruments and resolve to themselves at the call site
+    (``build_universe`` / re-derive fill with the raw ISIN). Non-asserted / unmatched
+    candidates are deliberately excluded — we never stitch on thin evidence (Rule 12).
+    """
+    if successor_map.empty:
+        return {}
+    asserted = successor_map[successor_map["asserted"]]
+    mapping: dict[str, str] = {}
+    for row in asserted.itertuples(index=False):
+        mapping[str(row.old_isin)] = str(row.root_isin)
+        mapping[str(row.new_isin)] = str(row.root_isin)
+    return mapping
+
+
+def rederive_instrument_id(root: str | None = None) -> dict[str, int]:
+    """Re-derive the on-disk store so every row carries its ``instrument_id`` (T06.2).
+
+    A *correctness* column-add, not a re-computation: ``instrument_id`` is a pure
+    function of ``isin`` × the (already-built, T06.1) successor map, so the existing
+    adjusted prices / ``adv_20`` are read back and rewritten **unchanged** except for
+    the new column. This is faithful by construction (no re-download, no CA re-fetch,
+    no live feed) and idempotent — re-running overwrites the same column. Future full
+    rebuilds (``build.run_build``) and incremental appends produce ``instrument_id``
+    natively via ``build_universe``; this migrates the store that already exists.
+
+    Returns a small ``{rows, chains, isins_stitched}`` summary for logging/verification.
+    """
+    smap = store.read_successor_map(root)
+    id_map = instrument_id_map(smap)
+
+    base = store._root(root)
+
+    # prices_adjusted — read the partitioned dataset directly (the store reader now
+    # enforces the *new* schema, which the pre-migration files lack), attach the
+    # column, and rewrite through the conforming writer.
+    prices_path = base / store._PRICES_DIR
+    dataset = pa_ds.dataset(str(prices_path), format="parquet", partitioning="hive")
+    prices = dataset.to_table().to_pandas()
+    prices["instrument_id"] = (
+        prices["isin"].astype("string").map(id_map).fillna(prices["isin"])
+    )
+    store.write_prices_adjusted(prices, root)
+
+    # isin_symbol_map — single file; same column-add.
+    im_path = base / store._ISIN_MAP_FILE
+    isin_map = pd.read_parquet(im_path)
+    isin_map["instrument_id"] = (
+        isin_map["isin"].astype("string").map(id_map).fillna(isin_map["isin"])
+    )
+    store.write_isin_symbol_map(isin_map, root)
+
+    summary = {
+        "rows": len(prices),
+        "chains": int(smap["root_isin"].replace("", np.nan).nunique()),
+        "isins_stitched": len(id_map),
+    }
+    logger.info(
+        "rederive_instrument_id: %d rows, %d chains, %d ISINs stitched onto a root",
+        summary["rows"],
+        summary["chains"],
+        summary["isins_stitched"],
+    )
+    return summary
 
 
 def run_succession_build(root: str | None = None) -> tuple[pd.DataFrame, pd.DataFrame]:

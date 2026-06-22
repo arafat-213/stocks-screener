@@ -59,6 +59,11 @@ PRICES_ADJUSTED_SCHEMA: dict[str, str] = {
     "adj_factor": "float64",  # cumulative split/bonus back-adjustment factor
     "tr_factor": "float64",  # cumulative split+bonus+dividend factor
     "series": "string",  # EQ (scope per T0 decision)
+    # Chain-constant identity (06_ISIN_SUCCESSION_CONTINUITY, T06.2): the root
+    # (oldest) ISIN of a succession chain; == ``isin`` for standalone instruments.
+    # Old + new legs of a face-value-split re-issue share one ``instrument_id`` so
+    # the signal/holdings layer (T06.3) sees a single continuous instrument.
+    "instrument_id": "string",
 }
 
 UNIVERSE_MEMBERSHIP_SCHEMA: dict[str, str] = {
@@ -71,6 +76,8 @@ ISIN_SYMBOL_MAP_SCHEMA: dict[str, str] = {
     "symbol": "string",
     "first_date": "datetime64[ns]",
     "last_date": "datetime64[ns]",
+    # Chain-constant identity (T06.2); == ``isin`` for standalone instruments.
+    "instrument_id": "string",
 }
 
 # Audit trail for CA events fetched during build (05_DATA_ADJUSTMENT_REMEDIATION §11.2).
@@ -228,15 +235,22 @@ def read_prices_adjusted(
     isins: list[str] | None = None,
     start: str | pd.Timestamp | None = None,
     end: str | pd.Timestamp | None = None,
+    instrument_ids: list[str] | None = None,
 ) -> pd.DataFrame:
     """Read adjusted prices, optionally filtered by ISIN list and date range.
 
     ``isins`` prunes by partition; ``start``/``end`` (inclusive) push down on the
-    ``date`` column.
+    ``date`` column. ``instrument_ids`` selects whole succession chains (T06.2) —
+    every leg of a chain shares one ``instrument_id``, so this returns the
+    continuous old+new series. It is *not* a partition column, so the filter is a
+    row-group predicate (pushed down via column statistics), not a partition prune.
     """
     expr = None
     if isins is not None:
         expr = pa_ds.field("isin").isin(list(isins))
+    if instrument_ids is not None:
+        e = pa_ds.field("instrument_id").isin(list(instrument_ids))
+        expr = e if expr is None else expr & e
     if start is not None:
         e = pa_ds.field("date") >= pa.scalar(pd.Timestamp(start))
         expr = e if expr is None else expr & e

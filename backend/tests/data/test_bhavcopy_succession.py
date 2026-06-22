@@ -210,6 +210,9 @@ def test_run_build_is_idempotent(tmp_path):
             _life("INE100A01029", "AAA", "2020-06-02", "2020-12-31"),
         ]
     )
+    # isin_symbol_map now carries instrument_id (T06.2); succession build does not
+    # consume it (it keys on isin), but the store writer enforces the column.
+    lifetimes = lifetimes.assign(instrument_id=lifetimes["isin"])
     store.write_isin_symbol_map(lifetimes, root=tmp_path)
     store.write_corporate_actions(
         pd.DataFrame(columns=store.CORPORATE_ACTIONS_SCHEMA.keys()).astype(
@@ -240,6 +243,7 @@ def test_run_build_is_idempotent(tmp_path):
                 "adj_factor": 1.0,
                 "tr_factor": 1.0,
                 "series": "EQ",
+                "instrument_id": "INE100A01011",
             }
         ]
     )

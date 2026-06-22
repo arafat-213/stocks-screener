@@ -83,6 +83,7 @@ def _make_prices(
             "adj_factor": adj_arr,
             "tr_factor": tr_arr,
             "series": "EQ",
+            "instrument_id": isin,  # T06.2: standalone → instrument_id == isin
         }
     )
 
@@ -476,6 +477,7 @@ class TestRunValidation:
                 "symbol": ["LIVE", "GONE"],
                 "first_date": [prices_live["date"].min(), prices_del["date"].min()],
                 "last_date": [prices_live["date"].max(), prices_del["date"].max()],
+                "instrument_id": [live_isin, delisted_isin],
             }
         )
 
@@ -512,6 +514,7 @@ class TestRunValidation:
                 "symbol": ["LIVE"],
                 "first_date": [prices["date"].min()],
                 "last_date": [prices["date"].max()],  # within 365 days → not delisted
+                "instrument_id": ["INE000000001"],
             }
         )
         store_mod.write_prices_adjusted(prices, root=tmp_path)
@@ -781,6 +784,7 @@ class TestRunValidationCheck7Integration:
                 "symbol": ["LIVE", "GONE"],
                 "first_date": [prices_live["date"].min(), prices_del["date"].min()],
                 "last_date": [prices_live["date"].max(), prices_del["date"].max()],
+                "instrument_id": ["INE000000001", "INE000000002"],
             }
         )
         store_mod.write_prices_adjusted(prices, root=tmp_path)

@@ -50,6 +50,7 @@ logger = logging.getLogger(__name__)
 
 def build_universe(
     adjusted_df: pd.DataFrame,
+    instrument_id_by_isin: dict[str, str] | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     """Build adv_20, point-in-time membership, and ISIN→symbol map.
 
@@ -57,7 +58,13 @@ def build_universe(
     ----------
     adjusted_df:
         Output of ``adjust.adjust_prices()`` — all columns of
-        ``PRICES_ADJUSTED_SCHEMA`` except ``adv_20``.
+        ``PRICES_ADJUSTED_SCHEMA`` except ``adv_20`` and ``instrument_id``.
+    instrument_id_by_isin:
+        Optional ``isin -> instrument_id`` map (06_ISIN_SUCCESSION_CONTINUITY,
+        T06.2) collapsing each succession chain onto its root ISIN. Any ISIN not
+        in the map (the common case — standalone instruments) keeps
+        ``instrument_id == isin``. ``None`` ⇒ identity for every ISIN, so a build
+        with no succession map is byte-identical on every other column.
 
     Returns
     -------
@@ -87,8 +94,14 @@ def build_universe(
         lambda s: s.rolling(20, min_periods=1).median()
     )
     df = df.assign(adv_20=adv20_series)
+    # Chain-constant identity (T06.2): collapse each succession chain onto its root
+    # ISIN; standalone ISINs (and every ISIN when no map is given) map to themselves.
+    id_map = instrument_id_by_isin or {}
+    df = df.assign(
+        instrument_id=df["isin"].map(id_map).fillna(df["isin"]).astype("string")
+    )
     # Reorder columns to match PRICES_ADJUSTED_SCHEMA exactly (adv_20 sits
-    # between traded_value and adj_factor in the canonical schema).
+    # between traded_value and adj_factor; instrument_id is the trailing column).
     df = df[list(PRICES_ADJUSTED_SCHEMA)]
 
     logger.debug(
@@ -111,6 +124,12 @@ def build_universe(
         df.groupby(["isin", "symbol"], sort=False)["date"]
         .agg(first_date="min", last_date="max")
         .reset_index()
+    )
+    # Carry the chain-constant identity onto the lifetime map too (T06.2).
+    isin_symbol_map = isin_symbol_map.assign(
+        instrument_id=isin_symbol_map["isin"]
+        .map(id_map)
+        .fillna(isin_symbol_map["isin"])
     )
 
     return df, membership, isin_symbol_map

@@ -1,8 +1,9 @@
 # Spec 06 — ISIN-Succession *Identity* Continuity (open data-layer gap)
 
 > **Status: IN PROGRESS — strategy locked (§9), tasks broken out (§10). T06.0 DONE
-> (2026-06-22, independent bookkeeping guard — see §10) + T06.1 DONE (2026-06-22, see §11);
-> T06.2 → … → T06.6 not started.**
+> (2026-06-22, independent bookkeeping guard — see §10) + T06.1 DONE (2026-06-22, see §11)
+> + T06.2 DONE (2026-06-22, `instrument_id` materialised + store re-derived — see §12);
+> T06.3 → … → T06.6 not started.**
 > Decision (2026-06-22): canonical `instrument_id` (§9). Cold-session task chain
 > `T06.1 → … → T06.6` in §10; T06.1 is the unconditional gate. Surfaced 2026-06-22 during the v3/11
 > S3 forward-paper warm-start (`specs/v3/11_PROBATIONARY_DEPLOY_PREREG.md`). Deferred to a
@@ -280,6 +281,11 @@ mirroring `05`'s `unmatched`-audit discipline.
 - **Guardrails.** Signal/engine layers untouched in this task — they still key on `isin` and must
   keep passing. This task only *adds* the column + the continuous read path.
 
+> **T06.2 DONE — 2026-06-22.** See §12 for results + verification. Gate met: standalone ISINs
+> byte-identical on every original column, the 4 warm-start chains read back as one continuous
+> series under a single `instrument_id`, row count conserved (4,020,618). Signal/engine layers
+> untouched and green (606 `paper_v2`+`backtest_v2` tests pass with the added column).
+
 ---
 
 ### T06.3 — Re-key signal/factor + engine identity onto `instrument_id`
@@ -439,3 +445,56 @@ Asserted edges are collapsed with union-find so each chain (A→B→C) has one r
 
 T06.1 success gate **MET**. Next on the critical path: **T06.2** (add `instrument_id` +
 re-derive `prices_adjusted`). No FINAL_OOS interaction; no validation claim made here.
+
+---
+
+## 12. T06.2 results (2026-06-22)
+
+**Materialised the chain-constant `instrument_id` and re-derived the on-disk store on it.** The
+column is a pure function of `isin` × the (T06.1) successor map, so this is a *correctness*
+column-add, not a re-computation — every other column is preserved byte-for-byte. No
+engine/signal edits (those are T06.3); the layers still key on `isin` and stay green.
+
+### What shipped
+- **`store.py`** — `instrument_id` (string) appended to **`PRICES_ADJUSTED_SCHEMA`** and
+  **`ISIN_SYMBOL_MAP_SCHEMA`**; `read_prices_adjusted` gained an **`instrument_ids`** filter that
+  selects a whole succession chain (row-group predicate on `instrument_id`, not a partition prune
+  — `isin` stays the partition column, so the physical layout is unchanged, per the §10 guardrail).
+- **`succession.py`** — `instrument_id_map(successor_map)` (asserted chains only → `isin: root`,
+  multi-hop collapsed) and `rederive_instrument_id(root)`: reads the existing partitioned store
+  directly (the new reader enforces the post-T06.2 schema the pre-migration files lack), attaches
+  the column, and rewrites through the conforming writer. Faithful + network-free + idempotent.
+- **`universe.py`** — `build_universe(adjusted_df, instrument_id_by_isin=None)` now emits
+  `instrument_id` on both prices and `isin_symbol_map` (identity when no map ⇒ a build with no
+  succession map is byte-identical on every other column).
+- **`build.py`** — Stage 5–6 reads any existing `successor_map` and passes the id-map to
+  `build_universe`, so **future full rebuilds and incremental appends** (`incremental.py` delegates
+  to `run_build`) carry `instrument_id` natively — no separate migration needed going forward.
+- **Tests** — `tests/data/test_bhavcopy_instrument_id.py` (10 tests: map chain-collapse,
+  `build_universe` identity-vs-collapse, **parity** on a standalone ISIN, **continuity** on a 2-leg
+  chain via the `instrument_ids` read, **idempotent** re-derive against a store written *without*
+  the column). Store/universe/validate/succession fixtures updated for the new schema.
+  **184 data-suite tests green** (was 177; +7). **606 `paper_v2`+`backtest_v2` tests green** — the
+  added column is transparent to the signal/engine/paper layers (T06.2 guardrail verified).
+
+### Re-derive of the real store — success gate **MET**
+| Gate | Result |
+|---|---|
+| (c) Row count conserved | **4,020,618 → 4,020,618** (no drops/dupes) |
+| (a) Standalone ISIN byte-identical | `INE002A01018`: all 15 original columns identical; `instrument_id == isin` |
+| (b) Chain continuity (4 warm-start names) | each reads back as **one** `instrument_id` spanning **both** legs, gap-free |
+
+```
+BAJFINANCE INE296A01024→…032  one_id  2086+250=2336 rows  2017-01-02..2026-06-19
+MCX        INE745G01035→…043  one_id  2224+112=2336 rows  2017-01-02..2026-06-19
+NAZARA     INE418L01021→…047  one_id  1054+178=1232 rows  2021-03-30..2026-06-19
+EASEMYTRIP INE07O001018→…026  one_id   357+881=1238 rows  2021-03-19..2026-06-19
+```
+
+`rederive_instrument_id` summary: **319 chains** (= 333 asserted edges − 14 multi-hop collapses),
+**652 ISINs** stitched onto a root (= 333 edges + 319 roots). `isin_symbol_map` upgraded too
+(3,795 rows; 341 stitched leg-rows; `instrument_id == isin` preserved for every non-chain ISIN).
+
+T06.2 success gate **MET**. Next on the critical path: **T06.3** (re-key signal/factor + engine
+identity onto `instrument_id` — the big blast radius). No FINAL_OOS interaction; no validation
+claim made here (re-measure is T06.6).
