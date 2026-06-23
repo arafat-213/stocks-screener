@@ -1,13 +1,17 @@
 # Spec 07 — Merger / Cancellation *Identity* Continuity (open data-layer gap)
 
-> **Status: §6 LOCKED 2026-06-22 — Approach A (write-off / force-exit at termination)
-> signed by owner (Arafat). T07.1 + T07.2 DONE 2026-06-22 (engine force-exit landed,
-> test-green; see §10 + §11). T07.4 DONE 2026-06-23 (validate.py Check 9 enforces "no
-> carried-unsellable holding at the store edge"; see §12). T07.5 DONE 2026-06-23
-> (re-warm-started the `11` S3 book on de-ghosted data → 3 ghosts force-exited, book
-> ends 0 carried-unsellable / parity 0.0 bps; see §13). Next = T07.6 (the final
-> identity-continuous re-measure); T07.3 (merger-ratio remap) stays
-> data-gated / out-of-scope.** Surfaced
+> **Status: `07` COMPLETE 2026-06-23 — §6 LOCKED (Approach A, write-off / force-exit at
+> termination, signed by owner Arafat); T07.1+T07.2+T07.4+T07.5+T07.6 all DONE; T07.3
+> (merger-ratio remap) stays data-gated / out-of-scope.** T07.1+T07.2 DONE 2026-06-22
+> (engine force-exit landed, test-green; see §10 + §11). T07.4 DONE 2026-06-23 (validate.py
+> Check 9 enforces "no carried-unsellable holding at the store edge"; see §12). T07.5 DONE
+> 2026-06-23 (re-warm-started the `11` S3 book on de-ghosted data → 3 ghosts force-exited,
+> book ends 0 carried-unsellable / parity 0.0 bps; see §13). **T07.6 DONE 2026-06-23 (the
+> final identity-continuous re-measure; see §14): fully de-ghosted DISCOVERY metrics
+> Calmar 0.482 / Sharpe 0.704 / maxDD 24.8% / §6.2 retention 38% — merger force-exit is a
+> small net-negative (0.496→0.482), verdict UNCHANGED (marginally beats Mom30 0.473, still
+> fails §6.2); FINAL_OOS untouched.** With T07.6 the data-layer identity arc (`05`→`06`→`07`)
+> is closed; the `11` probation is now eligible to arm. Surfaced
 > 2026-06-22 by `06` T06.5's re-warm-start (`specs/v2/06_ISIN_SUCCESSION_CONTINUITY.md` §15).
 > This is the **third layer** of the same identity root cause: `05` fixed CA price-adjustment
 > across an ISIN change; `06` stitched **face-value successions** (one company, new ISIN) into
@@ -202,18 +206,23 @@ Designed like `06` §10 — each a self-contained cold session, honoring the pro
   carried-unsellable holdings (the T06.5 gate, now fully clean). ✅ **DONE 2026-06-23** (see §13).
   Worker + beat stayed STOPPED. **Gate PASSED:** the 3 T06.5 ghosts force-exit at K=15; the
   warm-started book ends with 0 carried-unsellable holdings, parity 0.0 bps.
-- **T07.6 — Re-measure** (folds into / supersedes `06` T06.6's caveat): record S3 metrics on the
-  now fully identity-continuous data; pre-accepted-null; no validated claim; FINAL_OOS untouched.
+- **T07.6 — Re-measure** (folds into / supersedes `06` T06.6's caveat). ✅ **DONE 2026-06-23**
+  (see §14). Record S3 metrics on the now fully identity-continuous data; pre-accepted-null; no
+  validated claim; FINAL_OOS untouched. **Gate:** the merger-dirty (force-exit OFF) leg reproduces
+  T06.6's stitched anchor exactly (Calmar 0.496); the identity-continuous (force-exit ON, K=15) leg
+  is recorded with its caveats. **Gate PASSED.**
 
-### Done-criteria for `07`
-`07` is complete when: the §6 decision is signed; the chosen approach (A/B/C) is implemented
-test-green; `validate.py` enforces no carried-unsellable holding; the `11` book re-warm-starts
-with **0** carried-unsellable holdings and parity ≈ 0.0 bps; and the re-measured metrics are
-recorded with the identity-continuity caveat. Only then is the `11` probation eligible to start.
+### Done-criteria for `07` — **ALL MET 2026-06-23**
+`07` is complete when: the §6 decision is signed ✅; the chosen approach (A) is implemented
+test-green ✅ (§11); `validate.py` enforces no carried-unsellable holding ✅ (§12); the `11` book
+re-warm-starts with **0** carried-unsellable holdings and parity ≈ 0.0 bps ✅ (§13); and the
+re-measured metrics are recorded with the identity-continuity caveat ✅ (§14). **All met → the
+`11` probation is now eligible to start** (subject to `11`'s own arming steps; worker + beat
+remain STOPPED until then).
 
 ---
 
-## 9. Operational state (as of 2026-06-23, post-T07.5)
+## 9. Operational state (as of 2026-06-23, post-T07.6 — `07` COMPLETE)
 
 - The `s3_probation` paper book is **re-warm-started to 2026-06-18 on de-ghosted data** (T07.5):
   it now holds **0 positions** (fully cash at the risk-off edge; see `06` §15) and **0
@@ -231,8 +240,11 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
   STOPPED.
 - **T07.5 re-warm-start ran 2026-06-23 (see §13).** Mutated ONLY the s3_probation book rows
   (reset → inception→edge replay with force-exit ON): book went 3 ghosts → 0 carried-unsellable,
-  parity 0.0 bps. Worker + beat remain STOPPED. Only T07.6 (re-measure) remains before `07`
-  is complete and the `11` probation is eligible.
+  parity 0.0 bps. Worker + beat remain STOPPED.
+- **T07.6 re-measure ran 2026-06-23 (see §14).** Read-only backtest (no book/engine/price/
+  FINAL_OOS state mutated). Fully identity-continuous DISCOVERY metrics recorded; verdict
+  unchanged. **`07` is now COMPLETE** — the `11` probation is eligible to arm (worker + beat
+  remain STOPPED until `11`'s own arming steps fire).
 
 ---
 
@@ -474,3 +486,75 @@ P11.1 / `06` T06.5 shadow-parity runs. The T07.5 contribution is the **0-ghost**
 - **T07.5 is the single-book confirmation of T07.4's universe-wide precondition.** Only T07.6
   (the identity-continuous re-measure) remains before `07` is complete and the `11` probation is
   eligible to arm.
+
+---
+
+## 14. T07.6 — the final identity-continuous re-measure (DONE 2026-06-23)
+
+**Artifact.** `backend/scripts/t07_6_remeasure.py` — mirrors `t06_6_remeasure.py` exactly, but
+isolates the **merger force-exit** instead of the succession stitch. Both legs run the frozen S3
+config (`s3_config` / SU2 / R10) over the RECORDED DISCOVERY window (2018-02-06 → 2023-06-30,
+base cost) on the **same stitched store** (`06`'s chain-constant `instrument_id`); the **only**
+difference is `engine.run`'s `terminate_after_silent_days`:
+
+- **MERGER-DIRTY** (`K=0`, force-exit OFF) — terminated holdings carried as MTM-frozen ghosts.
+  Reproduces T06.6's *stitched* leg (succession-clean, merger-dirty).
+- **IDENTITY-CONTINUOUS** (`K=15`, the live S3 default `S3_TERMINATE_AFTER_SILENT_DAYS`) —
+  every termination liquidated to cash at its flat last price (§6.2, no haircut). Succession-clean
+  **and** merger-clean.
+
+`K` is threaded into **both** the base and the §6.2-perturbed runs of each leg, so the force-exit
+fires identically across the retention probe. **No app code changed** (T07.2 shipped the engine
+capability); the force-exit unit suite stays green (6 passed).
+
+**Gate PASS — the dirty leg reproduces T06.6's stitched anchor exactly:** Calmar 0.496 (anchor
+0.496), Sharpe 0.721 (≈0.722), maxDD 24.8% (=24.8%). Same store + same config + `K=0` ⇒ same code
+path ⇒ same numbers, so the dirty→clean delta isolates **only** the merger force-exit.
+
+### Results — fully identity-continuous S3 over DISCOVERY
+
+| metric | T06.6 stitched (anchor) | merger-dirty (K=0) | **identity-continuous (K=15)** | move |
+|---|---:|---:|---:|:--:|
+| Calmar | 0.496 | 0.496 | **0.482** | ▼ |
+| Sharpe | 0.722 | 0.721 | **0.704** | ▼ |
+| max drawdown % | 24.8 | 24.8 | **24.8** | → |
+| §6.2 retention % | — | 40 | **38** | ▼ |
+| CAGR % | — | 12.3 | 12.0 | ▼ |
+| turnover % | — | 614 | 595 | ▼ |
+| §6.2 perturbed Calmar | — | 0.196 | 0.184 | ▼ |
+| deploy: strat Calmar | — | 0.496 | **0.482** | ▼ |
+| deploy: bench Calmar (Mom30 TRI) | — | 0.473 | 0.473 | → |
+| deploy: maxDD ratio | — | 0.73 | 0.73 | → |
+| final n_positions | — | 21 | 20 | ▼ |
+
+**Verdict — UNCHANGED (Rule 12).** The merger force-exit is a **small net-negative** on DISCOVERY
+(Calmar 0.496 → 0.482, −0.014; Sharpe 0.721 → 0.704) — the **same direction** as `06`'s succession
+delta (T06.6 also went net-negative). The strategy still **marginally beats** the Nifty200 Mom30
+deployment benchmark (0.482 > 0.473, deploy bar **PASS**) and still **fails §6.2** concentration
+retention (38% « the 0.70 bar) — i.e. the now-firm "momentum-only ≈ buy the Mom30 index fund, and
+the name-concentration gate is the wall" conclusion is intact. **No re-validation; FINAL_OOS stays
+spent** (`06` §9, `07` §6.1). This is a **correctness** re-measure, pre-accepted-null on metrics.
+
+### Why net-negative, and the honest caveats (Rule 12)
+
+- **Direction was pre-declared unknown** (`06` §9 / §7). Force-exiting at the flat last price
+  *removes* a frozen MTM position that had been artificially damping maxDD (a dead, unmoving holding
+  is a zero-volatility ballast); liquidating it to cash lets the live book breathe, so risk metrics
+  can tick slightly worse. This is honest, not a regression.
+- **The DISCOVERY window captures only *in-window* terminations.** Of the 3 T06.5 ghosts, only
+  **INOXLEISUR** (merged Feb 2023) falls inside 2018-02-06 → 2023-06-30; **HDFC** (Jul 2023) and
+  **TATAMTRDVR** (2024) terminate *after* the window, so they never appear in this backtest. The
+  full §1 ghost set lives in the 2023→2026 forward/warm-start window, where **T07.5 already proved
+  0 carried-unsellable** end-state. So this DISCOVERY delta **under-states** the full
+  identity-continuity effect; it is the in-sample slice, and the forward slice is the T07.5 0-ghost
+  proof. (`carried ghosts (susp)` reads 5 in both legs because `suspension_log` counts intra-run
+  suspensions, not end-state ghosts; the force-exit is visible in `final n_positions` 21 → 20.)
+- **Insolvency-optimism bias persists** (§6.2, §11): the flat last-traded close over-states the
+  realisable value for names that gapped toward zero. Carried as a known, pre-accepted bias; a
+  per-sub-type haircut waits on a §5-B ground-truth ingest (separate prereg).
+
+**Scope honoured:** read-only backtest — no prices, holdings, engine code, or FINAL_OOS state
+mutated; the s3_probation book is untouched (the de-ghosted warm-start is T07.5's). With T07.6
+recorded, the data-layer identity arc `05` (price-adjustment) → `06` (succession identity) → `07`
+(merger/cancellation termination) is **closed**, and the `11` forward paper probation is eligible
+to arm.
