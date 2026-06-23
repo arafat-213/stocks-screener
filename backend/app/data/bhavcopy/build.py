@@ -445,7 +445,13 @@ def run_build(
     # Additive only: this reads ``prices_df`` and writes a new artifact; it does not
     # touch prices_adjusted / membership / any backtest (01 §7).
     logger.info("build: Stage 7b — market internals (breadth + A/D)")
-    internals_df = mi_mod.compute_market_internals(prices_df)
+    # Fold in the India VIX source cache if present (Part B); absent ⇒ india_vix NaN
+    # (the 3-factor regime tier still works). The build does not fetch VIX — that is
+    # india_vix.backfill_india_vix's job, keeping the build network-free for VIX.
+    vix_cache = store_mod.read_india_vix(root)
+    internals_df = mi_mod.compute_market_internals(
+        prices_df, vix_series=None if vix_cache.empty else vix_cache
+    )
     store_mod.write_market_internals(internals_df, root)
 
     # ------------------------------------------------------------------ #

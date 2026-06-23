@@ -170,6 +170,14 @@ MARKET_INTERNALS_SCHEMA: dict[str, str] = {
     "india_vix": "float64",  # NaN where absent (never forward-filled — 01 §3)
 }
 
+# India VIX source cache (v4/01 Part B). Fetched from yfinance ``^INDIAVIX`` (§8.4
+# deviation, 2026-06-23) and merged into ``market_internals.india_vix`` during the build
+# — the same source-cache pattern as the CA audit trail. One row per VIX trading day.
+INDIA_VIX_SCHEMA: dict[str, str] = {
+    "date": "datetime64[ns]",
+    "india_vix": "float64",
+}
+
 # Subdir / file names under the storage root.
 _PRICES_DIR = "prices_adjusted"
 _MEMBERSHIP_DIR = "universe_membership"
@@ -180,6 +188,7 @@ _SUCCESSOR_MAP_FILE = "successor_map.parquet"
 _SUCCESSOR_UNMATCHED_FILE = "successor_unmatched.parquet"
 _TERMINATIONS_FILE = "terminations.parquet"
 _MARKET_INTERNALS_FILE = "market_internals.parquet"
+_INDIA_VIX_FILE = "india_vix.parquet"
 
 # Partition columns.
 _PRICES_PARTITION = "isin"
@@ -479,3 +488,18 @@ def read_market_internals(root: str | Path | None = None) -> pd.DataFrame:
         return _empty(MARKET_INTERNALS_SCHEMA)
     df = pd.read_parquet(path)
     return _conform(df, MARKET_INTERNALS_SCHEMA, "market_internals")
+
+
+def write_india_vix(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, INDIA_VIX_SCHEMA, "india_vix")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _INDIA_VIX_FILE, index=False)
+
+
+def read_india_vix(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _INDIA_VIX_FILE
+    if not path.exists():
+        return _empty(INDIA_VIX_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, INDIA_VIX_SCHEMA, "india_vix")

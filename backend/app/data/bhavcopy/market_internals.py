@@ -173,7 +173,8 @@ def backfill_from_store(root: "str | None" = None) -> pd.DataFrame:
     VIX stays NaN until Part B lands (the 3-factor regime tier works without it).
     """
     prices = store_mod.read_prices_adjusted(root=root)
-    internals = compute_market_internals(prices)
+    vix = store_mod.read_india_vix(root=root)
+    internals = compute_market_internals(prices, vix_series=None if vix.empty else vix)
     store_mod.write_market_internals(internals, root=root)
     logger.info(
         "market_internals: backfilled %d trading days (%s → %s)",

@@ -1,7 +1,9 @@
 # v4 / 01 — Regime Data Layer: market-internals (breadth, A/D) + India VIX ingestion
 
-> **Status: LOCKED — 2026-06-23 (Arafat approved §9; §8 resolved as recommended). Part A/B authorized.**
-> This is the cheap, low-risk **data unblock**
+> **Status: COMPLETE — 2026-06-23 (Arafat). §9 LOCKED; Part A + Part B DONE, committed, 223 data-layer
+> tests green. Full 5-factor regime inputs available (breadth/A-D + India VIX merged at 99.2%).**
+> Forward = draft `00_SWING_PREREG.md` (the strategy/regime-score prereg). This was the cheap, low-risk
+> **data unblock**
 > that must land *before* the v4 swing strategy can be pre-registered. You cannot pre-register a
 > regime score against inputs you have not confirmed are clean and point-in-time correct.
 > **Owner:** Arafat. **Created:** 2026-06-23.
@@ -163,23 +165,35 @@ nicety:
       **2336 trading days, 2017-01-02 → 2026-06-19, 0 gaps** (1 NaN = day-1 warmup, by design). Spot-checks
       pass: COVID low 2020-03-23 breadth **3.9%** / AD 0.04; election crash 2024-06-04 **4.9%** / 0.05;
       COVID bounce 2020-04-07 **86.1%** / 6.18; exit-poll rally 2024-06-03 **68.9%**.
-- [ ] **Part B** India VIX ingested (NSE index-bhavcopy, §8.4) with history depth **verified back to backtest
-      start**; gaps surfaced loudly, not filled. **PENDING** — `india_vix` column exists (all-NaN); the
-      compute/merge path + tests are in place, only the fetch/parse + backfill remain.
+- [x] **Part B** India VIX ingested — **yfinance `^INDIAVIX`** (§8.4 deviation, 2026-06-23) cached to
+      `india_vix.parquet` + folded into `market_internals.india_vix`. Depth **verified 2008-03-03 → 2026-06-23
+      (4483 days)**; merged coverage **2318/2336 = 99.2%**, 18 NaN trading days (Jan-1 sessions + a 2021
+      yfinance gap cluster) **surfaced loudly, not filled**. Cross-check **PASS**: max VIX **83.61 on
+      2020-03-24** == India VIX's COVID record close (matches NSE-published); range 9.15–83.61.
 - [x] Tests green: synthetic breadth/AD, the **split-day WHY test** (fails if anyone reverts to `close_raw`),
-      survivorship test, VIX left-join/None tests, store round-trip — **8 new + 216 data-layer all green**,
-      no live-API in `pytest`. *(VIX fetch/parse mock lands with Part B.)*
-- [x] **3-factor inputs (conditions 1–3) confirmed buildable today** (breadth/AD landed; Nifty DMA series
-      available). **5-factor (4–5) gated on Part B** (India VIX) — degrade-to-3-factor holds (§0).
-- [ ] CI green (full suite) — data-layer suite green; full `pytest` run is the Part-B close step.
+      survivorship test, VIX left-join/None tests, store round-trips, **Part B VIX parse/dedupe/NaN-drop/
+      fail-loud + end-to-end merge-with-gap** — **15 new + 223 data-layer all green**, no live-API in `pytest`.
+- [x] **3-factor inputs (conditions 1–3) buildable** (breadth/AD + Nifty DMA) **AND 5-factor (4–5) landed**
+      (India VIX merged at 99.2%) — the tier gate (§0) resolves to **full 5-factor available**; degrade-to-3
+      remains the documented fallback for the 18 NaN days / any future VIX hiccup.
+- [x] CI green — full data-layer suite **223 passed**; Part A + Part B both committed.
 
 > **Execution log (2026-06-23) — Part A DONE:** new `app/data/bhavcopy/market_internals.py` (pure,
 > vectorized `(date×isin)` pivot/diff on the **split-adjusted** close; survivorship-free via NaN-on-either-
 > side exclusion; liquid subset gates `adv_20 >= 5e7` matching `signals_v3.py`). Store I/O + Stage-7b build
 > wiring + `backfill_from_store()` (`python -m app.data.bhavcopy.market_internals`). **Additive only** —
 > reads `prices_adjusted`, writes one new parquet; `prices_adjusted`/membership/engine untouched ⇒ S3 `11`
-> probation and `FINAL_OOS` unaffected (§7 confirmed: 216/216 data-layer tests unchanged). **Part B (VIX)
-> remains; then draft `00_SWING_PREREG.md`.** Uncommitted as of this log.
+> probation and `FINAL_OOS` unaffected (§7 confirmed: 216/216 data-layer tests unchanged). (Committed
+> `05ca9aab`.)
+>
+> **Execution log (2026-06-23) — Part B DONE:** §8.4 source switched to yfinance `^INDIAVIX` (deviation
+> above). New `app/data/bhavcopy/india_vix.py` (`fetch_india_vix` with a `_history` injection point so no
+> test touches the network → tz-strip, drop source NaNs, dedupe, fail-loud-on-empty; `backfill_india_vix`
+> writes the `india_vix.parquet` source cache). Store gained `INDIA_VIX_SCHEMA` + write/read. Both
+> `market_internals.backfill_from_store` and build Stage-7b read the VIX cache and merge it (the build stays
+> network-free for VIX — refresh is `india_vix`'s own job). Live one-off backfill: 4483 VIX days 2008→2026,
+> merged at 99.2% (18 NaN surfaced). Cross-check PASS (COVID max 83.61 == NSE record). 7 new tests; 223
+> data-layer green. **`01` COMPLETE → next is `00_SWING_PREREG.md`.**
 
 ## 6. File map
 | Concern | File |
@@ -188,8 +202,9 @@ nicety:
 | Build orchestrator (add breadth/AD derivation step) | `backend/app/data/bhavcopy/build.py` |
 | Adjusted prices source for the up/down test | `backend/app/data/bhavcopy/adjust.py` / `store.read_prices_adjusted` |
 | Breadth/AD derivation (Part A) | `backend/app/data/bhavcopy/market_internals.py` (new) |
-| India VIX fetch/parse (Part B option 1) | `backend/app/data/bhavcopy/download.py` / `parse.py` |
-| Tests | `backend/tests/data/test_bhavcopy_market_internals.py` (new, matches repo convention) |
+| India VIX ingestion (Part B) | `backend/app/data/bhavcopy/india_vix.py` (new — yfinance `^INDIAVIX`, §8.4 deviation) |
+| Store schemas + I/O | `backend/app/data/bhavcopy/store.py` (`MARKET_INTERNALS_SCHEMA`, `INDIA_VIX_SCHEMA`) |
+| Tests | `backend/tests/data/test_bhavcopy_market_internals.py` + `test_bhavcopy_india_vix.py` (new) |
 | Downstream consumer (later) | `00_SWING_PREREG.md` (regime score — not this doc) |
 
 ## 7. Blast radius (stated up front)
@@ -231,3 +246,12 @@ Confirm or redline each before any code:
 > for **both** all-EQ and liquid-subset universes (cheap; `00_SWING_PREREG.md` picks its consumer). (4) India
 > VIX sourced from **NSE index-bhavcopy** (`ind_close_all`, PIT-clean); yfinance `^INDIAVIX` is the documented
 > fallback if the index-bhavcopy path proves unavailable for the full range.
+>
+> **§13-style DEVIATION — §8.4 source REVISED to yfinance `^INDIAVIX` (Arafat, 2026-06-23).** The pre-build
+> depth probe showed `^INDIAVIX` covers **2008-03-03 → present, 99.3% of the 2336 bhavcopy trading days,
+> 0 NaN, max gaps 4–5 days** (holiday clusters). India VIX is an index *level* — never restated, not
+> adjustment- or survivorship-sensitive — so the PIT-cleanliness argument that justified the NSE-bhavcopy
+> path does **not** apply here (v1's sin was an *adjustment* bug, inapplicable to an unadjusted level). The
+> one-line yfinance fetch therefore carries no integrity penalty over a per-day `ind_close_all` parser.
+> Guardrail retained: a one-time cross-check vs a few NSE-published closes (the COVID-2020 spike) is part of
+> the Part-B done-criterion; the live fetch is a one-off (no live API in `pytest`).
