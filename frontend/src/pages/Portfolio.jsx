@@ -14,12 +14,15 @@ import {
   ArrowUpRight,
   ArrowDownRight,
   Plus,
+  Lock,
 } from 'lucide-react';
 import {
   getJournalOpen,
   getJournalClosed,
   getJournalStats,
   closeJournalEntry,
+  getPaperV2Book,
+  getPaperV2Parity,
 } from '../api/client';
 import ManualTradeModal from '../components/ManualTradeModal';
 
@@ -228,6 +231,9 @@ const Portfolio = () => {
         />
       </div>
 
+      {/* Frozen S3 probation book (specs/v3/11) — hidden entirely when unarmed */}
+      <S3PaperBookCard />
+
       {/* Tabs */}
       <div className='flex p-1 gap-1 bg-bg-secondary border border-border rounded-xl w-fit'>
         <button
@@ -363,6 +369,91 @@ const Portfolio = () => {
 };
 
 // --- Sub-components ---
+
+// Compact link card to the frozen S3 probation book (specs/v3/11 V11.7).
+// Self-contained fetch; renders null when the book is unarmed (/book 404s) so
+// an unarmed probation never clutters the portfolio page.
+const S3PaperBookCard = () => {
+  const navigate = useNavigate();
+  const [book, setBook] = useState(null);
+  const [parity, setParity] = useState(null);
+  const [hidden, setHidden] = useState(false);
+
+  useEffect(() => {
+    const timer = setTimeout(async () => {
+      const [bookData, parityData] = await Promise.all([
+        getPaperV2Book().catch((err) => {
+          if (err?.response?.status === 404) setHidden(true);
+          return null;
+        }),
+        getPaperV2Parity().catch(() => null),
+      ]);
+      setBook(bookData);
+      setParity(parityData);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (hidden || !book) return null;
+
+  const ret = getOr(0, 'total_return_pct')(book);
+  const latest = getOr(null, 'latest')(parity);
+  const dotColor = !latest
+    ? 'bg-text-muted'
+    : latest.passed
+      ? 'bg-bullish'
+      : 'bg-bearish';
+  const dotLabel = !latest
+    ? 'No parity check'
+    : latest.passed
+      ? `Parity PASS · ${latest.max_dev_bps.toFixed(1)} bps`
+      : 'Parity BREAK';
+
+  return (
+    <button
+      onClick={() => navigate('/paper-v2')}
+      className='w-full flex items-center justify-between gap-4 bg-bg-secondary border border-border rounded-2xl p-5 shadow-sm hover:border-primary/40 transition-all text-left group'
+    >
+      <div className='flex items-center gap-4'>
+        <div className='p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500'>
+          <Lock size={20} />
+        </div>
+        <div className='flex flex-col gap-0.5'>
+          <span className='text-[10px] font-black uppercase tracking-widest text-text-muted'>
+            S3 Paper Book · Frozen Probation
+          </span>
+          <div className='flex items-center gap-3'>
+            <span className='text-xl font-black text-text tracking-tight'>
+              ₹
+              {getOr(
+                0,
+                'nav'
+              )(book).toLocaleString(undefined, {
+                maximumFractionDigits: 0,
+              })}
+            </span>
+            <span
+              className={`text-sm font-black ${ret >= 0 ? 'text-bullish' : 'text-bearish'}`}
+            >
+              {ret >= 0 ? '+' : ''}
+              {ret.toFixed(2)}%
+            </span>
+          </div>
+          <div className='flex items-center gap-1.5 mt-0.5'>
+            <span className={`w-2 h-2 rounded-full ${dotColor}`}></span>
+            <span className='text-[10px] font-bold text-text-muted uppercase tracking-wider'>
+              {dotLabel}
+            </span>
+          </div>
+        </div>
+      </div>
+      <ChevronRight
+        size={20}
+        className='text-text-muted group-hover:text-primary transition-colors'
+      />
+    </button>
+  );
+};
 
 const StatCard = ({ label, value, subValue, icon, trend, progress }) => (
   <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm flex flex-col gap-4 relative overflow-hidden group'>

@@ -44,6 +44,12 @@ export const getPaperV2Book = () =>
   apiClient.get('/v2/paper/book').then((res) => res.data);
 export const getPaperV2Positions = () =>
   apiClient.get('/v2/paper/positions').then((res) => res.data);
+export const getPaperV2Nav = () =>
+  apiClient.get('/v2/paper/nav').then((res) => res.data);
+export const getPaperV2Parity = () =>
+  apiClient.get('/v2/paper/parity').then((res) => res.data);
+export const getPaperV2Rebalances = () =>
+  apiClient.get('/v2/paper/rebalances').then((res) => res.data);
 
 export const getStatus = () =>
   apiClient.get('/pipeline/status').then((res) => res.data);

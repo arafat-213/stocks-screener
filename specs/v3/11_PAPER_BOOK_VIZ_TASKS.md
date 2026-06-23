@@ -1,5 +1,12 @@
 # v3 / 11 — S3 Paper Book Observability (frontend viz + persistence) — EXECUTION TASKS
 
+> **Status: COMPLETE (2026-06-23, V11.1–V11.7).** Backend slice + frontend slice both
+> shipped. See §9 (Execution log). Backend: two tables + migration `5d30f4bfa74d`,
+> snapshot/parity persistence, three read-only endpoints, 15 new tests green. Frontend:
+> API client fns + `S3PaperBook.jsx` (fidelity badge, NAV curve w/ go-live divider +
+> rebased Mom30 overlay + exposure band, rebalance log, probation progress + staleness)
+> + `Portfolio.jsx` summary card; `npm run build` green.
+
 > **Status: LOCKED (2026-06-23). NOT yet executed.** All open decisions resolved — parity
 > durability mechanism (V11.2, `db.commit()` not flush), probation denominator (calendar
 > months) + staleness threshold (>2 trading days) (V11.6 #4), and `reason` taxonomy assertion
@@ -358,3 +365,94 @@ doesn't clutter the portfolio page.
 | FE client paper block | `frontend/src/api/client.js:42–46` |
 | Chart pattern (lazy recharts) | `frontend/src/pages/Backtest.jsx` |
 | Portfolio card pattern | `frontend/src/pages/Portfolio.jsx:208` (`StatCard`, `useNavigate`) |
+
+---
+
+## 9. Execution log
+
+### Backend slice V11.1–V11.4 — DONE (2026-06-23)
+
+**Migration:** `5d30f4bfa74d` (down_revision `b7c4f1a2d3e8`). Two new tables
+(`paper_v2_daily_snapshot`, `paper_v2_parity_check`). Autogenerate also surfaced
+**pre-existing, unrelated** model⇄DB drift (an `ix_sr_slug_date` drop on `screen_results`
++ a `technical_signals.id` server_default alter) — those were **stripped** from the
+migration (Rule 3: surgical; noted in the migration body). `upgrade → downgrade -1 →
+upgrade` round-trips cleanly on Postgres.
+
+**V11.1 — snapshot persistence** (`live_engine.py`). Took Option A: `persist_state` now
+upserts a `PaperV2DailySnapshot` keyed on `(portfolio_id, date)` in the same day
+transaction. `process_day` gained a `go_live: date | None` kwarg (threaded from
+`tasks.py`) and looks up `index_level` from the `index_prices` Series it already receives
+(`day_ts in index_prices.index`; None on a gap). `is_forward = go_live is not None and
+process_date >= go_live`. `snapshot is None` ⇒ row skipped, no crash.
+
+**V11.2 — parity persistence** (`parity.py` + `tasks.py`). Added `parity.persist_parity(
+session, portfolio_id, report)` (idempotent upsert on `(portfolio_id, as_of)`, breaches
+stored as `[[isin, dev_bps], …]` JSON, does NOT commit — caller owns the txn). `tasks.py`
+calls it right after `shadow_parity(...)` then **`db.commit()` BEFORE** the BREAK `raise`
+— the LOCKED durability mechanism (a flush-only row dies on the halt's `finally:
+db.close()` rollback).
+
+**V11.3 — endpoints** (`routers/paper_v2.py`). `GET /v2/paper/nav` (envelope
+`{go_live_date, points[]}`, server-computed `index_rebased` anchored to the first non-null
+index level), `GET /v2/paper/parity` (`{latest, history[]}`), `GET /v2/paper/rebalances`
+(grouped by `decision_date`, newest first; reads `paper_v2_pending_fills`, no new table).
+All Pydantic, all read-only, all degrade to empty/`null` when unarmed.
+
+**V11.4 — tests** (15 new, all green). `tests/paper_v2/test_v11_persistence.py` (5):
+snapshot per-day + forward-flag + index-gap, idempotent backfill upsert, parity PASS +
+idempotent upsert, BREAK-persisted-then-raises, **fill-reason taxonomy is exactly
+`{rebalance, catastrophic_stop}`** (a real 400-day momentum replay — ~14s). API endpoint
+shapes added to `tests/api/test_paper_v2_api.py` (10): nav envelope/ascending/rebased +
+empty, parity latest=max-as_of + empty, rebalances grouped/newest-first + empty.
+
+**Fail-loud notes (Rule 12):** (1) the unrelated migration drift above was stripped, not
+silently shipped. (2) The V11.2 commit-vs-flush durability is enforced in `tasks.py` and
+asserted via the row's presence after the simulated raise; the in-memory-sqlite test
+fixture can't simulate a true cross-session `db.close()` teardown (no SAVEPOINT-restart),
+so that exact teardown path is covered by code, not a unit test. (3) An unrelated
+pre-existing collection error (`tests/unit/test_score_filtering.py` does `from
+backend.app…`) blocks `-k paper_v2` across the whole tree — paper_v2 tests were run by
+explicit path; that broken module is not in scope here.
+
+### Frontend slice V11.5–V11.7 — DONE (2026-06-23)
+
+Executed against the live backend endpoints (above), reading their verified Pydantic
+shapes from `routers/paper_v2.py` — no shape guessing.
+
+**V11.5 — API client** (`api/client.js`). Added `getPaperV2Nav`, `getPaperV2Parity`,
+`getPaperV2Rebalances` in the existing v2 paper block.
+
+**V11.6 — `S3PaperBook.jsx`.** Extended the existing page (all prior states —
+`notArmed`/`loading`/`Fully in Cash`, header cards, holdings table — preserved). New load
+adds nav/parity/rebalances to the `Promise.all`, each `.catch → null/[]` so one failing
+endpoint never blanks the page. Added:
+- **Fidelity badge** (header chip) fed by `parity.latest`: green `PASS · N.N bps` / red
+  `BREAK · as_of` / neutral "No parity check yet"; a persistent red **"Clock Reset"** chip
+  when any history row failed (§7.1 6-month restart).
+- **NAV curve** (`NavCurve`, lazy recharts per the `Backtest.jsx` pattern): book `equity`
+  (solid blue) + `index_rebased` (muted dashed, `connectNulls`) + amber `ReferenceLine`
+  go-live divider anchored to the **first `is_forward` point** (lands exactly on a data
+  x-value; `go_live` itself may be a holiday with no snapshot). Custom tooltip shows date,
+  NAV, index, and the book−index gap in ₹ and %. Subordinate **exposure band** (slim
+  `stepAfter` Area, 0=risk-off/cash → 1=risk-on) below the curve. Empty state when no
+  points yet.
+- **Rebalance log** (`RebalanceLog`): accordion grouped by `decision_date` (newest first),
+  reason badge `rebalance`/`catastrophic_stop`, buy/sell/trim counts + total cost; expands
+  to per-fill rows (side-coloured, decision→fill price, cost, status).
+- **Probation progress** (`ProbationProgress`): bar over LOCKED **calendar** denominator
+  `go_live → go_live + 6 months`. **Staleness banner** (`StalenessBanner`) when the replay
+  clock lags > **2** trading days. NOTE (Rule 12): the client has no NSE holiday calendar,
+  so the lag is a **weekday (Mon–Fri) count** — a holiday-blind proxy that can over-count
+  by intervening holidays; acceptable for a "check the worker" hint, not an exact figure.
+
+**V11.7 — `Portfolio.jsx`.** Added a self-contained `S3PaperBookCard` (own fetch of
+`getPaperV2Book` + `getPaperV2Parity`) below the stats bar: NAV, total-return %, and a
+parity status dot; navigates to `/paper-v2`; **renders null when `/book` 404s** (unarmed
+book never clutters the page).
+
+**Verification:** `npm run build` green (2641 modules). The recharts
+`INEFFECTIVE_DYNAMIC_IMPORT` warning is **pre-existing** (`StockDetail.jsx` statically
+imports recharts, so the lazy import can't get its own chunk) — not introduced here and
+does not affect correctness. ESLint could not be run: a repo hook intercepts its output
+(JSON parse EOF); the production build is the authoritative gate and it passes.
