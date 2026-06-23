@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import bisect
 import logging
+import math
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -80,6 +81,17 @@ class EngineContext:
     # at its last price (07 §6, Approach A). 0 ⇒ feature OFF ⇒ run() byte-for-byte
     # unchanged (parity suite). The two lookups below are built only when K > 0.
     terminate_after_silent_days: int = 0
+
+    # --- Whole-share sizing (NSE reality: equity delivery trades only in integer
+    # shares; lot size 1). When True, every buy/trim fill is floored to whole shares
+    # at apply time (the single Portfolio.apply_fills chokepoint). Default False ⇒
+    # run() byte-for-byte unchanged (parity suite + the closed v2/v3 research record
+    # both reproduce). The S3 paper shell sets this True so the forward probation is a
+    # faithful integer-share rehearsal of real-capital execution (11 §13 deviation,
+    # signed 2026-06-23). Cash-safe: _clamp_buys_to_cash runs before apply_fills, so
+    # floored qty <= clamped qty <= affordable; the equity == cash + Σshares·price
+    # identity is unaffected (only the absolute equity level shifts ~0.5%).
+    whole_shares: bool = False
     cal_ord: dict[pd.Timestamp, int] = field(default_factory=dict)
     inst_trade_ords: dict[str, list[int]] = field(default_factory=dict)
 
@@ -188,6 +200,7 @@ def build_context(
     cost_level: CostLevel | None = None,
     signal_store: SignalStore | None = None,
     terminate_after_silent_days: int = 0,
+    whole_shares: bool = False,
 ) -> tuple[EngineContext, list[pd.Timestamp]]:
     """
     Build the immutable per-run lookups + trading calendar shared by run() and the
@@ -291,6 +304,7 @@ def build_context(
         signal_store=signal_store,
         overlay=overlay,
         terminate_after_silent_days=terminate_after_silent_days,
+        whole_shares=whole_shares,
         cal_ord=_cal_ord,
         inst_trade_ords=_inst_trade_ords,
     )
@@ -326,13 +340,18 @@ def step_day(ctx: EngineContext, state: LoopState, day: pd.Timestamp) -> None:
         )
         # Clamp buys to projected cash to prevent implicit leverage.
         stamped_fills = _clamp_buys_to_cash(
-            stamped_fills, portfolio.cash, ctx.cost_fn, ctx.cost_cfg
+            stamped_fills,
+            portfolio.cash,
+            ctx.cost_fn,
+            ctx.cost_cfg,
+            whole_shares=ctx.whole_shares,
         )
         portfolio.apply_fills(
             stamped_fills,
             cost_fn=ctx.cost_fn,
             cost_cfg=ctx.cost_cfg,
             adv_lookup=adv_today,
+            whole_shares=ctx.whole_shares,
         )
         state.pending_fills = []
 
@@ -655,6 +674,7 @@ def _clamp_buys_to_cash(
     available_cash: float,
     cost_fn: CostFn,
     cost_cfg: CostConfig,
+    whole_shares: bool = False,
 ) -> list[Fill]:
     """
     Scale all buy fills proportionally so total cash outflow (notional + costs)
@@ -667,37 +687,59 @@ def _clamp_buys_to_cash(
     adv_20 is passed as 0.0 to the cost_fn for the projection (placeholder; the real
     cost model in spec 03 uses adv for slippage but the per-fill cost ratio is the same).
     Cost linearity in qty guarantees the scaled outflow equals projected_cash exactly.
+
+    whole_shares: when True, the projection uses the FLOORED sell/trim inflow (because
+    apply_fills will only realise whole-share sells/trims, so fewer ₹ arrive than the
+    fractional intent) and every buy is floored to whole shares within that budget.
+    This makes the proportional allocation across buys whole-share-correct; the exact
+    non-negative-cash GUARANTEE is enforced downstream in apply_fills (which caps each
+    whole-share buy to the cash actually on hand after sells/trims settle, robust to
+    cost non-linearity). Default False ⇒ legacy path, byte-for-byte unchanged.
     """
+
+    def _eff_qty(q: float) -> float:
+        return float(math.floor(q)) if whole_shares else q
+
     projected_cash = available_cash
     total_buy_outflow = 0.0
 
     for f in fills:
         if f.side in ("sell", "trim"):
-            cost = cost_fn(f.side, f.qty, f.price, 0.0, cost_cfg)
-            projected_cash += f.qty * f.price - cost
+            q = _eff_qty(f.qty)  # floored inflow matches what apply_fills realises
+            cost = cost_fn(f.side, q, f.price, 0.0, cost_cfg)
+            projected_cash += q * f.price - cost
         else:
-            cost = cost_fn("buy", f.qty, f.price, 0.0, cost_cfg)
-            total_buy_outflow += f.qty * f.price + cost
+            q = _eff_qty(f.qty)
+            cost = cost_fn("buy", q, f.price, 0.0, cost_cfg)
+            total_buy_outflow += q * f.price + cost
 
-    if total_buy_outflow <= 0.0 or total_buy_outflow <= projected_cash:
+    over_budget = total_buy_outflow > 0.0 and total_buy_outflow > projected_cash
+    # Fractional fast path: nothing to do unless over budget (preserves parity).
+    if not whole_shares and not over_budget:
         return fills
 
-    scale = projected_cash / total_buy_outflow
-    log.info(
-        "Buy outflow %.2f > projected cash %.2f; scaling buys by %.6f to prevent leverage.",
-        total_buy_outflow,
-        projected_cash,
-        scale,
-    )
+    scale = (projected_cash / total_buy_outflow) if over_budget else 1.0
+    if over_budget:
+        log.info(
+            "Buy outflow %.2f > projected cash %.2f; scaling buys by %.6f to prevent leverage.",
+            total_buy_outflow,
+            projected_cash,
+            scale,
+        )
     result: list[Fill] = []
     for f in fills:
         if f.side == "buy":
+            qty = f.qty * scale
+            if whole_shares:
+                qty = float(math.floor(qty))
+                if qty <= 0:
+                    continue  # sub-1-share after clamp — cannot transact, drop
             result.append(
                 Fill(
                     isin=f.isin,
                     symbol=f.symbol,
                     side=f.side,
-                    qty=f.qty * scale,
+                    qty=qty,
                     price=f.price,
                     date=f.date,
                     cost_rupees=0.0,

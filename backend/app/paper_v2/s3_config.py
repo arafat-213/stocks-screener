@@ -34,6 +34,15 @@ S3_LIQUIDITY_FLOOR_CR = 5.0
 # identity-continuity correctness fix (07 §6); it removes ghosts, it does not tune edge.
 S3_TERMINATE_AFTER_SILENT_DAYS = 15
 
+# Whole-share sizing (NSE reality: equity delivery trades only in integer shares,
+# lot size 1). ON for the forward paper book so the probation is a faithful rehearsal
+# of real-capital execution — fractional sizing validates an order that cannot exist.
+# `11` §13 deviation, signed 2026-06-23 (book was flat + zero live runs ⇒ free to fix).
+# The shadow-parity re-derivation routes through build_live_context too, so book and
+# parity shadow stay byte-identical. NOT a strategy knob: ~+0.5–2% metric impact in the
+# favourable direction (quantified A/B), it is an execution-realism correctness fix.
+S3_WHOLE_SHARES = True
+
 
 def make_s3_v3config(
     date_from: date | None = None, date_to: date | None = None

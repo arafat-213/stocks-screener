@@ -556,6 +556,41 @@ Confirm or redline each before any code:
 > - **Net:** P11.2 is operationally **go-live** on identity-continuous data; the 6 clean forward
 >   months now accrue automatically via the live beat and are evaluated in P11.3. No knob moved (§1);
 >   no FINAL_OOS interaction; `10` ceiling unchanged.
+>
+> **§13 DEVIATION — whole-share (integer) sizing (signed Arafat 2026-06-23, AUTHORIZED).**
+> The engine sized positions in **fractional** shares (`qty = ₹target / price`), which NSE equity
+> delivery cannot transact (lot size 1). A paper probation whose purpose is a *faithful ops rehearsal
+> before real capital* (§0/§2) must therefore trade whole shares — fractional sizing validates an
+> order that cannot exist. This is an execution-realism **correctness** fix, NOT a knob move (it does
+> not touch selection/ranking/regime/stop). Timing: the book was **flat (0 positions) with ZERO
+> counted forward runs**, so the fix + re-warm-start cost no live track record — the cheapest possible
+> moment.
+> - **Quantified impact first (A/B, frozen S3 over DISCOVERY, apply_fills monkeypatch, engine
+>   untouched):** Calmar 0.4955→0.5072 (+2.4%), Sharpe +1.5%, maxDD −1.4% (better), §6.2 retention
+>   +0.7%, deploy-vs-Mom30 unchanged (beats in both). ~0.5–2%, **favourable** direction ⇒ fidelity, not
+>   returns; the recorded research numbers were never optimistically inflated by the fraction.
+> - **Mechanism (surgical):** new `EngineContext.whole_shares` flag (**default False ⇒ `backtest_v2`
+>   byte-for-byte unchanged**; the 580-parity suite + the closed v2/v3 research record both still
+>   reproduce). `s3_config.S3_WHOLE_SHARES = True` turns it on for the live book, routed through
+>   `build_live_context` so the book AND its shadow-parity share the flag (parity stays byte-identical).
+>   Floor is applied at `Portfolio.apply_fills` (the single fill chokepoint) and in
+>   `_clamp_buys_to_cash`. A real defect surfaced + fixed (Rule 12): flooring sells/trims reduces
+>   realised cash below the clamp's fractional projection → a whole-share buy could overspend → negative
+>   re-hydrated cash; fixed by a non-negative-cash **guarantee** in `apply_fills` (each whole-share buy
+>   is capped to cash actually on hand after sells settle, robust to cost non-linearity).
+> - **Tests:** 7 new whole-share/regression tests; full `backtest_v2` tree green under default-OFF
+>   (byte-identical) + 33 `paper_v2` (parity/succession/persistence) green.
+> - **Re-warm-start (`scripts/p11_whole_share_rewarmstart.py`, worker+beat STOPPED, no live fetch):**
+>   reset the flat book → cash ₹1e6, **clock reset to `created_at`/go_live = 2026-06-23** (Arafat's
+>   choice: a full fresh 6 months on the clean integer book) → replayed inception→edge (2335 days, 113
+>   rebalances, `whole_shares=True`). **Gates PASS:** 0 fractional positions, 0 carried ghosts,
+>   shadow-parity **0.0 bps**; 2335 `paper_v2_daily_snapshot` rows populated (NAV curve now has data).
+>   Edge book is flat/in-cash (risk-off at 2026-06-18, as before); equity ₹2,882,170 vs the old
+>   fractional ₹2,937,242 (−1.87% over 9y of compounding — the now-correct figure; immaterial, matches
+>   the A/B magnitude). No schema change ⇒ no Alembic migration. `10` "exploratory" ceiling unchanged;
+>   FINAL_OOS untouched.
+> - **OPEN OPERATIONAL ITEM:** worker + beat are **STOPPED** (operator run). Forward accrual resumes
+>   only when Arafat restarts them; the 6 counted months run from the **new** go_live 2026-06-23.
 - **Do:** enable the daily post-close Celery job forward. Daily order (§3e): append → **execute prior
   queue at today's open** → MTM → stop-check → (month-end) rebalance → persist. Each month-end: parity
   assert → rebalance preview → next-session fill + confirm. **Missed days are backfilled in order
@@ -576,5 +611,5 @@ Confirm or redline each before any code:
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green (2026-06-22; §5a corrected to inception-anchored append).
 - [x] P11.1 — v2-native wrapper + persisted queue + parity harness; dry-run reproduces backtest (decision + fill) byte-for-byte (2026-06-22; shared `step_day` extraction + `decision_price` fidelity fix; 9 new tests, 763 green).
-- [~] P11.2 — **GO-LIVE on de-ghosted data 2026-06-23 (post-`07`)**: first started 2026-06-22, paused for the `06`→`07` ghost fix, then re-armed clean after `07` COMPLETE — `s3_probation` book holds 0 carried-unsellable ghosts (T07.5), `go_live=2026-06-22` (clock not reset), post-close beat live (`s3-paper-daily-postclose`, weekday 19:30 IST). Go-live day correctly idles (`confirmed_replay_days → []`, store edge 2026-06-19 is the held-back trailing edge); 28 paper_v2 tests green. 6 forward months now accrue automatically via the live beat. **Awaiting 6 consecutive clean monthly rebalances (real calendar time) → P11.3.**
+- [~] P11.2 — **GO-LIVE on de-ghosted data 2026-06-23 (post-`07`)**: first started 2026-06-22, paused for the `06`→`07` ghost fix, then re-armed clean after `07` COMPLETE — `s3_probation` book holds 0 carried-unsellable ghosts (T07.5), `go_live=2026-06-22` (clock not reset), post-close beat live (`s3-paper-daily-postclose`, weekday 19:30 IST). Go-live day correctly idles (`confirmed_replay_days → []`, store edge 2026-06-19 is the held-back trailing edge); 28 paper_v2 tests green. **§13 DEVIATION 2026-06-23 (signed): whole-share (integer) sizing fix + re-warm-start — clock RESET to `go_live = 2026-06-23` (book was flat, 0 forward runs ⇒ free); gates PASS (0 fractional / 0 ghost / parity 0.0bps), 2335 snapshot rows; worker+beat STOPPED pending Arafat restart.** 6 forward months accrue from the **new** 2026-06-23 go-live once the beat is restarted. **Awaiting 6 consecutive clean monthly rebalances (real calendar time) → P11.3.**
 - [ ] P11.3 — verdict against §7/§8; "exploratory" ceiling restated.

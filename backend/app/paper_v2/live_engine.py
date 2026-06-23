@@ -99,6 +99,9 @@ def build_live_context(
         # the book and its parity shadow stay byte-identical. A caller may pass 0 to
         # isolate a different layer (e.g. the 06 raw-isin ghost regression).
         terminate_after_silent_days=terminate_after_silent_days,
+        # Whole-share sizing: the live book trades integer shares (NSE reality). Routed
+        # here so book + shadow-parity share the flag ⇒ stay byte-identical (s3_config).
+        whole_shares=s3_config.S3_WHOLE_SHARES,
     )
 
 

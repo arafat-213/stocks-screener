@@ -13,6 +13,7 @@ Key invariants (02 §6):
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 import math
 from datetime import date
@@ -145,6 +146,7 @@ class Portfolio:
         cost_fn: CostFn = _default_fill_cost,
         cost_cfg: CostConfig | None = None,
         adv_lookup: dict[str, float] | None = None,
+        whole_shares: bool = False,
     ) -> None:
         """
         Execute queued fills against portfolio state.
@@ -160,12 +162,51 @@ class Portfolio:
           trim → cash += qty * price − cost   (same mechanics as sell)
 
         Zero-qty fills are silently skipped.
+
+        whole_shares (NSE reality): when True, every fill's qty is floored to a
+        whole number of shares before it touches state — equity delivery cannot
+        transact fractions (lot size 1). Flooring only ever reduces qty, and
+        buys are already clamped to cash upstream (engine._clamp_buys_to_cash),
+        so this never breaches cash. A fill that floors to 0 (sub-1-share
+        residual) is dropped. Default False ⇒ legacy fractional behaviour
+        (byte-for-byte parity preserved). See EngineContext.whole_shares.
         """
         if cost_cfg is None:
             cost_cfg = CostConfig()
         _adv = adv_lookup or {}
 
         for fill in fills:
+            if whole_shares:
+                q = math.floor(fill.qty)
+                if fill.side == "buy" and q > 0:
+                    # Non-negative-cash GUARANTEE (robust to cost non-linearity): cap the
+                    # buy to the cash actually on hand. Sells/trims are ordered before buys
+                    # (step_day sorts the queue), so self.cash already reflects their
+                    # proceeds. Start from the notional-affordable ceiling (cheap, avoids an
+                    # O(qty) loop) then shave whole shares until notional + cost fits.
+                    if self.cash > 0:
+                        q = min(q, math.floor(self.cash / fill.price))
+                    else:
+                        q = 0
+                    while (
+                        q > 0
+                        and (
+                            q * fill.price
+                            + cost_fn(
+                                "buy",
+                                float(q),
+                                fill.price,
+                                _adv.get(fill.isin, 0.0),
+                                cost_cfg,
+                            )
+                        )
+                        > self.cash
+                    ):
+                        q -= 1
+                if q <= 0:
+                    continue  # sub-1-share residual / unaffordable — cannot transact
+                if q != fill.qty:
+                    fill = dataclasses.replace(fill, qty=float(q))
             if fill.qty <= 0:
                 continue
 
