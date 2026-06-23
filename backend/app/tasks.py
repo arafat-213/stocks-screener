@@ -166,6 +166,24 @@ def execute_paper_daily_task(process_date: str | None = None):
         _r.delete(_PAPER_LOCK_KEY)
 
 
+@celery_app.task(name="app.tasks.execute_paper_watchdog_task")
+def execute_paper_watchdog_task():
+    """Worker-heartbeat watchdog for the S3 paper book (operational safety, not a knob).
+
+    Emails when the replay clock has not advanced for more than the threshold of trading
+    days — a hint that the daily post-close worker/beat has stopped (it has gone dark
+    twice). Reads persisted state only; no live fetch. See ``app.paper_v2.watchdog``.
+    """
+    from app.paper_v2 import watchdog
+
+    logger.info("Starting S3 paper watchdog task")
+    try:
+        watchdog.run_watchdog()
+    except Exception as e:
+        logger.error(f"Paper watchdog task failed: {e}")
+        raise
+
+
 @celery_app.task(name="app.tasks.execute_cleanup_task")
 def execute_cleanup_task():
     logger.info("Starting scheduled cleanup task")

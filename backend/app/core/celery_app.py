@@ -29,5 +29,12 @@ celery_app.conf.update(
             "task": "app.tasks.execute_paper_daily_task",
             "schedule": crontab(day_of_week="1-5", hour=19, minute=30),
         },
+        # v3/11 watchdog — heartbeat: alert if the replay clock falls stale (worker dark).
+        # Runs daily (incl. weekends so a Fri-evening failure is caught), an hour after the
+        # post-close job so a healthy same-day run is already reflected in the clock.
+        "s3-paper-watchdog": {
+            "task": "app.tasks.execute_paper_watchdog_task",
+            "schedule": crontab(hour=20, minute=30),
+        },
     },
 )
