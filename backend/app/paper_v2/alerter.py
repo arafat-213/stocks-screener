@@ -119,6 +119,39 @@ def emit_alerts(report: ProcessReport, *, send: bool = True) -> list[str]:
     return emitted
 
 
+def build_pipeline_failure_html(
+    exc: Exception, process_date: str, traceback_str: str
+) -> str:
+    exc_type = type(exc).__name__
+    return (
+        '<div style="font-family:sans-serif">'
+        '<h2 style="color:#c0392b">🚨 S3 paper pipeline FAILED</h2>'
+        f"<p><b>Date being processed:</b> {process_date}</p>"
+        f"<p><b>Error:</b> {exc_type}: {exc}</p>"
+        "<h3>Traceback</h3>"
+        '<pre style="background:#f8f8f8;padding:12px;border:1px solid #ddd;'
+        'overflow:auto;font-size:12px;white-space:pre-wrap">'
+        f"{traceback_str}</pre>"
+        "<p style='color:#888'>Action: check Celery worker logs, fix the issue, then "
+        "re-run via <code>execute_paper_daily_task.delay()</code>.</p>"
+        "</div>"
+    )
+
+
+def emit_failure_alert(
+    exc: Exception, process_date: str, traceback_str: str, *, send: bool = True
+) -> None:
+    """Send an immediate failure email when the daily paper task crashes.
+
+    Must be called from inside an except block so ``traceback_str`` (from
+    ``traceback.format_exc()``) captures the live traceback. The ``send=False``
+    path renders HTML without I/O so tests can assert without a live Resend key.
+    """
+    subject = f"🚨 S3 paper — PIPELINE FAILED {process_date}"
+    html = build_pipeline_failure_html(exc, process_date, traceback_str)
+    _maybe_send(subject, html, send)
+
+
 def _maybe_send(subject: str, html: str, send: bool) -> None:
     if send:
         send_alert_email(subject, html)

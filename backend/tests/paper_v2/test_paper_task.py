@@ -240,3 +240,46 @@ def test_tc3_concurrency_guard_skips_when_locked():
     )
     # Lock must NOT be deleted when it was never acquired.
     redis_client.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TC4 — pipeline failure emits an immediate alert email and still re-raises
+# ---------------------------------------------------------------------------
+
+
+def test_tc4_failure_alert_emitted_and_reraises():
+    """A task crash must fire a failure alert email AND re-raise the exception.
+
+    WHY: Silent failures are costly when live capital is deployed — the operator
+    needs to know immediately so they can investigate and re-run. The task must
+    both alert (operator gets email with traceback) and re-raise (Celery marks
+    the run as FAILED and the beat does not silently skip it).
+    """
+    crash = RuntimeError("bhavcopy fetch failed")
+    with (
+        patch(
+            "app.data.bhavcopy.incremental.incremental_append",
+            side_effect=crash,
+        ),
+        patch(
+            "app.data.bhavcopy.store.read_prices_adjusted",
+            return_value=_fake_prices(),
+        ),
+        patch("app.backtest_v2.benchmark.load_price_index", return_value=MagicMock()),
+        patch(
+            "app.paper_v2.live_engine.get_or_create_book",
+            return_value=_fake_book(),
+        ),
+        patch("app.paper_v2.alerter.emit_failure_alert") as mock_failure_alert,
+        patch("app.tasks.SessionLocal"),
+        patch("app.tasks._redis") as mock_redis_mod,
+    ):
+        mock_redis_mod.from_url.return_value = _redis_unlocked()
+        with pytest.raises(RuntimeError, match="bhavcopy fetch failed"):
+            execute_paper_daily_task("2026-06-23")
+
+    mock_failure_alert.assert_called_once()
+    exc_arg, date_arg, tb_arg = mock_failure_alert.call_args[0]
+    assert exc_arg is crash
+    assert date_arg == "2026-06-23"
+    assert "bhavcopy fetch failed" in tb_arg

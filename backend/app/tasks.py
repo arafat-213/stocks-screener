@@ -195,6 +195,12 @@ def execute_paper_daily_task(process_date: str | None = None):
         logger.info("S3 paper daily task done: processed %d day(s)", len(to_process))
     except Exception as e:
         logger.error(f"Paper daily task failed: {e}")
+        try:
+            import traceback as _traceback
+
+            alerter.emit_failure_alert(e, target.isoformat(), _traceback.format_exc())
+        except Exception as alert_exc:
+            logger.error("emit_failure_alert itself failed: %s", alert_exc)
         raise
     finally:
         db.close()
