@@ -38,6 +38,13 @@ export const getDashboardChanges = () =>
   apiClient.get('/dashboard/changes').then((res) => res.data);
 export const getActionCenter = () =>
   apiClient.get('/dashboard/action-center').then((res) => res.data);
+
+// --- v2 S3 probation paper book (read-only; specs/v3/11) ---
+export const getPaperV2Book = () =>
+  apiClient.get('/v2/paper/book').then((res) => res.data);
+export const getPaperV2Positions = () =>
+  apiClient.get('/v2/paper/positions').then((res) => res.data);
+
 export const getStatus = () =>
   apiClient.get('/pipeline/status').then((res) => res.data);
 export const searchStocks = (q) =>

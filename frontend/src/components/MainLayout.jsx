@@ -11,6 +11,7 @@ import {
   X,
   Briefcase,
   List,
+  Lock,
 } from 'lucide-react';
 import { map } from 'lodash/fp';
 import ThemeToggle from './ThemeToggle';
@@ -34,6 +35,7 @@ const MainLayout = ({ children }) => {
     { to: '/watchlist', label: 'Watchlist', icon: <List size={20} /> },
     { to: '/discover', label: 'Discover', icon: <Search size={20} /> },
     { to: '/portfolio', label: 'Portfolio', icon: <Briefcase size={20} /> },
+    { to: '/paper-v2', label: 'S3 Paper Book', icon: <Lock size={20} /> },
     { to: '/backtest', label: 'Backtest', icon: <FlaskConical size={20} /> },
     { to: '/intel', label: 'Intelligence', icon: <ShieldAlert size={20} /> },
     { to: '/system', label: 'System', icon: <Settings size={20} /> },

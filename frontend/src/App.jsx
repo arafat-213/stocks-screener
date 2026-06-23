@@ -11,6 +11,7 @@ import Intelligence from './pages/Intelligence';
 import System from './pages/System';
 import Backtest from './pages/Backtest';
 import Portfolio from './pages/Portfolio';
+import S3PaperBook from './pages/S3PaperBook';
 
 function App() {
   return (
@@ -22,6 +23,7 @@ function App() {
           <Route path='/stocks/:symbol' element={<StockDetail />} />
           <Route path='/discover' element={<Discover />} />
           <Route path='/portfolio' element={<Portfolio />} />
+          <Route path='/paper-v2' element={<S3PaperBook />} />
           <Route
             path='/journal'
             element={<Navigate to='/portfolio' replace />}
