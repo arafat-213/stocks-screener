@@ -130,7 +130,14 @@ def execute_paper_daily_task(process_date: str | None = None):
         adj_lookup = live_engine.build_adj_factor_lookup(prices) if to_process else None
         for d in to_process:
             report = live_engine.process_day(
-                db, pf.id, prices, index_prices, d, ctx=ctx, adj_lookup=adj_lookup
+                db,
+                pf.id,
+                prices,
+                index_prices,
+                d,
+                ctx=ctx,
+                adj_lookup=adj_lookup,
+                go_live=go_live,
             )
             if report.skipped:
                 continue
@@ -139,6 +146,12 @@ def execute_paper_daily_task(process_date: str | None = None):
             if report.is_rebalance and d >= go_live:
                 par = parity.shadow_parity(db, pf.id, prices, index_prices, d)
                 logger.info(par.summary)
+                # Durably persist the check BEFORE any halt (V11.2). The BREAK path
+                # raises below → finally: db.close() rolls back uncommitted work, so a
+                # flush-only row would be lost; commit makes the PASS/BREAK record
+                # survive (LOCKED: commit, never flush-only).
+                parity.persist_parity(db, pf.id, par)
+                db.commit()
                 if not par.passed:
                     raise RuntimeError(
                         f"PARITY BREAK on {d}: {par.summary} — halting (11 §8); "

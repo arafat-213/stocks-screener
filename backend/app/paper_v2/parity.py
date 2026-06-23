@@ -22,7 +22,7 @@ import pandas as pd
 
 from app.backtest_v2 import engine
 from app.backtest_v2.costs import CostLevel
-from app.db.models import PaperV2Position
+from app.db.models import PaperV2ParityCheck, PaperV2Position
 from app.paper_v2.live_engine import build_live_context
 
 log = logging.getLogger(__name__)
@@ -114,3 +114,32 @@ def shadow_parity(
         engine_weights=engine_w,
         live_weights=live_w,
     )
+
+
+def persist_parity(
+    session, portfolio_id: int, report: ParityReport
+) -> PaperV2ParityCheck:
+    """Idempotently upsert a ``ParityReport`` into ``paper_v2_parity_check`` (V11.2).
+
+    Keyed on ``(portfolio_id, as_of)`` so a re-run replaces rather than duplicates. Does
+    NOT commit — the caller owns the transaction. On a BREAK the daily task MUST
+    ``db.commit()`` before re-raising the halt: the teardown closes the session and a
+    flush-only row would be discarded on rollback, defeating the durability requirement
+    (11 viz V11.2 LOCKED: commit, never flush-only)."""
+    row = (
+        session.query(PaperV2ParityCheck)
+        .filter(
+            PaperV2ParityCheck.portfolio_id == portfolio_id,
+            PaperV2ParityCheck.as_of == report.as_of,
+        )
+        .one_or_none()
+    )
+    if row is None:
+        row = PaperV2ParityCheck(portfolio_id=portfolio_id, as_of=report.as_of)
+        session.add(row)
+    row.passed = report.passed
+    row.max_dev_bps = report.max_dev_bps
+    row.tol_bps = PARITY_TOL_BPS
+    # JSON column: store as a list of [isin, dev_bps] pairs (tuples ⇒ arrays).
+    row.breaches = [[isin, dev] for isin, dev in report.breaches]
+    return row

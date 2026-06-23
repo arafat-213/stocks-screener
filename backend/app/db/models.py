@@ -579,6 +579,69 @@ class PaperV2PendingFill(Base):
     )
 
 
+class PaperV2DailySnapshot(Base):
+    """Per-day NAV snapshot for the S3 probation book (specs/v3/11 viz, V11.1).
+
+    The engine produces a ``backtest_v2.schemas.DailySnapshot`` every processed day
+    and discards it; this table persists it (plus the benchmark level) so the
+    read-only ``/v2/paper/nav`` curve can render the full since-inception equity
+    curve with a go-live divider — without any live price fetch. One row per
+    processed trading day, idempotent on ``(portfolio_id, date)`` (Pipeline Law).
+    """
+
+    __tablename__ = "paper_v2_daily_snapshot"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    date = Column(Date, nullable=False)  # the processed trading day
+    equity = Column(Float, nullable=False)  # cash + Σ shares·close_tr  (NAV)
+    cash = Column(Float, nullable=False)
+    invested_value = Column(Float, nullable=False)  # Σ shares·close_tr
+    exposure = Column(Float, nullable=False)  # invested_value / equity  (0–1)
+    n_positions = Column(Integer, nullable=False)
+    # Nifty200 Mom30 TRI close on this date (deployment benchmark, 08 §10). Nullable:
+    # a day with no index point (gap) stores NULL and the FE skips it in the overlay.
+    index_level = Column(Float, nullable=True)
+    is_forward = Column(Boolean, nullable=False, default=False)  # date >= go_live
+
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_id", "date", name="uq_paper_v2_snap_portfolio_date"
+        ),
+        Index("ix_paper_v2_snap_portfolio_date", "portfolio_id", "date"),
+    )
+
+
+class PaperV2ParityCheck(Base):
+    """Persisted monthly shadow-parity report (specs/v3/11 §2/§7.1, V11.2).
+
+    The daily task computes a ``paper_v2.parity.ParityReport`` at each forward
+    month-end and only logs it; this table durably records it so the read-only
+    ``/v2/paper/parity`` badge can reflect the latest fidelity check (and the
+    history strip can show a BREAK that reset the 6-month clock). Idempotent on
+    ``(portfolio_id, as_of)``.
+    """
+
+    __tablename__ = "paper_v2_parity_check"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    as_of = Column(Date, nullable=False)  # rebalance date the check ran on
+    passed = Column(Boolean, nullable=False)
+    max_dev_bps = Column(Float, nullable=False)  # vs PARITY_TOL_BPS (25.0)
+    tol_bps = Column(Float, nullable=False, default=25.0)
+    breaches = Column(JSON, nullable=True)  # [[isin, dev_bps], ...]
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_id", "as_of", name="uq_paper_v2_parity_portfolio_asof"
+        ),
+        Index("ix_paper_v2_parity_portfolio_asof", "portfolio_id", "as_of"),
+    )
+
+
 class MarketBreadth(Base):
     __tablename__ = "market_breadth"
     date = Column(Date, primary_key=True)

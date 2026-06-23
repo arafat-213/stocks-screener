@@ -41,7 +41,12 @@ from app.backtest_v2 import engine
 from app.backtest_v2.costs import CostLevel
 from app.backtest_v2.portfolio import Portfolio
 from app.backtest_v2.schemas import DailySnapshot, Fill, Position
-from app.db.models import PaperV2PendingFill, PaperV2Portfolio, PaperV2Position
+from app.db.models import (
+    PaperV2DailySnapshot,
+    PaperV2PendingFill,
+    PaperV2Portfolio,
+    PaperV2Position,
+)
 from app.paper_v2 import s3_config
 from app.paper_v2.ca_reconcile import reconcile_position
 
@@ -343,11 +348,22 @@ def persist_state(
     adj_lookup: AdjFactorLookup,
     executed: list[Fill],
     is_rebalance: bool,
+    *,
+    snapshot: DailySnapshot | None = None,
+    go_live: date | None = None,
+    index_level: float | None = None,
 ) -> None:
     """Write the post-step LoopState back to the DB: cash, positions (+ refreshed
     ``last_adj_factor`` for §5e, read from ``adj_lookup``), the executed fills (mark prior
     queue ``filled``), and the new pending-fills queue. ``last_processed_date`` advances
-    the replay clock."""
+    the replay clock.
+
+    V11.1: when a ``snapshot`` is supplied it is upserted into ``paper_v2_daily_snapshot``
+    keyed on ``(portfolio_id, date)`` — the curve's data source. The benchmark
+    ``index_level`` (the day's Nifty200 Mom30 TRI close, or None on an index gap) is
+    stored alongside, and ``is_forward = process_date >= go_live`` (defaults to False if
+    ``go_live`` is unknown). Same transaction as the rest of the day's writes ⇒ atomic and
+    idempotent (a re-run/backfill replaces the row, never duplicates it)."""
     pf = session.get(PaperV2Portfolio, portfolio_id)
     pf.cash = state.portfolio.cash
     pf.last_processed_date = process_date
@@ -411,6 +427,30 @@ def persist_state(
             )
         )
 
+    # ---- daily NAV snapshot (V11.1): the curve's data source ----
+    # Idempotent upsert keyed on (portfolio_id, date) so a backfill/re-run replaces
+    # rather than duplicates. snapshot is None only on a degenerate empty day (guarded
+    # in process_day) — skip the row, don't crash (Rule 12: loud only on corruption).
+    if snapshot is not None:
+        row = (
+            session.query(PaperV2DailySnapshot)
+            .filter(
+                PaperV2DailySnapshot.portfolio_id == portfolio_id,
+                PaperV2DailySnapshot.date == process_date,
+            )
+            .one_or_none()
+        )
+        if row is None:
+            row = PaperV2DailySnapshot(portfolio_id=portfolio_id, date=process_date)
+            session.add(row)
+        row.equity = snapshot.equity
+        row.cash = snapshot.cash
+        row.invested_value = snapshot.invested_value
+        row.exposure = snapshot.exposure
+        row.n_positions = snapshot.n_positions
+        row.index_level = index_level
+        row.is_forward = go_live is not None and process_date >= go_live
+
 
 # ---------------------------------------------------------------------------
 # The per-day entry point
@@ -428,6 +468,7 @@ def process_day(
     commit: bool = True,
     ctx: engine.EngineContext | None = None,
     adj_lookup: AdjFactorLookup | None = None,
+    go_live: date | None = None,
 ) -> ProcessReport:
     """Process ONE trading day for the S3 paper book (11 §3e/§4a/§4b).
 
@@ -446,6 +487,12 @@ def process_day(
     ``adj_lookup`` is the precomputed §5e factor view (``build_adj_factor_lookup``), built
     ONCE over the same frame for the same reason; omitted ⇒ built here for the single-day
     path.
+
+    ``go_live`` (the IST date the book was armed, from ``tasks.py``) tags each persisted
+    NAV snapshot as warm-start (``is_forward=False``) or counted-forward (``True``) for the
+    V11 curve's divider. Omitted ⇒ ``is_forward`` defaults False (warm-start-only callers /
+    tests). The benchmark ``index_level`` is looked up from the ``index_prices`` Series this
+    function already receives — no extra fetch (project law: no live prices).
     """
     process_date = _to_date(process_date)
     pf = session.get(PaperV2Portfolio, portfolio_id)
@@ -483,8 +530,25 @@ def process_day(
     queued = list(state.pending_fills)
     snapshot = state.portfolio.snapshots[-1] if state.portfolio.snapshots else None
 
+    # Benchmark close on this day (deployment benchmark, 08 §10) for the curve overlay.
+    # None on an index gap / when no index Series is wired — the FE skips it (V11.1).
+    index_level = (
+        float(index_prices.get(day_ts))
+        if index_prices is not None and day_ts in index_prices.index
+        else None
+    )
+
     persist_state(
-        session, portfolio_id, state, process_date, adj_lookup, executed, is_rebalance
+        session,
+        portfolio_id,
+        state,
+        process_date,
+        adj_lookup,
+        executed,
+        is_rebalance,
+        snapshot=snapshot,
+        go_live=go_live,
+        index_level=index_level,
     )
     if commit:
         session.commit()

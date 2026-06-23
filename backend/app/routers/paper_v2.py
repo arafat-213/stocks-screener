@@ -20,7 +20,13 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from app.db.models import PaperV2Portfolio, PaperV2Position
+from app.db.models import (
+    PaperV2DailySnapshot,
+    PaperV2ParityCheck,
+    PaperV2PendingFill,
+    PaperV2Portfolio,
+    PaperV2Position,
+)
 from app.db.session import get_db
 
 router = APIRouter(prefix="/v2/paper", tags=["paper-v2"])
@@ -148,3 +154,200 @@ def get_positions(db: Session = Depends(get_db)) -> list[PaperV2PositionResponse
     # Largest holding first (most intuitive for a read-only book view).
     out.sort(key=lambda r: r.market_value, reverse=True)
     return out
+
+
+# ---------------------------------------------------------------------------
+# V11.3 — NAV curve, parity history, rebalance log (all read-only, persisted state)
+# ---------------------------------------------------------------------------
+
+
+class NavPointResponse(BaseModel):
+    """One persisted daily NAV snapshot (paper_v2_daily_snapshot, V11.1)."""
+
+    date: datetime.date
+    equity: float  # book NAV: cash + Σ shares·close_tr
+    cash: float
+    invested_value: float
+    exposure: float  # invested_value / equity (0–1) — risk-on/off proxy
+    n_positions: int
+    index_level: float | None  # Nifty200 Mom30 TRI close (None on a gap)
+    # Benchmark rebased to the book's starting capital so the FE overlays book-NAV vs
+    # index on one axis without client math (anchored to the first non-null index level).
+    index_rebased: float | None
+    is_forward: bool  # date >= go_live (warm-start replay vs counted forward)
+
+
+class NavSeriesResponse(BaseModel):
+    """The NAV curve envelope: the go-live divider + ascending points (one source of
+    truth for where warm-start replay ends and the counted forward window begins)."""
+
+    go_live_date: datetime.date | None
+    points: list[NavPointResponse]
+
+
+class ParityCheckResponse(BaseModel):
+    """One persisted monthly shadow-parity check (paper_v2_parity_check, V11.2)."""
+
+    as_of: datetime.date
+    passed: bool
+    max_dev_bps: float
+    tol_bps: float
+    breaches: list[tuple[str, float]]  # (isin, dev_bps)
+
+
+class ParitySeriesResponse(BaseModel):
+    latest: ParityCheckResponse | None  # max as_of — drives the header fidelity badge
+    history: list[ParityCheckResponse]  # ascending by as_of
+
+
+class RebalanceFillResponse(BaseModel):
+    """One fill within a rebalance/stop event (from paper_v2_pending_fills)."""
+
+    symbol: str
+    isin: str
+    side: str  # buy | sell | trim
+    qty: float
+    reason: str  # rebalance | catastrophic_stop
+    status: str  # pending | filled
+    decision_price: float | None
+    fill_date: datetime.date | None
+    fill_price: float | None
+    cost_rupees: float | None
+
+
+class RebalanceEventResponse(BaseModel):
+    """All fills queued on one decision date, grouped into a single event."""
+
+    decision_date: datetime.date
+    reason: str  # "rebalance" if any fill is a rebalance else "catastrophic_stop"
+    n_buys: int
+    n_sells: int
+    n_trims: int
+    total_cost_rupees: float
+    fills: list[RebalanceFillResponse]
+
+
+@router.get("/nav", response_model=NavSeriesResponse)
+def get_nav(db: Session = Depends(get_db)) -> NavSeriesResponse:
+    """Full since-inception NAV curve + benchmark overlay (V11.1/V11.3)."""
+    book = _active_book(db)
+    if not book:
+        return NavSeriesResponse(go_live_date=None, points=[])
+
+    rows = (
+        db.query(PaperV2DailySnapshot)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2DailySnapshot.date.asc())
+        .all()
+    )
+    go_live = book.created_at.astimezone(_IST).date() if book.created_at else None
+
+    # Rebase anchor = the earliest snapshot carrying a non-null index level.
+    anchor = next((r.index_level for r in rows if r.index_level is not None), None)
+    points = [
+        NavPointResponse(
+            date=r.date,
+            equity=r.equity,
+            cash=r.cash,
+            invested_value=r.invested_value,
+            exposure=r.exposure,
+            n_positions=r.n_positions,
+            index_level=r.index_level,
+            index_rebased=(
+                r.index_level / anchor * book.starting_capital
+                if r.index_level is not None and anchor
+                else None
+            ),
+            is_forward=r.is_forward,
+        )
+        for r in rows
+    ]
+    return NavSeriesResponse(go_live_date=go_live, points=points)
+
+
+@router.get("/parity", response_model=ParitySeriesResponse)
+def get_parity(db: Session = Depends(get_db)) -> ParitySeriesResponse:
+    """Monthly shadow-parity history + latest (V11.2/V11.3)."""
+    book = _active_book(db)
+    if not book:
+        return ParitySeriesResponse(latest=None, history=[])
+
+    rows = (
+        db.query(PaperV2ParityCheck)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2ParityCheck.as_of.asc())
+        .all()
+    )
+
+    def _to_resp(r: PaperV2ParityCheck) -> ParityCheckResponse:
+        return ParityCheckResponse(
+            as_of=r.as_of,
+            passed=r.passed,
+            max_dev_bps=r.max_dev_bps,
+            tol_bps=r.tol_bps,
+            breaches=[(isin, dev) for isin, dev in (r.breaches or [])],
+        )
+
+    history = [_to_resp(r) for r in rows]
+    return ParitySeriesResponse(
+        latest=history[-1] if history else None, history=history
+    )
+
+
+@router.get("/rebalances", response_model=list[RebalanceEventResponse])
+def get_rebalances(db: Session = Depends(get_db)) -> list[RebalanceEventResponse]:
+    """Rebalance/stop log grouped by decision date (V11.3), newest first. Reads the
+    pending-fills queue — no new table."""
+    book = _active_book(db)
+    if not book:
+        return []
+
+    fills = (
+        db.query(PaperV2PendingFill)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2PendingFill.decision_date.asc(), PaperV2PendingFill.id.asc())
+        .all()
+    )
+
+    # Group by decision_date preserving insertion order within a date.
+    grouped: dict[datetime.date, list[PaperV2PendingFill]] = {}
+    for f in fills:
+        grouped.setdefault(f.decision_date, []).append(f)
+
+    events: list[RebalanceEventResponse] = []
+    for decision_date, group in grouped.items():
+        # An event is a "rebalance" if ANY of its fills is one, else a catastrophic stop.
+        reason = (
+            "rebalance"
+            if any(f.reason == "rebalance" for f in group)
+            else "catastrophic_stop"
+        )
+        events.append(
+            RebalanceEventResponse(
+                decision_date=decision_date,
+                reason=reason,
+                n_buys=sum(1 for f in group if f.side == "buy"),
+                n_sells=sum(1 for f in group if f.side == "sell"),
+                n_trims=sum(1 for f in group if f.side == "trim"),
+                total_cost_rupees=sum(f.cost_rupees or 0.0 for f in group),
+                fills=[
+                    RebalanceFillResponse(
+                        symbol=f.symbol,
+                        isin=f.isin,
+                        side=f.side,
+                        qty=f.qty,
+                        reason=f.reason,
+                        status=f.status,
+                        decision_price=f.decision_price,
+                        fill_date=f.fill_date,
+                        fill_price=f.fill_price,
+                        cost_rupees=f.cost_rupees,
+                    )
+                    for f in group
+                ],
+            )
+        )
+
+    # Newest decision_date first.
+    events.sort(key=lambda e: e.decision_date, reverse=True)
+    return events
