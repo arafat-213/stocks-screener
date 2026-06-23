@@ -484,10 +484,21 @@ Confirm or redline each before any code:
   render; idempotent/resumable.
 
 ### P11.2 — go live (paper), 6-month window
-> **Status: RUNNING (started 2026-06-22).** The forward-aware month-end blocker P11.1 deferred is
-> resolved (holiday-proof), the `s3_probation` book is armed cash-only at inception, the post-close
-> Celery beat is live, and the 6 counted forward months now accrue. No knob moved (§1); the `10`
+> **Status: LIVE — re-armed on de-ghosted data 2026-06-23 (post-`07`); forward window accruing.**
+> The honest timeline (Rule 12): P11.2 first *started* 2026-06-22, but that warm-start surfaced the
+> ISIN-succession / merger ghost defects, so the worker + beat were STOPPED and the probation was
+> effectively paused while the `06`→`07` data-layer identity arc was fixed (`specs/v2/06`, `07`).
+> With **`07` COMPLETE (2026-06-23, commit `23e06dc3`)** the book was re-warm-started clean on
+> de-ghosted data (`07` T07.5) and the probation is now genuinely live: the `s3_probation` book
+> holds **0 carried-unsellable ghosts**, the post-close Celery beat is live, and the 6 counted
+> forward months accrue from the `go_live = 2026-06-22` anchor. No knob moved (§1); the `10`
 > "exploratory" ceiling is unchanged. Verdict is P11.3.
+>
+> **P11.2 cannot *complete* in one session — it is a 6-month real-time forward window.** "Execute
+> P11.2" resolves to the **go-live act**: arm a clean book, run the live beat, and let the daily job
+> drive forward accrual. The 6 clean months elapse over calendar time and are evaluated in P11.3.
+> On go-live day the job correctly **idles** (see the 2026-06-23 session log) — there is no confirmed
+> new trading day past the warm-start edge yet.
 >
 > **Forward-calendar blocker (resolved — the concrete P11.2 code item).** Live, the stored bhavcopy
 > frame ends at the latest published day, so `_month_end_dates` (max-date-per-month) marks that
@@ -520,6 +531,31 @@ Confirm or redline each before any code:
 >   P11.1; confirmed registered. No scheduler added (§4c infra reuse).
 > - **Tests:** 4 new DC7 cases (trailing-edge held back then confirmed; last_processed/target/order;
 >   historical-replay no hold-back; empty calendar). **20 paper_v2 tests green.**
+>
+> **Session log (2026-06-23) — go-live re-arm verification (post-`07`, no code change):**
+> - **Book state confirmed clean (de-ghosted).** `s3_probation` (id=1): **0 positions**, cash
+>   ₹2,937,241.98, `last_processed_date=2026-06-18`, active — the `07` T07.5 end-state intact. The
+>   1,963 `paper_v2_pending_fills` rows are **all `status='filled'`** (the warm-start fill audit,
+>   created 2026-06-23 04:06 UTC); **zero unexecuted/pending** work and **0 carried-unsellable
+>   ghosts** (the 3 merger/cancellation ghosts force-exited per `07`).
+> - **`go_live = 2026-06-22`** (book `created_at` 2026-06-22 05:29 UTC, IST date) — unchanged by the
+>   T07.5 de-ghosted re-warm-start (reset replayed in place, preserving the portfolio row), so the
+>   forward 6-month clock is **not** reset; counted months are the first 6 month-ends ≥ 2026-06-22.
+> - **Worker + beat live + paper task scheduled.** Containers up; `celery_app.beat_schedule` registers
+>   `s3-paper-daily-postclose` (`crontab 30 19 * * 1-5`, weekday 19:30 IST). The `06`/`07` "keep
+>   STOPPED until `07`" interlock is now **satisfied** (`07` COMPLETE) → live is correct/aligned.
+> - **Go-live replay window verified WITHOUT a live NSE fetch.** Store edge (max stored trading day) =
+>   **2026-06-19**; it is the *unconfirmed trailing edge* (no successor day yet) so it is held back:
+>   `confirmed_replay_days(cal, lpd=2026-06-18, target ∈ {2026-06-19, 2026-06-23}) → []`. The daily
+>   job therefore **idles faithfully** today — the day-1 steady state — and will process `2026-06-19`
+>   only once a later bhavcopy day confirms it (holiday-proof hold-back, §4c). A manual
+>   `incremental_append` (live NSE) was deliberately **not** triggered — forward accrual is driven by
+>   the live beat as bhavcopy lands (project norm: no ad-hoc live-NSE fetch).
+> - **Go-live regression gate: `28 paper_v2 tests passed`** (full `tests/paper_v2/` suite, 324s) —
+>   live engine + task wiring green on the de-ghosted store.
+> - **Net:** P11.2 is operationally **go-live** on identity-continuous data; the 6 clean forward
+>   months now accrue automatically via the live beat and are evaluated in P11.3. No knob moved (§1);
+>   no FINAL_OOS interaction; `10` ceiling unchanged.
 - **Do:** enable the daily post-close Celery job forward. Daily order (§3e): append → **execute prior
   queue at today's open** → MTM → stop-check → (month-end) rebalance → persist. Each month-end: parity
   assert → rebalance preview → next-session fill + confirm. **Missed days are backfilled in order
@@ -540,5 +576,5 @@ Confirm or redline each before any code:
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green (2026-06-22; §5a corrected to inception-anchored append).
 - [x] P11.1 — v2-native wrapper + persisted queue + parity harness; dry-run reproduces backtest (decision + fill) byte-for-byte (2026-06-22; shared `step_day` extraction + `decision_price` fidelity fix; 9 new tests, 763 green).
-- [~] P11.2 — **STARTED 2026-06-22**: forward-calendar blocker resolved (holiday-proof `confirmed_replay_days` hold-back), `s3_probation` book armed cash-only, post-close beat live; 6 forward months accruing (DC7 ×4, 20 paper_v2 green). Awaiting 6 consecutive clean monthly rebalances.
+- [~] P11.2 — **GO-LIVE on de-ghosted data 2026-06-23 (post-`07`)**: first started 2026-06-22, paused for the `06`→`07` ghost fix, then re-armed clean after `07` COMPLETE — `s3_probation` book holds 0 carried-unsellable ghosts (T07.5), `go_live=2026-06-22` (clock not reset), post-close beat live (`s3-paper-daily-postclose`, weekday 19:30 IST). Go-live day correctly idles (`confirmed_replay_days → []`, store edge 2026-06-19 is the held-back trailing edge); 28 paper_v2 tests green. 6 forward months now accrue automatically via the live beat. **Awaiting 6 consecutive clean monthly rebalances (real calendar time) → P11.3.**
 - [ ] P11.3 — verdict against §7/§8; "exploratory" ceiling restated.
