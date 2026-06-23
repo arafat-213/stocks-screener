@@ -16,6 +16,9 @@ import {
   Repeat,
   ChevronDown,
   ChevronRight,
+  PieChart,
+  TrendingDown,
+  Receipt,
 } from 'lucide-react';
 import {
   getPaperV2Book,
@@ -74,6 +77,80 @@ const businessDaysBetween = (fromStr, toStr) => {
     if (dow !== 0 && dow !== 6) count += 1;
   }
   return count;
+};
+
+// Name-concentration of the held sleeve — the §6.2 gate this whole research arc
+// kept dying on (skew-recheck-cracks-index-wall). Weights are taken WITHIN the
+// invested book (market_value / Σ market_value), so the figures describe how lumpy
+// the equity is independent of how much cash is parked. HHI = Σ wᵢ² ("how skewed
+// is the basket"); effective-N = 1/HHI ("how many equal-weight names this behaves
+// like"). Returns null when fully in cash (nothing to concentrate).
+const concentrationStats = (positions) => {
+  const mvs = positions
+    .map((p) => getOr(0, 'market_value')(p))
+    .filter((v) => v > 0);
+  const total = mvs.reduce((a, b) => a + b, 0);
+  if (!total) return null;
+  const weights = [...mvs].sort((a, b) => b - a).map((v) => v / total);
+  const hhi = weights.reduce((a, w) => a + w * w, 0);
+  return {
+    n: positions.length,
+    top1: weights[0] * 100,
+    top5: weights.slice(0, 5).reduce((a, w) => a + w, 0) * 100,
+    effN: hhi > 0 ? 1 / hhi : 0,
+  };
+};
+
+// Running-peak (underwater) drawdown series in %, ≤ 0, for both the book NAV and
+// the rebased Mom30 overlay. A drawdown is peak-to-trough decline — "how far below
+// its own high-water mark each line currently sits". Index drawdown is computed
+// only over points that carry an index level (gaps leave a null the chart skips).
+const drawdownSeries = (points) => {
+  let peakEq = -Infinity;
+  let peakIx = -Infinity;
+  return points.map((p) => {
+    if (p.equity != null && p.equity > peakEq) peakEq = p.equity;
+    const bookDd = peakEq > 0 ? (p.equity / peakEq - 1) * 100 : 0;
+    let indexDd = null;
+    if (p.index_rebased != null) {
+      if (p.index_rebased > peakIx) peakIx = p.index_rebased;
+      indexDd = peakIx > 0 ? (p.index_rebased / peakIx - 1) * 100 : 0;
+    }
+    return { date: p.date, bookDd, indexDd };
+  });
+};
+
+const minOr0 = (vals) => (vals.length ? Math.min(...vals) : 0);
+
+// Cumulative trading-cost (the literal point of a paper probation: cost realism)
+// plus cumulative turnover. Cost = Σ total_cost_rupees (fees + slippage). Turnover
+// = Σ qty·fill_price over filled fills — the traded notional, expressed as a
+// multiple of starting capital ("the book churned N× its own size"); turnover is
+// the documented driver of this strategy's cost story. Events arrive newest-first,
+// so we re-sort ascending to accumulate.
+const costStats = (events, startingCapital) => {
+  const asc = [...events].sort((a, b) =>
+    a.decision_date < b.decision_date ? -1 : 1
+  );
+  let cumCost = 0;
+  let cumTurnover = 0;
+  const series = asc.map((ev) => {
+    cumCost += getOr(0, 'total_cost_rupees')(ev);
+    cumTurnover += getOr(
+      [],
+      'fills'
+    )(ev).reduce((s, f) => {
+      const qty = getOr(0, 'qty')(f);
+      return s + (f.fill_price != null ? qty * f.fill_price : 0);
+    }, 0);
+    return { date: ev.decision_date, cumCost };
+  });
+  return {
+    totalCost: cumCost,
+    costPct: startingCapital ? (cumCost / startingCapital) * 100 : 0,
+    turnoverX: startingCapital ? cumTurnover / startingCapital : 0,
+    series,
+  };
 };
 
 // Read-only view of the frozen S3 forward paper book (specs/v3/11 §1).
@@ -206,8 +283,17 @@ const S3PaperBook = () => {
       {/* NAV curve + benchmark overlay + exposure band */}
       <NavCurve nav={nav} isDark={isDark} />
 
+      {/* Underwater (drawdown) curve — book vs Mom30 */}
+      <DrawdownCurve nav={nav} isDark={isDark} />
+
+      {/* Name-concentration panel (§6.2 gate) */}
+      <ConcentrationPanel positions={positions} />
+
       {/* Holdings */}
       <HoldingsTable positions={positions} />
+
+      {/* Cumulative cost-drag + turnover */}
+      <CostDragPanel rebalances={rebalances} book={book} isDark={isDark} />
 
       {/* Rebalance log */}
       <RebalanceLog events={rebalances} />
@@ -565,6 +651,340 @@ const NavCurve = ({ nav, isDark }) => {
             </ResponsiveContainer>
           </Suspense>
         </div>
+      </div>
+    </div>
+  );
+};
+
+// Name-concentration panel (specs/v3/11; §6.2). The concentration gate is the one
+// this strategy repeatedly failed, so the live book surfaces it directly. Hidden
+// when the book is fully in cash (the holdings table explains that state).
+const ConcentrationPanel = ({ positions }) => {
+  const stats = concentrationStats(positions);
+  if (!stats) return null;
+
+  const cells = [
+    { label: 'Holdings', value: `${stats.n}`, sub: 'open names' },
+    {
+      label: 'Largest',
+      value: `${stats.top1.toFixed(1)}%`,
+      sub: 'of holdings',
+    },
+    {
+      label: 'Top 5',
+      value: `${stats.top5.toFixed(1)}%`,
+      sub: 'of holdings',
+    },
+    {
+      label: 'Effective N',
+      value: stats.effN.toFixed(1),
+      sub: 'equal-weight equiv.',
+    },
+  ];
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
+      <h3 className='text-lg font-black flex items-center gap-3 mb-1 text-text uppercase tracking-tight'>
+        <PieChart size={20} className='text-primary' /> Concentration
+      </h3>
+      <p className='text-[11px] font-bold text-text-muted mb-6'>
+        How lumpy the held sleeve is — the §6.2 gate. Weights are within
+        holdings (excl. cash); effective-N is 1/HHI.
+      </p>
+      <div className='grid grid-cols-2 xl:grid-cols-4 gap-4'>
+        {map((c) => (
+          <div
+            key={c.label}
+            className='bg-bg-elevated border border-border rounded-xl p-4 flex flex-col gap-1'
+          >
+            <span className='text-[10px] font-black uppercase tracking-widest text-text-muted'>
+              {c.label}
+            </span>
+            <span className='text-2xl font-black text-text tracking-tight'>
+              {c.value}
+            </span>
+            <span className='text-[10px] font-bold text-text-muted uppercase tracking-wider'>
+              {c.sub}
+            </span>
+          </div>
+        ))(cells)}
+      </div>
+    </div>
+  );
+};
+
+// Underwater / drawdown curve (specs/v3/11 viz). Plots peak-to-trough decline for
+// the book NAV and the rebased Mom30 overlay on one axis, with the worst level
+// each reached as a headline chip. No deploy-bar line is drawn: the maxDD bar's
+// exact denominator (08 §2b) is a research artefact and hard-coding it here would
+// risk misrepresenting it.
+const DrawdownCurve = ({ nav, isDark }) => {
+  const points = getOr([], 'points')(nav);
+  if (isEmpty(points)) return null;
+
+  const series = drawdownSeries(points);
+  const bookMax = minOr0(series.map((d) => d.bookDd));
+  const indexMax = minOr0(
+    series.map((d) => d.indexDd).filter((v) => v != null)
+  );
+  const cur = series[series.length - 1] || {};
+
+  const axisColor = '#64748B';
+  const gridColor = isDark ? '#1E293B' : '#E2E8F0';
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
+      <div className='flex flex-wrap justify-between items-center gap-3 mb-6'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <TrendingDown size={20} className='text-bearish' /> Drawdown
+        </h3>
+        <div className='flex items-center gap-2 flex-wrap'>
+          <DdChip label='Book max' value={bookMax} tone='book' />
+          <DdChip label='Index max' value={indexMax} tone='index' />
+          <DdChip label='Book now' value={cur.bookDd ?? 0} tone='book' />
+        </div>
+      </div>
+      <div className='w-full h-[260px]'>
+        <Suspense
+          fallback={
+            <div className='w-full h-full flex items-center justify-center bg-bg-elevated rounded-xl'>
+              <Loader2 className='animate-spin text-primary' size={32} />
+            </div>
+          }
+        >
+          <ResponsiveContainer>
+            <AreaChart
+              data={series}
+              margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+            >
+              <CartesianGrid
+                strokeDasharray='3 3'
+                stroke={gridColor}
+                vertical={false}
+              />
+              <XAxis
+                dataKey='date'
+                stroke={axisColor}
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+                minTickGap={40}
+                tickFormatter={(str) => formatDisplayDate(str)}
+              />
+              <YAxis
+                stroke={axisColor}
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                dx={-10}
+                domain={['auto', 0]}
+                tickFormatter={(val) => `${val.toFixed(0)}%`}
+              />
+              <Tooltip content={<DrawdownTooltip isDark={isDark} />} />
+              <Legend
+                verticalAlign='top'
+                align='right'
+                iconType='circle'
+                wrapperStyle={{
+                  paddingBottom: '16px',
+                  fontSize: '11px',
+                  fontWeight: 'bold',
+                  textTransform: 'uppercase',
+                }}
+              />
+              <ReferenceLine y={0} stroke={axisColor} strokeWidth={1} />
+              <Area
+                name='Book'
+                type='monotone'
+                dataKey='bookDd'
+                stroke='#EF4444'
+                fill='#EF4444'
+                fillOpacity={0.16}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+              <Area
+                name='Mom30 Index'
+                type='monotone'
+                dataKey='indexDd'
+                stroke='#94A3B8'
+                fill='#94A3B8'
+                fillOpacity={0.08}
+                strokeWidth={1.5}
+                strokeDasharray='6 4'
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Suspense>
+      </div>
+    </div>
+  );
+};
+
+const DdChip = ({ label, value, tone }) => (
+  <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+    <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+      {label}
+    </span>
+    <span
+      className={`text-xs font-black ${tone === 'index' ? 'text-text-muted' : 'text-bearish'}`}
+    >
+      {value.toFixed(1)}%
+    </span>
+  </div>
+);
+
+const DrawdownTooltip = ({ active, payload, label, isDark }) => {
+  if (!active || !payload || !payload.length) return null;
+  const point = payload[0]?.payload || {};
+  return (
+    <div
+      className='rounded-xl border-2 px-3 py-2 font-mono text-xs shadow-lg'
+      style={{
+        backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+        borderColor: isDark ? '#1E293B' : '#E2E8F0',
+      }}
+    >
+      <div className='font-black mb-1 text-text'>
+        {formatDisplayDate(label)}
+      </div>
+      <div className='text-bearish font-bold'>
+        Book {point.bookDd?.toFixed(2)}%
+      </div>
+      {point.indexDd != null && (
+        <div className='text-text-muted'>Index {point.indexDd.toFixed(2)}%</div>
+      )}
+    </div>
+  );
+};
+
+// Cumulative cost-drag panel (specs/v3/11; cost realism is the point of probation).
+// Headline = trading costs eaten so far as a % of starting capital, plus cumulative
+// turnover (×capital). The mini chart traces cost accrual over the rebalance dates.
+// Hidden until the first rebalance queues fills.
+const CostDragPanel = ({ rebalances, book, isDark }) => {
+  if (isEmpty(rebalances)) return null;
+  const startingCapital = getOr(0, 'starting_capital')(book);
+  const stats = costStats(rebalances, startingCapital);
+
+  const axisColor = '#64748B';
+  const gridColor = isDark ? '#1E293B' : '#E2E8F0';
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
+      <div className='flex flex-wrap justify-between items-center gap-3 mb-6'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <Receipt size={20} className='text-amber-500' /> Cost Drag
+        </h3>
+        <div className='flex items-center gap-2 flex-wrap'>
+          <DdChip label='Cost' value={stats.costPct} tone='index' />
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Turnover
+            </span>
+            <span className='text-xs font-black text-amber-500'>
+              {stats.turnoverX.toFixed(2)}×
+            </span>
+          </div>
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              ₹ Cost
+            </span>
+            <span className='text-xs font-black text-text'>
+              ₹
+              {stats.totalCost.toLocaleString(undefined, {
+                maximumFractionDigits: 0,
+              })}
+            </span>
+          </div>
+        </div>
+      </div>
+      <p className='text-[11px] font-bold text-text-muted mb-4'>
+        Trading costs (fees + slippage) consumed so far ={' '}
+        <span className='text-text'>{stats.costPct.toFixed(2)}%</span> of the ₹
+        {startingCapital.toLocaleString(undefined, {
+          maximumFractionDigits: 0,
+        })}{' '}
+        start. Turnover = traded notional ÷ capital.
+      </p>
+      <div className='w-full h-[200px]'>
+        <Suspense
+          fallback={
+            <div className='w-full h-full flex items-center justify-center bg-bg-elevated rounded-xl'>
+              <Loader2 className='animate-spin text-primary' size={32} />
+            </div>
+          }
+        >
+          <ResponsiveContainer>
+            <AreaChart
+              data={stats.series}
+              margin={{ top: 8, right: 8, left: 8, bottom: 0 }}
+            >
+              <CartesianGrid
+                strokeDasharray='3 3'
+                stroke={gridColor}
+                vertical={false}
+              />
+              <XAxis
+                dataKey='date'
+                stroke={axisColor}
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                dy={10}
+                minTickGap={40}
+                tickFormatter={(str) => formatDisplayDate(str)}
+              />
+              <YAxis
+                stroke={axisColor}
+                fontSize={11}
+                tickLine={false}
+                axisLine={false}
+                dx={-10}
+                tickFormatter={(val) => `₹${(val / 1000).toFixed(0)}k`}
+              />
+              <Tooltip content={<CostTooltip isDark={isDark} />} />
+              <Area
+                name='Cumulative cost'
+                type='monotone'
+                dataKey='cumCost'
+                stroke='#F59E0B'
+                fill='#F59E0B'
+                fillOpacity={0.16}
+                strokeWidth={2}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </Suspense>
+      </div>
+    </div>
+  );
+};
+
+const CostTooltip = ({ active, payload, label, isDark }) => {
+  if (!active || !payload || !payload.length) return null;
+  const point = payload[0]?.payload || {};
+  return (
+    <div
+      className='rounded-xl border-2 px-3 py-2 font-mono text-xs shadow-lg'
+      style={{
+        backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
+        borderColor: isDark ? '#1E293B' : '#E2E8F0',
+      }}
+    >
+      <div className='font-black mb-1 text-text'>
+        {formatDisplayDate(label)}
+      </div>
+      <div className='text-amber-500 font-bold'>
+        Cum. cost ₹
+        {point.cumCost?.toLocaleString(undefined, { maximumFractionDigits: 0 })}
       </div>
     </div>
   );
