@@ -73,6 +73,7 @@ import requests
 from app.data.bhavcopy import adjust as adj_mod
 from app.data.bhavcopy import corporate_actions as ca_mod
 from app.data.bhavcopy import download as dl_mod
+from app.data.bhavcopy import market_internals as mi_mod
 from app.data.bhavcopy import parse as parse_mod
 from app.data.bhavcopy import store as store_mod
 from app.data.bhavcopy import succession as succ_mod
@@ -433,6 +434,19 @@ def run_build(
 
     report.rows_written = len(prices_df)
     report.distinct_isins = prices_df["isin"].nunique()
+
+    # ------------------------------------------------------------------ #
+    # Stage 7b: Market internals (v4/01 — regime-score inputs)            #
+    # ------------------------------------------------------------------ #
+    # Derive daily breadth + A/D (all-EQ and liquid-subset) from the adjusted panel
+    # and persist them, regenerated every build (the orphan-MarketBreadth fix — never
+    # hand-populated; specs/v4/01_REGIME_DATA_LAYER.md §2A/§3). India VIX is left NaN
+    # here — Part B lands it separately; the 3-factor regime tier works without it.
+    # Additive only: this reads ``prices_df`` and writes a new artifact; it does not
+    # touch prices_adjusted / membership / any backtest (01 §7).
+    logger.info("build: Stage 7b — market internals (breadth + A/D)")
+    internals_df = mi_mod.compute_market_internals(prices_df)
+    store_mod.write_market_internals(internals_df, root)
 
     # ------------------------------------------------------------------ #
     # Stage 8: Validate (the gate — 01_DATA_LAYER.md §7)                  #

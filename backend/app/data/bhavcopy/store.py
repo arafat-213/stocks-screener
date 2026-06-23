@@ -149,6 +149,27 @@ TERMINATIONS_SCHEMA: dict[str, str] = {
     "evidence": "string",  # short human-readable basis for the classification
 }
 
+# Daily market-internals (v4/01 — regime-score inputs: breadth + A/D, all-EQ and
+# liquid-subset, plus India VIX). One row per trading day; derived in the build from
+# the adjusted panel (market_internals.compute_market_internals). ``india_vix`` is
+# nullable (NaN until Part B lands; the 3-factor regime tier works without it — 01 §0).
+MARKET_INTERNALS_SCHEMA: dict[str, str] = {
+    "date": "datetime64[ns]",
+    "advancers": "int64",
+    "decliners": "int64",
+    "unchanged": "int64",
+    "total": "int64",
+    "breadth_pct": "float64",  # 100·adv/(adv+dec); NaN if no directional names
+    "ad_ratio": "float64",  # adv/dec (decliners==0 → adv/1 sentinel)
+    "liq_advancers": "int64",  # adv_20 >= ₹5cr subset
+    "liq_decliners": "int64",
+    "liq_unchanged": "int64",
+    "liq_total": "int64",
+    "liq_breadth_pct": "float64",
+    "liq_ad_ratio": "float64",
+    "india_vix": "float64",  # NaN where absent (never forward-filled — 01 §3)
+}
+
 # Subdir / file names under the storage root.
 _PRICES_DIR = "prices_adjusted"
 _MEMBERSHIP_DIR = "universe_membership"
@@ -158,6 +179,7 @@ _CA_UNMATCHED_FILE = "ca_unmatched.parquet"
 _SUCCESSOR_MAP_FILE = "successor_map.parquet"
 _SUCCESSOR_UNMATCHED_FILE = "successor_unmatched.parquet"
 _TERMINATIONS_FILE = "terminations.parquet"
+_MARKET_INTERNALS_FILE = "market_internals.parquet"
 
 # Partition columns.
 _PRICES_PARTITION = "isin"
@@ -439,3 +461,21 @@ def read_terminations(root: str | Path | None = None) -> pd.DataFrame:
         return _empty(TERMINATIONS_SCHEMA)
     df = pd.read_parquet(path)
     return _conform(df, TERMINATIONS_SCHEMA, "terminations")
+
+
+# --------------------------------------------------------------------------- #
+# market_internals (v4/01 regime inputs: breadth + A/D + India VIX)            #
+# --------------------------------------------------------------------------- #
+def write_market_internals(df: pd.DataFrame, root: str | Path | None = None) -> None:
+    df = _conform(df, MARKET_INTERNALS_SCHEMA, "market_internals")
+    path = _root(root)
+    path.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path / _MARKET_INTERNALS_FILE, index=False)
+
+
+def read_market_internals(root: str | Path | None = None) -> pd.DataFrame:
+    path = _root(root) / _MARKET_INTERNALS_FILE
+    if not path.exists():
+        return _empty(MARKET_INTERNALS_SCHEMA)
+    df = pd.read_parquet(path)
+    return _conform(df, MARKET_INTERNALS_SCHEMA, "market_internals")
