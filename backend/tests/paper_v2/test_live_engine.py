@@ -644,6 +644,47 @@ def test_dc5_daily_stop_queues_next_open_sell(db):
     )
 
 
+def test_stop_sell_records_holding_before_and_regime(db):
+    """Viz regression (v3/11 log): a queued fill carries its pre-trade ``holding_before``
+    (so the FE can render "holding (Δ)") and the day's ``deployable_fraction`` (so a
+    risk-off rebalance is flaggable). A catastrophic stop liquidates the WHOLE position,
+    so holding_before == qty == shares held — i.e. the FE shows "100 (-100)". With no
+    index wired the overlay is absent ⇒ deployable_fraction defaults to 1.0 (risk-on),
+    proving the value is captured (not left NULL), not that the regime is off."""
+    isin = "ISINZ"
+    prices = _flat_panel([isin])
+    dates = sorted(prices["date"].drop_duplicates())
+    entry, d = dates[0], dates[9]
+    _set_cell(prices, isin, d, close=70.0, close_tr=70.0)  # −30% vs cost_basis 100
+
+    pf = _new_portfolio(db)
+    _position(
+        db,
+        pf.id,
+        isin=isin,
+        symbol=isin,
+        shares=100.0,
+        cost_basis=100.0,
+        last_price=100.0,
+        entry_date=entry.date(),
+        last_adj_factor=1.0,
+    )
+
+    live_engine.process_day(db, pf.id, prices, None, d, commit=False)
+
+    stop = (
+        db.query(PaperV2PendingFill)
+        .filter(
+            PaperV2PendingFill.portfolio_id == pf.id,
+            PaperV2PendingFill.status == "pending",
+        )
+        .one()
+    )
+    assert stop.qty == pytest.approx(100.0)
+    assert stop.holding_before == pytest.approx(100.0)  # full exit ⇒ "100 (-100)"
+    assert stop.deployable_fraction == pytest.approx(1.0)  # captured, not NULL
+
+
 def test_dc5_healthy_name_no_stop(db):
     """Control: a name well above its stop level queues nothing (the stop is real, not
     always-on)."""

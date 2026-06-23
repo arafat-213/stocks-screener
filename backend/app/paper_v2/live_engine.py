@@ -355,6 +355,7 @@ def persist_state(
     snapshot: DailySnapshot | None = None,
     go_live: date | None = None,
     index_level: float | None = None,
+    deployable_fraction: float | None = None,
 ) -> None:
     """Write the post-step LoopState back to the DB: cash, positions (+ refreshed
     ``last_adj_factor`` for §5e, read from ``adj_lookup``), the executed fills (mark prior
@@ -406,6 +407,7 @@ def persist_state(
         .all()
     )
     exec_by_key: dict[tuple[str, str], Fill] = {(f.isin, f.side): f for f in executed}
+    prior_keys = {(p.isin, p.side) for p in prior}
     for p in prior:
         p.status = "filled"
         p.fill_date = process_date
@@ -414,8 +416,39 @@ def persist_state(
             p.fill_price = ex.price
             p.cost_rupees = ex.cost_rupees
 
+    # 07 force-exits liquidate a terminated name SAME-day through apply_fills — they
+    # never pass through the queue, so they have no `prior` row to mark filled. Without
+    # this they'd be invisible in the rebalance log (a real, un-logged exit). Synthesize
+    # an already-`filled` row for any executed fill with no matching queued ancestor.
+    # holding_before = the fill qty (a force-exit liquidates the WHOLE position).
+    for ex in executed:
+        if (ex.isin, ex.side) in prior_keys:
+            continue
+        session.add(
+            PaperV2PendingFill(
+                portfolio_id=portfolio_id,
+                isin=ex.isin,
+                symbol=ex.symbol,
+                side=ex.side,
+                qty=ex.qty,
+                decision_price=ex.price,
+                holding_before=ex.qty,
+                deployable_fraction=deployable_fraction,
+                reason="force_exit",
+                decision_date=process_date,
+                status="filled",
+                fill_date=process_date,
+                fill_price=ex.price,
+                cost_rupees=ex.cost_rupees,
+            )
+        )
+
     reason = "rebalance" if is_rebalance else "catastrophic_stop"
     for f in state.pending_fills:
+        # Pre-trade holding of the position this fill acts on. The new queue has NOT
+        # been applied yet, so the live position set still reflects the shares held
+        # BEFORE the fill (0 for a fresh entry).
+        held = state.portfolio.positions.get(f.isin)
         session.add(
             PaperV2PendingFill(
                 portfolio_id=portfolio_id,
@@ -424,6 +457,8 @@ def persist_state(
                 side=f.side,
                 qty=f.qty,
                 decision_price=f.price,
+                holding_before=held.shares if held is not None else 0.0,
+                deployable_fraction=deployable_fraction,
                 reason=reason,
                 decision_date=process_date,
                 status="pending",
@@ -529,6 +564,13 @@ def process_day(
     engine.step_day(ctx, state, day_ts)
 
     is_rebalance = day_ts in ctx.rebalance_dates
+    # Regime overlay's deployable fraction for this day (1.0 risk-on / risk_off_floor
+    # risk-off) — recomputed here from the same ctx step_day used internally, so it is
+    # byte-identical to the value the rebalance plan was sized against. Persisted onto
+    # the day's queued fills so the log can flag a regime-driven risk-off rebalance.
+    deployable_fraction = (
+        ctx.overlay.deployable_fraction(day_ts) if ctx.overlay else 1.0
+    )
     executed = list(state.portfolio.fills_log)  # fresh portfolio ⇒ today's fills only
     queued = list(state.pending_fills)
     snapshot = state.portfolio.snapshots[-1] if state.portfolio.snapshots else None
@@ -552,6 +594,7 @@ def process_day(
         snapshot=snapshot,
         go_live=go_live,
         index_level=index_level,
+        deployable_fraction=deployable_fraction,
     )
     if commit:
         session.commit()

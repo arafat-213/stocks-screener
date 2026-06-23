@@ -555,7 +555,19 @@ class PaperV2PendingFill(Base):
     symbol = Column(String, nullable=False)
     side = Column(String, nullable=False)  # buy | sell | trim
     qty = Column(Float, nullable=False)  # shares (positive)
-    reason = Column(String, nullable=False)  # rebalance | catastrophic_stop
+    reason = Column(
+        String, nullable=False
+    )  # rebalance | catastrophic_stop | force_exit
+    # Pre-trade holding of the position this fill acts on, captured at decision time
+    # (shares held BEFORE the queued fill applies; 0 for a fresh entry). Lets the viz
+    # render "holding (Δ)" — e.g. a trim shows "10 (-2)", a full exit "25 (-25)" — which
+    # cannot be reconstructed historically from qty alone once the position has moved on.
+    holding_before = Column(Float, nullable=True)
+    # Regime overlay's deployable fraction on the decision day (1.0 = risk-on; the
+    # configured risk_off_floor, default 0.0, = risk-off / full cash). Persisted so the
+    # log can flag a regime-driven risk-off rebalance vs a routine one (the cause, not
+    # the post-fill exposure effect). Same for every fill queued on that day.
+    deployable_fraction = Column(Float, nullable=True)
 
     decision_date = Column(Date, nullable=False)  # day D close that queued it
     # Decision-close price the order was sized against (11 §3e). Buys need it to

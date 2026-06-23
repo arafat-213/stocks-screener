@@ -148,17 +148,32 @@ def _add_parity(db, book, as_of, *, passed, max_dev_bps, breaches=None):
     return row
 
 
-def _add_fill(db, book, decision_date, *, side, reason, symbol, cost_rupees=None):
+def _add_fill(
+    db,
+    book,
+    decision_date,
+    *,
+    side,
+    reason,
+    symbol,
+    cost_rupees=None,
+    qty=10.0,
+    holding_before=None,
+    deployable_fraction=None,
+    status="pending",
+):
     row = models.PaperV2PendingFill(
         portfolio_id=book.id,
         isin="INE" + symbol,
         symbol=symbol,
         side=side,
-        qty=10.0,
+        qty=qty,
         reason=reason,
         decision_date=decision_date,
-        status="pending",
+        status=status,
         cost_rupees=cost_rupees,
+        holding_before=holding_before,
+        deployable_fraction=deployable_fraction,
     )
     db.add(row)
     db.commit()
@@ -269,6 +284,55 @@ def test_rebalances_grouped_newest_first(client, db):
     # Any rebalance fill in the group ⇒ the event is labelled a rebalance.
     assert events[1]["reason"] == "rebalance"
     assert events[1]["n_buys"] == 2 and events[1]["n_sells"] == 1
+
+
+def test_rebalances_surface_holding_regime_and_force_exit(client, db):
+    """v3/11 log enrichment: each fill exposes ``holding_before`` (so the FE renders
+    "holding (Δ)"), the event exposes the decision-day ``deployable_fraction`` (so a
+    risk-off rebalance is flaggable), and a standalone 07 ``force_exit`` is its own
+    event reason — not silently bucketed as a catastrophic stop."""
+    book = _make_book(db, cash=1_000_000.0)
+    # A risk-off rebalance: a trim (held 10, selling 2) at 40% deployment.
+    may = datetime.date(2026, 5, 29)
+    _add_fill(
+        db,
+        book,
+        may,
+        side="trim",
+        reason="rebalance",
+        symbol="A",
+        qty=2.0,
+        holding_before=10.0,
+        deployable_fraction=0.4,
+    )
+    # A standalone force-exit on a different day (terminated name, full liquidation).
+    jun = datetime.date(2026, 6, 15)
+    _add_fill(
+        db,
+        book,
+        jun,
+        side="sell",
+        reason="force_exit",
+        symbol="D",
+        qty=25.0,
+        holding_before=25.0,
+        deployable_fraction=1.0,
+        status="filled",
+        cost_rupees=5.0,
+    )
+
+    events = client.get("/api/v2/paper/rebalances").json()
+    by_date = {e["decision_date"]: e for e in events}
+
+    reb = by_date["2026-05-29"]
+    assert reb["reason"] == "rebalance"
+    assert reb["deployable_fraction"] == pytest.approx(0.4)  # FE flags Risk-Off
+    assert reb["fills"][0]["holding_before"] == pytest.approx(10.0)
+    assert reb["fills"][0]["qty"] == pytest.approx(2.0)  # ⇒ "10 (-2)"
+
+    fx = by_date["2026-06-15"]
+    assert fx["reason"] == "force_exit"  # NOT mislabelled catastrophic_stop
+    assert fx["fills"][0]["holding_before"] == pytest.approx(25.0)  # ⇒ "25 (-25)"
 
 
 def test_rebalances_empty_when_not_armed(client, db):

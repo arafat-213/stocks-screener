@@ -699,6 +699,45 @@ const SIDE_STYLES = {
   trim: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
 };
 
+// Event-reason badge taxonomy (V11.4 + force_exit). force_exit = a 07 terminated-name
+// liquidation (merged/delisted), surfaced so the log shows every real exit.
+const REASON_STYLES = {
+  rebalance: {
+    label: 'Rebalance',
+    className: 'bg-primary/10 text-primary border-primary/20',
+  },
+  catastrophic_stop: {
+    label: 'Catastrophic Stop',
+    className: 'bg-bearish/10 text-bearish border-bearish/20',
+  },
+  force_exit: {
+    label: 'Force Exit',
+    className: 'bg-orange-500/10 text-orange-500 border-orange-500/20',
+  },
+};
+
+// Signed qty-change cell: leading number is the pre-trade holding, paren is the change
+// the fill applies (buy = +, sell/trim = −). e.g. a trim → "10 (-2)", a full exit →
+// "25 (-25)", a fresh entry → "0 (+25)". Legacy rows (no holding_before) fall back to
+// the signed change alone.
+const QtyChange = ({ side, qty, holdingBefore }) => {
+  const q = getOr(0, 'qty')({ qty });
+  const sign = side === 'buy' ? '+' : '-';
+  const deltaColor = side === 'buy' ? 'text-bullish' : 'text-bearish';
+  const fmt = (n) => n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  return (
+    <span>
+      {holdingBefore != null && (
+        <span className='text-text-muted'>{fmt(holdingBefore)} </span>
+      )}
+      <span className={`font-bold ${deltaColor}`}>
+        ({sign}
+        {fmt(q)})
+      </span>
+    </span>
+  );
+};
+
 // Rebalance log (specs/v3/11 V11.6 #3): events grouped by decision date (newest
 // first), each expanding to its fills. Reads the pending-fills queue — no engine
 // change. The reason badge is rebalance | catastrophic_stop (taxonomy asserted
@@ -731,14 +770,20 @@ const RebalanceLog = ({ events }) => {
       <div className='divide-y divide-border/50'>
         {map((ev) => {
           const isOpen = openDate === ev.decision_date;
-          const isStop = ev.reason === 'catastrophic_stop';
+          const badge = REASON_STYLES[ev.reason] || REASON_STYLES.rebalance;
+          // Regime-off when the overlay scaled below full deployment on the decision
+          // day. Only meaningful on a rebalance (the day the fraction is consumed).
+          const isRiskOff =
+            ev.reason === 'rebalance' &&
+            ev.deployable_fraction != null &&
+            ev.deployable_fraction < 1;
           return (
             <div key={ev.decision_date}>
               <button
                 onClick={() => setOpenDate(isOpen ? null : ev.decision_date)}
                 className='w-full flex items-center justify-between gap-4 p-4 hover:bg-bg-elevated/30 transition-colors text-left'
               >
-                <div className='flex items-center gap-3'>
+                <div className='flex items-center gap-3 flex-wrap'>
                   {isOpen ? (
                     <ChevronDown size={16} className='text-text-muted' />
                   ) : (
@@ -748,14 +793,16 @@ const RebalanceLog = ({ events }) => {
                     {formatDisplayDate(ev.decision_date)}
                   </span>
                   <span
-                    className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${
-                      isStop
-                        ? 'bg-bearish/10 text-bearish border-bearish/20'
-                        : 'bg-primary/10 text-primary border-primary/20'
-                    }`}
+                    className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${badge.className}`}
                   >
-                    {isStop ? 'Catastrophic Stop' : 'Rebalance'}
+                    {badge.label}
                   </span>
+                  {isRiskOff && (
+                    <span className='px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border bg-bearish/10 text-bearish border-bearish/20'>
+                      Risk-Off · {(ev.deployable_fraction * 100).toFixed(0)}%
+                      deployed
+                    </span>
+                  )}
                 </div>
                 <div className='flex items-center gap-3 text-[10px] font-black uppercase tracking-wider'>
                   <span className='text-bullish'>{ev.n_buys} buy</span>
@@ -780,7 +827,7 @@ const RebalanceLog = ({ events }) => {
                       <tr className='text-[9px] uppercase tracking-widest text-text-muted font-black border-b border-border/50'>
                         <th className='text-left p-3 pl-12'>Symbol</th>
                         <th className='text-left p-3'>Side</th>
-                        <th className='text-right p-3'>Qty</th>
+                        <th className='text-right p-3'>Qty (Δ)</th>
                         <th className='text-right p-3'>Decision →&nbsp;Fill</th>
                         <th className='text-right p-3'>Cost</th>
                         <th className='text-left p-3'>Status</th>
@@ -811,12 +858,11 @@ const RebalanceLog = ({ events }) => {
                             </span>
                           </td>
                           <td className='p-3 text-right font-mono text-text-muted'>
-                            {getOr(
-                              0,
-                              'qty'
-                            )(f).toLocaleString(undefined, {
-                              maximumFractionDigits: 2,
-                            })}
+                            <QtyChange
+                              side={f.side}
+                              qty={f.qty}
+                              holdingBefore={f.holding_before}
+                            />
                           </td>
                           <td className='p-3 text-right font-mono text-text-muted'>
                             ₹

@@ -207,7 +207,11 @@ class RebalanceFillResponse(BaseModel):
     isin: str
     side: str  # buy | sell | trim
     qty: float
-    reason: str  # rebalance | catastrophic_stop
+    # Pre-trade holding the fill acts on (shares held before it applies; 0 = fresh
+    # entry). Lets the FE render "holding (Δ)": a trim shows "10 (-2)", a full exit
+    # "25 (-25)". Nullable for legacy rows queued before this field existed.
+    holding_before: float | None
+    reason: str  # rebalance | catastrophic_stop | force_exit
     status: str  # pending | filled
     decision_price: float | None
     fill_date: datetime.date | None
@@ -219,7 +223,13 @@ class RebalanceEventResponse(BaseModel):
     """All fills queued on one decision date, grouped into a single event."""
 
     decision_date: datetime.date
-    reason: str  # "rebalance" if any fill is a rebalance else "catastrophic_stop"
+    reason: (
+        str  # rebalance | catastrophic_stop | force_exit (precedence in get_rebalances)
+    )
+    # Regime overlay's deployable fraction on the decision day (1.0 = risk-on; lower =
+    # risk-off / scaled-out). Lets the FE badge a regime-driven risk-off rebalance.
+    # Nullable for legacy rows.
+    deployable_fraction: float | None
     n_buys: int
     n_sells: int
     n_trims: int
@@ -316,16 +326,27 @@ def get_rebalances(db: Session = Depends(get_db)) -> list[RebalanceEventResponse
 
     events: list[RebalanceEventResponse] = []
     for decision_date, group in grouped.items():
-        # An event is a "rebalance" if ANY of its fills is one, else a catastrophic stop.
-        reason = (
-            "rebalance"
-            if any(f.reason == "rebalance" for f in group)
-            else "catastrophic_stop"
+        # Event-level reason by precedence: a rebalance can co-occur with a same-day
+        # force-exit or stop, so the headline reflects the most significant action —
+        # rebalance > catastrophic_stop > force_exit. Individual fills keep their own
+        # reason badge.
+        reasons = {f.reason for f in group}
+        if "rebalance" in reasons:
+            reason = "rebalance"
+        elif "catastrophic_stop" in reasons:
+            reason = "catastrophic_stop"
+        else:
+            reason = "force_exit"
+        # Regime fraction is a per-day property; take it from any fill carrying one.
+        deployable_fraction = next(
+            (f.deployable_fraction for f in group if f.deployable_fraction is not None),
+            None,
         )
         events.append(
             RebalanceEventResponse(
                 decision_date=decision_date,
                 reason=reason,
+                deployable_fraction=deployable_fraction,
                 n_buys=sum(1 for f in group if f.side == "buy"),
                 n_sells=sum(1 for f in group if f.side == "sell"),
                 n_trims=sum(1 for f in group if f.side == "trim"),
@@ -336,6 +357,7 @@ def get_rebalances(db: Session = Depends(get_db)) -> list[RebalanceEventResponse
                         isin=f.isin,
                         side=f.side,
                         qty=f.qty,
+                        holding_before=f.holding_before,
                         reason=f.reason,
                         status=f.status,
                         decision_price=f.decision_price,
