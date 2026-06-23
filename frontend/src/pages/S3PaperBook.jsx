@@ -122,6 +122,22 @@ const drawdownSeries = (points) => {
 
 const minOr0 = (vals) => (vals.length ? Math.min(...vals) : 0);
 
+// Cumulative excess return (book − index) in %. Anchored to the first point that has
+// both an equity and an index value so the two series start from the same base. Gaps
+// in the index (points missing index_rebased) are dropped — they leave no trail.
+const excessReturnSeries = (points) => {
+  const first = points.find((p) => p.equity != null && p.index_rebased != null);
+  if (!first) return [];
+  const baseEq = first.equity;
+  const baseIx = first.index_rebased;
+  return points
+    .filter((p) => p.equity != null && p.index_rebased != null)
+    .map((p) => ({
+      date: p.date,
+      excess: (p.equity / baseEq - p.index_rebased / baseIx) * 100,
+    }));
+};
+
 // Cumulative trading-cost (the literal point of a paper probation: cost realism)
 // plus cumulative turnover. Cost = Σ total_cost_rupees (fees + slippage). Turnover
 // = Σ qty·fill_price over filled fills — the traded notional, expressed as a
@@ -521,6 +537,11 @@ const NavCurve = ({ nav, isDark }) => {
   const firstForward = points.find((p) => p.is_forward);
   const dividerX = firstForward ? firstForward.date : goLive;
 
+  const excessPoints = excessReturnSeries(points);
+  const latestExcess = excessPoints.length
+    ? excessPoints[excessPoints.length - 1].excess
+    : 0;
+
   return (
     <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
       <div className='flex flex-wrap justify-between items-center gap-2 mb-6'>
@@ -619,6 +640,51 @@ const NavCurve = ({ nav, isDark }) => {
           </ResponsiveContainer>
         </Suspense>
       </div>
+
+      {/* Excess-return strip — book cumulative return minus Mom30 cumulative return.
+          Answers "beating the index or buying it with extra steps?" at a glance. */}
+      {excessPoints.length > 0 && (
+        <div className='mt-4'>
+          <div className='flex justify-between items-center mb-1 px-1'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Cumulative Excess Return (Book − Mom30)
+            </span>
+            <span
+              className={`text-[9px] font-black ${latestExcess >= 0 ? 'text-bullish' : 'text-bearish'}`}
+            >
+              {latestExcess >= 0 ? '+' : ''}
+              {latestExcess.toFixed(2)}%
+            </span>
+          </div>
+          <div className='w-full h-[72px]'>
+            <Suspense fallback={<div className='w-full h-full' />}>
+              <ResponsiveContainer>
+                <LineChart
+                  data={excessPoints}
+                  margin={{ top: 4, right: 8, left: 8, bottom: 0 }}
+                >
+                  <XAxis dataKey='date' hide />
+                  <YAxis hide domain={['auto', 'auto']} />
+                  <ReferenceLine
+                    y={0}
+                    stroke={axisColor}
+                    strokeWidth={1}
+                    strokeDasharray='3 3'
+                  />
+                  <Line
+                    type='monotone'
+                    dataKey='excess'
+                    stroke={latestExcess >= 0 ? '#10B981' : '#EF4444'}
+                    strokeWidth={2}
+                    dot={false}
+                    isAnimationActive={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            </Suspense>
+          </div>
+        </div>
+      )}
 
       {/* Exposure band — risk-on (~1) / risk-off (in cash, 0). Subordinate to the
           NAV curve; surfaces regime transitions without persisting regime state. */}
@@ -1050,6 +1116,8 @@ const HoldingsTable = ({ positions }) => {
               <th className='text-right p-4'>Market Value</th>
               <th className='text-right p-4'>Unrealized %</th>
               <th className='text-right p-4'>Weight %</th>
+              <th className='text-right p-4'>Score</th>
+              <th className='text-right p-4'>Wt Drift</th>
               <th className='text-left p-4'>Entry Date</th>
             </tr>
           </thead>
@@ -1099,6 +1167,31 @@ const HoldingsTable = ({ positions }) => {
                   </td>
                   <td className='p-4 text-right font-bold text-text-muted'>
                     {getOr(0, 'weight_pct')(pos).toFixed(1)}%
+                  </td>
+                  <td className='p-4 text-right font-mono text-text-muted'>
+                    {pos.composite_score != null
+                      ? pos.composite_score.toFixed(3)
+                      : '—'}
+                  </td>
+                  <td
+                    className={`p-4 text-right font-mono font-bold ${
+                      pos.target_weight == null
+                        ? 'text-text-muted'
+                        : pos.target_weight - getOr(0, 'weight_pct')(pos) > 0.05
+                          ? 'text-bearish'
+                          : pos.target_weight - getOr(0, 'weight_pct')(pos) <
+                              -0.05
+                            ? 'text-bullish'
+                            : 'text-text-muted'
+                    }`}
+                  >
+                    {pos.target_weight != null
+                      ? (() => {
+                          const drift =
+                            pos.target_weight - getOr(0, 'weight_pct')(pos);
+                          return `${drift >= 0 ? '+' : ''}${drift.toFixed(1)}%`;
+                        })()
+                      : '—'}
                   </td>
                   <td className='p-4 text-text-muted font-medium'>
                     {formatDisplayDate(pos.entry_date)}
