@@ -29,6 +29,15 @@ Checks (01 §7):
      chain-constant root_isin. Fails if any asserted successor is absent or
      mis-keyed. Skipped gracefully when successor_map is absent (pre-T06.1 stores).
      Added: spec 06 T06.4.
+  9. Termination force-exit safety (T07.4): no carried-unsellable holding at the
+     store edge. Re-derive the liquid terminated-no-successor set (07 §3, via
+     terminations.classify_terminations) and assert every genuine termination
+     (subtype != data_gap_suspect) is price-silent for >= K trading days at the
+     store edge — so the engine's silence-based force-exit (07 §6 Approach A,
+     engine._force_exit_terminated) WILL have liquidated it by the edge. Any
+     genuine terminated leg silent < K trading days is a held-but-unpriced ghost
+     the book could still carry — fails loud. Skipped gracefully when prices lack
+     the columns classify_terminations needs (pre-T07.1 stores). Added: spec 07 T07.4.
 """
 
 import logging
@@ -137,6 +146,13 @@ KNOWN_RENAME = {
 # in universe_membership is more than this many calendar days before today.
 _DELISTED_THRESHOLD_DAYS = 365
 
+# Check 9 (T07.4) — trading-day silence threshold at/after which the engine
+# force-exits a terminated holding (07 §6 Approach A). MIRRORS
+# paper_v2.s3_config.S3_TERMINATE_AFTER_SILENT_DAYS (15); kept as a local default
+# so the data layer carries no upward dependency on paper_v2. Overridable via
+# run_validation(terminate_after_silent_days=...).
+_FORCE_EXIT_SILENT_DAYS = 15
+
 
 # ---------------------------------------------------------------------------
 # Report
@@ -158,6 +174,11 @@ class ValidationReport:
     succession_chains_asserted: int = 0
     succession_liquid_ghost_risk: int = 0
     succession_liquid_resolved: int = 0
+    # Check 9 — termination force-exit safety (T07.4)
+    terminations_liquid: int = 0
+    terminations_force_exit_safe: int = 0
+    terminations_data_gap_suspect: int = 0
+    terminations_carried_at_edge: int = 0
 
     def print_coverage(self) -> None:
         ca_line = (
@@ -178,6 +199,14 @@ class ValidationReport:
             if self.succession_chains_asserted > 0
             else ""
         )
+        termination_line = (
+            f"  Terminations:      {self.terminations_liquid} liquid "
+            f"({self.terminations_force_exit_safe} force-exit-safe, "
+            f"{self.terminations_data_gap_suspect} data-gap-suspect, "
+            f"{self.terminations_carried_at_edge} carried-at-edge)\n"
+            if self.terminations_liquid > 0
+            else ""
+        )
         print(
             f"\n=== Data Layer Coverage Report ===\n"
             f"  Rows:              {self.rows:,}\n"
@@ -187,6 +216,7 @@ class ValidationReport:
             f"  Days with gaps:    {self.pct_days_with_gaps:.1f}%\n"
             f"{ca_line}"
             f"{succession_line}"
+            f"{termination_line}"
             f"{skipped}"
             f"=================================="
         )
@@ -605,6 +635,121 @@ def _check_8_succession_coverage(
     )
 
 
+def _check_9_termination_force_exit(
+    prices: pd.DataFrame,
+    successor_map: pd.DataFrame,
+    report: ValidationReport,
+    k: int = _FORCE_EXIT_SILENT_DAYS,
+) -> None:
+    """No carried-unsellable holding at the store edge (07 §6 / T07.4).
+
+    A holding becomes an MTM-frozen ghost when its company terminates (merger /
+    cancellation / insolvency) with no face-value successor: the ISIN stops trading,
+    so the position has no forward price and can never be sold (07 §1). The engine's
+    Approach-A fix (engine._force_exit_terminated) liquidates any held position that
+    has been price-silent for >= K *trading days*. This check enforces, read-only at
+    the data layer, that the fix's precondition holds for the whole population: every
+    genuine liquid terminated-no-successor leg is silent >= K trading days at the
+    store edge, so force-exit WILL have fired by the edge — leaving no carried
+    holding for a warm-start (T07.5) to inherit.
+
+    Silence is counted exactly as the engine does (engine._silent_trading_days):
+    ``edge_ord - (last-print ordinal of the leg's instrument_id)`` over the FULL price
+    calendar, so the validator and the engine declare the identical silence on the
+    identical day.
+
+    ``data_gap_suspect`` rows (07 §10 — a shared near-edge last_date is an ingest-gap
+    fingerprint, not a real delisting) are excluded from the assertion: they are
+    expected to resume printing, so a forced exit on them would be a false positive.
+    They are counted in the report so a re-ingest can re-confirm them.
+
+    Fails loud (Rule 12) if any genuine termination is silent < K trading days — i.e.
+    is still a carried-unsellable holding at the edge. Skips gracefully when ``prices``
+    is empty or lacks the columns classify_terminations needs (pre-T07.1 stores).
+    """
+    # Local import: classify_terminations lives beside this module; importing at call
+    # time keeps the data-layer import graph flat and the skip-path dependency-free.
+    from app.data.bhavcopy import terminations as term_mod
+
+    needed = {"isin", "symbol", "date", "close_raw", "adv_20", "instrument_id"}
+    if prices.empty or not needed.issubset(prices.columns):
+        report.checks_skipped.append(
+            "9-termination-force-exit (no classifiable prices)"
+        )
+        logger.info("check_9: prices empty or missing columns — skipping")
+        return
+
+    classified = term_mod.classify_terminations(prices, successor_map)
+    report.terminations_liquid = len(classified)
+    if classified.empty:
+        logger.info(
+            "check_9: no liquid terminated-no-successor legs — nothing to check"
+        )
+        return
+
+    # Full trading calendar → ordinal of each date (engine's cal_ord).
+    full_cal = sorted(pd.to_datetime(prices["date"]).unique())
+    cal_ord = {pd.Timestamp(ts): i for i, ts in enumerate(full_cal)}
+    edge_ord = len(full_cal) - 1
+
+    # Last-print ordinal per instrument_id chain (matches engine: most-recent print
+    # <= edge; a terminated chain has all prints before the edge).
+    last_date_by_iid = (
+        prices.assign(date=pd.to_datetime(prices["date"]))
+        .groupby("instrument_id")["date"]
+        .max()
+    )
+    last_ord_by_iid = {
+        str(iid): cal_ord[pd.Timestamp(d)] for iid, d in last_date_by_iid.items()
+    }
+
+    data_gap = int((classified["subtype"] == term_mod.DATA_GAP_SUSPECT).sum())
+    report.terminations_data_gap_suspect = data_gap
+
+    genuine = classified[classified["subtype"] != term_mod.DATA_GAP_SUSPECT]
+
+    carried: list[str] = []
+    safe = 0
+    for row in genuine.itertuples(index=False):
+        iid = str(row.instrument_id)
+        last_ord = last_ord_by_iid.get(iid)
+        if last_ord is None:
+            # instrument_id absent from prices — should never happen (it came from
+            # prices); treat as carried (unpriced) and fail loud.
+            carried.append(
+                f"  {row.isin} ({row.symbol}): instrument_id {iid!r} unpriced"
+            )
+            continue
+        silence = edge_ord - last_ord
+        if silence >= k:
+            safe += 1
+        else:
+            carried.append(
+                f"  {row.isin} ({row.symbol}, {row.subtype}): silent {silence} "
+                f"trading days at edge < K={k} — carried-unsellable holding"
+            )
+
+    report.terminations_force_exit_safe = safe
+    report.terminations_carried_at_edge = len(carried)
+
+    assert not carried, (
+        f"check_9 FAIL: {len(carried)} liquid terminated leg(s) are carried-unsellable "
+        f"at the store edge (silent < K={k} trading days, so engine force-exit has not "
+        f"fired) — a warm-start would inherit them as MTM-frozen ghosts (07 §1/§6):\n"
+        + "\n".join(carried[:10])
+        + (f"\n  ... ({len(carried) - 10} more)" if len(carried) > 10 else "")
+    )
+
+    logger.info(
+        "check_9 PASS: %d/%d genuine liquid terminations force-exit-safe at edge "
+        "(silent >= K=%d); %d data-gap-suspect excluded",
+        safe,
+        len(genuine),
+        k,
+        data_gap,
+    )
+
+
 def _build_coverage_report(
     prices: pd.DataFrame,
     membership: pd.DataFrame,
@@ -660,6 +805,7 @@ def run_validation(
     ca_events_unmatched: int | None = None,
     today: date | None = None,
     check7_tolerance: int = _CHECK7_TOLERANCE,
+    terminate_after_silent_days: int = _FORCE_EXIT_SILENT_DAYS,
 ) -> ValidationReport:
     """Run all acceptance checks from 01_DATA_LAYER.md §7.
 
@@ -679,6 +825,10 @@ def run_validation(
     check7_tolerance:
         Maximum unadjusted-split events before Check 7 fails.  Pass 0 in tests
         that inject a deliberately unadjusted split (default: _CHECK7_TOLERANCE).
+    terminate_after_silent_days:
+        Trading-day silence K at which the engine force-exits a terminated holding
+        (07 §6). Check 9 asserts every genuine liquid termination is silent >= K
+        at the store edge. Default mirrors S3's K=15.
 
     Returns
     -------
@@ -728,6 +878,11 @@ def run_validation(
 
     logger.info("validate: running check 8 — succession coverage")
     _check_8_succession_coverage(successor_map, prices, report)
+
+    logger.info("validate: running check 9 — termination force-exit safety")
+    _check_9_termination_force_exit(
+        prices, successor_map, report, k=terminate_after_silent_days
+    )
 
     report.print_coverage()
     logger.info("validate: all checks passed")

@@ -2,7 +2,9 @@
 
 > **Status: §6 LOCKED 2026-06-22 — Approach A (write-off / force-exit at termination)
 > signed by owner (Arafat). T07.1 + T07.2 DONE 2026-06-22 (engine force-exit landed,
-> test-green; see §10 + §11). Next = T07.4 (validator); T07.3 (merger-ratio remap) stays
+> test-green; see §10 + §11). T07.4 DONE 2026-06-23 (validate.py Check 9 enforces "no
+> carried-unsellable holding at the store edge"; see §12). Next = T07.5 (re-warm-start
+> the `11` book on de-ghosted data); T07.3 (merger-ratio remap) stays
 > data-gated / out-of-scope.** Surfaced
 > 2026-06-22 by `06` T06.5's re-warm-start (`specs/v2/06_ISIN_SUCCESSION_CONTINUITY.md` §15).
 > This is the **third layer** of the same identity root cause: `05` fixed CA price-adjustment
@@ -188,8 +190,12 @@ Designed like `06` §10 — each a self-contained cold session, honoring the pro
   on an external merger-ratio source — a *separate* ingest prereg first. Out of scope until that
   data exists.
 - **T07.4 — Extend `validate.py`** with a "no carried-unsellable holding at the store edge"
-  check (read-only; fails loud if any liquid terminated leg resolves to a held-but-unpriced
-  position). Re-validate.
+  check. ✅ **DONE 2026-06-23** (see §12). Read-only Check 9: re-derives the liquid
+  terminated-no-successor set and asserts every genuine termination is price-silent ≥ K
+  trading days at the store edge (so the §6/§11 engine force-exit has fired by the edge);
+  fails loud on any leg still carried-unsellable. Skips `data_gap_suspect`. **Gate:** RED
+  (a terminated leg silent < K fails) + GREEN (≥ K passes) + the 3 T06.5 ghosts
+  force-exit-safe; full data-layer suite green (208). **Gate PASSED.**
 - **T07.5 — Re-warm-start the `11` book** on the de-ghosted data; re-prove parity ≈ 0.0 and 0
   carried-unsellable holdings (the T06.5 gate, now fully clean). Worker + beat stay STOPPED.
 - **T07.6 — Re-measure** (folds into / supersedes `06` T06.6's caveat): record S3 metrics on the
@@ -203,7 +209,7 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
 
 ---
 
-## 9. Operational state (as of 2026-06-22)
+## 9. Operational state (as of 2026-06-23)
 
 - The `s3_probation` paper book is warm-started to 2026-06-18 on `06`-stitched data and holds
   the 3 merger/cancellation ghosts above (risk-off edge ⇒ mostly cash; see `06` §15).
@@ -214,8 +220,10 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
 - **§6 decision LOCKED 2026-06-22 (Approach A, flat last-price, ISIN-scoped re-entry bar).**
 - **T07.2 force-exit landed 2026-06-22 (engine code + tests; see §11).** The capability is ON
   for the live S3 book (`build_live_context`, K=15 trading days) and OFF by default everywhere
-  else (parity-preserving). **No book state re-warm-started yet** — that is T07.5, which stays
-  blocked until T07.4's validator lands. Worker + beat remain STOPPED.
+  else (parity-preserving). **No book state re-warm-started yet** — that is T07.5.
+- **T07.4 validator landed 2026-06-23 (validate.py Check 9 + tests; see §12).** Read-only;
+  no engine/book state changed. T07.5's re-warm-start is now UNBLOCKED. Worker + beat remain
+  STOPPED.
 
 ---
 
@@ -352,3 +360,60 @@ stitches real successions (never silent → never force-exited) and `07` catches
 - **No book/metrics state changed by T07.2** — it is engine capability + tests only. The
   re-warm-start that proves "0 carried-unsellable holdings on the live book" is **T07.5**
   (blocked on T07.4's validator). FINAL_OOS untouched.
+
+---
+
+## 12. T07.4 — validator: no carried-unsellable holding at the store edge (DONE 2026-06-23)
+
+**Artifacts.**
+- `backend/app/data/bhavcopy/validate.py` — `_check_9_termination_force_exit`, wired into
+  `run_validation` after Check 8 (new keyword `terminate_after_silent_days`, default 15 via the
+  module constant `_FORCE_EXIT_SILENT_DAYS`); four new `ValidationReport` fields
+  (`terminations_liquid`, `terminations_force_exit_safe`, `terminations_data_gap_suspect`,
+  `terminations_carried_at_edge`) + a coverage-report line; module docstring Check 9 entry.
+- `backend/app/data/bhavcopy/terminations.py` — one-line **latent-bug fix**:
+  `classify_terminations` crashed (`ValueError: Columns must be same length as key`) when the
+  liquid set is empty — `apply(result_type="expand")` on an empty frame yields no columns. Check 9
+  is the first caller to feed it a *clean* store (zero liquid terminations is the common case), so
+  the empty path is now handled explicitly. No behaviour change for the non-empty path.
+- `backend/tests/data/test_bhavcopy_validate.py` — `TestCheck9TerminationForceExit` (6 unit tests)
+  + `TestRunValidationCheck9Integration` (2 end-to-end). Full data-layer suite **208 green**.
+
+**What Check 9 enforces (and why this is the right data-layer invariant — Rule 13).** A held
+position becomes a frozen ghost (§1) exactly when its instrument terminates and the engine never
+force-exits it. The engine's Approach-A fix (`engine._force_exit_terminated`, §11) liquidates any
+holding **price-silent ≥ K trading days**. So the *data-layer* guarantee that "the warm-start (T07.5)
+will inherit zero ghosts" is: **every genuine liquid terminated-no-successor leg is silent ≥ K trading
+days at the store edge** — i.e. the silence force-exit has already fired by the edge. Check 9
+re-derives that population (via `terminations.classify_terminations`, so it self-validates against a
+stale store rather than trusting `terminations.parquet`) and fails loud on any leg silent < K.
+
+**Silence is counted exactly as the engine counts it** (`engine._silent_trading_days`):
+`edge_ord − (last-print ordinal of the leg's instrument_id)` over the *full* price calendar. The
+validator and the engine therefore declare the identical silence on the identical day — the check
+is a faithful data-layer mirror of the runtime force-exit, not an independent re-implementation.
+
+**`data_gap_suspect` is excluded from the assertion** (§10): a shared near-edge `last_date` is an
+ingest-gap fingerprint, not a real delisting, so those names are expected to resume printing and a
+forced exit on them would be a false positive. They are *counted* in the report (so a re-ingest can
+re-confirm them), never asserted on.
+
+**Tests (Rule 9 — they encode WHY).** GREEN: two genuine terminations both silent ≥ K →
+force-exit-safe, no raise. RED: a leg silent < K (terminated by the classifier's calendar cutoff but
+not yet past the K *trading-day* force-exit threshold — the realistic 16–21-calendar-day window) is
+still carried → fails loud. The 3 real T06.5 ghosts (HDFC/INOXLEISUR/TATAMTRDVR), terminated long
+before the edge, classify force-exit-safe (the production case). `data_gap_suspect` cluster silent
+< K does **not** trip the check. Graceful skips on empty / pre-T07.1 (missing-column) stores.
+
+**Honest notes (Rule 12).**
+- **Check 9 proves a *data-layer precondition*, not the live book itself.** It guarantees the
+  silence force-exit *will* fire by the edge for the whole liquid population; the actual "0 carried
+  holdings on the warm-started S3 book, parity ≈ 0.0 bps" proof is still **T07.5**. The two are
+  complementary: Check 9 is the universe-wide gate, T07.5 is the single-book confirmation.
+- **The K trading-day vs calendar-day boundary is real and intentional.** A leg terminated just past
+  the classifier's 15-*calendar*-day cutoff but short of K=15 *trading* days (~16–21 calendar days
+  silent) is genuinely carried at the edge — Check 9 fails loud on it rather than hiding it. On the
+  real store every genuine liquid termination is far older than this window, so the check is expected
+  to pass; the boundary exists to catch a *future* very-recent termination before a warm-start.
+- **Read-only — no prices, holdings, engine, or FINAL_OOS state mutated.** The validator only labels
+  and asserts. FINAL_OOS untouched.

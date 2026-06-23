@@ -24,6 +24,7 @@ from app.data.bhavcopy.validate import (
     _check_5_tr_ge_price_adjusted,
     _check_7_unadjusted_action_scan,
     _check_8_succession_coverage,
+    _check_9_termination_force_exit,
     run_validation,
 )
 
@@ -997,6 +998,143 @@ class TestCheck8SuccessionCoverage:
         assert report.succession_liquid_resolved == 1
 
 
+# ---------------------------------------------------------------------------
+# Check 9 — termination force-exit safety (T07.4)
+# ---------------------------------------------------------------------------
+_TERM_CAL = pd.bdate_range("2024-01-01", periods=60)  # dense trading calendar
+_TERM_EDGE_ORD = len(_TERM_CAL) - 1
+
+
+def _term_rows(isin, symbol, last_idx, close=95.0, adv=1e8, iid=None):
+    """Two-row terminated leg: first print at cal[0], last print at cal[last_idx].
+
+    close < 100 keeps last_peak_ratio > 0.5 → value-preserved → classified merger
+    (not insolvency); adv ≥ ₹5cr floor → liquid; unique last_idx → cluster_size 1.
+    """
+    iid = iid or isin
+    cols = ("isin", "symbol", "date", "close_raw", "adv_20", "instrument_id")
+    out = []
+    for d, c in ((_TERM_CAL[0], 100.0), (_TERM_CAL[last_idx], close)):
+        out.append(dict(zip(cols, (isin, symbol, d, c, adv, iid))))
+    return out
+
+
+def _term_alive_rows():
+    """An ISIN trading every day of the calendar → defines the dense ordinals + edge.
+
+    It is alive at the edge, so classify_terminations excludes it (its chain still
+    trades) — it only supplies the trading-day grid silence is counted on.
+    """
+    cols = ("isin", "symbol", "date", "close_raw", "adv_20", "instrument_id")
+    return [
+        dict(zip(cols, ("INEALIVE0001", "ALIVE", d, 100.0, 1e8, "INEALIVE0001")))
+        for d in _TERM_CAL
+    ]
+
+
+class TestCheck9TerminationForceExit:
+    """Check 9 — no carried-unsellable holding at the store edge (T07.4).
+
+    WHY: a merger/cancellation/insolvency leg with no successor stops trading, so a
+    held position can never be sold and is carried as an MTM-frozen ghost (07 §1).
+    The engine force-exits any holding silent ≥ K trading days (07 §6 Approach A);
+    this check enforces that EVERY genuine liquid termination is past that K-day
+    silence at the edge, so a warm-start (T07.5) inherits zero ghosts. A leg silent
+    < K is the exact defect — it must fail loud, not pass quietly.
+    """
+
+    def _empty_smap(self):
+        return store_mod._empty(store_mod.SUCCESSOR_MAP_SCHEMA)
+
+    def test_all_terminations_silent_past_k_pass(self):
+        """Two genuine terminated legs both silent ≥ K → force-exit-safe, no raise."""
+        prices = pd.DataFrame(
+            _term_alive_rows()
+            + _term_rows("INEMERGE0001", "TAKENA", last_idx=_TERM_EDGE_ORD - 35)
+            + _term_rows("INEMERGE0002", "TAKENB", last_idx=_TERM_EDGE_ORD - 25)
+        )
+        report = ValidationReport()
+        _check_9_termination_force_exit(prices, self._empty_smap(), report, k=15)
+
+        assert report.terminations_liquid == 2
+        assert report.terminations_force_exit_safe == 2
+        assert report.terminations_carried_at_edge == 0
+
+    def test_termination_silent_under_k_fails(self):
+        """A terminated leg silent < K trading days is still carried at the edge → fail.
+
+        WHY: silence is counted in TRADING days (matching the engine), while the
+        classifier's terminated cutoff is calendar days — a leg ~25 trading days
+        silent is unambiguously terminated yet, under a K=30 force-exit rule, has
+        not been liquidated. The book would still hold it: a carried-unsellable ghost.
+        """
+        prices = pd.DataFrame(
+            _term_alive_rows()
+            + _term_rows("INEMERGE0001", "SAFE", last_idx=_TERM_EDGE_ORD - 35)
+            + _term_rows("INEMERGE0002", "CARRIED", last_idx=_TERM_EDGE_ORD - 25)
+        )
+        report = ValidationReport()
+        with pytest.raises(AssertionError, match="check_9"):
+            # K=30: the 25-day-silent leg is carried; the 35-day-silent one is safe.
+            _check_9_termination_force_exit(prices, self._empty_smap(), report, k=30)
+        assert report.terminations_carried_at_edge == 1
+        assert report.terminations_force_exit_safe == 1
+
+    def test_data_gap_suspect_excluded_from_assertion(self):
+        """An ingest-gap cluster silent < K must NOT fail the check (07 §10).
+
+        WHY: a shared near-edge last_date is a data-ingest fingerprint, not a real
+        delisting — those names are expected to resume printing, so force-exiting
+        them would be a false positive. They are counted, not asserted on.
+        """
+        # 5 names sharing one near-edge last_date → data_gap_suspect; silent only
+        # ~14 trading days (< K) but must be excluded from the carried assertion.
+        gap_idx = _TERM_EDGE_ORD - 14
+        gap_rows = []
+        for i in range(5):
+            gap_rows += _term_rows(f"INEGAP0000{i}", f"GAP{i}", last_idx=gap_idx)
+        prices = pd.DataFrame(
+            _term_alive_rows()
+            + _term_rows("INEMERGE0001", "SAFE", last_idx=_TERM_EDGE_ORD - 35)
+            + gap_rows
+        )
+        report = ValidationReport()
+        _check_9_termination_force_exit(prices, self._empty_smap(), report, k=20)
+
+        assert report.terminations_data_gap_suspect == 5
+        assert report.terminations_carried_at_edge == 0
+        assert report.terminations_force_exit_safe == 1
+
+    def test_three_t065_ghosts_force_exit_safe(self):
+        """The three real T06.5 ghosts (HDFC, INOXLEISUR, TATAMTRDVR), terminated
+        long before the edge, must classify as force-exit-safe — the production case."""
+        prices = pd.DataFrame(
+            _term_alive_rows()
+            + _term_rows("INE001A01036", "HDFC", last_idx=2, close=91.0)
+            + _term_rows("INE312H01016", "INOXLEISUR", last_idx=3, close=90.0)
+            + _term_rows("IN9155A01020", "TATAMTRDVR", last_idx=4, close=90.0)
+        )
+        report = ValidationReport()
+        _check_9_termination_force_exit(prices, self._empty_smap(), report, k=15)
+        assert report.terminations_liquid == 3
+        assert report.terminations_force_exit_safe == 3
+        assert report.terminations_carried_at_edge == 0
+
+    def test_missing_columns_skips_gracefully(self):
+        """Pre-T07.1 store shape (no close_raw/instrument_id) → skip, no raise."""
+        prices = pd.DataFrame(
+            {"isin": ["X"], "symbol": ["X"], "date": [pd.Timestamp("2024-01-01")]}
+        )
+        report = ValidationReport()
+        _check_9_termination_force_exit(prices, self._empty_smap(), report)
+        assert any("9-termination" in s for s in report.checks_skipped)
+
+    def test_empty_prices_skips_gracefully(self):
+        report = ValidationReport()
+        _check_9_termination_force_exit(pd.DataFrame(), self._empty_smap(), report)
+        assert any("9-termination" in s for s in report.checks_skipped)
+
+
 class TestRunValidationCheck8Integration:
     """End-to-end run_validation integration for Check 8."""
 
@@ -1087,3 +1225,64 @@ class TestRunValidationCheck8Integration:
         report = run_validation(root=tmp_path, today=today)
         assert report.succession_chains_asserted == 0
         assert any("8-succession" in s for s in report.checks_skipped)
+
+
+class TestRunValidationCheck9Integration:
+    """End-to-end run_validation integration for Check 9 (termination force-exit)."""
+
+    def _write_dataset(
+        self, tmp_path: Path, today: date, *, term_close_raw: float
+    ) -> None:
+        """A live name + one terminated leg (liquid iff term_close_raw clears the floor).
+
+        The terminated leg's last trade is ~750 days before today → silent for far
+        more than K trading days at the edge, so a liquid one is force-exit-safe.
+        """
+        live_start = pd.Timestamp(today - timedelta(days=50))
+        term_start = pd.Timestamp(today - timedelta(days=800))
+        prices_live = _make_prices(
+            isin="INE000000001", symbol="LIVE", n=30, start=live_start, vary_tv=True
+        )
+        prices_term = _make_prices(
+            isin="INE000000002",
+            symbol="GONE",
+            n=30,
+            start=term_start,
+            close_raw=term_close_raw,
+        )
+        prices = pd.concat([prices_live, prices_term], ignore_index=True)
+        membership = pd.concat(
+            [_make_membership(prices_live), _make_membership(prices_term)],
+            ignore_index=True,
+        )
+        isin_map = pd.DataFrame(
+            {
+                "isin": ["INE000000001", "INE000000002"],
+                "symbol": ["LIVE", "GONE"],
+                "first_date": [prices_live["date"].min(), prices_term["date"].min()],
+                "last_date": [prices_live["date"].max(), prices_term["date"].max()],
+                "instrument_id": ["INE000000001", "INE000000002"],
+            }
+        )
+        store_mod.write_prices_adjusted(prices, root=tmp_path)
+        store_mod.write_universe_membership(membership, root=tmp_path)
+        store_mod.write_isin_symbol_map(isin_map, root=tmp_path)
+
+    def test_liquid_termination_force_exit_safe_passes(self, tmp_path):
+        """A liquid leg terminated long ago → force-exit-safe → run_validation passes."""
+        today = date(2026, 6, 14)
+        # close_raw 6000 ⇒ traded_value 6e7 ⇒ adv_20 ≥ ₹5cr floor ⇒ liquid.
+        self._write_dataset(tmp_path, today, term_close_raw=6000.0)
+        report = run_validation(root=tmp_path, today=today)
+        assert report.terminations_liquid == 1
+        assert report.terminations_force_exit_safe == 1
+        assert report.terminations_carried_at_edge == 0
+
+    def test_illiquid_termination_not_counted(self, tmp_path):
+        """A leg below the ₹5cr floor is not S3-eligible → not a ghost-risk → skipped."""
+        today = date(2026, 6, 14)
+        # close_raw 100 ⇒ traded_value 1e6 ⇒ adv_20 well below floor ⇒ illiquid.
+        self._write_dataset(tmp_path, today, term_close_raw=100.0)
+        report = run_validation(root=tmp_path, today=today)
+        assert report.terminations_liquid == 0
+        assert report.terminations_carried_at_edge == 0

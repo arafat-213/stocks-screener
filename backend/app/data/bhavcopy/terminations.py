@@ -121,8 +121,16 @@ def classify_terminations(
     liquid = liquid.reset_index().rename(columns={"index": "isin"})
     liquid["days_before_edge"] = (edge - liquid["last_date"]).dt.days.astype("int64")
 
-    rows = liquid.apply(lambda r: _classify_row(r, edge), axis=1, result_type="expand")
-    liquid[["subtype", "confidence", "acquirer", "evidence"]] = rows
+    if liquid.empty:
+        # No liquid terminations (the clean-store case). apply(result_type="expand")
+        # on an empty frame yields no columns, so assign the labels explicitly.
+        for col in ("subtype", "confidence", "acquirer", "evidence"):
+            liquid[col] = pd.Series(dtype="string")
+    else:
+        rows = liquid.apply(
+            lambda r: _classify_row(r, edge), axis=1, result_type="expand"
+        )
+        liquid[["subtype", "confidence", "acquirer", "evidence"]] = rows
 
     cols = [
         "isin",
