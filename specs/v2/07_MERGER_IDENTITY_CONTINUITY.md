@@ -3,8 +3,10 @@
 > **Status: §6 LOCKED 2026-06-22 — Approach A (write-off / force-exit at termination)
 > signed by owner (Arafat). T07.1 + T07.2 DONE 2026-06-22 (engine force-exit landed,
 > test-green; see §10 + §11). T07.4 DONE 2026-06-23 (validate.py Check 9 enforces "no
-> carried-unsellable holding at the store edge"; see §12). Next = T07.5 (re-warm-start
-> the `11` book on de-ghosted data); T07.3 (merger-ratio remap) stays
+> carried-unsellable holding at the store edge"; see §12). T07.5 DONE 2026-06-23
+> (re-warm-started the `11` S3 book on de-ghosted data → 3 ghosts force-exited, book
+> ends 0 carried-unsellable / parity 0.0 bps; see §13). Next = T07.6 (the final
+> identity-continuous re-measure); T07.3 (merger-ratio remap) stays
 > data-gated / out-of-scope.** Surfaced
 > 2026-06-22 by `06` T06.5's re-warm-start (`specs/v2/06_ISIN_SUCCESSION_CONTINUITY.md` §15).
 > This is the **third layer** of the same identity root cause: `05` fixed CA price-adjustment
@@ -197,7 +199,9 @@ Designed like `06` §10 — each a self-contained cold session, honoring the pro
   (a terminated leg silent < K fails) + GREEN (≥ K passes) + the 3 T06.5 ghosts
   force-exit-safe; full data-layer suite green (208). **Gate PASSED.**
 - **T07.5 — Re-warm-start the `11` book** on the de-ghosted data; re-prove parity ≈ 0.0 and 0
-  carried-unsellable holdings (the T06.5 gate, now fully clean). Worker + beat stay STOPPED.
+  carried-unsellable holdings (the T06.5 gate, now fully clean). ✅ **DONE 2026-06-23** (see §13).
+  Worker + beat stayed STOPPED. **Gate PASSED:** the 3 T06.5 ghosts force-exit at K=15; the
+  warm-started book ends with 0 carried-unsellable holdings, parity 0.0 bps.
 - **T07.6 — Re-measure** (folds into / supersedes `06` T06.6's caveat): record S3 metrics on the
   now fully identity-continuous data; pre-accepted-null; no validated claim; FINAL_OOS untouched.
 
@@ -209,12 +213,13 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
 
 ---
 
-## 9. Operational state (as of 2026-06-23)
+## 9. Operational state (as of 2026-06-23, post-T07.5)
 
-- The `s3_probation` paper book is warm-started to 2026-06-18 on `06`-stitched data and holds
-  the 3 merger/cancellation ghosts above (risk-off edge ⇒ mostly cash; see `06` §15).
+- The `s3_probation` paper book is **re-warm-started to 2026-06-18 on de-ghosted data** (T07.5):
+  it now holds **0 positions** (fully cash at the risk-off edge; see `06` §15) and **0
+  carried-unsellable ghosts** — the 3 merger/cancellation ghosts were force-exited at K=15.
 - **Worker + Celery beat remain STOPPED** — the daily job will not auto-fire.
-- Forward probation **NOT eligible** to start until `07` (≥ approach A) lands.
+- Forward probation **NOT eligible** to start until `07` completes (T07.6 re-measure remains).
 - T07.1 audit landed (read-only): `terminations.parquet` written; the 3 ghosts classified
   {merger, merger, cancellation}. No engine/book state changed.
 - **§6 decision LOCKED 2026-06-22 (Approach A, flat last-price, ISIN-scoped re-entry bar).**
@@ -224,6 +229,10 @@ recorded with the identity-continuity caveat. Only then is the `11` probation el
 - **T07.4 validator landed 2026-06-23 (validate.py Check 9 + tests; see §12).** Read-only;
   no engine/book state changed. T07.5's re-warm-start is now UNBLOCKED. Worker + beat remain
   STOPPED.
+- **T07.5 re-warm-start ran 2026-06-23 (see §13).** Mutated ONLY the s3_probation book rows
+  (reset → inception→edge replay with force-exit ON): book went 3 ghosts → 0 carried-unsellable,
+  parity 0.0 bps. Worker + beat remain STOPPED. Only T07.6 (re-measure) remains before `07`
+  is complete and the `11` probation is eligible.
 
 ---
 
@@ -417,3 +426,51 @@ before the edge, classify force-exit-safe (the production case). `data_gap_suspe
   to pass; the boundary exists to catch a *future* very-recent termination before a warm-start.
 - **Read-only — no prices, holdings, engine, or FINAL_OOS state mutated.** The validator only labels
   and asserts. FINAL_OOS untouched.
+
+---
+
+## 13. T07.5 — re-warm-start the `11` book on de-ghosted data (DONE 2026-06-23)
+
+**Artifact.** `backend/scripts/t07_5_rewarmstart.py` — a one-shot operator script (mirrors
+`t06_5_rewarmstart`): reset the `s3_probation` book to cash-only inception → replay
+inception→confirmed-edge over the stitched store with the §6/§11 force-exit **ON** (K=15 via
+`s3_config.S3_TERMINATE_AFTER_SILENT_DAYS`, the live default) → assert 0 carried-unsellable
+holdings + re-check shadow-parity. **No app code changed** (T07.2 already shipped the engine
+capability; T07.5 only re-runs the warm-start), so the full paper_v2 + force-exit suites stay
+green (**34 passed**) and the floor/parity paths are byte-identical.
+
+**Result — both gates PASS.** Run over `prices_adjusted` (inception 2017-01-02 → edge
+2026-06-18, 2335 confirmed trading days, 113 rebalances):
+
+| Quantity | T06.5 (before) | T07.5 (after) |
+|---|---|---|
+| carried-unsellable ghosts | **3** (HDFC, INOXLEISUR, TATAMTRDVR) | **0** |
+| positions at edge | 3 | 0 (fully cash — risk-off edge, `06` §15) |
+| shadow-parity max_dev | 0.0 bps | **0.0 bps** (PASS) |
+
+**Force-exit confirmed firing (not "never held").** The replay log shows each ghost was
+genuinely held and MTM-carried at its flat last price for the silence window, then the
+carry-warnings **stop** exactly when the force-exit liquidates it — e.g. HDFC (INE001A01036)
+carried at 2724.30 from 2023-07-13 and gone by ~2023-08-02 (~15 trading days); INOXLEISUR
+(INE312H01016) carried at 508.85 from 2023-02-28; TATAMTRDVR (IN9155A01020) carried at 768.65
+from 2024-08-30. This is the §11 silence rule (K=15) firing in the live shell, identical to the
+backtest because both step the same `ctx` from `build_live_context`.
+
+**Parity is trivially 0.0 here** because the book is fully cash at the edge (S3 risk-off ⇒ 0
+engine names = 0 live names); the substantive parity proof across held-name months remains the
+P11.1 / `06` T06.5 shadow-parity runs. The T07.5 contribution is the **0-ghost** end state.
+
+**Honest notes (Rule 12).**
+- **Fills are not persisted as a separate log** (the `paper_v2` schema has only Portfolio /
+  Position / PendingFill — no fills table), so the force-exit is evidenced by the
+  MTM-carry-then-silence pattern in the replay log + the 0-ghost end state, not a queryable
+  sell row. The engine-level RED/GREEN sell proof lives in the T07.2 unit tests (§11).
+- **The force-exited capital is now in cash at the flat last price (no haircut, §6.2)** — the
+  insolvency-optimism bias (last price > realisable for names that gapped toward zero) is carried
+  forward to T07.6's re-measure as a known, pre-accepted bias.
+- **Mutated ONLY the s3_probation book rows** (reset + replay). Prices, engine code, and
+  FINAL_OOS are untouched. Worker + Celery beat remain STOPPED — this is an operator run, not
+  the forward probation.
+- **T07.5 is the single-book confirmation of T07.4's universe-wide precondition.** Only T07.6
+  (the identity-continuous re-measure) remains before `07` is complete and the `11` probation is
+  eligible to arm.
