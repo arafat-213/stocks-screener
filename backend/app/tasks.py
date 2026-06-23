@@ -85,8 +85,43 @@ def execute_paper_daily_task(process_date: str | None = None):
 
     db = SessionLocal()
     try:
+        from app.db.models import PaperV2Position
+
+        # Snapshot held ISINs BEFORE the data refresh so we can do a targeted ghost-risk
+        # halt (§8): check_9 warns on any new termination near the edge, but we only
+        # halt when a ghost-risk ISIN is actually held in the live book (11 §8 interlock).
+        pf_early = live_engine.get_or_create_book(db)
+        held_isins = frozenset(
+            pos.isin
+            for pos in db.query(PaperV2Position)
+            .filter(PaperV2Position.portfolio_id == pf_early.id)
+            .all()
+        )
+
         # 1. Append bhavcopy through target via the existing v2 pipeline (§5a/§5b/§5d).
-        incremental.incremental_append(target)
+        # raise_on_check9=False: check_9 logs a WARNING instead of raising — we do the
+        # targeted held-position check below (only halt if a ghost-risk ISIN is held).
+        build_report, _ = incremental.incremental_append(target, raise_on_check9=False)
+
+        # Ghost-risk interlock (§8): fail only if a held ISIN is ghost-risk at the edge.
+        if build_report and build_report.val_report:
+            ghost_isins = frozenset(build_report.val_report.terminations_carried_isins)
+            held_and_ghost = held_isins & ghost_isins
+            if held_and_ghost:
+                raise RuntimeError(
+                    f"HALT (§8): ghost-risk ISIN(s) currently HELD in the live book — "
+                    f"stop check would be unsafe: {sorted(held_and_ghost)}. "
+                    f"Reconcile per §5e/§8 before resuming."
+                )
+            if ghost_isins:
+                logger.warning(
+                    "check_9 WARNING: %d ghost-risk ISIN(s) at store edge but NONE "
+                    "currently held — no action (will auto-resolve when silence >= K=15): "
+                    "%s",
+                    len(ghost_isins),
+                    sorted(ghost_isins),
+                )
+
         prices = store.read_prices_adjusted()
         prices["date"] = pd.to_datetime(prices["date"])
         inception = prices["date"].min().date()

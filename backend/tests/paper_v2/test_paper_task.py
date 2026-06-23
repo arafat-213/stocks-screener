@@ -118,8 +118,12 @@ def test_tc1_parity_not_called_before_go_live():
     or falsely halt the task. The go_live gate exists precisely to suppress
     both alerts and parity until the counted forward window begins.
     """
+    _fake_build = MagicMock(val_report=None)
     with (
-        patch("app.data.bhavcopy.incremental.incremental_append"),
+        patch(
+            "app.data.bhavcopy.incremental.incremental_append",
+            return_value=(_fake_build, None),
+        ),
         patch(
             "app.data.bhavcopy.store.read_prices_adjusted",
             return_value=_fake_prices(),
@@ -166,8 +170,12 @@ def test_tc2_parity_halt_raises_on_failed_parity():
     test. The task MUST raise so the Celery worker marks the run failed and the
     operator is alerted.
     """
+    _fake_build2 = MagicMock(val_report=None)
     with (
-        patch("app.data.bhavcopy.incremental.incremental_append"),
+        patch(
+            "app.data.bhavcopy.incremental.incremental_append",
+            return_value=(_fake_build2, None),
+        ),
         patch(
             "app.data.bhavcopy.store.read_prices_adjusted",
             return_value=_fake_prices(),

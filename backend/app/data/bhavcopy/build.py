@@ -121,6 +121,8 @@ class BuildReport:
     rows_written: int = 0
     distinct_isins: int = 0
     error_details: list[str] = field(default_factory=list)
+    # Populated when skip_validation=False; None otherwise.
+    val_report: object = None
 
     def summary(self) -> str:
         return (
@@ -276,6 +278,7 @@ def run_build(
     _session: requests.Session | None = None,
     _ca_records: list[dict] | None = None,
     skip_validation: bool = False,
+    raise_on_check9: bool = True,
 ) -> BuildReport:
     """End-to-end bhavcopy pipeline: download → parse → CA → adjust → store.
 
@@ -459,10 +462,11 @@ def run_build(
     # ------------------------------------------------------------------ #
     if not skip_validation:
         logger.info("build: Stage 8 — running validate.py acceptance checks")
-        val_mod.run_validation(
+        report.val_report = val_mod.run_validation(
             root,
             ca_events_applied=report.ca_events,
             ca_events_unmatched=report.ca_unmatched,
+            raise_on_check9=raise_on_check9,
         )
 
     logger.info("build: %s", report.summary())

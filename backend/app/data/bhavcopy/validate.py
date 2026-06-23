@@ -179,6 +179,10 @@ class ValidationReport:
     terminations_force_exit_safe: int = 0
     terminations_data_gap_suspect: int = 0
     terminations_carried_at_edge: int = 0
+    # ISINs silent < K at the store edge (ghost-risk); populated even when not raising.
+    # Callers that know which ISINs are held can do the targeted halt (tasks.py).
+    terminations_carried_isins: list[str] = field(default_factory=list)
+    terminations_carried_msgs: list[str] = field(default_factory=list)
 
     def print_coverage(self) -> None:
         ca_line = (
@@ -708,7 +712,8 @@ def _check_9_termination_force_exit(
 
     genuine = classified[classified["subtype"] != term_mod.DATA_GAP_SUSPECT]
 
-    carried: list[str] = []
+    carried_msgs: list[str] = []
+    carried_isins: list[str] = []
     safe = 0
     for row in genuine.itertuples(index=False):
         iid = str(row.instrument_id)
@@ -716,29 +721,35 @@ def _check_9_termination_force_exit(
         if last_ord is None:
             # instrument_id absent from prices — should never happen (it came from
             # prices); treat as carried (unpriced) and fail loud.
-            carried.append(
+            carried_msgs.append(
                 f"  {row.isin} ({row.symbol}): instrument_id {iid!r} unpriced"
             )
+            carried_isins.append(row.isin)
             continue
         silence = edge_ord - last_ord
         if silence >= k:
             safe += 1
         else:
-            carried.append(
+            carried_msgs.append(
                 f"  {row.isin} ({row.symbol}, {row.subtype}): silent {silence} "
                 f"trading days at edge < K={k} — carried-unsellable holding"
             )
+            carried_isins.append(row.isin)
 
     report.terminations_force_exit_safe = safe
-    report.terminations_carried_at_edge = len(carried)
+    report.terminations_carried_at_edge = len(carried_msgs)
+    # Always populate so callers with held-position context can do a targeted halt.
+    report.terminations_carried_isins = carried_isins
+    report.terminations_carried_msgs = carried_msgs
 
-    assert not carried, (
-        f"check_9 FAIL: {len(carried)} liquid terminated leg(s) are carried-unsellable "
-        f"at the store edge (silent < K={k} trading days, so engine force-exit has not "
-        f"fired) — a warm-start would inherit them as MTM-frozen ghosts (07 §1/§6):\n"
-        + "\n".join(carried[:10])
-        + (f"\n  ... ({len(carried) - 10} more)" if len(carried) > 10 else "")
-    )
+    if carried_msgs:
+        logger.warning(
+            "check_9: %d ghost-risk ISIN(s) silent < K=%d days at store edge: %s "
+            "(raise_on_check9 in run_validation decides whether this is a hard fail)",
+            len(carried_msgs),
+            k,
+            carried_isins,
+        )
 
     logger.info(
         "check_9 PASS: %d/%d genuine liquid terminations force-exit-safe at edge "
@@ -806,6 +817,7 @@ def run_validation(
     today: date | None = None,
     check7_tolerance: int = _CHECK7_TOLERANCE,
     terminate_after_silent_days: int = _FORCE_EXIT_SILENT_DAYS,
+    raise_on_check9: bool = True,
 ) -> ValidationReport:
     """Run all acceptance checks from 01_DATA_LAYER.md §7.
 
@@ -883,6 +895,22 @@ def run_validation(
     _check_9_termination_force_exit(
         prices, successor_map, report, k=terminate_after_silent_days
     )
+
+    if raise_on_check9 and report.terminations_carried_isins:
+        k = terminate_after_silent_days
+        carried_msgs = report.terminations_carried_msgs
+        assert not carried_msgs, (
+            f"check_9 FAIL: {len(carried_msgs)} liquid terminated leg(s) are "
+            f"carried-unsellable at the store edge (silent < K={k} trading days, so "
+            f"engine force-exit has not fired) — a warm-start would inherit them as "
+            f"MTM-frozen ghosts (07 §1/§6):\n"
+            + "\n".join(carried_msgs[:10])
+            + (
+                f"\n  ... ({len(carried_msgs) - 10} more)"
+                if len(carried_msgs) > 10
+                else ""
+            )
+        )
 
     report.print_coverage()
     logger.info("validate: all checks passed")
