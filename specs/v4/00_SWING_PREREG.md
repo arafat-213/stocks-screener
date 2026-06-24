@@ -570,3 +570,9 @@ tests are green.
 > turnover (828–2660% annualized) erases the edge, and the book trails the index even *before* costs. The
 > edge-discarding selection diagnostic is the one live forward lead — it authorizes a *separate future*
 > prereg for a return-informed (not liquidity) selector, carrying its own K. FINAL_OOS pristine throughout.
+>
+> **Forward lead taken up:** `04_SELECTOR_PREREG.md` (LOCKED 2026-06-24) — the return-informed selector
+> program the §6 edge-discarding read + the `03_V41_FORENSIC.md` analysis authorize. K **carries** from
+> this family (≥6, not reset); inherits the still-pristine v4-FINAL_OOS one-shot. Honest prior: NULL is the
+> most likely outcome (the V4.1 reference books 0.09–0.14 sit far below the 0.346 bar), and a null there
+> permanently closes the v4 family.
