@@ -1,7 +1,14 @@
 # v4 / 00 — Daily Swing Strategy: Master Pre-Registration
 
-> **Status: LOCKED — 2026-06-23 (Arafat). §12 signed (all 10 commitments).** No strategy logic and no
-> engine code existed before this lock; the next move is `02_SWING_ENGINE.md` (V4.0). This is the anti-HARKing
+> **Status: LOCKED — 2026-06-23 (Arafat). §12 signed (all 10 commitments). ✅ AMENDMENT 1 SIGNED
+> 2026-06-24 (§14):** the V4.0c returns-blind footprint proved the signal is
+> intrinsically broad (mean 118 / p99 371 concurrent), which invalidates the §3.5 `N_max`-as-sizing-divisor
+> premise. Amendment 1 (§14) replaces it with a **binding concentration cap `target_positions` (= slot cap
+> AND sizing divisor, ops-set = 15)**, a **top-`target_positions` `adv_20` selector**, and a **`U=200`
+> `stable_universe`** universe. All three are **return-blind** (no return seen; K stays 0; FINAL_OOS
+> pristine). **On any conflict, §14 supersedes §3.1 / §3.5 / §5 / §12-item-5,7.** Engine rework (V4.0
+> re-opened) + V4.1 execution run in a later cold session.
+> This is the anti-HARKing
 > master commitment for the **v4 swing family**: it freezes — *before any return number is
 > measured* — the strategy model, the regime-score definition, the (small) search grid, the
 > binding acceptance rule, the deflation/K accounting, the discovery/OOS split, and the
@@ -100,6 +107,10 @@ Position-centric, single-name, daily event-driven. Signals computed on day `D` *
 day `D+1` **open** (no intrabar ordering, §9). All indicators on the **split/bonus-adjusted** series.
 
 ### 3.1 Universe (eligibility)
+> ⚠️ **SUPERSEDED by Amendment 1 (§14) — SIGNED 2026-06-24.** The universe is narrowed to a `U=200`
+> `stable_universe` (return-blind Nifty200 proxy); the `adv_20 ≥ ₹5cr` floor is retained *beneath* it as a
+> per-day tradeability safety. Read §14 as authoritative on any conflict.
+
 The **v2 liquid bhavcopy universe**: survivorship-free, `instrument_id`-stitched (post `05`/`06`/`07`),
 gated by `adv_20 ≥ ₹5cr` (`5e7`, matching `signals_v3.py`) as a per-day tradeability floor. Same
 eligibility S3 uses — no new universe construction.
@@ -132,6 +143,14 @@ eligibility S3 uses — no new universe construction.
   trade; the floor caps a gap-down before the trail tightens). Mirrors v2's circuit breaker. *(Confirm.)*
 
 ### 3.5 Position sizing & the regime throttle (recommended defaults — §12-decision)
+> ⚠️ **SUPERSEDED by Amendment 1 (§14) — SIGNED 2026-06-24.** `N_max` is renamed `target_positions` and
+> reframed from a "rarely-binding tail cap" to a **binding concentration cap** that is BOTH the hard slot
+> cap AND the sizing divisor (`per-position = f × capital / target_positions`), ops-set = 15. The footprint
+> (§14) showed the "cap rarely binds / divisor is sensible" premise below is **false** (mean 118 concurrent).
+> The `adv_20` tiebreak is promoted to the **primary top-`target_positions` selector**. Read §14 as
+> authoritative on any conflict; the no-forced-liquidation and whole-share/clamp-to-cash mechanics below are
+> UNCHANGED.
+
 - **Max concurrent positions** `N_max` — **set by a returns-blind procedure, not picked** (resolves the
   "N_max must lock before the run" tension, Arafat 2026-06-23). Before any backtest (V4.0 §13), run the
   **frozen** entry rule + Type-3 exit as a state machine over DISCOVERY and record **only the position
@@ -193,7 +212,8 @@ Each condition contributes **+1**:
 
 ## 5. The search grid (small, fully enumerated — decided now)
 
-The candidate is the §3/§4 design with **Type 3 exit, 5-factor regime, `N_max=10`**. The grid exists only
+The candidate is the §3/§4 design with **Type 3 exit, 5-factor regime, `target_positions=15`** (Amendment 1,
+§14; was `N_max=10`). The grid exists only
 to (a) confirm the candidate is a *region not a spike* (§6.3) and (b) check the exit choice is principled,
 **not** to mine for the best number. Every config is logged to the v4 ledger and counts toward K (§7).
 
@@ -201,7 +221,7 @@ to (a) confirm the candidate is a *region not a spike* (§6.3) and (b) check the
 |---|---|---|---|
 | Exit rule | **Type 3 (ATR 3×)** | Type 1 (MACD cross), Type 2 (EMA50) | exit-choice robustness |
 | ATR multiple | **3.0** | 2.5, 3.5 | §6.3 plateau (continuous knob) |
-| `N_max` | **procedure-locked** (§3.5) | locked `± 2` | §6.3 plateau (confirms the cap is non-binding) |
+| `target_positions` (§14) | **15** (ops-set, §14) | {13, 15, 17} | §6.3 plateau (confirms the cap is not return-tuned) |
 | Regime tier | **5-factor** | 3-factor (reported ablation, §4) | overlay-value diagnostic |
 
 Total selection trials are **bounded and pre-enumerated** (the candidate + its immediate neighbors);
@@ -343,15 +363,16 @@ should explicitly accept or change before any code.
    indicators at textbook convention (§3.2).
 4. **Catastrophic floor — ✅ ACCEPTED (Arafat 2026-06-23):** retain the wide **−25%** close-breach circuit
    breaker beneath Type 3 (§3.4).
-5. **Sizing/throttle — ✅ (throttle-only-new-deployment confirmed):** `N_max` **procedure-locked
-   returns-blind at ≈p99 of concurrent holdings** (§3.5, resolves the lock-before-run tension), equal-weight
-   whole-share, gross ≤ `f×capital`, liquidity tiebreak on oversubscription, **no forced liquidation on
-   regime downgrade**. *(open: breadth-series + missing-VIX rule below; sizing mechanics accepted.)*
+5. **Sizing/throttle — ✅ (throttle-only-new-deployment confirmed); ⚠️ AMENDED by §14:** ~~`N_max`
+   procedure-locked returns-blind at ≈p99~~ → **`target_positions = 15`**, a *binding* concentration cap =
+   slot cap **and** sizing divisor, with `adv_20` promoted to the **primary top-15 selector** (§14 A/B/C).
+   Equal-weight whole-share, gross ≤ `f×capital`, **no forced liquidation on regime downgrade** — all
+   UNCHANGED. `starting_capital = ₹3.5L` (§14 E).
 6. **Regime score frozen — ✅ ACCEPTED (Arafat 2026-06-23):** the 5-condition 0–5 score, buckets
    `0–1/2–3/4–5 → 0%/50%/100%` (§4); 5-factor is the candidate, 3-factor a reported ablation; breadth/A-D
    = **liquid** series (`liq_breadth_pct`/`liq_ad_ratio`); missing-VIX day scores condition-5 = 0 (§4).
-7. **Grid:** the small enumerated §5 grid (exit rule × ATR multiple × `N_max ± 2` × tier); no level added
-   after results; two-stage screen → battery.
+7. **Grid:** the small enumerated §5 grid (exit rule × ATR multiple × `target_positions ± 2` = {13,15,17}
+   [§14; was `N_max ± 2`] × tier); no level added after results; two-stage screen → battery.
 8. **Acceptance rule — ✅ §6.2 set to SKEW-AWARE (Arafat 2026-06-23):** §6 items 1–5 with §6.2 = the
    `09`/`10` random-subset skew-aware gate (median ≥ 0.70 + p5 ≥ 0.50 + ≥ 25 rotating contributors;
    classic drop-top-10 **diagnostic, not gating** — swing rides winners), exit-choice-is-not-a-silent-swap,
@@ -411,8 +432,72 @@ should explicitly accept or change before any code.
 
 ---
 
+## 14. Amendment 1 — concentration cap + universe (DRAFT 2026-06-24; sign to apply)
+
+> **This amendment changes only RETURN-BLIND structural choices and is NOT the v1 sin.** The forbidden move
+> (§ top, §1) is *moving a stick after seeing a **return***. Here **no return has been computed** — V4.0c's
+> footprint recorded *counts only* (concurrent holdings), and the changes below are driven by an
+> **operational/deployability constraint** (manageable book size + viable per-position size + AMO fill
+> fidelity), not by any Calmar/Sharpe. Therefore: **K stays 0**, the v4 ledger is untouched, and
+> **v4-FINAL_OOS remains pristine**. The §6 acceptance rule, the §8 OOS protocol, the entry rule (§3.3), the
+> indicators (§3.2), the exit rules (§3.4), and the regime score (§4) are **all UNCHANGED**.
+
+**Trigger (the V4.0c finding, `02` §4 / Session log).** The returns-blind footprint over DISCOVERY
+(2018-02-06 → 2023-06-30; 1333 days, 922 instruments) returned concurrent-holdings **max 408 / p95 298 /
+p99 371 / MEAN 118**. The §3.5 design used `N_max` for two jobs — a "rarely-binding tail cap" *and* the
+sizing divisor (`per-position = f×capital / N_max`). The procedure sized the *cap* correctly, but its premise
+("signals are sparse ⇒ the cap rarely binds ⇒ the divisor is sensible") is **false**: at p99 = 371 the book
+naturally wants ~118 names, so as a divisor 371 yields microscopic positions (≈ capital/371), an unmanageable
+100+-name book, and chronic ~68% cash drag (divisor 371 ≫ typical 118 ⇒ structurally under-invested). The
+engine is correct; the footprint did its job — it *proved the strategy is intrinsically broad*.
+
+**The decisions (frozen on sign):**
+
+| # | Change | From (§3) | To (Amendment 1) | Why it is return-blind |
+|---|---|---|---|---|
+| A | **Rename + reframe** | `N_max` = returns-blind tail cap, locked ≈ p99 | **`target_positions`** = a **binding concentration cap**: simultaneously the hard slot cap **and** the sizing divisor (`per-position = f × capital / target_positions`). | A count-driven structural choice; no return consulted. |
+| B | **Value** | 371 (≈ p99) | **`target_positions = 15`** (ops-set inside Arafat's manageable 15–25 band, nudged to the low end for **whole-share granularity at ~₹3-4L spare capital**: at 15, full-deploy per-position ≈ ₹23K vs ≈ ₹17.5K at 20, so integer-share rounding drag drops ~10→~3% on mid-priced names). | Set by an *operational* constraint (manageability + viable per-position size for the real capital), not by optimizing a return. The §6.3 plateau (axis renamed `target_positions ± 2` → **{13, 15, 17}**) confirms it is not a hidden knob. |
+| C | **Selector** | `adv_20` was a *tiebreak only on the rare oversubscribed day* | **primary selector**: when > `target_positions` names fire, hold the top-`target_positions` by **`adv_20`** (most liquid first). | `adv_20` is the already-frozen *neutral, non-return* ranker (§3.5 / §12-item-5); promoting it adds no return information. |
+| D | **Universe** | full v2 liquid bhavcopy (~562/day), `adv_20 ≥ ₹5cr` floor | **`stable_universe` at `U = 200`** (`app/backtest_v2/stable_universe.py`, from v3 `08`: top-U by 126-td median `adv_20`, semi-annual review + hysteresis, **no-lookahead tested**) — AND-ed into the entry scan; the `adv_20 ≥ ₹5cr` floor is **retained beneath it** as a per-day tradeability safety. | A structural/liquidity universe definition; chosen for tradeability/fill-fidelity, no return consulted. |
+| E | **Backtest capital** | `starting_capital = ₹10L` (the `SwingConfig` default) | **`starting_capital = ₹3.5L`** for the V4.1+ screen, matching Arafat's real spare capital. | A *deployment fact*, not a tuned knob: it makes the screen's cost + whole-share rounding drag honest. It is the **conservative** end — granularity only improves as profits reinvest + a monthly SIP-style top-up grows the book (sizing is equity-based, so it compounds). |
+
+**The `N_max` premise is formally retired.** With `target_positions = 15` as the *actual* cap, the cap binds
+on most bull days (the footprint guarantees it) — that is intended. The cash-drag pathology is fixed: filling
+20 slots at `f × capital / 20` = fully deployed at the regime-allowed gross. The 371 footprint number is
+**retained as a diagnostic** (it is *why* a concentration cap is needed), no longer a lock.
+
+**Honest caveats (Rule 12):**
+- `stable_universe` ranks by **liquidity (ADV)**, not free-float market cap, so it is a *proxy* for Nifty200,
+  not the index — it tilts large-cap and will not match the constituent list. The repo has **no point-in-time
+  Nifty200 constituents** (`universe_membership` is only "ISIN traded that day"); sourcing real survivorship-
+  free historical constituents is a **separate future data task**, not a blocker here.
+- The selector concentrates the book toward the **most liquid** names that fired (not the "best setups") — a
+  deliberately return-blind choice; whether that leaves edge on the table is a question for the V4.1 screen,
+  **not** something to pre-optimize now.
+- The **entry rule is deliberately left untouched.** Tightening it to be "more selective" is a *returns* bet
+  (it claims to pick better names) → it would burn K and risks v3-style overfitting. It is **deferred** until
+  after the V4.1 cost screen shows the actual concentrated book, and only then as a budgeted, plateau-tested
+  grid axis (a *new* amendment, if at all).
+
+**Downstream edits this implies (applied on signature):** §3.1 (universe), §3.5 (`N_max` → `target_positions`,
+divisor, selector), §5 grid row (`N_max ± 2` → `target_positions ± 2` = **{13,15,17}**; candidate
+`target_positions = 15`), §12 items 5 & 7 wording. `SwingConfig` defaults: `n_max` → `target_positions = 15`,
+`starting_capital = 350_000`, new `universe_size_U = 200` (+ the `stable_universe` review/buffer knobs reused
+from `08`). `02_SWING_ENGINE.md` is then updated to match and the engine reworked (`stable_universe` mask
+AND-ed into the entry scan; `n_max` → `target_positions`; top-N selector; re-run the footprint as a
+*diagnostic*). **V4.0 is re-opened** (it was prematurely called complete); V4.1 begins only after this rework's
+tests are green.
+
+> **Signed:** Arafat — 2026-06-24 (Amendment 1 decisions A–E approved as recorded above; DRAFT → APPLIED).
+> Return-blind ⇒ K unchanged (still 0), v4 ledger untouched, v4-FINAL_OOS pristine. Engine rework (V4.0
+> re-opened) + V4.1 cost screen are deferred to a later cold session; no strategy code written in the
+> signing session.
+
+---
+
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) — 2026-06-23.
+- [ ] §14 Amendment 1 signed by Arafat (concentration cap + `U=200` universe; return-blind, K unchanged).
 - [ ] V4.0 — engine built + fidelity/no-lookahead tested (`02_SWING_ENGINE.md`).
 - [ ] V4.1 — DISCOVERY cost screen; §6.1 survivor set identified; ledger updated; FINAL_OOS untouched.
 - [ ] V4.2 — battery + §6; one candidate locked OR null close; FINAL_OOS untouched.

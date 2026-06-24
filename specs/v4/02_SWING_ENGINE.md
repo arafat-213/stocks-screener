@@ -1,9 +1,16 @@
 # v4 / 02 — Daily Swing Engine: build, fidelity, no-lookahead + returns-blind N_max lock
 
-> **Status: V4.0 COMPLETE — 2026-06-24 (Arafat). §11 signed (all 8 commitments).** V4.0a/V4.0b/V4.0c all
-> DONE: engine built + fidelity/no-lookahead battery green (`backend/app/swing_v4/`), and the **returns-blind
-> `N_max` LOCKED = 371** (≈ p99; max 408 / p95 298 / p99 371 — §4 footprint, count-only, adds 0 to K). NEXT
-> = V4.1 (DISCOVERY cost screen, `00` §13). FINAL_OOS untouched. This is the **implementation spec** for the daily
+> **Status: V4.0 RE-OPENED — 2026-06-24 by `00` Amendment 1 (signed).** V4.0a/V4.0b/V4.0c were built +
+> green (`backend/app/swing_v4/`), and the V4.0c footprint (max 408 / p95 298 / p99 371 / **mean 118**)
+> did its job — it **proved the signal is intrinsically broad**, which invalidated the `n_max`-as-sizing-
+> divisor design. **`00` §14 (signed 2026-06-24) supersedes the old `n_max` rule:** `n_max` → binding
+> **`target_positions = 15`** (slot cap **and** sizing divisor), top-15 **`adv_20`** selector, universe →
+> **`stable_universe` U=200** (Nifty200 proxy), `starting_capital = ₹3.5L`. All return-blind (K=0,
+> FINAL_OOS pristine). **Pending engine rework (cold session):** `stable_universe` mask in the entry scan;
+> `n_max`→`target_positions`; top-N selector; config defaults; footprint demoted to a diagnostic. The 371
+> "lock" is retired → kept as the diagnostic that motivated the cap. This doc's §0–§10 below still describe
+> the pre-amendment engine; **on conflict, `00` §14 wins** and the rework section (to be added) is authoritative.
+> NEXT = the engine rework, then V4.1. This is the **implementation spec** for the daily
 > event-driven swing engine whose *strategy* was frozen in `00_SWING_PREREG.md` (LOCKED 2026-06-23).
 > It builds the plumbing under the prereg's frozen rules; it does **not** re-decide a single strategy
 > parameter. It corresponds to prereg **stage V4.0** and ends with two deliverables: (a) a fidelity-
@@ -474,8 +481,21 @@ redline. Items marked **(decision)** are where I picked a recommended default.
   book empties, not "held forever"); two overlapping names → concurrency 2 (per-name state does not leak);
   **structural returns-blind guard** (`FootprintResult` carries no pnl/return/calmar/sharpe/nav/cost/turnover
   field — keeps the "adds 0 to K" claim true by construction); percentiles span all window days incl. empty.
-- **No return number computed; FINAL_OOS untouched.** **V4.0 COMPLETE** → V4.1 (the DISCOVERY cost screen,
-  `00` §13) is now authorized; it does **not** authorize touching FINAL_OOS.
+- **No return number computed; FINAL_OOS untouched.**
+
+### 2026-06-24 — V4.0 RE-OPENED by `00` Amendment 1 (signed); `N_max` lock retired
+- The V4.0c footprint did its job: **mean 118 concurrent** proved the signal is intrinsically broad, which
+  invalidated the `n_max`-as-sizing-divisor design (at 371 the divisor gives microscopic positions, a 100+-name
+  book, ~68% cash drag). After an Arafat design conversation, **`00` Amendment 1 (§14) was signed 2026-06-24:**
+  `n_max` → binding **`target_positions = 15`** (slot cap **and** sizing divisor), top-15 **`adv_20`** selector,
+  universe → **`stable_universe` U=200**, **`starting_capital = ₹3.5L`**. All return-blind ⇒ **K stays 0,
+  FINAL_OOS pristine**. Entry rule / indicators / exit / regime / §6 acceptance / §8 OOS UNCHANGED.
+- **The 371 "lock" is RETIRED → kept as a diagnostic** (the finding that motivated the cap). `SwingConfig.n_max`
+  default 371 is therefore provisional and will be replaced by `target_positions` in the rework.
+- **Pending (cold session) engine rework:** `stable_universe` mask AND-ed into the entry scan; `n_max` →
+  `target_positions`; promote the `adv_20` tiebreak to a primary top-N selector; config defaults
+  (`target_positions=15`, `starting_capital=350_000`, `universe_size_U=200`); re-run `footprint.py` as a
+  *diagnostic*. Then V4.1 cost screen on the concentrated book. **No code written in the signing session.**
 
 ## Exit criteria
 - [x] §11 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
@@ -483,5 +503,7 @@ redline. Items marked **(decision)** are where I picked a recommended default.
       11 tests green; additive-only (no existing file edited).
 - [x] V4.0b — engine + fill discipline built; entry/exit/floor/whole-share/fill-ordering/identity +
       future-bar no-lookahead all green (9 tests); existing suites still green (667 passed, additive proof).
-- [x] V4.0c — `N_max` locked from the returns-blind distribution (= 371 ≈ p99; max 408 / p95 298 / p99 371);
-      number + distribution recorded; 4 footprint tests green; no return computed; FINAL_OOS untouched.
+- [x] V4.0c — returns-blind distribution recorded (max 408 / p95 298 / p99 371 / mean 118); 4 footprint tests
+      green; no return computed; FINAL_OOS untouched. **`N_max` lock RETIRED → diagnostic** (`00` Amendment 1).
+- [ ] V4.0 rework (cold session) — `target_positions=15` cap+divisor, top-N `adv_20` selector,
+      `stable_universe` U=200, `starting_capital=₹3.5L`; footprint re-run as diagnostic; suites green.
