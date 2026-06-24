@@ -230,8 +230,8 @@ no axis or level is added after a result. **Two-stage** (mirrors `08`):
   + pessimistic** cost. Record turnover, base Calmar, maxDD, win rate, avg hold, §6.1 ratio. Log to ledger.
   Also run the §6 **selection-quality diagnostic** (`B_liquid` vs `B_random` vs `B_all`) and record its read
   — non-gating, adds 0 to K (it informs a possible *future* amendment, never this run's candidate).
-- **Stage 2 — battery (only configs clearing §6.1):** §6.2 / §6.3 (over the ATR-multiple & `N_max`
-  neighbors) / §6.5, + §6.4 diagnostic. Apply §6 acceptance.
+- **Stage 2 — battery (only configs clearing §6.1):** §6.2 / §6.3 (over the ATR-multiple & `target_positions`
+  neighbors {13,15,17}) / §6.5, + §6.4 diagnostic. Apply §6 acceptance.
 
 ---
 
@@ -251,8 +251,8 @@ A config becomes the **single locked OOS candidate** iff **all** hold on full DI
    *broad-based-ness* without punishing legitimate winner-concentration. **The classic drop-top-10
    retention is still computed and reported as a contamination guard**, but it is **diagnostic, not
    gating**; a pass-skew/fail-classic config is labeled **"conditional"** (per `10`), never "validated."
-3. **§6.3 plateau:** the candidate and its §5 neighbors (±1 step on ATR multiple **and** on `N_max`) stay
-   ≥ **85%** of the candidate's base Calmar — a region, not a lone peak.
+3. **§6.3 plateau:** the candidate and its §5 neighbors (±1 step on ATR multiple **and** on `target_positions`,
+   i.e. {13,15,17}) stay ≥ **85%** of the candidate's base Calmar — a region, not a lone peak.
 4. **Deployment bar (corrected, = `08` §2b):** beats the primary benchmark (§2) on **base-cost Calmar**
    with **maxDD ≤ 100%** of the benchmark.
 5. **§6.4 subperiod** reported, **not** gating (window-fragility demoted per TBE3/`05` §2 / the whole arc).
@@ -452,8 +452,8 @@ should explicitly accept or change before any code.
 
 ### V4.2 — Stage 2: battery + §6 acceptance
 - **Status:** ⬜ NOT STARTED.
-- **Do:** §6.2 (skew-aware) / §6.3 (ATR-multiple & `N_max` neighbors) / §6.5 + §6.4 diagnostic on §6.1
-  survivors; apply §6 items 1–5. **No OOS.**
+- **Do:** §6.2 (skew-aware) / §6.3 (ATR-multiple & `target_positions` neighbors {13,15,17}) / §6.5 + §6.4
+  diagnostic on §6.1 survivors; apply §6 items 1–5. **No OOS.**
 - **Done-criteria:** per-config §6 table; **exactly one** candidate locked OR null close declared
   (Rule 12 — no silent pick); overlay-value ablation (5- vs 3-factor) recorded; `FINAL_OOS` untouched.
 
