@@ -318,7 +318,10 @@ in `00` §13) — it does **not** authorize touching FINAL_OOS.
   indicator/regime layer proven.
 
 ### V4.0b — Event-driven engine + fill discipline
-- **Status:** ⬜ NOT STARTED.
+- **Status:** ✅ DONE — 2026-06-24 (commit pending push). `engine.py`
+  (`build_context`/`SwingLoopState`/`step_day`/`run`) built reusing the v2
+  `costs`/`Portfolio`/`Fill`/`_stamp_fills`/`_clamp_buys_to_cash` **unmodified**; §5 items
+  2–5, 8–10 green; no return number computed.
 - **Do:** `config.py`, `engine.py` (`build_context`/`SwingLoopState`/`step_day`/`run`); reuse v2
   `costs.py` + `Portfolio`/`Fill` (or documented thin equivalent, §1). Tests §5 items 2–5, 8–10.
 - **Done:** entry/exit/floor fixtures green; whole-share + clamp-to-cash + fill-ordering + identity-
@@ -400,11 +403,54 @@ redline. Items marked **(decision)** are where I picked a recommended default.
 - **Nifty 50 loader note:** the existing `benchmark.load_price_index` is the V4.0b/regime wiring point;
   V4.0a injects fixtures only (no live API in pytest).
 
+### 2026-06-24 — V4.0b built (event-driven engine + fill discipline)
+- **New `backend/app/swing_v4/engine.py`** (additive-only; no existing file edited):
+  - `SwingEngineContext` (immutable per-run lookups: adjusted `close`/`open`/`adv_20` pivots,
+    `sym_map`, `membership`, the precomputed `SwingSignalStore`, the `RegimeScore` collaborator,
+    resolved `CostConfig`, `whole_shares` flag) + `build_context()` — mirrors the v2 split so a
+    future live shell shares the per-day core (§1). Resolves `instrument_id` first
+    (`collapse_to_instrument_id`, 06) so positions/lookups/membership key on the chain-constant id.
+    **Fails loud if `config.n_max is None`** (the sized engine needs the V4.0c returns-blind lock, §4).
+  - `SwingLoopState` (mutable, persistable): `portfolio` + `pending_fills` + `anchors`
+    (`instrument_id → max-adjusted-close-since-entry`). **Surfaced design call (Rule 12):** the §1
+    `SwingPosition`'s entry-date + cost-basis already live in the reused v2 `Portfolio.Position`; the
+    trail anchor is the *only* genuinely-new per-name state, so it lives in `anchors` rather than a
+    second `SwingPosition` that could desync from the Portfolio (the exact fidelity hazard §1 warns of).
+  - `step_day()` — the one shared per-day core in the §1.1 order: apply-prior-fills (sells/trims before
+    buys) → MTM at adjusted close → ratchet anchor (high-water mark of **closes only**, seeded from the
+    entry-day close, never the open/intraday high) → exit checks (catastrophic floor first, then the
+    configured Type-3 trail / Type-1 MACD-cross / Type-2 EMA50 comparator) → regime f → entry scan
+    (capacity = `N_max` slots **and** projected gross < f×equity, `adv_20`-desc tiebreak, equal-weight
+    `f×equity/N_max`) → snapshot (the MTM `DailySnapshot`). No forced liquidation on regime downgrade —
+    `f≤0` only blocks new entries.
+  - **Reuse, never edit (§1/§3/§8 — Arafat-confirmed):** imports the v2 `costs` model, `Portfolio`/`Fill`,
+    and `_stamp_fills` / `_clamp_buys_to_cash` / `_cfg_for_level` from `backtest_v2` **unmodified**. The v2
+    `Portfolio`/`Fill` turned out fully strategy-agnostic — no wrapper needed; the only local helper is a
+    private `_pivot` (kept local to avoid coupling to a v2 private). The "capital" in `00` §3.5's
+    `gross ≤ f×capital` is read as **current equity** (the compounding interpretation matching v2
+    `build_rebalance_plan`); surfaced here.
+- **Bug caught + fixed during build:** `_exit_breach` initially applied the catastrophic floor
+  unconditionally; with `catastrophic_stop_pct=0` (a disabled-floor config / Type-1/2 comparator runs)
+  the floor degenerated to "exit on any close below cost basis". Now guarded by `pct > 0` (mirrors the v2
+  engine), test-pinned both ways in §5.4.
+- **Tests `tests/swing_v4/test_v40b_engine.py` — 9 green** (§5 items 2–5, 8–10): entry 4-condition AND +
+  crossover-next-open + the no-entry negative; Type-3 trail exit with a strictly non-decreasing anchor
+  (exit price proven above the floor ⇒ it is the trail, not the floor); catastrophic-floor isolation via a
+  **loose** (wide-ATR) trail that the floor catches but the trail misses, with the pct=0 counter-check;
+  future-bar-corruption no-lookahead over the **engine** (snapshots + executed fills ≤ cut byte-identical);
+  whole-share integer fills + `equity == cash + Σshares·price` identity + cash≥0; gross ≤ f×equity under a
+  neutral (f=0.5) regime; same-close exit-eligibility of a just-bought name (no skipped first-day stop);
+  identity continuity across a two-leg succession (fills keyed by `instrument_id`, no boundary exit/ghost).
+- **Additive-only proof:** `swing_v4` + `backtest_v2` + `paper_v2` = **667 passed**; only `swing_v4/engine.py`
+  + `tests/swing_v4/test_v40b_engine.py` are new — no existing file edited ⇒ S3 `11`/FINAL_OOS byte-identical.
+- **No return number computed; FINAL_OOS untouched.** NEXT = **V4.0c** (`footprint.py` — frozen
+  entry + Type-3 exit state machine over DISCOVERY, unconstrained/count-only; lock `N_max ≈ p99`).
+
 ## Exit criteria
 - [x] §11 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
 - [x] V4.0a — indicators + regime + signals built and tested (parity / causality / completed-weeks / VIX).
       11 tests green; additive-only (no existing file edited).
-- [ ] V4.0b — engine + fill discipline built; entry/exit/floor/whole-share/fill-ordering/identity +
-      future-bar no-lookahead all green; existing suites still green (additive proof).
+- [x] V4.0b — engine + fill discipline built; entry/exit/floor/whole-share/fill-ordering/identity +
+      future-bar no-lookahead all green (9 tests); existing suites still green (667 passed, additive proof).
 - [ ] V4.0c — `N_max` locked from the returns-blind distribution; number + distribution recorded; no return
       computed; FINAL_OOS untouched.
