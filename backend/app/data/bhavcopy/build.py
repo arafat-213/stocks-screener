@@ -176,12 +176,20 @@ def _process_day(
     rate_limit: float,
     max_retries: int,
     sleep,
+    retry_missing_cutoff: date | None = None,
 ) -> DayResult:
     """Download and parse one trading day; write its per-day parquet checkpoint.
 
     Idempotent: days already marked ``ok`` or ``missing`` in the checkpoint are
     loaded from disk (zero network calls). Per-day errors are returned, not raised
     (the caller records and skips them — CLAUDE.md Pipeline Laws).
+
+    ``retry_missing_cutoff``: if set, ``"missing"`` entries for dates on or after
+    this cutoff are re-attempted. This handles the intra-day timing problem: a
+    download that runs before NSE publishes the bhavcopy (~18:30 IST) receives a 404
+    and gets cached as ``"missing"`` forever, even though the file is available later
+    that evening. By setting the cutoff to a few calendar days before ``end_d``,
+    recent ``"missing"`` entries are retried on the next ``run_build`` call.
     """
     date_str = d.isoformat()
     days = checkpoint["days"]
@@ -189,12 +197,23 @@ def _process_day(
     # Already processed — load from disk (no network). ``empty`` is terminal-on-
     # resume like ``missing`` (its cached .zip is reused by download anyway), so it
     # is recorded once and not re-parsed every run.
-    if date_str in days and days[date_str] in (
-        _STATUS_OK,
-        _STATUS_MISSING,
-        _STATUS_EMPTY,
+    # Exception: a recent ``"missing"`` date within the retry window is cleared and
+    # re-attempted (intra-day download returned 404 before bhavcopy was published).
+    cached_status = days.get(date_str)
+    if (
+        cached_status == _STATUS_MISSING
+        and retry_missing_cutoff is not None
+        and d >= retry_missing_cutoff
     ):
-        return DayResult(d, days[date_str])
+        logger.info(
+            "build: %s was cached 'missing' but is within retry window (%s) — re-attempting",
+            d,
+            retry_missing_cutoff,
+        )
+        del days[date_str]
+        cached_status = None
+    if cached_status in (_STATUS_OK, _STATUS_MISSING, _STATUS_EMPTY):
+        return DayResult(d, cached_status)
 
     # Download.
     dl_result = dl_mod.download_day(
@@ -346,6 +365,10 @@ def run_build(
                 rate_limit=rate_limit,
                 max_retries=max_retries,
                 sleep=sleep,
+                # Re-attempt any "missing" within the last 7 calendar days of this
+                # build run: catches intra-day downloads that saw 404 before NSE
+                # published the bhavcopy (~18:30 IST) and got permanently cached.
+                retry_missing_cutoff=end_d - timedelta(days=7),
             )
 
             if result.status == _STATUS_OK:

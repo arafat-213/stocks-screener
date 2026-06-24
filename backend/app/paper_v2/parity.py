@@ -62,10 +62,16 @@ def _live_weights(session, portfolio_id: int) -> dict[str, float]:
         .filter(PaperV2Position.portfolio_id == portfolio_id)
         .all()
     )
-    equity = sum(r.shares * (r.last_price or r.cost_basis) for r in rows)
+
+    # Use `is not None` (not `or`) so a price-zero suspended stock doesn't silently
+    # fall through to cost_basis and diverge from the shadow's 0.0 last_price.
+    def _price(r):
+        return r.last_price if r.last_price is not None else r.cost_basis
+
+    equity = sum(r.shares * _price(r) for r in rows)
     if equity <= 0:
         return {}
-    return {r.isin: (r.shares * (r.last_price or r.cost_basis)) / equity for r in rows}
+    return {r.isin: (r.shares * _price(r)) / equity for r in rows}
 
 
 def shadow_parity(

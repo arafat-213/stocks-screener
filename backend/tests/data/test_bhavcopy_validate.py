@@ -1074,11 +1074,13 @@ class TestCheck9TerminationForceExit:
             + _term_rows("INEMERGE0002", "CARRIED", last_idx=_TERM_EDGE_ORD - 25)
         )
         report = ValidationReport()
-        with pytest.raises(AssertionError, match="check_9"):
-            # K=30: the 25-day-silent leg is carried; the 35-day-silent one is safe.
-            _check_9_termination_force_exit(prices, self._empty_smap(), report, k=30)
+        # K=30: the 25-day-silent leg is carried; the 35-day-silent one is safe.
+        # _check_9 populates the report but does NOT raise — the raise is gated
+        # behind run_validation(raise_on_check9=True) since commit 9a1b0885.
+        _check_9_termination_force_exit(prices, self._empty_smap(), report, k=30)
         assert report.terminations_carried_at_edge == 1
         assert report.terminations_force_exit_safe == 1
+        assert "INEMERGE0002" in report.terminations_carried_isins
 
     def test_data_gap_suspect_excluded_from_assertion(self):
         """An ingest-gap cluster silent < K must NOT fail the check (07 §10).
