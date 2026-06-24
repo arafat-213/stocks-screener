@@ -48,6 +48,10 @@ from app.backtest_v2.engine import (
 from app.backtest_v2.identity import collapse_to_instrument_id
 from app.backtest_v2.portfolio import Portfolio
 from app.backtest_v2.schemas import DailySnapshot, Fill
+from app.backtest_v2.stable_universe import (
+    StableUniverseMask,
+    build_stable_universe_mask,
+)
 from app.swing_v4.config import SwingConfig
 from app.swing_v4.regime import RegimeScore
 from app.swing_v4.signals import SwingSignalStore, precompute_swing_signals
@@ -88,6 +92,10 @@ class SwingEngineContext:
     signal_store: SwingSignalStore
     regime: RegimeScore
     whole_shares: bool = False
+    # Amendment 1 §14 D: the stable_universe membership oracle, AND-ed into the entry
+    # scan beneath the retained ₹5cr floor. None when config.universe_mode == "floor"
+    # (the legacy ₹5cr-only universe — test/diagnostic escape hatch).
+    universe_mask: StableUniverseMask | None = None
 
 
 @dataclass
@@ -133,8 +141,8 @@ def run(
         Required columns: isin, date, open, high, low, close, adv_20 (and, post-06,
         instrument_id). `close` is the adjusted close (MTM + exit anchor).
     config : SwingConfig
-        Frozen `00` strategy params + grid knobs. `config.n_max` MUST be set (the
-        V4.0c returns-blind lock); the sized engine fails loud on n_max=None (Rule 12).
+        Frozen `00` strategy params + grid knobs. `config.target_positions` is the
+        binding concentration cap (00 §14); the engine fails loud on ≤ 0 (Rule 12).
     nifty50_price, market_internals : injected regime inputs (fixtures in tests). Used
         only when `regime` is not pre-built. No live API in pytest (`00` §4 / v4/02 §3).
     regime : pre-built RegimeScore; if None, built from nifty50_price + market_internals.
@@ -189,10 +197,10 @@ def build_context(
     future live shell (v4/02 §1). Extracted so the live shell drives the SAME step_day
     over the SAME context — fidelity by construction, not re-implementation.
     """
-    if config.n_max is None:
+    if config.target_positions <= 0:
         raise ValueError(
-            "SwingConfig.n_max is None — the sized engine needs the V4.0c "
-            "returns-blind N_max lock before it can run (v4/02 §4)."
+            f"SwingConfig.target_positions must be > 0 (the binding concentration cap "
+            f"= slot cap AND sizing divisor, 00 §14 A/B); got {config.target_positions}."
         )
 
     if cost_level is not None:
@@ -245,6 +253,20 @@ def build_context(
     for isin, group in prices.groupby("isin"):
         _membership[str(isin)] = set(pd.to_datetime(group["date"]))
 
+    # Amendment 1 §14 D: build the stable_universe mask (top-U by 126-td median adv_20,
+    # semi-annual review + hysteresis, no-lookahead) and AND it into the entry scan.
+    # "floor" mode keeps the legacy ₹5cr-only universe (escape hatch for tiny fixtures /
+    # diagnostics). Reuses v3 08's build_stable_universe_mask UNMODIFIED (additive, §8).
+    universe_mask: StableUniverseMask | None = None
+    if config.universe_mode == "stable":
+        universe_mask = build_stable_universe_mask(
+            prices,
+            config.universe_size_U,
+            config.universe_buffer_B,
+            config.universe_rank_lookback_td,
+            config.universe_review_cadence,
+        )
+
     ctx = SwingEngineContext(
         config=config,
         cost_fn=cost_fn,
@@ -257,6 +279,7 @@ def build_context(
         signal_store=signal_store,
         regime=regime,
         whole_shares=whole_shares,
+        universe_mask=universe_mask,
     )
     return ctx, calendar
 
@@ -411,12 +434,17 @@ def _scan_entries(
 ) -> None:
     """Queue BUY orders for D+1 open while capacity allows (v4/02 §1.1 step 6).
 
-    Capacity: open positions + already-queued buys < N_max AND projected gross
-    < f × equity. Per-name target notional = f × equity / N_max (equal-weight). On
-    oversubscription, rank candidates by adv_20 desc (the frozen `00` §3.5 tiebreak).
+    Capacity: open positions + already-queued buys < `target_positions` AND projected
+    gross < f × equity. Per-name target notional = f × equity / `target_positions`
+    (equal-weight). `target_positions` is the binding concentration cap (00 §14 A/B).
+
+    Selector (00 §14 C): `adv_20` is promoted from a rare-day tiebreak to the **primary
+    selector** — when more candidates fire than there are free slots, we keep the
+    top-`target_positions` by `adv_20` desc (most liquid first). Realised by ranking all
+    candidates by adv_20 desc and filling until the slot/gross cap binds.
     """
     cfg = ctx.config
-    n_max = cfg.n_max
+    target_positions = cfg.target_positions
     if f <= 0.0:
         return  # bear regime — no new deployment (throttle blocks entries; no forced
         #          liquidation of existing names, v4/02 §0 / §1.1 step 4)
@@ -424,7 +452,7 @@ def _scan_entries(
     pf = state.portfolio
     held = set(pf.positions)
     queued_buys = {fl.isin for fl in state.pending_fills if fl.side == "buy"}
-    slots = n_max - len(held) - len(queued_buys)
+    slots = target_positions - len(held) - len(queued_buys)
     if slots <= 0:
         return
 
@@ -433,7 +461,7 @@ def _scan_entries(
     # per Rule 12: `00` §3.5 writes "f × capital"; equity is the operative reading.
     equity = pf.equity
     target_gross = f * equity
-    per_name = target_gross / n_max if n_max > 0 else 0.0
+    per_name = target_gross / target_positions if target_positions > 0 else 0.0
     if per_name <= 0.0:
         return
 
@@ -441,11 +469,14 @@ def _scan_entries(
         fl.qty * fl.price for fl in state.pending_fills if fl.side == "buy"
     )
 
-    # Candidate entrants: 4 frozen conditions true on D, liquid, traded D, not held,
-    # not already queued. Rank by adv_20 desc (most liquid first) for the tiebreak.
+    # Candidate entrants: 4 frozen conditions true on D, liquid (₹5cr floor, inside
+    # entry_signal), in the stable_universe (00 §14 D), traded D, not held, not already
+    # queued. Rank by adv_20 desc (most liquid first) — the primary selector (§14 C).
     candidates: list[tuple[str, float]] = []
     for iid, dates in ctx.membership.items():
         if day not in dates or iid in held or iid in queued_buys:
+            continue
+        if ctx.universe_mask is not None and not ctx.universe_mask.is_member(day, iid):
             continue
         if not ctx.signal_store.entry_signal(day, iid):
             continue

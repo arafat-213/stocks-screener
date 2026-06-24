@@ -2,24 +2,41 @@
 
 Every default is a value **frozen by `00_SWING_PREREG.md`** (citations inline).
 This doc (v4/02) decides no strategy parameter; on any conflict `00` wins (§0).
-The fields that are not yet locked at construction time — `n_max` — are the
-returns-blind locks executed later (V4.0c) and default to ``None`` until then.
 
-The grid knobs (`exit_type`, `atr_mult`, `n_max`, `regime_factors`) exist so the
-`00` §5 grid can sweep them in V4.2; V4.0 only ever runs the frozen defaults.
+The grid knobs (`exit_type`, `atr_mult`, `target_positions`, `regime_factors`) exist
+so the `00` §5 grid can sweep them in V4.2; V4.0 only ever runs the frozen defaults.
+
+**`00` Amendment 1 (§14, signed 2026-06-24) — return-blind structural rework:** the
+V4.0c footprint proved the signal is intrinsically broad (mean 118 / p99 371 concurrent),
+so `n_max`-as-sizing-divisor was broken. Amendment 1 supersedes it with a **binding
+concentration cap `target_positions = 15`** (slot cap AND sizing divisor), a top-N
+`adv_20` selector, a **`stable_universe` U=200** universe (AND-ed into the entry scan
+beneath the retained ₹5cr floor), and **`starting_capital = ₹3.5L`** (real spare capital).
+All return-blind ⇒ K stays 0, FINAL_OOS pristine.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date
-from typing import Optional
+from typing import Literal, Optional
 
 
 @dataclass
 class SwingConfig:
-    # --- universe / liquidity (00 §3.1) ---
-    liquidity_floor_cr: float = 5.0  # adv_20 >= ₹5cr, decision-date
+    # --- universe / liquidity (00 §3.1 + Amendment 1 §14 D) ---
+    liquidity_floor_cr: float = 5.0  # adv_20 >= ₹5cr, decision-date (retained beneath
+    #                                  the stable_universe mask as a tradeability floor)
+    # stable_universe (00 §14 D — reuses app/backtest_v2/stable_universe.py from v3 08).
+    # "floor" = the ₹5cr-only legacy universe (test/diagnostic escape hatch + byte-identical
+    # pre-amendment behaviour); "stable" = the frozen Amendment-1 candidate universe.
+    universe_mode: Literal["floor", "stable"] = "stable"
+    universe_size_U: int = (
+        200  # top-U by 126-td median adv_20 (Nifty200 liquidity proxy)
+    )
+    universe_buffer_B: float = 1.25  # hysteresis: a member stays until rank > B*U
+    universe_review_cadence: Literal["semi-annual"] = "semi-annual"
+    universe_rank_lookback_td: int = 126  # ~6mo trailing median-adv_20 window
 
     # --- indicators (00 §3.2 — textbook-frozen) ---
     macd_fast: int = 12
@@ -36,15 +53,16 @@ class SwingConfig:
     atr_mult: float = 3.0  # §6.3 plateau neighborhood {2.5, 3.0, 3.5}
     catastrophic_stop_pct: float = 25.0  # close-breach circuit breaker beneath Type 3
 
-    # --- sizing / regime throttle (00 §3.5) ---
-    # Returns-blind lock — V4.0c recorded p99=371 of concurrent unconstrained holdings
-    # over DISCOVERY (max 408 / p95 298 / p99 371; footprint.py, count-only, adds 0 to K).
-    # A deliberately non-binding tail-risk cap (the real V4.1+ capacity constraint is the
-    # regime f×capital throttle + whole-share viability, not this cap). The `00` §5 grid
-    # stresses N_max ± 2 in V4.2 (those neighbors ARE return-evaluated → count toward K).
-    n_max: Optional[int] = 371
+    # --- sizing / regime throttle (00 §3.5 + Amendment 1 §14 A/B/C) ---
+    # `target_positions` is a BINDING concentration cap: simultaneously the hard slot cap
+    # AND the equal-weight sizing divisor (per-position = f × capital / target_positions).
+    # Amendment 1 retired the old returns-blind `n_max` tail cap (p99=371) — at 371 the
+    # divisor gave microscopic positions / ~68% cash drag because the signal is broad
+    # (mean 118 concurrent). 15 is an OPERATIONAL choice (manageable book + whole-share
+    # granularity at ~₹3-4L), not a tuned knob; `00` §5 stresses {13,15,17} in V4.2.
+    target_positions: int = 15
 
-    starting_capital: float = 1_000_000.0
+    starting_capital: float = 350_000.0  # Amendment 1 §14 E — real spare capital
 
     # --- regime score (00 §4) ---
     regime_factors: int = 5  # 5-factor frozen; 3 = reported ablation only (V4.2)

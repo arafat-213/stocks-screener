@@ -48,7 +48,12 @@ class _FixedRegime:
 
 
 def _small_cfg(**kw) -> SwingConfig:
-    """Frozen-shape config with SMALL windows so a tiny fixture exercises every rule."""
+    """Frozen-shape config with SMALL windows so a tiny fixture exercises every rule.
+
+    ``universe_mode="floor"`` here: a 45-bar fixture can never satisfy the 126-td
+    stable_universe warmup, so these engine-mechanics tests use the legacy ₹5cr-only
+    universe. The stable_universe mask itself is exercised separately (test_v40d).
+    """
     base = dict(
         sma_short=2,
         sma_mid=3,
@@ -58,8 +63,9 @@ def _small_cfg(**kw) -> SwingConfig:
         macd_fast=2,
         macd_slow=3,
         macd_signal=2,
-        n_max=5,
+        target_positions=5,
         starting_capital=1_000_000.0,
+        universe_mode="floor",
     )
     base.update(kw)
     return SwingConfig(**base)
