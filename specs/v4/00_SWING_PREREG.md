@@ -228,6 +228,8 @@ Total selection trials are **bounded and pre-enumerated** (the candidate + its i
 no axis or level is added after a result. **Two-stage** (mirrors `08`):
 - **Stage 1 — cost screen:** the candidate (and the exit-rule alternatives) on full DISCOVERY at **base
   + pessimistic** cost. Record turnover, base Calmar, maxDD, win rate, avg hold, §6.1 ratio. Log to ledger.
+  Also run the §6 **selection-quality diagnostic** (`B_liquid` vs `B_random` vs `B_all`) and record its read
+  — non-gating, adds 0 to K (it informs a possible *future* amendment, never this run's candidate).
 - **Stage 2 — battery (only configs clearing §6.1):** §6.2 / §6.3 (over the ATR-multiple & `N_max`
   neighbors) / §6.5, + §6.4 diagnostic. Apply §6 acceptance.
 
@@ -258,6 +260,35 @@ A config becomes the **single locked OOS candidate** iff **all** hold on full DI
 **Exit-choice rule:** Type 3 is the registered candidate. If Type 3 fails §6 but Type 1 or Type 2 passes,
 that is a **reported finding, not a silent swap** — promoting a comparator to candidate is a *new*
 registration decision (a fresh K-bearing trial), recorded explicitly, never a quiet substitution.
+
+**Selection-quality diagnostic (pre-registered 2026-06-24; non-gating, adds 0 to K).**
+*Why now:* the Amendment-1 footprint showed the stable-`U=200` book naturally wants **~46 concurrent names
+(mean)** against a binding `target_positions = 15` — so the top-15-by-`adv_20` selector binds **~3:1** and is
+therefore a *first-order return driver*, not a rare-day tiebreak. This diagnostic measures, in the V4.1 cost
+screen, **whether liquidity-creaming systematically discards edge** — *without* turning the selector into a
+return-mined choice. It changes **nothing** about the candidate, the §5 grid, the §6 gates, or the §8 OOS.
+
+*What is run* (same frozen engine / entry / exit / regime / sizing; **only the cap+selector differ**; full
+DISCOVERY, base cost):
+- **`B_liquid`** — the candidate: keep the top-`target_positions` by `adv_20` when oversubscribed (the actual engine).
+- **`B_random`** — keep a *random* `target_positions` when oversubscribed; reuse the §6.2 skew-aware
+  random-subset machinery to report **median** and **p5** Calmar over seeds (a distribution, not one draw).
+- **`B_all`** — *no* cap: hold every qualifying name equal-weight (the ~46-name unconstrained book). A
+  **capital-blind reference only** (not deployable at ₹3.5L — sub-tradeable sizes); run it return-only
+  (`whole_shares` off) purely to bound how much return lives in the names the cap drops.
+
+*Pre-committed read (decided before any number; the ≥85% threshold reuses the §6.3 plateau tolerance — no new magic number):*
+- **Neutral** — `B_liquid` ≥ **85%** of `B_random` median Calmar ⇒ liquidity selection costs ~nothing; keep the engine as-is, the cap is just a cap.
+- **Favorable** — `B_liquid` ≥ `B_random` median ⇒ liquidity selection mildly *helps* (plausible — liquid names fill cleaner, lower impact); keep, reinforced.
+- **Edge-discarding** — `B_liquid` < **85%** of `B_random` median **and** materially below `B_all` ⇒ evidence
+  the selector throws away edge. This **does not** swap the selector in this run; it **authorizes a separate
+  future amendment** that introduces a return-informed selector as a budgeted, §6.3-plateau-tested grid axis
+  carrying **its own K** (identical to the exit-choice "promotion is a fresh K-bearing trial" rule above).
+
+*Guards (anti-HARKing):* **report-only** — the locked OOS candidate stays top-15-by-`adv_20` **regardless** of
+this diagnostic (same status as the §6.4 subperiod and the classic drop-top-10 retention). `B_random` / `B_all`
+are reference books, **not** configs we may keep-the-best-of; neither can be promoted to the candidate from
+this run, so the diagnostic **adds 0 to K**. A bad result triggers *new* pre-registered work, never a quiet swap.
 
 **Null outcome (pre-accepted close):** if **0** configs satisfy 1–4, the v4 swing strategy is a
 **research note** — `FINAL_OOS` is **not** touched. A null is the honest finding that daily swing on this
@@ -412,9 +443,12 @@ should explicitly accept or change before any code.
 ### V4.1 — Stage 1: cost screen on full DISCOVERY
 - **Status:** ⬜ NOT STARTED.
 - **Do:** run the candidate + exit-rule alternatives on DISCOVERY at base + pessimistic cost; record
-  turnover, base Calmar, maxDD, win rate, avg hold, §6.1 ratio; log all to the v4 ledger. **No OOS.**
-- **Done-criteria:** screen table; §6.1-clearing set identified (may be empty — report honestly); ledger
-  updated; `FINAL_OOS` untouched.
+  turnover, base Calmar, maxDD, win rate, avg hold, §6.1 ratio; log all to the v4 ledger. Also run the §6
+  **selection-quality diagnostic** (`B_liquid` vs `B_random` vs `B_all`) and record its pre-committed read.
+  **No OOS.**
+- **Done-criteria:** screen table; §6.1-clearing set identified (may be empty — report honestly); the
+  selection-quality diagnostic read recorded (neutral / favorable / edge-discarding; non-gating, adds 0 to K);
+  ledger updated; `FINAL_OOS` untouched.
 
 ### V4.2 — Stage 2: battery + §6 acceptance
 - **Status:** ⬜ NOT STARTED.
