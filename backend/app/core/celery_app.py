@@ -16,10 +16,6 @@ celery_app.conf.update(
     timezone="Asia/Kolkata",
     enable_utc=True,
     beat_schedule={
-        "daily-pipeline-at-4pm": {
-            "task": "app.tasks.execute_pipeline_task",
-            "schedule": crontab(day_of_week="1-5", hour=16, minute=5),
-        },
         "nightly-cleanup-at-2am": {
             "task": "app.tasks.execute_cleanup_task",
             "schedule": crontab(hour=2, minute=30),
