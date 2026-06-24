@@ -38,7 +38,7 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./backend:/app
-    command: watchmedo auto-restart --directory=./ --pattern="*.py" --recursive -- celery -A app.core.celery_app worker --loglevel=info
+    command: celery -A app.core.celery_app worker --loglevel=info
     depends_on:
       - db
       - redis
@@ -52,7 +52,7 @@ services:
       dockerfile: Dockerfile.dev
     volumes:
       - ./backend:/app
-    command: watchmedo auto-restart --directory=./ --pattern="*.py" --recursive -- celery -A app.core.celery_app beat --loglevel=info
+    command: celery -A app.core.celery_app beat --loglevel=info
     depends_on:
       - db
       - redis
