@@ -37,9 +37,13 @@ class SwingConfig:
     catastrophic_stop_pct: float = 25.0  # close-breach circuit breaker beneath Type 3
 
     # --- sizing / regime throttle (00 §3.5) ---
-    n_max: Optional[int] = (
-        None  # returns-blind lock recorded in V4.0c — None until then
-    )
+    # Returns-blind lock — V4.0c recorded p99=371 of concurrent unconstrained holdings
+    # over DISCOVERY (max 408 / p95 298 / p99 371; footprint.py, count-only, adds 0 to K).
+    # A deliberately non-binding tail-risk cap (the real V4.1+ capacity constraint is the
+    # regime f×capital throttle + whole-share viability, not this cap). The `00` §5 grid
+    # stresses N_max ± 2 in V4.2 (those neighbors ARE return-evaluated → count toward K).
+    n_max: Optional[int] = 371
+
     starting_capital: float = 1_000_000.0
 
     # --- regime score (00 §4) ---

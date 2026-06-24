@@ -55,6 +55,16 @@ class SwingSignalStore:
             return None
         return df.loc[ts]
 
+    def items(self):
+        """Iterate ``(instrument_id, precomputed DataFrame)`` pairs.
+
+        A read-only accessor over the per-instrument frames so the V4.0c returns-blind
+        footprint (``footprint.py``) can walk each name's series without reaching into
+        the private ``_data`` dict. The frames are the live objects — callers must not
+        mutate them.
+        """
+        return self._data.items()
+
     def entry_signal(self, day: date | pd.Timestamp, instrument_id: str) -> bool:
         """True iff all 4 frozen entry conditions hold on D **and** the name is
         liquid (``adv_20 ≥ ₹5cr``) and traded D. NaN in any field → False."""

@@ -1,8 +1,9 @@
 # v4 / 02 — Daily Swing Engine: build, fidelity, no-lookahead + returns-blind N_max lock
 
-> **Status: LOCKED — 2026-06-24 (Arafat). §11 signed (all 8 commitments).** No engine code existed before
-> this lock; the next move is V4.0a (indicators + regime + signals). No engine code exists yet
-> (`backend/app/swing_v4/` confirmed absent). This is the **implementation spec** for the daily
+> **Status: V4.0 COMPLETE — 2026-06-24 (Arafat). §11 signed (all 8 commitments).** V4.0a/V4.0b/V4.0c all
+> DONE: engine built + fidelity/no-lookahead battery green (`backend/app/swing_v4/`), and the **returns-blind
+> `N_max` LOCKED = 371** (≈ p99; max 408 / p95 298 / p99 371 — §4 footprint, count-only, adds 0 to K). NEXT
+> = V4.1 (DISCOVERY cost screen, `00` §13). FINAL_OOS untouched. This is the **implementation spec** for the daily
 > event-driven swing engine whose *strategy* was frozen in `00_SWING_PREREG.md` (LOCKED 2026-06-23).
 > It builds the plumbing under the prereg's frozen rules; it does **not** re-decide a single strategy
 > parameter. It corresponds to prereg **stage V4.0** and ends with two deliverables: (a) a fidelity-
@@ -328,7 +329,9 @@ in `00` §13) — it does **not** authorize touching FINAL_OOS.
   continuity proven; the full future-bar-corruption no-lookahead test (§5 item 5) green over the engine.
 
 ### V4.0c — Returns-blind `N_max` lock
-- **Status:** ⬜ NOT STARTED.
+- **Status:** ✅ DONE — 2026-06-24. `footprint.py` (frozen entry + Type-3 exit, unconstrained, count-only)
+  measured over DISCOVERY; **`N_max` LOCKED = 371 (≈ p99 of concurrent holdings; max 408 / p95 298 / p99
+  371)**; no return number computed; FINAL_OOS untouched.
 - **Do:** `footprint.py` — frozen entry + Type-3 exit state machine over DISCOVERY, **unconstrained, count
   only** (§4). Report max/p95/p99 of concurrent holdings; **lock `N_max` ≈ p99**.
 - **Done:** `N_max` integer + full distribution recorded in the Session log **before** V4.1; **no return
@@ -446,11 +449,39 @@ redline. Items marked **(decision)** are where I picked a recommended default.
 - **No return number computed; FINAL_OOS untouched.** NEXT = **V4.0c** (`footprint.py` — frozen
   entry + Type-3 exit state machine over DISCOVERY, unconstrained/count-only; lock `N_max ≈ p99`).
 
+### 2026-06-24 — V4.0c built + `N_max` LOCKED (returns-blind count)
+- **New `backend/app/swing_v4/footprint.py`** (additive-only) — the returns-blind `N_max` procedure (§4,
+  `00` §3.5): a pure per-name state machine running the **frozen entry rule + Type-3 trail only**,
+  **unconstrained** (no `N_max` cap, no regime throttle, no sizing, no costs, no PnL). Faithful to the engine
+  timing (entry signal D close → "held" from D+1 fill, anchor seeded at that close; Type-3 close-breach on
+  Dk → held through Dk inclusive ⇒ MTM-snapshot parity). **Catastrophic floor deliberately NOT applied**
+  (§4 says "entry rule + Type-3 exit"; the floor needs a fill-price cost basis that does not exist count-
+  only; omitting it can only *lengthen* holds ⇒ a strictly more conservative/larger cap — surfaced, Rule 12).
+  Percentiles are taken over **every** DISCOVERY trading day (zero-holding days included), not only busy days.
+  Added a read-only `SwingSignalStore.items()` accessor so the footprint walks per-instrument frames without
+  reaching into the private `_data`.
+- **Result over DISCOVERY (2018-02-06 → 2023-06-30; 1333 trading days, 922 instruments ever held):**
+  - Concurrent holdings — **max 408 / p95 298.20 / p99 371.36 / mean 117.53**.
+  - Fresh actionable entries/day — max 39 / mean 3.01.
+  - **`N_max` LOCKED = 371** (= round(p99); `00` §3.5). Baked into `SwingConfig.n_max` default (was `None`).
+- **Honest read (Rule 12):** the cap is **large and deliberately non-binding** — exactly the `00` §3.5 intent
+  ("a tail-risk control that rarely binds, not a performance lever"). It is large because the unconstrained
+  reading accumulates *every* firing name through 2020–2021 with no regime throttle and a loose 3×ATR trail.
+  The **real V4.1+ capacity constraint will be the regime `f×capital` throttle + whole-share viability per
+  name**, not this cap. The `00` §5 `N_max ± 2` plateau neighbors are return-evaluated in V4.2 and **do**
+  count toward K there; this lock itself **adds 0 to K** (no return evaluated).
+- **Tests `tests/swing_v4/test_v40c_footprint.py` — 4 green:** single-name hold-then-Type-3-exit (proves the
+  book empties, not "held forever"); two overlapping names → concurrency 2 (per-name state does not leak);
+  **structural returns-blind guard** (`FootprintResult` carries no pnl/return/calmar/sharpe/nav/cost/turnover
+  field — keeps the "adds 0 to K" claim true by construction); percentiles span all window days incl. empty.
+- **No return number computed; FINAL_OOS untouched.** **V4.0 COMPLETE** → V4.1 (the DISCOVERY cost screen,
+  `00` §13) is now authorized; it does **not** authorize touching FINAL_OOS.
+
 ## Exit criteria
 - [x] §11 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
 - [x] V4.0a — indicators + regime + signals built and tested (parity / causality / completed-weeks / VIX).
       11 tests green; additive-only (no existing file edited).
 - [x] V4.0b — engine + fill discipline built; entry/exit/floor/whole-share/fill-ordering/identity +
       future-bar no-lookahead all green (9 tests); existing suites still green (667 passed, additive proof).
-- [ ] V4.0c — `N_max` locked from the returns-blind distribution; number + distribution recorded; no return
-      computed; FINAL_OOS untouched.
+- [x] V4.0c — `N_max` locked from the returns-blind distribution (= 371 ≈ p99; max 408 / p95 298 / p99 371);
+      number + distribution recorded; 4 footprint tests green; no return computed; FINAL_OOS untouched.
