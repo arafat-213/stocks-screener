@@ -1,0 +1,495 @@
+"""engine.py — the v4 daily event-driven swing engine core (v4/02 §1, §1.1).
+
+The v2 engine proved a single per-day core can drive both the historical backtest
+and a future live paper shell byte-for-byte (the `11` probation). v4 reuses that
+shape — `build_context()` builds immutable per-run lookups once; `step_day()` is the
+one shared per-day core; `run()` loops it over the calendar — so a future v4 forward
+probation is faithful by construction (v4/02 §1).
+
+Where v2 is a *monthly* ``for name in top-N`` snapshot, v4 is a *daily* ``while
+(trend intact)`` loop **per name** (Rule 13). So v4 cannot be a config of the v2
+loop — it needs its own ``step_day``. But the parts that decide *how a queued order
+becomes cash and shares* (next-open fill, slippage, whole-share rounding, never spend
+cash you don't have) are strategy-agnostic plumbing: v4 **reuses, never edits** the v2
+``costs`` model, the ``Portfolio``/``Fill`` accounting, and the ``_stamp_fills`` /
+``_clamp_buys_to_cash`` fill mechanics (v4/02 §1, §3, §8 — Arafat-confirmed). Divergence
+there is exactly the v1-class fidelity bug we refuse to reintroduce.
+
+`step_day` ordering (v4/02 §1.1 — the hard invariant, mirrors v2 §3 / `11` §3e):
+  1. apply prior-session queued fills at today's open (sells/trims before buys)
+  2. MTM the book at today's adjusted close
+  3. update each open position's trail anchor = max(anchor, adjusted_close[D])
+  4. exit checks (catastrophic floor first, then configured exit) → queue SELL D+1 open
+  5. compute the regime score for D → deployable fraction f
+  6. entry scan (capacity + adv_20 tiebreak) → queue BUY D+1 open
+  7. snapshot the day (the MTM snapshot from step 2)
+
+V4.0b builds + unit-tests the engine + fill discipline. It computes **no return
+number** — the engine is exercised only on hand-built fixtures (v4/02 §6).
+"""
+
+from __future__ import annotations
+
+import logging
+import math
+from dataclasses import dataclass, field
+from datetime import date
+
+import pandas as pd
+
+# Reuse, never edit, the v2 fill plumbing & accounting (v4/02 §1, §8).
+from app.backtest_v2.costs import CostConfig, CostFn, CostLevel
+from app.backtest_v2.costs import fill_cost as _default_fill_cost
+from app.backtest_v2.engine import (
+    _cfg_for_level,
+    _clamp_buys_to_cash,
+    _stamp_fills,
+)
+from app.backtest_v2.identity import collapse_to_instrument_id
+from app.backtest_v2.portfolio import Portfolio
+from app.backtest_v2.schemas import DailySnapshot, Fill
+from app.swing_v4.config import SwingConfig
+from app.swing_v4.regime import RegimeScore
+from app.swing_v4.signals import SwingSignalStore, precompute_swing_signals
+
+log = logging.getLogger(__name__)
+
+
+@dataclass
+class SwingEngineResult:
+    """All outputs from a completed swing backtest run (V4.0b — no return metric)."""
+
+    snapshots: list[DailySnapshot]
+    fills_log: list[Fill]
+    config: SwingConfig
+    total_cost_paid: float
+
+
+@dataclass
+class SwingEngineContext:
+    """Immutable per-run lookups + collaborators, built once by build_context() and
+    consumed by step_day(). Mirrors the v2 EngineContext so a future live shell can
+    share the per-day core (v4/02 §1).
+
+    All price lookups are on the **adjusted** series (the swing strategy is defined on
+    adjusted O/H/L/C, `00` §3.2). `close` drives both MTM and the close-based exits;
+    `open` is the next-session fill price; `adv_20` feeds the cost/slippage model and
+    the oversubscription tiebreak.
+    """
+
+    config: SwingConfig
+    cost_fn: CostFn
+    cost_cfg: CostConfig
+    close: dict[pd.Timestamp, dict[str, float]]
+    open: dict[pd.Timestamp, dict[str, float]]
+    adv_20: dict[pd.Timestamp, dict[str, float]]
+    sym_map: dict[str, str]
+    membership: dict[str, set[pd.Timestamp]]
+    signal_store: SwingSignalStore
+    regime: RegimeScore
+    whole_shares: bool = False
+
+
+@dataclass
+class SwingLoopState:
+    """Mutable loop state carried across days — and persistable the way v2's LoopState
+    is, so a future live shell can hydrate it (v4/02 §1).
+
+    The per-name open-position state described in v4/02 §1 (entry date, cost basis,
+    trail anchor) is **single-sourced**: entry date + cost basis already live in the
+    reused v2 ``Portfolio.positions[id]`` (a frozen ``Position``). The trail anchor —
+    ``max adjusted close since entry`` — is the *only* genuinely-new per-name state, so
+    it lives here as ``anchors[instrument_id] → float``. Duplicating entry-date/cost-
+    basis into a separate ``SwingPosition`` would be a second source of truth that can
+    desync from the Portfolio — exactly the fidelity hazard §1 warns against — so we
+    keep one source each (surfaced per Rule 12; the §1 ``SwingPosition`` is realised as
+    Portfolio.Position + the anchor map).
+    """
+
+    portfolio: Portfolio
+    pending_fills: list[Fill]
+    anchors: dict[str, float] = field(default_factory=dict)
+
+
+def run(
+    prices: pd.DataFrame,
+    config: SwingConfig,
+    *,
+    nifty50_price: pd.Series | None = None,
+    market_internals: pd.DataFrame | None = None,
+    regime: RegimeScore | None = None,
+    cost_fn: CostFn = _default_fill_cost,
+    cost_cfg: CostConfig | None = None,
+    cost_level: CostLevel | None = None,
+    signal_store: SwingSignalStore | None = None,
+    whole_shares: bool = False,
+) -> SwingEngineResult:
+    """Execute the v4 swing loop over `prices` and return a SwingEngineResult.
+
+    Parameters
+    ----------
+    prices : pd.DataFrame
+        Long-format multi-ISIN adjusted frame from store.read_prices_adjusted.
+        Required columns: isin, date, open, high, low, close, adv_20 (and, post-06,
+        instrument_id). `close` is the adjusted close (MTM + exit anchor).
+    config : SwingConfig
+        Frozen `00` strategy params + grid knobs. `config.n_max` MUST be set (the
+        V4.0c returns-blind lock); the sized engine fails loud on n_max=None (Rule 12).
+    nifty50_price, market_internals : injected regime inputs (fixtures in tests). Used
+        only when `regime` is not pre-built. No live API in pytest (`00` §4 / v4/02 §3).
+    regime : pre-built RegimeScore; if None, built from nifty50_price + market_internals.
+    signal_store : pre-built SwingSignalStore; if None, precompute_swing_signals is run.
+    whole_shares : NSE integer-share fidelity (default False ⇒ fractional). A future
+        live shell sets it True (mirrors v2 `11` §13).
+    """
+    ctx, calendar = build_context(
+        prices,
+        config,
+        nifty50_price=nifty50_price,
+        market_internals=market_internals,
+        regime=regime,
+        cost_fn=cost_fn,
+        cost_cfg=cost_cfg,
+        cost_level=cost_level,
+        signal_store=signal_store,
+        whole_shares=whole_shares,
+    )
+
+    state = SwingLoopState(
+        portfolio=Portfolio(cash=config.starting_capital),
+        pending_fills=[],
+        anchors={},
+    )
+
+    for day in calendar:
+        step_day(ctx, state, day)
+
+    return SwingEngineResult(
+        snapshots=state.portfolio.snapshots,
+        fills_log=state.portfolio.fills_log,
+        config=config,
+        total_cost_paid=state.portfolio._total_cost_paid,
+    )
+
+
+def build_context(
+    prices: pd.DataFrame,
+    config: SwingConfig,
+    *,
+    nifty50_price: pd.Series | None = None,
+    market_internals: pd.DataFrame | None = None,
+    regime: RegimeScore | None = None,
+    cost_fn: CostFn = _default_fill_cost,
+    cost_cfg: CostConfig | None = None,
+    cost_level: CostLevel | None = None,
+    signal_store: SwingSignalStore | None = None,
+    whole_shares: bool = False,
+) -> tuple[SwingEngineContext, list[pd.Timestamp]]:
+    """Build the immutable per-run lookups + trading calendar shared by run() and a
+    future live shell (v4/02 §1). Extracted so the live shell drives the SAME step_day
+    over the SAME context — fidelity by construction, not re-implementation.
+    """
+    if config.n_max is None:
+        raise ValueError(
+            "SwingConfig.n_max is None — the sized engine needs the V4.0c "
+            "returns-blind N_max lock before it can run (v4/02 §4)."
+        )
+
+    if cost_level is not None:
+        cost_cfg = _cfg_for_level(cost_level)
+    elif cost_cfg is None:
+        cost_cfg = CostConfig()
+
+    # Resolve identity to the chain-constant instrument_id (06) FIRST so price lookups,
+    # universe membership, and held positions all key on instrument_id: a position held
+    # across a succession resolves to the same key (no ghost), and per-date lookups
+    # resolve to whichever leg is live (v4/02 §5 item 10). No-op for non-succession
+    # frames. The signal store collapses internally too (idempotent).
+    prices = collapse_to_instrument_id(prices)
+    prices = prices.copy()
+    prices["date"] = pd.to_datetime(prices["date"])
+
+    _close = _pivot(prices, "close")
+    _open = _pivot(prices, "open")
+    _adv_20 = _pivot(prices, "adv_20")
+
+    _sym_col = "symbol" if "symbol" in prices.columns else "isin"
+    _sym_map: dict[str, str] = (
+        prices.sort_values("date")
+        .drop_duplicates("isin", keep="last")
+        .set_index("isin")[_sym_col]
+        .to_dict()
+    )
+
+    calendar: list[pd.Timestamp] = sorted(_close.keys())
+    if not calendar:
+        raise ValueError("prices DataFrame has no valid dates.")
+    start_ts = pd.Timestamp(config.date_from) if config.date_from else calendar[0]
+    end_ts = pd.Timestamp(config.date_to) if config.date_to else calendar[-1]
+    calendar = [d for d in calendar if start_ts <= d <= end_ts]
+    if not calendar:
+        raise ValueError(f"No trading dates in [{config.date_from}, {config.date_to}].")
+
+    if signal_store is None:
+        signal_store = precompute_swing_signals(prices, config)
+
+    if regime is None:
+        if nifty50_price is None or market_internals is None:
+            raise ValueError(
+                "build_context needs either a pre-built `regime` or both "
+                "`nifty50_price` and `market_internals` to build one (v4/02 §3)."
+            )
+        regime = RegimeScore(nifty50_price, market_internals, config)
+
+    _membership: dict[str, set[pd.Timestamp]] = {}
+    for isin, group in prices.groupby("isin"):
+        _membership[str(isin)] = set(pd.to_datetime(group["date"]))
+
+    ctx = SwingEngineContext(
+        config=config,
+        cost_fn=cost_fn,
+        cost_cfg=cost_cfg,
+        close=_close,
+        open=_open,
+        adv_20=_adv_20,
+        sym_map=_sym_map,
+        membership=_membership,
+        signal_store=signal_store,
+        regime=regime,
+        whole_shares=whole_shares,
+    )
+    return ctx, calendar
+
+
+def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) -> None:
+    """Execute ONE trading day of the v4 swing loop (v4/02 §1.1) against mutable
+    `state` using immutable `ctx`. This is the one per-day core a future live shell
+    will call (the same `11` §3e fidelity contract).
+
+    HARD ORDERING INVARIANT: apply prior queued fills (step 1) ALWAYS runs BEFORE the
+    exit checks (step 4), so a name bought at today's open — its cost basis set in
+    step 1 — is exit-eligible on TODAY's close (no skipped first-day stop; §5 item 9).
+    """
+    pf = state.portfolio
+    day_date = day.date()
+    close_today: dict[str, float] = ctx.close.get(day, {})
+
+    # ---- step 1: apply prior-session queued fills at today's open ----------
+    if state.pending_fills:
+        open_today = ctx.open.get(day, {})
+        adv_today = ctx.adv_20.get(day, {})
+        # Sells/trims before buys so exits replenish cash before new buys.
+        _side_order = {"sell": 0, "trim": 1, "buy": 2}
+        state.pending_fills.sort(key=lambda f: _side_order.get(f.side, 9))
+        stamped = _stamp_fills(
+            state.pending_fills, open_today, day_date, adv_today, ctx.cost_cfg
+        )
+        stamped = _clamp_buys_to_cash(
+            stamped, pf.cash, ctx.cost_fn, ctx.cost_cfg, whole_shares=ctx.whole_shares
+        )
+        pf.apply_fills(
+            stamped,
+            cost_fn=ctx.cost_fn,
+            cost_cfg=ctx.cost_cfg,
+            adv_lookup=adv_today,
+            whole_shares=ctx.whole_shares,
+        )
+        state.pending_fills = []
+        # Drop the trail anchor of any position fully exited at this open.
+        for iid in list(state.anchors):
+            if iid not in pf.positions:
+                del state.anchors[iid]
+
+    # ---- step 2: MTM the book at today's adjusted close --------------------
+    pf.mark_to_market(day_date, close_today)
+
+    # ---- step 3: update each open position's trail anchor ------------------
+    # anchor = max adjusted close since entry. A newly opened position has no anchor
+    # yet ⇒ it is seeded with today's close (the first close observed since entry), so
+    # the anchor is a high-water mark of CLOSES only (never the entry open / intraday
+    # high — the v1 trailing-stop-uses-bar-high sin is excluded, v4/02 §2/§5 item 3).
+    for iid in pf.positions:
+        c = close_today.get(iid)
+        if c is None:
+            continue
+        prev = state.anchors.get(iid)
+        state.anchors[iid] = c if prev is None else max(prev, c)
+
+    # ---- step 4: exit checks (floor first, then configured) → queue SELL ----
+    for iid, pos in list(pf.positions.items()):
+        c = close_today.get(iid)
+        if c is None:
+            continue  # no close today (gap/halt) — carry the position
+        breach = _exit_breach(ctx, state, iid, pos, c, day)
+        if breach:
+            state.pending_fills.append(
+                Fill(
+                    isin=iid,
+                    symbol=pos.symbol,
+                    side="sell",
+                    qty=pos.shares,
+                    price=pos.last_price,  # placeholder; stamped to next open
+                    date=day_date,
+                    cost_rupees=0.0,
+                )
+            )
+
+    # ---- step 5: regime deployable fraction for today ----------------------
+    f = ctx.regime.deployable_fraction(day)
+
+    # ---- step 6: entry scan (D close → queue BUY D+1 open) -----------------
+    _scan_entries(ctx, state, day, day_date, f, close_today)
+
+    # ---- step 7: snapshot --------------------------------------------------
+    # The MTM call in step 2 already appended the day's DailySnapshot (NAV / cash /
+    # positions / exposure); the per-name anchors live in `state` (persistable).
+
+
+def _exit_breach(
+    ctx: SwingEngineContext,
+    state: SwingLoopState,
+    iid: str,
+    pos,
+    close_today: float,
+    day: pd.Timestamp,
+) -> bool:
+    """True iff `pos` should exit on D's close (catastrophic floor first, then the
+    configured exit). Close-based only — fills next open (v4/02 §1.1 step 4)."""
+    cfg = ctx.config
+
+    # Catastrophic floor (close-breach circuit breaker beneath the configured exit).
+    # Guarded by pct > 0 (mirrors v2 engine): pct == 0 DISABLES the floor — without
+    # this guard a 0% floor would degenerate to "exit on any close below cost basis".
+    if cfg.catastrophic_stop_pct > 0:
+        floor_level = pos.cost_basis * (1.0 - cfg.catastrophic_stop_pct / 100.0)
+        if close_today < floor_level:
+            log.info(
+                "v4 catastrophic floor: %s close=%.4f < floor=%.4f on %s",
+                iid,
+                close_today,
+                floor_level,
+                day.date(),
+            )
+            return True
+
+    if cfg.exit_type == 3:
+        # Type 3 (candidate): close < anchor − atr_mult × ATR20[D] (stateful trail).
+        anchor = state.anchors.get(iid)
+        row = ctx.signal_store.row(day, iid)
+        if anchor is None or row is None:
+            return False
+        atr = row["atr20"]
+        if atr is None or (isinstance(atr, float) and math.isnan(atr)):
+            return False
+        return close_today < anchor - cfg.atr_mult * float(atr)
+
+    if cfg.exit_type == 1:
+        # Type 1 (comparator): opposite daily MACD crossover on D.
+        row = ctx.signal_store.row(day, iid)
+        return row is not None and bool(row["exit_macd_cross_down"])
+
+    if cfg.exit_type == 2:
+        # Type 2 (comparator): close < EMA50.
+        row = ctx.signal_store.row(day, iid)
+        if row is None:
+            return False
+        ema = row["ema_exit"]
+        if ema is None or (isinstance(ema, float) and math.isnan(ema)):
+            return False
+        return close_today < float(ema)
+
+    raise ValueError(f"unknown exit_type: {cfg.exit_type!r} (known: 1, 2, 3)")
+
+
+def _scan_entries(
+    ctx: SwingEngineContext,
+    state: SwingLoopState,
+    day: pd.Timestamp,
+    day_date: date,
+    f: float,
+    close_today: dict[str, float],
+) -> None:
+    """Queue BUY orders for D+1 open while capacity allows (v4/02 §1.1 step 6).
+
+    Capacity: open positions + already-queued buys < N_max AND projected gross
+    < f × equity. Per-name target notional = f × equity / N_max (equal-weight). On
+    oversubscription, rank candidates by adv_20 desc (the frozen `00` §3.5 tiebreak).
+    """
+    cfg = ctx.config
+    n_max = cfg.n_max
+    if f <= 0.0:
+        return  # bear regime — no new deployment (throttle blocks entries; no forced
+        #          liquidation of existing names, v4/02 §0 / §1.1 step 4)
+
+    pf = state.portfolio
+    held = set(pf.positions)
+    queued_buys = {fl.isin for fl in state.pending_fills if fl.side == "buy"}
+    slots = n_max - len(held) - len(queued_buys)
+    if slots <= 0:
+        return
+
+    # "capital" = current equity (the standard compounding portfolio interpretation,
+    # matching v2 build_rebalance_plan's `current_equity = portfolio.equity`). Surfaced
+    # per Rule 12: `00` §3.5 writes "f × capital"; equity is the operative reading.
+    equity = pf.equity
+    target_gross = f * equity
+    per_name = target_gross / n_max if n_max > 0 else 0.0
+    if per_name <= 0.0:
+        return
+
+    projected_gross = sum(p.shares * p.last_price for p in pf.positions.values()) + sum(
+        fl.qty * fl.price for fl in state.pending_fills if fl.side == "buy"
+    )
+
+    # Candidate entrants: 4 frozen conditions true on D, liquid, traded D, not held,
+    # not already queued. Rank by adv_20 desc (most liquid first) for the tiebreak.
+    candidates: list[tuple[str, float]] = []
+    for iid, dates in ctx.membership.items():
+        if day not in dates or iid in held or iid in queued_buys:
+            continue
+        if not ctx.signal_store.entry_signal(day, iid):
+            continue
+        row = ctx.signal_store.row(day, iid)
+        adv = float(row["adv_20"]) if row is not None else 0.0
+        candidates.append((iid, adv))
+    candidates.sort(key=lambda t: t[1], reverse=True)
+
+    _EPS = 1e-9
+    for iid, _adv in candidates:
+        if slots <= 0:
+            break
+        if projected_gross >= target_gross - _EPS:
+            break  # gross cap reached (gross ≤ f × capital, `00` §3.5)
+        price = close_today.get(iid)
+        if price is None or price <= 0.0:
+            continue
+        qty = per_name / price  # decision-close sizing; restamped to open in step 1
+        if qty <= 0.0:
+            continue
+        state.pending_fills.append(
+            Fill(
+                isin=iid,
+                symbol=ctx.sym_map.get(iid, iid),
+                side="buy",
+                qty=qty,
+                price=price,
+                date=day_date,
+                cost_rupees=0.0,
+            )
+        )
+        projected_gross += per_name
+        slots -= 1
+
+
+def _pivot(prices: pd.DataFrame, col: str) -> dict[pd.Timestamp, dict[str, float]]:
+    """Build {date → {isin → value}} from the long-format prices frame (NaN dropped).
+
+    Identical shape to v2 engine._pivot; kept local so swing_v4 does not depend on a
+    v2 private helper that could change for v2's own reasons (v4/02 §8 additive-only).
+    """
+    result: dict[pd.Timestamp, dict[str, float]] = {}
+    sub = prices[["date", "isin", col]].dropna(subset=[col])
+    for row in sub.itertuples(index=False):
+        ts = pd.Timestamp(row.date)
+        result.setdefault(ts, {})[str(row.isin)] = float(getattr(row, col))
+    return result
