@@ -24,6 +24,7 @@ from app.swing_v4.config import SwingConfig
 from app.swing_v4.engine import (
     SwingLoopState,
     _exit_breach,
+    _exit_reason,
     build_context,
     run,
     step_day,
@@ -169,6 +170,12 @@ def test_type3_trail_exit_and_anchor_monotonic():
     buys = [f for f in state.portfolio.fills_log if f.side == "buy"]
     sells = [f for f in state.portfolio.fills_log if f.side == "sell"]
     assert len(buys) == 1 and len(sells) == 1
+    # V4.1 forensic exit_log: the one exit is recorded once, attributed to the trail
+    # (not the floor). Guards: the diagnostic side-channel desyncing from the actual
+    # sells (double-count, miss, or mislabel). exit_log records on D (decision close),
+    # one row per queued exit.
+    assert len(state.exit_log) == 1
+    assert state.exit_log[0][1] == ISIN and state.exit_log[0][2] == "atr_trail"
     # Anchor is a high-water mark of CLOSES — strictly non-decreasing while held.
     assert all(anchor_seq[i] <= anchor_seq[i + 1] for i in range(len(anchor_seq) - 1))
     # Exit is the Type-3 trail, NOT the catastrophic floor (sell price well above floor).
@@ -213,6 +220,16 @@ def test_catastrophic_floor_fires_when_trail_is_loose():
     cfg_no_floor = _small_cfg(catastrophic_stop_pct=0.0)
     ctx0 = types.SimpleNamespace(config=cfg_no_floor, signal_store=_WideAtrStore())
     assert _exit_breach(ctx0, state, ISIN, pos, 74.0, day) is False
+
+    # V4.1 forensic instrumentation: _exit_breach is a thin bool wrapper over
+    # _exit_reason, which must NAME the firing rule (catastrophic_floor here) while
+    # staying byte-equivalent in its truthiness. Guards: the reason drifting from the
+    # branch that fired, or the wrapper diverging from the predicate.
+    assert _exit_reason(ctx, state, ISIN, pos, 74.0, day) == "catastrophic_floor"
+    assert _exit_reason(ctx0, state, ISIN, pos, 74.0, day) is None
+    assert _exit_breach(ctx, state, ISIN, pos, 74.0, day) == (
+        _exit_reason(ctx, state, ISIN, pos, 74.0, day) is not None
+    )
 
 
 # --------------------------------------------------------------------------- #

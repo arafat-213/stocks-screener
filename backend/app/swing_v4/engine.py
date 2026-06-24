@@ -72,6 +72,12 @@ class SwingEngineResult:
     # per-rebalance Σ|Δweight|, so metrics.compute_metrics can annualize turnover for
     # the V4.1 cost screen (00 §13). Populated by run(); empty on a no-fill run.
     per_rebalance_turnover: list[tuple[date, float]] = field(default_factory=list)
+    # (exit_date D, instrument_id, reason) for every exit queued by step_day — a
+    # DIAGNOSTIC side-channel for the V4.1 forensic (00 §6 species: read-only, adds 0 to
+    # K, changes NO fill). `reason` ∈ {"catastrophic_floor","atr_trail","macd_cross_down",
+    # "ema50_close"}. Recorded on D (decision close); the SELL fills next open. Empty on a
+    # no-exit run; never consulted by the locked screen.
+    exit_log: list[tuple[date, str, str]] = field(default_factory=list)
 
 
 @dataclass
@@ -122,6 +128,10 @@ class SwingLoopState:
     portfolio: Portfolio
     pending_fills: list[Fill]
     anchors: dict[str, float] = field(default_factory=dict)
+    # DIAGNOSTIC exit-reason side-channel (see SwingEngineResult.exit_log). Appended by
+    # step_day when an exit is queued; carried on state so a future live shell records it
+    # too. Default-empty ⇒ no behavioural change to any run.
+    exit_log: list[tuple[date, str, str]] = field(default_factory=list)
 
 
 def run(
@@ -185,6 +195,7 @@ def run(
         per_rebalance_turnover=_daily_turnover(
             state.portfolio.fills_log, state.portfolio.snapshots
         ),
+        exit_log=state.exit_log,
     )
 
 
@@ -374,8 +385,9 @@ def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) 
         c = close_today.get(iid)
         if c is None:
             continue  # no close today (gap/halt) — carry the position
-        breach = _exit_breach(ctx, state, iid, pos, c, day)
-        if breach:
+        reason = _exit_reason(ctx, state, iid, pos, c, day)
+        if reason:
+            state.exit_log.append((day_date, iid, reason))  # diagnostic side-channel
             state.pending_fills.append(
                 Fill(
                     isin=iid,
@@ -408,7 +420,25 @@ def _exit_breach(
     day: pd.Timestamp,
 ) -> bool:
     """True iff `pos` should exit on D's close (catastrophic floor first, then the
-    configured exit). Close-based only — fills next open (v4/02 §1.1 step 4)."""
+    configured exit). Close-based only — fills next open (v4/02 §1.1 step 4).
+
+    Thin bool wrapper over `_exit_reason` (the predicate the engine and tests use); the
+    reason string it discards is what the V4.1 forensic exit_log records."""
+    return _exit_reason(ctx, state, iid, pos, close_today, day) is not None
+
+
+def _exit_reason(
+    ctx: SwingEngineContext,
+    state: SwingLoopState,
+    iid: str,
+    pos,
+    close_today: float,
+    day: pd.Timestamp,
+) -> str | None:
+    """The exit decision AND which rule fired, or None to hold. Same logic as the old
+    `_exit_breach` predicate — only the return is enriched from bool→reason so the
+    forensic can attribute exits (00 §6 diagnostic). Behaviour is byte-identical: every
+    branch that returned True now returns a reason string (truthy), every False→None."""
     cfg = ctx.config
 
     # Catastrophic floor (close-breach circuit breaker beneath the configured exit).
@@ -424,33 +454,35 @@ def _exit_breach(
                 floor_level,
                 day.date(),
             )
-            return True
+            return "catastrophic_floor"
 
     if cfg.exit_type == 3:
         # Type 3 (candidate): close < anchor − atr_mult × ATR20[D] (stateful trail).
         anchor = state.anchors.get(iid)
         row = ctx.signal_store.row(day, iid)
         if anchor is None or row is None:
-            return False
+            return None
         atr = row["atr20"]
         if atr is None or (isinstance(atr, float) and math.isnan(atr)):
-            return False
-        return close_today < anchor - cfg.atr_mult * float(atr)
+            return None
+        return "atr_trail" if close_today < anchor - cfg.atr_mult * float(atr) else None
 
     if cfg.exit_type == 1:
         # Type 1 (comparator): opposite daily MACD crossover on D.
         row = ctx.signal_store.row(day, iid)
-        return row is not None and bool(row["exit_macd_cross_down"])
+        if row is not None and bool(row["exit_macd_cross_down"]):
+            return "macd_cross_down"
+        return None
 
     if cfg.exit_type == 2:
         # Type 2 (comparator): close < EMA50.
         row = ctx.signal_store.row(day, iid)
         if row is None:
-            return False
+            return None
         ema = row["ema_exit"]
         if ema is None or (isinstance(ema, float) and math.isnan(ema)):
-            return False
-        return close_today < float(ema)
+            return None
+        return "ema50_close" if close_today < float(ema) else None
 
     raise ValueError(f"unknown exit_type: {cfg.exit_type!r} (known: 1, 2, 3)")
 
