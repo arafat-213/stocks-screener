@@ -432,7 +432,7 @@ should explicitly accept or change before any code.
 
 ---
 
-## 14. Amendment 1 — concentration cap + universe (DRAFT 2026-06-24; sign to apply)
+## 14. Amendment 1 — concentration cap + universe (SIGNED 2026-06-24; APPLIED to the engine)
 
 > **This amendment changes only RETURN-BLIND structural choices and is NOT the v1 sin.** The forbidden move
 > (§ top, §1) is *moving a stick after seeing a **return***. Here **no return has been computed** — V4.0c's
@@ -497,8 +497,11 @@ tests are green.
 
 ## Exit criteria
 - [x] §12 locked by Arafat (DRAFT → LOCKED) — 2026-06-23.
-- [ ] §14 Amendment 1 signed by Arafat (concentration cap + `U=200` universe; return-blind, K unchanged).
-- [ ] V4.0 — engine built + fidelity/no-lookahead tested (`02_SWING_ENGINE.md`).
+- [x] §14 Amendment 1 signed by Arafat — 2026-06-24 (concentration cap + `U=200` universe; return-blind, K unchanged).
+- [x] V4.0 — engine built + fidelity/no-lookahead tested + Amendment-1 rework applied (`02_SWING_ENGINE.md`,
+      2026-06-24): `target_positions=15` cap+divisor, top-N `adv_20` selector, `stable_universe` U=200,
+      `starting_capital=₹3.5L`; footprint re-run as a diagnostic (stable U=200 mean 46 ≫ 15 ⇒ cap binds);
+      675 tests green; no return computed; FINAL_OOS untouched.
 - [ ] V4.1 — DISCOVERY cost screen; §6.1 survivor set identified; ledger updated; FINAL_OOS untouched.
 - [ ] V4.2 — battery + §6; one candidate locked OR null close; FINAL_OOS untouched.
 - [ ] V4.3 — one-shot v4-FINAL_OOS (only if a candidate locked); §10 verdict + deflation + caveat.

@@ -1,16 +1,18 @@
 # v4 / 02 — Daily Swing Engine: build, fidelity, no-lookahead + returns-blind N_max lock
 
-> **Status: V4.0 RE-OPENED — 2026-06-24 by `00` Amendment 1 (signed).** V4.0a/V4.0b/V4.0c were built +
-> green (`backend/app/swing_v4/`), and the V4.0c footprint (max 408 / p95 298 / p99 371 / **mean 118**)
+> **Status: V4.0 rework DONE — 2026-06-24 (`00` Amendment 1 applied to the engine).** V4.0a/V4.0b/V4.0c were
+> built + green (`backend/app/swing_v4/`), and the V4.0c footprint (max 408 / p95 298 / p99 371 / **mean 118**)
 > did its job — it **proved the signal is intrinsically broad**, which invalidated the `n_max`-as-sizing-
 > divisor design. **`00` §14 (signed 2026-06-24) supersedes the old `n_max` rule:** `n_max` → binding
 > **`target_positions = 15`** (slot cap **and** sizing divisor), top-15 **`adv_20`** selector, universe →
 > **`stable_universe` U=200** (Nifty200 proxy), `starting_capital = ₹3.5L`. All return-blind (K=0,
-> FINAL_OOS pristine). **Pending engine rework (cold session):** `stable_universe` mask in the entry scan;
-> `n_max`→`target_positions`; top-N selector; config defaults; footprint demoted to a diagnostic. The 371
-> "lock" is retired → kept as the diagnostic that motivated the cap. This doc's §0–§10 below still describe
-> the pre-amendment engine; **on conflict, `00` §14 wins** and the rework section (to be added) is authoritative.
-> NEXT = the engine rework, then V4.1. This is the **implementation spec** for the daily
+> FINAL_OOS pristine). **Engine rework COMPLETE (this session — see the §10 V4.0-rework Status + the Session
+> log):** `stable_universe` mask AND-ed into the entry scan (beneath the retained ₹5cr floor); `n_max` →
+> `target_positions`; `adv_20` promoted to the primary top-N selector; config defaults
+> (`target_positions=15` / `starting_capital=₹3.5L` / `universe_size_U=200` / `universe_mode="stable"`);
+> `footprint.py` re-run as a *diagnostic* (the 371 "lock" is retired). This doc's §0–§10 below still describe
+> the pre-amendment engine; **on conflict, `00` §14 wins** and the §10 V4.0-rework Status + Session log are
+> authoritative. NEXT = V4.1 (DISCOVERY cost screen). This is the **implementation spec** for the daily
 > event-driven swing engine whose *strategy* was frozen in `00_SWING_PREREG.md` (LOCKED 2026-06-23).
 > It builds the plumbing under the prereg's frozen rules; it does **not** re-decide a single strategy
 > parameter. It corresponds to prereg **stage V4.0** and ends with two deliverables: (a) a fidelity-
@@ -338,11 +340,32 @@ in `00` §13) — it does **not** authorize touching FINAL_OOS.
 ### V4.0c — Returns-blind `N_max` lock
 - **Status:** ✅ DONE — 2026-06-24. `footprint.py` (frozen entry + Type-3 exit, unconstrained, count-only)
   measured over DISCOVERY; **`N_max` LOCKED = 371 (≈ p99 of concurrent holdings; max 408 / p95 298 / p99
-  371)**; no return number computed; FINAL_OOS untouched.
+  371)**; no return number computed; FINAL_OOS untouched. **Lock RETIRED → diagnostic by Amendment 1 (below).**
 - **Do:** `footprint.py` — frozen entry + Type-3 exit state machine over DISCOVERY, **unconstrained, count
   only** (§4). Report max/p95/p99 of concurrent holdings; **lock `N_max` ≈ p99**.
 - **Done:** `N_max` integer + full distribution recorded in the Session log **before** V4.1; **no return
   computed**; FINAL_OOS untouched.
+
+### V4.0 rework — `00` Amendment 1 (concentration cap + stable universe)
+- **Status:** ✅ DONE — 2026-06-24 (this session). Engine reworked to Amendment 1 (`00` §14); 28 swing_v4
+  tests green; **675 passed** (backtest_v2 + paper_v2 + swing_v4 — additive-only proof); no return number
+  computed; FINAL_OOS untouched.
+- **Do (all return-blind, §14):** (A/B) `SwingConfig.n_max` → **`target_positions = 15`** — a binding
+  concentration cap (hard slot cap **and** sizing divisor `f×capital/target_positions`); (C) promote
+  `adv_20` from a rare-day tiebreak to the **primary top-N selector** (when more names fire than free slots,
+  hold the top-`target_positions` by `adv_20` desc); (D) AND a **`stable_universe` U=200** mask into the
+  entry scan (`build_stable_universe_mask`, reused UNMODIFIED from v3 `08`; new `universe_mode` knob, default
+  `"stable"`; `"floor"` = legacy ₹5cr-only escape hatch for tiny fixtures/diagnostics), the ₹5cr floor
+  **retained beneath** it; (E) `starting_capital = ₹3.5L`; re-run `footprint.py` as a **diagnostic**.
+- **Done:** `config.py` / `engine.py` / `footprint.py` reworked; `tests/swing_v4/test_v40d_rework.py`
+  (4 tests) added (config-defaults, mask built-only-in-stable, mask suppresses out-of-universe entry, top-N
+  `adv_20` selector binds); `test_v40b` `_small_cfg` migrated to `target_positions` + `universe_mode="floor"`.
+  **Footprint diagnostic re-run over DISCOVERY (count-only, adds 0 to K):**
+  - **Full universe** (reproduces V4.0c exactly): max 408 / p95 298 / p99 371 / **mean 118**; 922 instruments.
+  - **Stable U=200** (the post-amendment book): **max 167 / p95 106 / p99 144 / mean 46.4**; 297 instruments;
+    fresh entries/day mean 1.19. The stable universe roughly thirds the crowding, **but mean 46 ≫
+    `target_positions = 15`** ⇒ the cap is firmly **binding** (the selector does real work on most bull days),
+    exactly as Amendment 1 intends (a binding concentration cap, not a tail cap). FINAL_OOS untouched.
 
 ---
 
@@ -497,6 +520,34 @@ redline. Items marked **(decision)** are where I picked a recommended default.
   (`target_positions=15`, `starting_capital=350_000`, `universe_size_U=200`); re-run `footprint.py` as a
   *diagnostic*. Then V4.1 cost screen on the concentrated book. **No code written in the signing session.**
 
+### 2026-06-24 — V4.0 rework built (`00` Amendment 1 applied to the engine)
+- **`config.py`** — `n_max` (returns-blind tail cap, 371) **removed**; replaced by **`target_positions = 15`**
+  (binding concentration cap = slot cap AND sizing divisor, §14 A/B). `starting_capital` 10L → **₹3.5L**
+  (§14 E). New `stable_universe` knobs reused from v3 `08`: `universe_mode="stable"` (default; `"floor"` =
+  legacy escape hatch), `universe_size_U=200`, `universe_buffer_B=1.25`, `universe_review_cadence="semi-annual"`,
+  `universe_rank_lookback_td=126`.
+- **`engine.py`** — `SwingEngineContext` gains `universe_mask`; `build_context` builds the mask via
+  `build_stable_universe_mask` (imported UNMODIFIED from `backtest_v2.stable_universe` — additive, §8) when
+  `universe_mode=="stable"`, else `None`. The `n_max is None` fail-loud guard → `target_positions > 0`.
+  `_scan_entries`: `n_max` → `target_positions`; **AND the mask into the candidate filter** (skip non-members)
+  beneath the existing ₹5cr `entry_signal` floor; the existing `adv_20`-desc sort + slot cap now realises the
+  **primary top-N selector** (§14 C — with `target_positions=15` the cap binds, so the sort actually selects).
+- **`footprint.py`** — reframed as a **diagnostic** (the lock is retired): `FootprintResult.n_max_locked` is
+  now "p99-rounded, diagnostic only"; `measure_footprint` gains an optional `universe_mask` (counts a name's
+  entry only while it is a member); `main()` prints **both** the full-universe footprint and the U=200
+  stable-universe footprint.
+- **Footprint diagnostic (real adjusted store, DISCOVERY, count-only ⇒ adds 0 to K):** full-universe reproduces
+  V4.0c (max 408 / p95 298 / p99 371 / mean 118); **stable U=200: max 167 / p95 106 / p99 144 / mean 46.4**
+  (297 instruments, fresh entries/day mean 1.19). Mean 46 ≫ `target_positions=15` ⇒ the concentration cap is
+  **firmly binding** — Amendment 1's intent confirmed; no return number computed; FINAL_OOS untouched.
+- **Tests:** `tests/swing_v4/test_v40d_rework.py` (4) — config defaults, mask built-only-in-stable-mode, mask
+  suppresses an out-of-universe entry that fires + is liquid, top-N `adv_20` selector binds. `test_v40b`
+  `_small_cfg` migrated (`target_positions=5`, `universe_mode="floor"` — a 45-bar fixture can't satisfy the
+  126-td stable warmup). **28 swing_v4 tests green; 675 passed across backtest_v2 + paper_v2 + swing_v4**
+  (additive-only proof — only `swing_v4/` + `tests/swing_v4/` touched; no existing file edited ⇒ S3
+  `11`/FINAL_OOS byte-identical).
+- **NEXT = V4.1** (DISCOVERY cost screen on the concentrated book; `00` §13).
+
 ## Exit criteria
 - [x] §11 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
 - [x] V4.0a — indicators + regime + signals built and tested (parity / causality / completed-weeks / VIX).
@@ -505,5 +556,7 @@ redline. Items marked **(decision)** are where I picked a recommended default.
       future-bar no-lookahead all green (9 tests); existing suites still green (667 passed, additive proof).
 - [x] V4.0c — returns-blind distribution recorded (max 408 / p95 298 / p99 371 / mean 118); 4 footprint tests
       green; no return computed; FINAL_OOS untouched. **`N_max` lock RETIRED → diagnostic** (`00` Amendment 1).
-- [ ] V4.0 rework (cold session) — `target_positions=15` cap+divisor, top-N `adv_20` selector,
-      `stable_universe` U=200, `starting_capital=₹3.5L`; footprint re-run as diagnostic; suites green.
+- [x] V4.0 rework — 2026-06-24 — `target_positions=15` cap+divisor, top-N `adv_20` selector,
+      `stable_universe` U=200 (default `universe_mode="stable"`), `starting_capital=₹3.5L`; footprint re-run
+      as a diagnostic (stable U=200: max 167 / p95 106 / p99 144 / mean 46 ⇒ cap is binding); 28 swing_v4
+      tests green; backtest_v2 + paper_v2 + swing_v4 green (additive-only); no return computed; FINAL_OOS untouched.

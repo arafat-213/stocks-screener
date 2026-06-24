@@ -1,10 +1,18 @@
-"""footprint.py — V4.0c returns-blind ``N_max`` lock (v4/02 §4, 00 §3.5).
+"""footprint.py — returns-blind concurrent-holdings footprint (v4/02 §4, 00 §3.5/§14).
 
-`00` §3.5 deliberately makes ``N_max`` a **returns-blind procedure**, not a picked
-number, to resolve the "the cap must lock before the run, but we mustn't tune it"
-tension. This module is the only place V4.0 produces a number — and it is **a count,
-never a return**: no sizing, no costs, no PnL, no Calmar/Sharpe/turnover. It therefore
-**adds 0 to K** (no return is evaluated; v4/02 §4).
+`00` §3.5 originally made ``N_max`` a **returns-blind procedure**, not a picked number,
+to resolve the "the cap must lock before the run, but we mustn't tune it" tension. This
+module is the only place V4.0 produces a number — and it is **a count, never a return**:
+no sizing, no costs, no PnL, no Calmar/Sharpe/turnover. It therefore **adds 0 to K** (no
+return is evaluated; v4/02 §4).
+
+**Amendment 1 (00 §14) retired the N_max *lock* → kept this as a DIAGNOSTIC.** The V4.0c
+footprint over the full v2 universe (max 408 / p95 298 / p99 371 / **mean 118**) proved
+the signal is intrinsically broad, which is exactly *why* a binding concentration cap
+(`target_positions = 15`) is needed. The p99-rounded number (``n_max_locked`` below) is
+no longer a lock — it is the diagnostic that motivated the cap. Pass a ``universe_mask``
+(or run with ``cfg.universe_mode == "stable"`` via ``main()``) to re-measure the crowding
+*within the narrowed U=200 stable universe* — the post-amendment hunting ground.
 
 Procedure (v4/02 §4):
   1. Run the **frozen entry rule + Type-3 exit** as a pure per-name state machine over
@@ -41,6 +49,10 @@ from datetime import date
 import numpy as np
 import pandas as pd
 
+from app.backtest_v2.stable_universe import (
+    StableUniverseMask,
+    build_stable_universe_mask,
+)
 from app.backtest_v2.validation import DISCOVERY
 from app.swing_v4.config import SwingConfig
 from app.swing_v4.signals import SwingSignalStore, precompute_swing_signals
@@ -55,7 +67,7 @@ class FootprintResult:
     max_concurrent: int
     p95: float
     p99: float
-    n_max_locked: int  # ≈ p99, rounded to an integer (00 §3.5)
+    n_max_locked: int  # ≈ p99, rounded — DIAGNOSTIC ONLY post-Amendment-1 (00 §14)
     window: tuple[date, date]
     n_instruments: int  # distinct instrument_ids that ever held during the window
 
@@ -66,6 +78,7 @@ def measure_footprint(
     *,
     window: tuple[date, date] = DISCOVERY,
     signal_store: SwingSignalStore | None = None,
+    universe_mask: StableUniverseMask | None = None,
 ) -> FootprintResult:
     """Measure the unconstrained concurrent-holdings footprint over ``window``.
 
@@ -78,11 +91,16 @@ def measure_footprint(
     cfg : SwingConfig
         Frozen `00` strategy params. Only the **entry rule + Type-3 trail** are used
         (``exit_type`` is ignored — the footprint is by definition the Type-3 footprint,
-        00 §3.5 / v4/02 §4). ``n_max`` is irrelevant here (this run *produces* it).
+        00 §3.5 / v4/02 §4). ``target_positions`` is irrelevant here — the footprint is
+        unconstrained by design (it measures the *uncapped* crowding, a diagnostic).
     window : (date, date)
         Inclusive count window. Defaults to DISCOVERY. Percentiles are taken over every
         trading day in the window (including zero-holding days), never only busy days.
     signal_store : pre-built SwingSignalStore; if None, ``precompute_swing_signals`` runs.
+    universe_mask : optional stable_universe mask (00 §14 D). When given, a name's entry
+        is only counted while it is a member on that day — the footprint then measures
+        crowding *within the narrowed U=200 universe* (the post-amendment book). When
+        None, the full-universe footprint is measured (the original V4.0c diagnostic).
     """
     cfg = cfg or SwingConfig()
     if signal_store is None:
@@ -141,7 +159,13 @@ def measure_footprint(
             elif not entry_pending:
                 ent = entries[j]
                 adv = advs[j]
-                if ent == 1.0 and not math.isnan(adv) and adv >= liq_floor:
+                in_universe = universe_mask is None or universe_mask.is_member(ts, iid)
+                if (
+                    ent == 1.0
+                    and not math.isnan(adv)
+                    and adv >= liq_floor
+                    and in_universe
+                ):
                     entry_pending = True
                     if w_start <= ts <= w_end:
                         entry_counter[ts] += 1
@@ -180,11 +204,28 @@ def measure_footprint(
     )
 
 
-def main() -> None:  # pragma: no cover — operational runner, not a pytest path
-    """Run the returns-blind N_max footprint on the real adjusted store over DISCOVERY.
+def _print_footprint(label: str, res: "FootprintResult") -> None:  # pragma: no cover
+    print(f"\n=== {label} (count only) ===")
+    print(f"  Window:                 {res.window[0]} → {res.window[1]}")
+    print(f"  Trading days counted:   {len(res.concurrent)}")
+    print(f"  Instruments ever held:  {res.n_instruments}")
+    print(f"  Concurrent holdings — max:  {res.max_concurrent}")
+    print(f"  Concurrent holdings — p95:  {res.p95:.2f}")
+    print(f"  Concurrent holdings — p99:  {res.p99:.2f}")
+    print(f"  Concurrent holdings — mean: {res.concurrent.mean():.2f}")
+    print(f"  Fresh entries/day — max:    {int(res.daily_entries.max())}")
+    print(f"  Fresh entries/day — mean:   {res.daily_entries.mean():.2f}")
+    print(f"  p99-rounded count (diagnostic): {res.n_max_locked}")
 
-    No live API, no return number. Prints the concurrent-holdings distribution and the
-    locked ``N_max`` for the v4/02 Session log.
+
+def main() -> None:  # pragma: no cover — operational runner, not a pytest path
+    """Run the returns-blind concurrent-holdings footprint on the real adjusted store.
+
+    No live API, no return number. Prints two diagnostics over DISCOVERY:
+      1. the full-universe footprint (reproduces the V4.0c 371/118 finding), and
+      2. the **Amendment-1 U=200 stable-universe** footprint — the post-amendment book.
+    The contrast confirms `target_positions = 15` is a *binding* concentration cap, not
+    a tail cap. Both are count-only (no PnL ⇒ adds 0 to K; 00 §14).
     """
     from app.data.bhavcopy import store
 
@@ -197,19 +238,30 @@ def main() -> None:  # pragma: no cover — operational runner, not a pytest pat
         f"{DISCOVERY[0]} → {DISCOVERY[1]} (no cap / no throttle / no sizing / no PnL)...",
         flush=True,
     )
-    res = measure_footprint(prices, cfg)
+    res_full = measure_footprint(prices, cfg)
+    _print_footprint("Full-universe footprint (the V4.0c diagnostic)", res_full)
 
-    print("\n=== V4.0c returns-blind N_max footprint (count only) ===")
-    print(f"  Window:                 {res.window[0]} → {res.window[1]}")
-    print(f"  Trading days counted:   {len(res.concurrent)}")
-    print(f"  Instruments ever held:  {res.n_instruments}")
-    print(f"  Concurrent holdings — max:  {res.max_concurrent}")
-    print(f"  Concurrent holdings — p95:  {res.p95:.2f}")
-    print(f"  Concurrent holdings — p99:  {res.p99:.2f}")
-    print(f"  Concurrent holdings — mean: {res.concurrent.mean():.2f}")
-    print(f"  Fresh entries/day — max:    {int(res.daily_entries.max())}")
-    print(f"  Fresh entries/day — mean:   {res.daily_entries.mean():.2f}")
-    print(f"\n  >>> N_max LOCKED ≈ p99 = {res.n_max_locked}  (00 §3.5; adds 0 to K)")
+    print(
+        f"\nBuilding U={cfg.universe_size_U} stable_universe mask "
+        f"(B={cfg.universe_buffer_B}, {cfg.universe_rank_lookback_td}-td median adv_20)...",
+        flush=True,
+    )
+    mask = build_stable_universe_mask(
+        prices,
+        cfg.universe_size_U,
+        cfg.universe_buffer_B,
+        cfg.universe_rank_lookback_td,
+        cfg.universe_review_cadence,
+    )
+    res_stable = measure_footprint(prices, cfg, universe_mask=mask)
+    _print_footprint(
+        f"Amendment-1 stable-universe footprint (U={cfg.universe_size_U})", res_stable
+    )
+
+    print(
+        f"\n  >>> target_positions = {cfg.target_positions} is a BINDING concentration "
+        f"cap (00 §14); both footprints are diagnostics, neither is a lock; adds 0 to K."
+    )
 
 
 if __name__ == "__main__":  # pragma: no cover
