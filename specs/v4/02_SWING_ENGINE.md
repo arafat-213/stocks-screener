@@ -309,7 +309,8 @@ in `00` §13) — it does **not** authorize touching FINAL_OOS.
 > was skipped (Rule 12).
 
 ### V4.0a — Indicators + regime + signal precompute
-- **Status:** ⬜ NOT STARTED (gated on §11).
+- **Status:** ✅ DONE — 2026-06-24 (commit pending push). Indicators + regime + signal precompute built
+  under the §5 (items 1, 6, 7) fidelity/no-lookahead battery; no return number computed.
 - **Do:** `indicators.py`, `regime.py`, `signals.py` + their parity / causality / completed-weeks /
   missing-VIX tests (§5 items 1, 6, 7). Wire the Nifty 50 price loader (fixture in tests; one-off fetch on
   cache miss outside tests).
@@ -365,9 +366,44 @@ redline. Items marked **(decision)** are where I picked a recommended default.
 
 ---
 
+## Session log
+
+### 2026-06-24 — V4.0a built (indicators + regime + signal precompute)
+- **New package `backend/app/swing_v4/`** (additive-only; no existing file edited — additive proof is
+  structural, only `swing_v4/` + `tests/swing_v4/` are new):
+  - `config.py` — `SwingConfig`: every default is a frozen `00` value (indicators §3.2, exit §3.4, regime
+    §4); grid knobs `exit_type`/`atr_mult`/`n_max`/`regime_factors` present but unused in V4.0 (V4.2 sweeps
+    them). `n_max=None` until the V4.0c returns-blind lock.
+  - `indicators.py` — pure, vectorized, trailing-only, **adjusted-series only**: `ema` (ewm adjust=False),
+    `sma` (min_periods=n), `macd` (line=EMA_fast−EMA_slow, signal=EMA_signal(line)), `weekly_macd_line`
+    (W-FRI resample → MACD → **as-of ffill** onto the daily index ⇒ in-progress week is the *upcoming*
+    Friday label > D, never seen mid-week), `atr_wilder` (TR with TR₀=high−low; SMA seed at n−1 then Wilder
+    recursion).
+  - `regime.py` — `RegimeScore`: 5-condition 0–5 score → f∈{0,0.5,1.0} (buckets 0–1/2–3/4–5). Nifty 50
+    DMAs computed on the index's own calendar then **as-of ffilled** onto the market_internals trading
+    days (causal across holiday mismatch). NaN (DMA warmup / **missing VIX**) → condition scores 0 (no
+    forward-fill, score caps at 4 — `00` §4). Unknown day → score 0 / f 0.0 (conservative). 3-factor
+    ablation via `n_factors=3` (reported-only, V4.2; not a selection trial).
+  - `signals.py` — `SwingSignalStore` + `precompute_swing_signals` (mirrors v2 `SignalStore`): keyed by
+    chain-constant `instrument_id` via `collapse_to_instrument_id` (06). Precomputes the 4 frozen entry
+    conditions (§3.3) → one `entry` float flag, the stateless exit comparators (Type-1 MACD cross-down,
+    and `ema_exit` for the Type-2 `close<EMA50`), and the raw `close`/`atr20`/`adv_20` the stateful Type-3
+    trail consumes from the engine. The trail anchor is *position state* → it lives in the engine (V4.0b).
+- **Tests `tests/swing_v4/test_v40a_indicators_regime.py` — 11 green** (§5 items 1, 6, 7 + the
+  indicator/regime-scope no-lookahead proof): EMA/SMA/ATR(Wilder) literal hand-figures; MACD vs an
+  independent recursive-loop reference; completed-weeks-only (mutating the in-progress week leaves the
+  mid-week weekly-MACD unchanged); a hand-built regime 0–5 fixture `[3,0,4,5,4,4]` (day-2 = 4 not 5 proves
+  the missing-VIX guard); 3-factor ablation; future-bar-corruption no-lookahead over every indicator and
+  the regime score.
+- **No return number computed; FINAL_OOS untouched.** NEXT = **V4.0b** (`engine.py` build_context /
+  SwingLoopState / step_day / run; reuse v2 `costs.py` + `Portfolio`/`Fill`; §5 items 2–5, 8–10).
+- **Nifty 50 loader note:** the existing `benchmark.load_price_index` is the V4.0b/regime wiring point;
+  V4.0a injects fixtures only (no live API in pytest).
+
 ## Exit criteria
 - [x] §11 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
-- [ ] V4.0a — indicators + regime + signals built and tested (parity / causality / completed-weeks / VIX).
+- [x] V4.0a — indicators + regime + signals built and tested (parity / causality / completed-weeks / VIX).
+      11 tests green; additive-only (no existing file edited).
 - [ ] V4.0b — engine + fill discipline built; entry/exit/floor/whole-share/fill-ordering/identity +
       future-bar no-lookahead all green; existing suites still green (additive proof).
 - [ ] V4.0c — `N_max` locked from the returns-blind distribution; number + distribution recorded; no return
