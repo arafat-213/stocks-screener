@@ -44,6 +44,21 @@ def setup_test_db():
     db_session_module.engine = old_engine
 
 
+@pytest.fixture(autouse=True)
+def _no_live_email(monkeypatch):
+    """Hard guard: no test may reach Resend (Rule 5 — mock external APIs).
+
+    ``app.alerts.email.send_alert_email`` reads RESEND_API_KEY/ALERT_TO_EMAIL at
+    call time and no-ops (returns None, logs a skip) when either is unset. The repo
+    .env carries live creds + load_dotenv(), so an *unmocked* failure-alert path
+    (e.g. a parity HALT propagating through the task's except block) would otherwise
+    send a real email mid-suite. Clearing both env vars for every test makes every
+    email path inert regardless of which module imported send_alert_email.
+    """
+    monkeypatch.delenv("RESEND_API_KEY", raising=False)
+    monkeypatch.delenv("ALERT_TO_EMAIL", raising=False)
+
+
 @pytest.fixture
 def db():
     """Provides an isolated database session for a single test."""

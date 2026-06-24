@@ -198,6 +198,10 @@ def test_tc2_parity_halt_raises_on_failed_parity():
             return_value=_fake_report(is_rebalance=True),
         ),
         patch("app.paper_v2.alerter.emit_alerts"),
+        # The HALT propagates through the task's except block, which fires
+        # emit_failure_alert → send_alert_email (a real Resend POST). Mock it so the
+        # test asserts the raise without sending a live email (Rule 5; mirrors TC4).
+        patch("app.paper_v2.alerter.emit_failure_alert"),
         patch(
             "app.paper_v2.parity.shadow_parity",
             return_value=_fake_parity(passed=False),  # BREAK
