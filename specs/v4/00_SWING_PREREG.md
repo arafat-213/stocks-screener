@@ -1,5 +1,13 @@
 # v4 / 00 — Daily Swing Strategy: Master Pre-Registration
 
+> **🛑 PROGRAM CLOSED — 2026-06-24: RESEARCH NOTE (pre-accepted §6 null).** V4.1 cost screen returned
+> **0/3 §6.1 survivors** (best costed Calmar ratio 0.31 < 1.0 vs Nifty 50 TRI; the candidate 0.11) — daily
+> single-name swing does not clear a costed bar on this market; high turnover (828–2660%) erases the edge,
+> and the book trails the index even pre-cost. V4.2/V4.3 N/A; **v4-FINAL_OOS NEVER touched (pristine)**;
+> v4 ledger K=6. One forward lead: the §6 selection-quality diagnostic read **edge-discarding** (liquidity
+> creaming hurts) → authorizes a *separate future* prereg for a return-informed selector (its own K). See
+> §13 (V4.1) + Exit criteria for the full table.
+>
 > **Status: LOCKED — 2026-06-23 (Arafat). §12 signed (all 10 commitments). ✅ AMENDMENT 1 SIGNED
 > 2026-06-24 (§14):** the V4.0c returns-blind footprint proved the signal is
 > intrinsically broad (mean 118 / p99 371 concurrent), which invalidates the §3.5 `N_max`-as-sizing-divisor
@@ -441,28 +449,43 @@ should explicitly accept or change before any code.
   recorded); **no DISCOVERY/OOS *return* backtest in this stage** (build + unit-test + count-only footprint).
 
 ### V4.1 — Stage 1: cost screen on full DISCOVERY
-- **Status:** ⬜ NOT STARTED.
-- **Do:** run the candidate + exit-rule alternatives on DISCOVERY at base + pessimistic cost; record
-  turnover, base Calmar, maxDD, win rate, avg hold, §6.1 ratio; log all to the v4 ledger. Also run the §6
-  **selection-quality diagnostic** (`B_liquid` vs `B_random` vs `B_all`) and record its pre-committed read.
-  **No OOS.**
-- **Done-criteria:** screen table; §6.1-clearing set identified (may be empty — report honestly); the
-  selection-quality diagnostic read recorded (neutral / favorable / edge-discarding; non-gating, adds 0 to K);
-  ledger updated; `FINAL_OOS` untouched.
+- **Status:** ✅ DONE 2026-06-24 — **NULL CLOSE (pre-accepted, §6).** `app/swing_v4/v41_cost_screen.py`
+  over DISCOVERY (2018-02-06 → 2023-06-30), candidate + both exit comparators × base + pessimistic, ₹3.5L
+  whole-share. **0/3 clear §6.1** (pessimistic Calmar ratio vs Nifty 50 TRI ≥ 1.0):
+
+  | Cfg | exit | base Calmar | maxDD | turnover | win | hold | C_strat(pess) | ratio | §6.1 |
+  |---|---|---|---|---|---|---|---|---|---|
+  | **T3** (candidate) | ATR 3× | 0.083 | 34.4% | 828% | 33% | 569d | 0.039 | **0.11** | FAIL |
+  | T1 (comparator) | MACD cross | −0.070 | 30.1% | 2660% | 34% | 793d | −0.167 | **−0.48** | FAIL |
+  | T2 (comparator) | EMA50 | 0.145 | 27.4% | 1061% | 30% | 642d | 0.107 | **0.31** | FAIL |
+
+  Benchmark Nifty 50 TRI Calmar = 0.346; the best config (T2) reaches **0.31× of the bar at pessimistic
+  cost**, the candidate **0.11×**. **Costs are the killer** (the §6.1 thesis): turnover 828–2660% (T1's
+  MACD-cross exit churns 3× the candidate's). The verdict holds even *before* costs — every config's *base*
+  Calmar (≤ 0.145) is already below the benchmark's 0.346. **Exit-choice rule (§6):** T2 is the best
+  comparator but still fails, so there is nothing to promote (a comparator *beating* the candidate would be a
+  reported finding, not a silent swap — moot here).
+- **Selection-quality diagnostic (§6, non-gating, adds 0 to K) — read = EDGE-DISCARDING:** `B_liquid`
+  (top-15 by `adv_20`, the candidate) base Calmar **0.083** < 85% of `B_random` median **0.138** (ratio 0.60)
+  **and** below `B_all` (no cap) **0.090** → the liquidity-creaming selector throws away edge (random 15
+  beats it; the uncapped book beats it). Per §6 this **authorizes a separate future amendment** (a
+  return-informed selector carrying its own K) — it is **not** a swap this run, and it does **not** rescue the
+  null: even `B_random` median (0.138) and `B_all` (0.090) are far below the costed bar.
+- **Ledger:** v4 K = **6** (3 configs × {base, pessimistic}); the diagnostic added 0. **`FINAL_OOS` untouched.**
+- Local report: `backend/reports/v41_cost_screen.txt` (gitignored). Engine support added additively:
+  `SwingEngineResult.per_rebalance_turnover` (+`_daily_turnover`) so `metrics.compute_metrics` annualizes
+  swing turnover, and a `SwingConfig.selector`/`selector_seed` knob for `B_random` (default `"adv"` ⇒ engine
+  byte-identical). 8 V4.1 tests added; 36 swing_v4 green; **683 across backtest_v2 + paper_v2 + swing_v4**
+  (additive-only — only `swing_v4/` files touched).
 
 ### V4.2 — Stage 2: battery + §6 acceptance
-- **Status:** ⬜ NOT STARTED.
-- **Do:** §6.2 (skew-aware) / §6.3 (ATR-multiple & `target_positions` neighbors {13,15,17}) / §6.5 + §6.4
-  diagnostic on §6.1 survivors; apply §6 items 1–5. **No OOS.**
-- **Done-criteria:** per-config §6 table; **exactly one** candidate locked OR null close declared
-  (Rule 12 — no silent pick); overlay-value ablation (5- vs 3-factor) recorded; `FINAL_OOS` untouched.
+- **Status:** ⛔ N/A — not run. V4.1 produced **0 §6.1 survivors**, and V4.2 runs only on the §6.1-clearing
+  set (§5 two-stage gate). With no survivor the §6 acceptance (items 1–4) is unreachable ⇒ the pre-accepted
+  null (§6) closes the program at V4.1. No grid level added, no threshold loosened (§1).
 
 ### V4.3 — One-shot v4-FINAL_OOS + §10 verdict (only on a locked candidate)
-- **Status:** ⬜ NOT STARTED.
-- **Do:** byte-for-byte locked candidate through the v4 engine on v4-FINAL_OOS — **once**. Report §10 DoD,
-  raw+deflated Sharpe+PBO, and the §8 contamination caveat. Mark v4-FINAL_OOS consumed.
-- **Done-criteria:** §10 verdict (validated-pending-probation / research note); deflation reported; caveat
-  restated; OOS touched exactly once or not at all (null).
+- **Status:** ⛔ N/A — not run. No §6-locked candidate exists, so `v4-FINAL_OOS` is **never touched** (§6/§8
+  forbid spending it on the null). It remains **pristine** for the v4 family.
 
 ---
 
@@ -536,6 +559,14 @@ tests are green.
       2026-06-24): `target_positions=15` cap+divisor, top-N `adv_20` selector, `stable_universe` U=200,
       `starting_capital=₹3.5L`; footprint re-run as a diagnostic (stable U=200 mean 46 ≫ 15 ⇒ cap binds);
       675 tests green; no return computed; FINAL_OOS untouched.
-- [ ] V4.1 — DISCOVERY cost screen; §6.1 survivor set identified; ledger updated; FINAL_OOS untouched.
-- [ ] V4.2 — battery + §6; one candidate locked OR null close; FINAL_OOS untouched.
-- [ ] V4.3 — one-shot v4-FINAL_OOS (only if a candidate locked); §10 verdict + deflation + caveat.
+- [x] V4.1 — DISCOVERY cost screen DONE 2026-06-24 → **NULL CLOSE** (0/3 clear §6.1; best ratio 0.31 < 1.0;
+      selection-quality diagnostic = edge-discarding, non-gating); v4 ledger K=6; FINAL_OOS untouched.
+- [x] V4.2 — N/A (no §6.1 survivor ⇒ §6 acceptance unreachable; pre-accepted null closes at V4.1).
+- [x] V4.3 — N/A (no locked candidate ⇒ v4-FINAL_OOS NEVER touched; pristine for the v4 family).
+
+> **PROGRAM CLOSE — 2026-06-24:** the v4 daily-swing family closes as a **research note** (§6 pre-accepted
+> null). On this market, daily single-name swing — even with per-name ATR trailing exits + a continuous
+> regime throttle — does **not** clear a costed bar vs the cheap passive alternative (Nifty 50 TRI): the high
+> turnover (828–2660% annualized) erases the edge, and the book trails the index even *before* costs. The
+> edge-discarding selection diagnostic is the one live forward lead — it authorizes a *separate future*
+> prereg for a return-informed (not liquidity) selector, carrying its own K. FINAL_OOS pristine throughout.

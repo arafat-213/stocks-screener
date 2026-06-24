@@ -548,6 +548,27 @@ redline. Items marked **(decision)** are where I picked a recommended default.
   `11`/FINAL_OOS byte-identical).
 - **NEXT = V4.1** (DISCOVERY cost screen on the concentrated book; `00` §13).
 
+### 2026-06-24 — V4.1 cost-screen engine support (additive) + screen run → NULL CLOSE
+- **`engine.py`** — two additive, default-preserving hooks for the `00` §13 V4.1 screen (no behaviour change
+  at defaults ⇒ the V4.0 fixtures stay byte-identical):
+  - `SwingEngineResult.per_rebalance_turnover: list[(date, Σ|notional|/equity)]` + `_daily_turnover()`,
+    populated by `run()`. This is the daily-swing analogue of v2's per-rebalance Σ|Δweight|, so the reused
+    `metrics.compute_metrics` can annualize turnover (it reads `result.per_rebalance_turnover`). Empty on a
+    no-fill run.
+  - `SwingConfig.selector` (`"adv"` default / `"random"`) + `selector_seed` — the `00` §6 `B_random` reference
+    book keeps a *random* `target_positions` when oversubscribed (seeded per `(seed, day)` for reproducibility).
+    `"random"` is NEVER a candidate and adds 0 to K; `"adv"` (the locked top-`adv_20` selector) is unchanged.
+- **`v41_cost_screen.py`** (new runner) + **`tests/swing_v4/test_v41_cost_screen.py`** (8 tests: turnover
+  aggregation, `compute_metrics`-on-`SwingEngineResult`, adv vs random selector, the pre-committed §6 read).
+- **Result (DISCOVERY, base + pessimistic, ₹3.5L whole-share) — pre-accepted NULL (`00` §6):** 0/3 clear §6.1.
+  T3 candidate base Calmar 0.083 / pess ratio **0.11**; T1 (MACD) −0.070 / **−0.48** (turnover 2660%); T2
+  (EMA50) 0.145 / **0.31** (the least-bad, still < 1.0). Nifty 50 TRI Calmar 0.346. Turnover 828–2660% is the
+  killer; the book trails the index even pre-cost. **§6 selection-quality diagnostic = EDGE-DISCARDING**
+  (`B_liquid` 0.083 < 0.85× `B_random` median 0.138 **and** < `B_all` 0.090) → authorizes a *separate future*
+  return-informed-selector prereg (own K), not a swap. **v4 ledger K=6; FINAL_OOS untouched.** Full detail in
+  `00` §13 (V4.1). **36 swing_v4 tests green; 683 across backtest_v2 + paper_v2 + swing_v4** (additive-only —
+  only `swing_v4/` files touched). Program closes as a research note (`00` top banner).
+
 ## Exit criteria
 - [x] §11 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
 - [x] V4.0a — indicators + regime + signals built and tested (parity / causality / completed-weeks / VIX).

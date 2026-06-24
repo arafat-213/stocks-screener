@@ -62,6 +62,14 @@ class SwingConfig:
     # granularity at ~₹3-4L), not a tuned knob; `00` §5 stresses {13,15,17} in V4.2.
     target_positions: int = 15
 
+    # Oversubscription selector (00 §14 C). "adv" = the frozen candidate: keep the
+    # top-`target_positions` by adv_20 (most liquid first). "random" exists ONLY for the
+    # `00` §6 selection-quality diagnostic's `B_random` reference book (keep a random
+    # `target_positions` when oversubscribed, seeded for reproducibility) — it is NEVER a
+    # candidate and adds 0 to K. Default "adv" ⇒ byte-identical to the locked engine.
+    selector: Literal["adv", "random"] = "adv"
+    selector_seed: int = 0  # only consulted when selector == "random"
+
     starting_capital: float = 350_000.0  # Amendment 1 §14 E — real spare capital
 
     # --- regime score (00 §4) ---

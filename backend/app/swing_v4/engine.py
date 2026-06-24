@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import logging
 import math
+import random
 from dataclasses import dataclass, field
 from datetime import date
 
@@ -67,6 +68,10 @@ class SwingEngineResult:
     fills_log: list[Fill]
     config: SwingConfig
     total_cost_paid: float
+    # (date, Σ|notional|/equity) per fill-day — the daily-swing analogue of v2's
+    # per-rebalance Σ|Δweight|, so metrics.compute_metrics can annualize turnover for
+    # the V4.1 cost screen (00 §13). Populated by run(); empty on a no-fill run.
+    per_rebalance_turnover: list[tuple[date, float]] = field(default_factory=list)
 
 
 @dataclass
@@ -177,7 +182,33 @@ def run(
         fills_log=state.portfolio.fills_log,
         config=config,
         total_cost_paid=state.portfolio._total_cost_paid,
+        per_rebalance_turnover=_daily_turnover(
+            state.portfolio.fills_log, state.portfolio.snapshots
+        ),
     )
+
+
+def _daily_turnover(
+    fills: list[Fill], snapshots: list[DailySnapshot]
+) -> list[tuple[date, float]]:
+    """Per-fill-day turnover = Σ|qty×price| / that-day equity (the daily-swing analogue
+    of v2's per-rebalance Σ|Δweight|; 00 §13 "record turnover"). Buys and sells both
+    count as |Δweight|; metrics._compute_annualized_turnover sums then annualizes. Equity
+    is the day's MTM snapshot equity (post-fill, the standard weight base)."""
+    if not fills or not snapshots:
+        return []
+    equity_by_day: dict[date, float] = {s.date: s.equity for s in snapshots}
+    notional_by_day: dict[date, float] = {}
+    for f in fills:
+        notional_by_day[f.date] = notional_by_day.get(f.date, 0.0) + abs(
+            f.qty * f.price
+        )
+    out: list[tuple[date, float]] = []
+    for d in sorted(notional_by_day):
+        eq = equity_by_day.get(d, 0.0)
+        if eq > 0:
+            out.append((d, notional_by_day[d] / eq))
+    return out
 
 
 def build_context(
@@ -483,7 +514,16 @@ def _scan_entries(
         row = ctx.signal_store.row(day, iid)
         adv = float(row["adv_20"]) if row is not None else 0.0
         candidates.append((iid, adv))
-    candidates.sort(key=lambda t: t[1], reverse=True)
+    if cfg.selector == "random":
+        # `00` §6 selection-quality diagnostic ONLY (the `B_random` reference book) —
+        # keep a RANDOM target_positions when oversubscribed instead of the top-adv_20.
+        # Seed off (selector_seed, ordinal day) so each day's draw is independent yet the
+        # whole run is reproducible across seeds (median/p5-over-seeds, 00 §6). NEVER a
+        # candidate; adds 0 to K. The locked engine is selector == "adv".
+        rng = random.Random(cfg.selector_seed * 1_000_003 + day.toordinal())
+        rng.shuffle(candidates)
+    else:
+        candidates.sort(key=lambda t: t[1], reverse=True)  # top-adv_20 (the candidate)
 
     _EPS = 1e-9
     for iid, _adv in candidates:
