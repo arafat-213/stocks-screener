@@ -419,6 +419,37 @@ null.** But V4.8 enters with the §6.3 plateau failure essentially pre-diagnosed
 fragility (flag 3); the honest expectation is that the survivor does not survive the full §6 battery. No grid
 level added, no threshold loosened, no OOS peek.
 
+#### Pre-V4.8 mechanism diagnostic (2026-06-25) — "edge vs lottery" on the atr-5.0/daily survivor
+
+**Non-gating, 0 to K, base cost, FINAL_OOS untouched** (`v47_concentration_diagnostic.py`; Arafat-requested
+before authorizing the V4.8 battery — `00` §6 / `05` §5 diagnostic species). Question: is the pess-ratio 1.27
+a broad trend edge, or a handful of lottery-ticket compounders the wide 5× trail happened to not cut off?
+
+**Verdict: it is a real trend edge whose entire payoff is one multi-year compounder.** Decisive across every cut:
+- **Single-name dependence:** the biggest winner (Adani Total Gas, entry 2020-10-26, **+1161% over 826 calendar
+  days**) is **₹229,647 of ₹265,012 total net P&L = 86.7% of everything the survivor made** over 5.4 years.
+- **Concentration:** top 5 trades = **141%** of net P&L, top 10 = 174%, top 20 = 205% (>100% ⇒ the other ~170
+  trades net negative; a few names carry the book). Winners-only Gini 0.76. Median trade **−6.3%**, mean
+  **+9.3%** (the 15-pt mean≫median gap = one giant right tail). Win rate 35%.
+- **vs atr 3.0 (matched (iid,entry_date), 141 common entries):** going 3×→5× made **70% of trades *worse***
+  (wide stop gives back open profit), only **4%** became big winners (Δ≥30pts). Median Δret **−4.25%**; the
+  mean is positive *only* because of ATGL's +762-pt swing. **Top 5 improvements = 166% of all added edge**
+  (ATGL, SRF, DIVISLAB, ADANIPORTS, NATIONALUM — three were *losses* at 3× that 5× held into a recovery).
+- **Mechanism of the §6.3 lone peak (flag 2), now explained:** atr=5.0 is the *only* cell wide enough to not
+  trail ATGL out (3× clipped it at 165 d / +400%). The lone peak and the single-name dependence are the **same
+  fact**; the 826-day hold means the wide trail converted the strategy into buy-and-hold-the-one-rocket (also
+  why turnover fell 829%→403%).
+
+**Consequence for V4.8 (per Arafat 2026-06-25):** the mechanism is *coherent* (trend-following's job is to let
+exceptional businesses compound), so this is **less** "suspicious random parameter" than first feared — but it
+makes **§6.2 concentration co-equal with §6.3** as the make-or-break gate, and a strategy that is 87% one name
+is a near-certain §6.2 FAIL by construction. **Decision: run V4.8 as the FULL §6 battery exactly as specified**
+(not a §6.2-only shortcut), accept the verdict including complete rejection. **Add a post-V4.8 leave-top-k-out
+fragility test** (remove top 1/2/5/10/20 trades → recompute CAGR — a fragility *demonstration*, non-gating, 0
+to K, NOT a deployment rule). **Preserved finding if v4 closes:** *the exit mechanism mattered far more than
+the entry mechanism.* **Future (NEW prereg, NOT a v4 extension):** adaptive / gain-scaled exits (a trail that
+widens as unrealized gain grows) — its own pre-registration if ever pursued, never folded into v4.
+
 ### V4.8 — Stage-2 battery + deployment plateau-neighbor + §6 acceptance (only on §6.1 survivors)
 - **Status:** ⬜ NOT STARTED — **AUTHORIZED** (V4.7 yielded 1 §6.1 survivor: atr 5.0 / daily). Runs the full
   §6 battery on that single config: §6.2 skew-aware concentration, §6.3 plateau (over `atr_mult` {3,4,5} **and**
@@ -439,6 +470,9 @@ level added, no threshold loosened, no OOS peek.
 - [x] V4.7 — levers built (no-lookahead tested, V4.4-cell parity) + Stage-1 turnover screen on DISCOVERY
       (2026-06-25); **1/6 §6.1 survivor = atr 5.0 / daily (ratio 1.27)**, fragility-flagged; anti-thrash
       diagnostic (INERT) + MOM/ADV anchors (exact parity) recorded; ledger +6 (K so far ≈ 10).
-- [ ] V4.8 — Stage-2 battery + deployment plateau-neighbor + §6 acceptance on the atr-5.0/daily survivor
-      (AUTHORIZED; §6.3 plateau pre-diagnosed as the likely null). NOT started this session.
+- [x] Pre-V4.8 mechanism diagnostic (2026-06-25, 0 to K) — "edge vs lottery": **real trend edge, but 87% of
+      net P&L is one name (ATGL +1161%)**; §6.2 now co-equal with §6.3 as the gate. Decision: run V4.8 FULL
+      battery + a post-battery leave-top-k-out fragility test (non-gating).
+- [ ] V4.8 — Stage-2 FULL §6 battery + deployment plateau-neighbor + leave-top-k-out fragility test on the
+      atr-5.0/daily survivor (AUTHORIZED; §6.2 + §6.3 pre-diagnosed as the likely null). NOT started yet.
 - [ ] V4.9 — one-shot v4-FINAL_OOS + verdict (or N/A; v4-FINAL_OOS stays pristine on any null).
