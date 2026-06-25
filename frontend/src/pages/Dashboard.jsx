@@ -19,6 +19,7 @@ import {
 } from '../api/client';
 import { useFetch } from '../hooks/useFetch';
 import { usePipeline } from '../hooks/usePipeline';
+import { usePaperPipeline } from '../hooks/usePaperPipeline';
 import { useMarketData } from '../hooks/useMarketData';
 import { useWatchlist } from '../hooks/useWatchlist';
 import { useActionCenter } from '../hooks/useActionCenter';
@@ -32,7 +33,6 @@ import { ErrorBanner } from '../components/ui/ErrorBanner';
 import StaleBanner from '../components/StaleBanner';
 import ChangeBanner from '../components/ChangeBanner';
 import WatchlistStar from '../components/WatchlistStar';
-import PipelineProgress from '../components/PipelineProgress';
 import SetupBadge from '../components/SetupBadge';
 import HighConvictionDigest from '../components/HighConvictionDigest';
 import ActionCenter from '../components/ActionCenter';
@@ -59,9 +59,14 @@ const Dashboard = () => {
     stats: pipeline,
     isBusy,
     run: handleRunPipeline,
-    stop: handleStopPipeline,
     error: pipelineError,
   } = usePipeline();
+
+  const {
+    status: paperStatus,
+    lastProcessedDate,
+    isRunning: isPaperRunning,
+  } = usePaperPipeline();
 
   const { market_context, error: marketError } = useMarketData();
   const { watchlist, toggle, isWatched, count } = useWatchlist();
@@ -478,51 +483,42 @@ const Dashboard = () => {
           </div>
 
           <div className='grid grid-cols-2 lg:grid-cols-4 gap-4'>
-            {status === 'running' ? (
-              <div className='bg-blue-600 border-2 border-blue-700 p-5 rounded-2xl flex flex-col gap-4 shadow-lg shadow-blue-500/20 col-span-1 sm:col-span-2 lg:col-span-1 animate-fade-in'>
-                <div className='flex justify-between items-start'>
-                  <div className='flex flex-col gap-0.5'>
-                    <span className='text-[9px] font-black text-white/70 uppercase tracking-[0.2em]'>
-                      Live Analysis
-                    </span>
-                    <div className='flex items-center gap-2'>
-                      <RefreshCcw
-                        size={14}
-                        className='animate-spin text-white'
-                      />
-                      <span className='text-sm font-black text-white uppercase tracking-tight'>
-                        Engine Active
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    className='bg-white/20 hover:bg-white/30 text-white border-none py-1 px-2.5 rounded-lg font-black text-[9px] uppercase tracking-tighter cursor-pointer transition-colors backdrop-blur-md'
-                    onClick={handleStopPipeline}
-                    disabled={status === 'stopping'}
-                  >
-                    {status === 'stopping' ? 'Stopping' : 'Stop'}
-                  </button>
-                </div>
-
-                <div className='flex flex-col'>
-                  <div className='flex justify-between items-end mb-1'>
-                    <span className='text-[10px] font-black text-white'>
-                      PROGRESS
-                    </span>
-                    <span className='text-[10px] font-black text-white'>
-                      {pipeline?.stocks_scored || 0} /{' '}
-                      {pipeline?.tier1_count || 0}
-                    </span>
-                  </div>
-                  <PipelineProgress
-                    fetched={pipeline?.stocks_fetched || 0}
-                    scored={pipeline?.stocks_scored || 0}
-                    total={pipeline?.total_symbols || 0}
-                    tier1Count={pipeline?.tier1_count || 0}
+            <div
+              className={`p-5 rounded-2xl border-2 shadow-sm flex flex-col gap-2 col-span-1 sm:col-span-2 lg:col-span-1 transition-colors ${isPaperRunning ? 'bg-blue-600 border-blue-700 shadow-blue-500/20' : 'bg-bg-secondary border-border hover:border-blue-500/30'}`}
+            >
+              <span
+                className={`text-[9px] font-black uppercase tracking-[0.2em] ${isPaperRunning ? 'text-white/70' : 'text-slate-500 dark:text-slate-400'}`}
+              >
+                S3 Paper Engine
+              </span>
+              <div className='flex items-center gap-2'>
+                {isPaperRunning ? (
+                  <RefreshCcw size={14} className='animate-spin text-white' />
+                ) : (
+                  <div
+                    className={`w-2 h-2 rounded-full ${paperStatus === 'never_run' ? 'bg-slate-400' : 'bg-green-400'}`}
                   />
-                </div>
+                )}
+                <span
+                  className={`text-sm font-black uppercase tracking-tight ${isPaperRunning ? 'text-white' : 'text-text'}`}
+                >
+                  {isPaperRunning
+                    ? 'Processing...'
+                    : paperStatus === 'never_run'
+                      ? 'Not Initialized'
+                      : 'Idle'}
+                </span>
               </div>
-            ) : null}
+              {lastProcessedDate && !isPaperRunning && (
+                <span className='text-[10px] font-bold text-slate-400 dark:text-slate-500 font-mono'>
+                  {new Date(lastProcessedDate).toLocaleDateString('en-IN', {
+                    day: '2-digit',
+                    month: 'short',
+                    year: 'numeric',
+                  })}
+                </span>
+              )}
+            </div>
             <div className='bg-bg-secondary p-5 rounded-2xl border-2 border-border shadow-sm flex items-center gap-2 transition-colors hover:border-blue-500/30'>
               <span className='text-[10px] uppercase text-slate-500 dark:text-slate-400 tracking-[0.2em] font-black'>
                 Nifty 50

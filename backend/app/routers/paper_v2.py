@@ -1,11 +1,10 @@
-"""Read-only API for the v2 S3 probation paper book (specs/v3/11).
+"""API for the v2 S3 probation paper book (specs/v3/11).
 
-Surfaces the frozen forward paper book to the frontend. **Strictly read-only:**
-the S3 probation is a frozen experiment (``11`` §1 — every knob frozen for the
-6-month window), so this router exposes NO write endpoints (no manual entry, no
-close). Every figure is derived from persisted book/position state — in
-particular the ``last_price`` stored at the last daily MTM — so the endpoints
-never fetch a live price (project law: never hit live NSE/yfinance).
+Surfaces the frozen forward paper book to the frontend, plus pipeline
+status/trigger endpoints for the System page. The book view is read-only
+(S3 probation is a frozen experiment — no manual entry, no close). The
+pipeline endpoints allow manual triggering of the daily post-close job via
+the System UI (replaces the retired v1 pipeline trigger).
 
 Per project law (§2 Pydantic Enforcement) the responses are validated Pydantic
 models, unlike the older ``paper_trading`` router which predates that rule.
@@ -14,12 +13,15 @@ models, unlike the older ``paper_trading`` router which predates that rule.
 from __future__ import annotations
 
 import datetime
+import logging
 from zoneinfo import ZoneInfo
 
+import redis as _redis
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.celery_app import redis_url
 from app.db.models import (
     PaperV2DailySnapshot,
     PaperV2ParityCheck,
@@ -32,6 +34,10 @@ from app.db.session import get_db
 router = APIRouter(prefix="/v2/paper", tags=["paper-v2"])
 
 _IST = ZoneInfo("Asia/Kolkata")
+_log = logging.getLogger(__name__)
+
+# Must stay in sync with tasks.py — the same lock key the Celery task uses.
+_PAPER_LOCK_KEY = "paper_daily_task_running"
 
 
 class PaperV2BookResponse(BaseModel):
@@ -373,3 +379,77 @@ def get_rebalances(db: Session = Depends(get_db)) -> list[RebalanceEventResponse
     # Newest decision_date first.
     events.sort(key=lambda e: e.decision_date, reverse=True)
     return events
+
+
+# ---------------------------------------------------------------------------
+# S3 Paper Pipeline — status + manual trigger (System UI, replaces retired v1)
+# ---------------------------------------------------------------------------
+
+
+class PaperPipelineStatusResponse(BaseModel):
+    """Runtime status of the S3 daily post-close paper job."""
+
+    status: str  # "running" | "idle" | "never_run"
+    last_processed_date: datetime.date | None
+    go_live_date: datetime.date | None
+
+
+@router.get("/pipeline/status", response_model=PaperPipelineStatusResponse)
+def get_paper_pipeline_status(
+    db: Session = Depends(get_db),
+) -> PaperPipelineStatusResponse:
+    """Current status of the S3 daily post-close paper engine.
+
+    ``status`` reflects the Redis advisory lock (same key the Celery task holds):
+    *  ``running``   — lock is held (task is in progress)
+    *  ``idle``      — lock free, book exists and has been processed at least once
+    *  ``never_run`` — no active book or ``last_processed_date`` is None
+    """
+    r = _redis.from_url(redis_url)
+    is_running = r.exists(_PAPER_LOCK_KEY) == 1
+
+    book = _active_book(db)
+    go_live = (
+        book.created_at.astimezone(_IST).date() if book and book.created_at else None
+    )
+
+    if is_running:
+        return PaperPipelineStatusResponse(
+            status="running",
+            last_processed_date=book.last_processed_date if book else None,
+            go_live_date=go_live,
+        )
+
+    if book is None or book.last_processed_date is None:
+        return PaperPipelineStatusResponse(
+            status="never_run",
+            last_processed_date=None,
+            go_live_date=go_live,
+        )
+
+    return PaperPipelineStatusResponse(
+        status="idle",
+        last_processed_date=book.last_processed_date,
+        go_live_date=go_live,
+    )
+
+
+@router.post("/pipeline/run", status_code=202)
+def run_paper_pipeline(db: Session = Depends(get_db)) -> dict:
+    """Manually trigger the S3 daily post-close paper job via Celery.
+
+    Returns 409 if the job is already running (Redis lock held). The task
+    processes all unprocessed trading days up to today in ordered-replay
+    fashion (tasks.py ``execute_paper_daily_task``).
+    """
+    from app.tasks import execute_paper_daily_task
+
+    r = _redis.from_url(redis_url)
+    if r.exists(_PAPER_LOCK_KEY):
+        raise HTTPException(
+            status_code=409, detail="S3 paper pipeline is already running"
+        )
+
+    _log.info("Manual S3 paper pipeline trigger via System UI")
+    execute_paper_daily_task.delay()
+    return {"message": "S3 paper pipeline task queued"}

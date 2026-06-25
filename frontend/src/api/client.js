@@ -51,6 +51,12 @@ export const getPaperV2Parity = () =>
 export const getPaperV2Rebalances = () =>
   apiClient.get('/v2/paper/rebalances').then((res) => res.data);
 
+// --- S3 paper pipeline status + manual trigger (System UI) ---
+export const fetchPaperPipelineStatus = () =>
+  apiClient.get('/v2/paper/pipeline/status').then((res) => res.data);
+export const triggerPaperPipeline = () =>
+  apiClient.post('/v2/paper/pipeline/run').then((res) => res.data);
+
 export const getStatus = () =>
   apiClient.get('/pipeline/status').then((res) => res.data);
 export const searchStocks = (q) =>
