@@ -371,6 +371,14 @@ This run logged **6 trials** (3 selectors × 2 cost levels) to the v4 ledger; ca
 The §5 deployment diagnostic added **0** (non-gating). **v4-FINAL_OOS was NOT loaded or touched — pristine for
 the entire v4 family.** No selector added after seeing a number, no threshold relaxed, no OOS peek (§1 honored).
 
+> **K-accounting correction (2026-06-25, append-only — original figures above stand as signed):** under the
+> counting standard ratified in `05` §7.0, this run's effective independent K is **1**, not 6. Reasons: cost
+> levels are an evaluation assumption, not a trial (×1, not ×2); **RS ≡ MOM** (a per-day-constant cannot
+> reorder a cross-section, §3) → counts once; the **ADV** arm re-derived the V4.1 cell exactly (parity anchor)
+> → adds 0. The only genuinely new return-generating hypothesis here was **MOM**. Corrected carried v4 ledger
+> = **4** (V4.1's 3 + this 1); see `05` §7.1. No result or verdict changes — recorded so future preregs do not
+> re-inflate K with cost-level and identical-config multipliers.
+
 ### 12.7 Forward leads (recorded, NOT acted on — each needs its own signed prereg)
 
 1. **Deployment axis** (§5 positive read) — the one genuinely live, pre-authorized lead. A separate prereg

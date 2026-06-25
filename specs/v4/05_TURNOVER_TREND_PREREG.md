@@ -1,0 +1,358 @@
+# v4 / 05 — Turnover-First Trend (exit-width × cadence + §5 deployment): Pre-Registration
+
+> **Status: DRAFT — awaiting Arafat §10 sign-off (and the §0 reopen decision FIRST).** No stage begins, and
+> no engine/selector code is written, before §10 is LOCKED. This prereg attacks the **one constraint V4.4
+> isolated as binding — turnover × cost** — with the **one lever class the v4 family has never tested**
+> (wider / slower-cadence *time-series-trend* exits, as opposed to the *cross-sectional-momentum* churn levers
+> v3 `05` swept). It freezes — *before any new return number* — the small grid, the binding acceptance rule,
+> the K/deflation accounting, and the one-shot OOS protocol.
+>
+> **Owner:** Arafat. **Created:** 2026-06-25. **Depends on:** `00_SWING_PREREG.md` (LOCKED + Amendment 1),
+> `02_SWING_ENGINE.md` (engine), `03_V41_FORENSIC.md` (turnover/edge mechanism), `04_SELECTOR_PREREG.md`
+> (V4.4 — MOM selector proven, turnover isolated as the killer, §5 deployment proven a real lever).
+>
+> **What this doc is NOT:** not a re-open of the closed V4.1/V4.4 *configs* (those stay closed as research
+> notes), not an entry-signal search, not a selector search (MOM is frozen — see §1), not a license to touch
+> any frozen `00`/Amendment-1 knob other than the four named in §3.
+
+---
+
+## 0. The reopen decision — read and rule on this BEFORE §10 (binding)
+
+`04` §8 and `00` §8 closed the v4 family with an explicit bar: *"no further v4 amendments without genuinely
+new information (new data, not new knobs)."* **Widening an ATR multiple is, on its face, a knob.** This doc
+must clear that bar honestly or not be locked at all. The case for "this is genuinely new information, not a
+knob-hunt," stated plainly so you can reject it if you disagree:
+
+1. **V4.4 isolated the binding constraint mechanistically.** The edge is *real and per-name* (MOM: +1.98%
+   net expectancy, 2.71 payoff — proven, not assumed); it dies to **friction**, and friction is driven by
+   **turnover** (`03` Leak A/B). That is a newly-*established causal fact*, not a guess — before V4.4 we did
+   not know the edge was real and the constraint was turnover.
+2. **The turnover *mechanism* here was never tested.** v3 `05` swept turnover, but on the **cross-sectional
+   momentum** churn levers (`sell_rank_buffer` M, rank-smoothing, rebalance cadence — membership rotation).
+   v4 is **time-series trend-following**, whose turnover comes from **hold-length / whipsaw**, a *different*
+   mechanism with *different* levers (exit width, decision cadence). v4 itself only ever tested **tighter**
+   exits (T1 11d/2660%, T2 28d/1061%) — **never a wider/longer-hold exit.** This lever class is genuinely
+   unexplored for the whole program.
+3. **It is falsifiable and decisive.** A pass = a genuinely deployable trend book. A null = the strong,
+   final finding that the trend edge is *structurally too thin for this cost regime* — which closes v4 for
+   good and redirects to a cheaper-cost venue/instrument or a different premise, not to another knob.
+
+**The honest counter (Rule 12):** a skeptic can fairly call this "rationalised knob-hunting" — every dead
+strategy has one more lever. The turnover-isolation argument is *valid* but I will not oversell it. **This is
+exactly the class of call that `04`/`00` reserved for you.** So:
+
+> **§0 DECISION (Arafat — rule before signing §10):** either (a) **judge that V4.4's turnover isolation is
+> "genuinely new information" sufficient to reopen v4 once more** for this single, named lever class, OR
+> (b) **record an explicit deviation** from the `00` §8 / `04` §8 "no new knobs" close (the `10` §13 species).
+> If you judge it is "just another knob," **do not lock this** — the honest move is to leave v4 closed and
+> redirect (§8). ☐ reopen-justified ☐ explicit-deviation ☐ decline (leave v4 closed)
+
+---
+
+## 1. Scope discipline (the anti-HARKing line — binding)
+
+- ✅ **K CARRIES from the v4 family (corrected to 4 after V4.4 — see §7.0/§7.1); it does NOT reset.** Same
+  engine, entry, regime score, universe, ₹3.5L, `target_positions=15`. New axes (exit width, cadence,
+  deployment) accrue on top. *(The prior ledger logged 12 by counting config×cost and counting ADV/RS as
+  fresh trials; both are over-charges, corrected under the §7.0 counting standard. Confirm at §10.)*
+- ✅ **One-shot OOS inherited, still pristine.** v4-FINAL_OOS was **never** touched across V4.1/V4.4, so this
+  program inherits the single, unspent v4-FINAL_OOS shot (§7). Spending it is the only path to "validated."
+- ✅ **MOM is the FROZEN selector — a recorded decision, not a silent swap.** V4.4 established MOM dominates
+  ADV on this engine (base Calmar 0.179 vs 0.083; expectancy +1.98% vs +0.72%) and its trials are **already
+  in K**. Carrying MOM forward as the frozen selector is the `04` §3 "exit-choice is a recorded registration
+  decision" rule applied explicitly — **the selector axis is NOT re-swept here** (re-floating it would
+  re-spend paid trials). ADV at the frozen exit is re-run **once** as the V4.4 anchor (diagnostic, §4).
+- ❌ **Only FOUR things change, all named now:** (i) **exit width** (the Type-3 ATR multiple), (ii) **decision
+  cadence** (daily → weekly), (iii) **deployment** (the §5-authorized regime Neutral-bucket fraction), and
+  (iv) a non-gating **min-hold/cooldown anti-thrash diagnostic** (§5, adds 0 to K). Entry (4 conditions),
+  the 5-factor regime *score* (the bucket→fraction *mapping* is the §5 axis, the score is frozen), the
+  `stable_universe` U=200, `target_positions=15`, the −25% catastrophic floor, MOM, ₹3.5L, and every
+  indicator stay **byte-frozen at `00`/Amendment-1/`04`**.
+- ❌ **Lever family is a-priori, not mined.** Wider exits + weekly cadence are **standard, conventional**
+  turnover-reduction constructions chosen *because* they are the textbook trend-turnover levers, **not**
+  because they backtested well (no backtest has been run). Levels are enumerated in §4 now.
+- ❌ **No grid expansion after results.** The §4 grid and its plateau neighbors are fully enumerated. No
+  lever, level, or axis is added after a number is seen.
+- ❌ **No FINAL_OOS peek** before a single §6-locked candidate exists; **never** on the null (§7).
+
+---
+
+## 2. The goal (unchanged from `00` §2 — no relaxation)
+
+Identical bar to `00` §2 / `04` §2:
+- **Primary bar:** beat **Nifty 50 TRI** on **pessimistic-cost Calmar ratio ≥ 1.0** (§6.1) and on **base-cost
+  Calmar with maxDD ≤ 100%** of the benchmark (deployment bar).
+- Nifty200 Mom30 TRI reported as a reference only.
+- A config that merely *matches* the index is the **"buy the index fund"** research-note close.
+
+**The edge thesis for THIS program:** the V4.4 trend book carries a real per-trade edge (+1.98% net) that
+friction erases because the book turns over ~800%/yr. If we can **roughly halve turnover** (longer holds /
+coarser decisions) **without giving back proportionally more open profit**, the surviving net edge — stacked
+on the proven MOM selector and the §5 deployment lift — may clear the costed bar. If wider exits give back as
+much as they save (the trail-vs-give-back trade-off is real, not assumed favorable), this closes NULL (§8).
+
+---
+
+## 3. The changes (frozen on sign)
+
+The **only** new degrees of freedom. All operate on the already-frozen entry set + MOM selector; none adds a
+name that did not fire, none touches the entry conditions or the regime score.
+
+### 3.1 Exit width — the Type-3 ATR multiple (PRIMARY turnover lever, gated)
+The Type-3 close-anchored trail exits when `close < anchor − atr_mult × ATR20`. A **wider** multiple holds
+winners longer ⇒ longer holds ⇒ fewer turns ⇒ less cost — but gives back more open profit before exit (the
+trade-off the grid measures). `00` froze 3.0 and only-ever-tested **tighter**; this tests **wider**.
+- **Grid axis `atr_mult` ∈ {3.0, 4.0, 5.0}** — candidate **4.0**; 3.0 is the old frozen value (the
+  low-turnover-floor edge); 5.0 the slow edge. The §6.3 plateau axis.
+
+### 3.2 Decision cadence — daily → weekly (gated)
+A daily trend engine re-decides entries/exits every close. Coarsening the **decision clock** to weekly cuts
+turnover structurally (fewer, larger decisions) at the cost of delayed exits.
+- **`decision_cadence` ∈ {daily, weekly}** — candidate **weekly**. *Definition (faithful + no-lookahead):*
+  on a **non-decision day**, `step_day` still (a) applies queued fills, (b) MTMs, (c) ratchets the trail
+  anchor, and (d) **checks the −25% catastrophic floor** (risk control is NOT coarsened) — but **skips the
+  configured ATR-trail exit check and the entry scan**. The decision day is the **completed week's last
+  trading day** (W-FRI as-of, the same completed-week discipline as the weekly-MACD entry input — no
+  in-progress week). Binary axis (reported at both levels; a config that clears at one cadence and craters at
+  the other is fragile — reported, weighs against locking).
+
+### 3.3 Deployment — the §5-authorized regime Neutral-bucket fraction (gated, Stage 2)
+`04` §5 ran D_more (Neutral 0.5→0.75) as a non-gating diagnostic and it read **"deployment is a real lever"**
+(Calmar 0.179→0.281, maxDD *fell* to 34.0% ≤ benchmark). `04` §5 pre-authorized adding deployment as a gated
+axis with its own K. Folded in here:
+- **`neutral_fraction` ∈ {0.5, 0.75}** — Bear stays 0.0, Bull stays 1.0; only the Neutral bucket (score 2–3)
+  moves. Candidate **0.75** (the §5 direction). Gated **in Stage 2** (so Stage 1 stays a clean turnover
+  frontier at the frozen 0.5); the 0.75 arm + the 0.5 plateau-neighbor accrue K in Stage 2.
+
+### 3.4 MOM selector — FROZEN (recorded §1 decision, not an axis)
+`selector = "mom"`, `selector_lookback = 126` — byte-frozen from V4.4. Not swept.
+
+---
+
+## 4. The search grid (small, fully enumerated — two-stage)
+
+Everything except §3.1–§3.3 is frozen. Mirrors `04` §4 / v3 `05` two-stage shape.
+
+| Axis | Frozen candidate | Enumerated alternatives (the ONLY ones) | Role |
+|---|---|---|---|
+| `atr_mult` (exit width) | **4.0** | 3.0, 5.0 | gated turnover lever + §6.3 plateau |
+| `decision_cadence` | **weekly** | daily | gated turnover lever (binary) |
+| `neutral_fraction` (deploy) | **0.75** | 0.5 | gated §5 lever (Stage 2; binary) |
+| selector / entry / regime score / U / target_positions / floor | MOM / 4-cond / 5-factor / 200 / 15 / −25% | — (FROZEN) | settled by `00`/`04` |
+
+- **Stage 1 — turnover cost screen:** `atr_mult` {3,4,5} × `decision_cadence` {daily, weekly} = **6 configs**
+  at the frozen `neutral_fraction`=0.5, MOM, ₹3.5L whole-share, **base + pessimistic** cost. Record turnover,
+  base/pessimistic Calmar, maxDD, win rate, avg hold, §6.1 ratio, **and the `03` per-round-trip forensic**
+  (so we see *how* each lever reshapes the trade population — does it cut cost faster than it gives back
+  edge?). Also re-run **ADV at the frozen exit** once as the V4.4 anchor (diagnostic). Log each **config** to
+  the v4 ledger (K accrues per §7.0 — cost levels are one trial, not two; anchors add 0). Identify §6.1
+  survivors.
+- **Stage 2 — battery + deployment lever (only on §6.1 survivors):** add the `neutral_fraction`=0.75 arm
+  (gated); §6.2 skew-aware / §6.3 plateau (over `atr_mult` {3,4,5} **and** `neutral_fraction` {0.5,0.75}) /
+  §6.5 capacity, + §6.4 subperiod diagnostic + the §5 min-hold/cooldown anti-thrash diagnostic. Apply §6.
+
+**K estimate (honest, under the §7.0 standard):** Stage 1 = 6 configs (`atr_mult`{3,4,5} × cadence{daily,
+weekly}), **counted ×1 cost not ×2**, minus the (atr=3.0, daily, deploy=0.5, MOM) cell which **is** the V4.4
+MOM anchor (already counted, R3) ⇒ **+5 new**. Stage 2 on a single survivor ≈ **+3** (the 0.75 deploy arm +
+its atr neighbors at base cost; the 0.5 neighbors are already-run Stage-1 cells, R3). **Carried 4 + ≈8 new ⇒
+K ≈ 12 at OOS** (vs ≈28 under the old config×cost convention). The skew-aware §6.2 and §6.5 resample one
+config (no new trials). **Deflation headwind is real but ~halved by the corrected count** (§7, §8) — it does
+NOT close the ~2.5× §6.1 gap; a marginal raw edge will still not survive deflation.
+
+---
+
+## 5. Min-hold / re-entry-cooldown — registered as a NON-GATING diagnostic (adds 0 to K)
+
+The two *anti-whipsaw* turnover levers are registered **non-gating**, for a binding reason decided up front:
+`03` showed the candidate exit **barely whipsaws** (median hold 42d, only 3.9% of trades held ≤10 days), so
+min-hold/cooldown have **low expected leverage on this engine** — spending gated grid axes (and K) on them is
+not justified. They run as a pre-committed diagnostic (the `04` §5 species):
+
+- **min_hold_td** — block the *configured ATR-trail* exit (NOT the catastrophic floor) for the first **10 td**
+  after entry. **cooldown_td** — after a full exit of an `instrument_id`, suppress its re-entry for **10 td**.
+- **Run once** on the Stage-1 candidate (base cost): report turnover, median hold, fills, expectancy with vs
+  without the anti-thrash bundle.
+
+*Pre-committed read (decided before any number):*
+- **Anti-thrash is inert here** (turnover / Calmar essentially unchanged) ⇒ confirms `03` (no whipsaw to
+  suppress); leave it off. *(The structurally-expected outcome.)*
+- **Anti-thrash materially cuts turnover AND holds/improves Calmar** ⇒ **authorizes a SEPARATE future
+  amendment** that adds it as a gated axis with its own K. It does **not** change the candidate this run.
+
+*Guard:* report-only; the locked OOS candidate uses the §4 levers only; **adds 0 to K**; a positive read
+triggers *new* pre-registered work, never a quiet swap.
+
+---
+
+## 6. Pre-committed acceptance rule (binding — identical gates to `00` §6 / `04` §6, nothing relaxed)
+
+A config becomes the **single locked OOS candidate** iff **all** hold on full DISCOVERY:
+
+1. **§6.1 cost survival:** pessimistic-cost Calmar ratio vs **Nifty 50 TRI ≥ 1.0** (the primary gate).
+2. **§6.2 concentration — SKEW-AWARE** (the `09`/`10` random-subset gate, exactly as `00`/`04` §6.2): median
+   Calmar ≥ 0.70 of base **and** p5 ≥ 0.50 of base, **≥ 25 rotating distinct P&L contributors**. Classic
+   drop-top-10 reported as a contamination guard, **diagnostic not gating** (a trend book is *meant* to ride
+   winners; pass-skew/fail-classic = "conditional", never "validated").
+3. **§6.3 plateau:** the candidate and its §4 neighbors (±1 step on **`atr_mult`** {3,4,5} **and** on
+   **`neutral_fraction`** {0.5,0.75}) stay ≥ **85%** of the candidate's base Calmar — a region, not a lone
+   peak. Cadence robustness reported (both levels), not a plateau axis (binary).
+4. **Deployment bar (= `08` §2b / `00` §6.4):** beats Nifty 50 TRI on **base-cost Calmar** with **maxDD ≤
+   100%** of the benchmark.
+5. **§6.4 subperiod** reported, **not** gating (window-fragility demoted, per the whole v2→v4 arc).
+
+**Tie-break (if ≥ 2 configs clear 1–4 on a plateau):** pick the **lowest-realized-turnover** one (the program
+thesis is turnover; the cheaper-to-run book is the honest pick — mirrors v3 `05` §5).
+
+**Null outcome (pre-accepted close):** if **0** configs satisfy 1–4, the turnover lever does **not** rescue
+the thin trend edge; the v4 family is **permanently and finally closed**, and **v4-FINAL_OOS is NOT touched**.
+A null is the honest finding that the trend edge is structurally too thin for this cost regime on this market
+— **not** a prompt to add a lever, loosen a threshold, or re-touch OOS (§1). Redirect per §8, never re-grid.
+
+---
+
+## 7. K / deflation, splits, one-shot OOS
+
+### 7.0 K-counting standard (pre-committed BEFORE any result — binding)
+
+A **DSR trial** = one distinct **return-generating hypothesis** evaluated on DISCOVERY, counted under these
+five rules (chosen now, before a number is seen, so the count is not motivated reasoning):
+
+- **(R1) Cost level is an evaluation assumption, not a trial — ×1, not ×2.** Base and pessimistic cost score
+  the *same* strategy under two cost models; no best-of selection happens across them (pessimistic IS the
+  gating metric). The prior v4 docs' `× 2 costs` multiplier was an over-charge and is corrected here.
+- **(R2) Provably rank-identical configs count once.** E.g. RS ≡ MOM (a per-day-constant cannot reorder a
+  cross-section — confirmed in V4.4 §3): one trial, not two.
+- **(R3) A re-run of an already-counted config (parity/anchor) counts 0.** E.g. the V4.4 ADV anchor
+  re-derived a V4.1 cell exactly.
+- **(R4) Non-gating diagnostics count 0** (footprint, §6 selection-quality, §5 deployment-as-diagnostic,
+  anti-thrash) — already honored across v4.
+- **(R5) Distinct levels on a *gated* axis EACH count — no free reduction.** You genuinely pick best-of over
+  them. This is the honesty clamp: do not collapse the 3-point `atr_mult` axis to 1 by argument. To justify a
+  count below the rule, compute the **effective number of independent trials empirically** (López de Prado:
+  from the cross-correlation of the trial PnL streams) and report deflated Sharpe at *that* N **alongside**
+  the config-count N — never instead of it.
+
+### 7.1 Corrected v4 ledger and this program's K
+
+- **Carried v4 K = 4**, not the previously-logged 12. Re-derived under §7.0: V4.1 = **3** (exit-tightness
+  T1/T2/T3, ×1 cost); V4.4 = **+1** (MOM only — ADV = anchor → 0 (R3); RS ≡ MOM → 0 (R2); §5 deployment =
+  diagnostic → 0 (R4)). The original `00`/`04` ledger counted config×cost (R1 over-charge) and counted ADV/RS
+  as fresh trials — both corrected. The original signed numbers stand in `00` §6.4 / `04` §12.6 with an
+  append-only K-accounting correction note; this is the figure that carries forward.
+- **K** continues from the corrected v4 ledger (**4**) and accrues each *new* Stage-1/Stage-2 **config** (not
+  config×cost) under §7.0. At OOS report **raw Sharpe, K (≈12), deflated Sharpe** (`validation.deflated_sharpe`)
+  **+ PBO** (`pbo_cscv` over DISCOVERY walk-forward windows; no fold reaches FINAL_OOS), and the empirical
+  effective-N (R5) beside it. **The deflation penalty is real but ~halved vs the old config×cost convention —
+  fixing the over-charge does NOT close the ~2.5× §6.1 gap; a marginal raw edge still deflates to ≤0.**
+- **DISCOVERY** = `validation.DISCOVERY (2018-02-06 → 2023-06-30)` — all of §3–§6 lives here.
+- **v4-FINAL_OOS** = `validation.FINAL_OOS (2023-07-01 → 2026-06-12)`, **pristine** (V4.1/V4.4 never spent it)
+  — touched **exactly once**, only after a single §6-locked candidate exists, **never** on the null.
+  Byte-for-byte locked candidate through the v4 engine, once, no re-tuning.
+- **Contamination caveat (inherited, `00` §8):** an OOS pass is "in-sample-clean for v4, macro-contaminated
+  for the researcher" ⇒ the truly clean test remains a **forward paper probation** (the `11` species).
+
+---
+
+## 8. Honest prior — the bar is steep, NULL is the most likely outcome (Rule 12)
+
+Read **before** sign-off, not after a result:
+
+- **The §6.1 gap is large and the leaks are partly already spent.** MOM's pessimistic ratio is **0.39**; the
+  bar is **1.0** (~2.5× to go). The selector lift (+0.10 Calmar) and the deployment lift (0.179→0.281) are
+  *already in* those numbers — they are not fresh headroom. Turnover reduction must do most of the remaining
+  work, and **widening the exit trades cost for give-back** (ambiguous net). A ~40% turnover cut roughly
+  halves cost (~7%→~3.5% of capital) and could ~double net trading P&L — *if* give-back doesn't eat it. That
+  is a genuine maybe, not a likely pass.
+- **Four prior programs hit the "buy-the-index-fund" wall** (v2 floor, v3 momentum-only, v3 Track-B, v4
+  swing). The base rate for "one more lever clears the costed bar" is low.
+- **Deflation at K≈12 (corrected count, §7.0) is still material** (cf. `10`: raw Sharpe positive but
+  deflated ≤ 0 ∀K even at the honest lower K — the killer was a thin *raw* edge, not a huge K). Even a
+  DISCOVERY pass may deflate away. Halving the K over-charge does not rescue a ~2.5× gross gap.
+- **Why run it anyway:** (a) it is the **first and only** attack on the constraint V4.4 *proved* is binding,
+  with a lever class the program has **never** tested; (b) the edge is *real* (proven in V4.4), so "can we
+  keep more of it past cost?" is well-posed and falsifiable; (c) it is cheap (6 Stage-1 configs, everything
+  else frozen) and the null is pre-accepted. **If it nulls, v4 closes permanently** and the honest redirect
+  is *not* another knob but a different lever the program cannot supply: a **cheaper execution regime**
+  (lower per-trade cost — instrument/venue/lot economics) or a **different premise**. Record that redirect in
+  the close; do not re-grid.
+
+---
+
+## 9. Lookahead guardrail (inherited from `00` §9 / `04` §9 + the new-lever items)
+
+All `00` §9 landmines apply unchanged. New-lever-specific:
+- **Weekly cadence uses completed weeks only.** Decision day = the completed week's last trading day (W-FRI
+  as-of); no in-progress week is ever evaluated (same discipline as the weekly-MACD entry input). The
+  catastrophic floor still checks **daily** (a risk control may run more often, never less).
+- **Wider ATR trail uses completed-`D` data** (anchor = max close through D; ATR20 through D). No in-progress
+  bar, no intraday high.
+- **min-hold / cooldown** key off entry/exit **dates already realized** (no forward reference).
+- **Adjusted series only**; `instrument_id` identity (`06`/`07`) so a succession is not a fake trend reset
+  or a fake cooldown.
+
+---
+
+## 10. Locked commitments (Arafat — sign to flip DRAFT → LOCKED, AFTER the §0 ruling)
+
+Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do not sign.
+
+1. **§0 reopen ruled** — "genuinely new information" justification accepted, OR an explicit `00`/`04` §8
+   deviation recorded. *(Cannot sign §10 without this.)*
+2. **K carries from v4 (corrected to 4 under the §7.0 standard, not 12), not reset**; the §7.0 counting
+   standard (cost ×1; identical/anchor/diagnostic configs → 0; gated levels each count) is pre-committed;
+   one-shot v4-FINAL_OOS inherited pristine (§1, §7).
+3. **Only the §3 four change** — exit width, cadence, deployment (gated); min-hold/cooldown (diagnostic).
+   MOM frozen (recorded decision, not re-swept); entry/regime-score/U/target_positions/floor/₹3.5L
+   byte-frozen (§1).
+4. **Grid** — the §4 grid (`atr_mult`{3,4,5} × cadence{daily,weekly} Stage 1; + `neutral_fraction`{0.5,0.75}
+   Stage 2); two-stage screen → battery; lowest-turnover tie-break; no level added after results.
+5. **Min-hold/cooldown = non-gating diagnostic only** (adds 0 to K; a positive read authorizes a *separate*
+   future amendment) (§5).
+6. **Acceptance rule** — `00`/`04` §6 gates verbatim (§6.1 ratio ≥ 1.0; §6.2 skew-aware; §6.3 plateau over
+   atr_mult+neutral_fraction; deploy bar maxDD ≤ 100%; §6.4 diagnostic); pre-accepted null = v4 family
+   permanently closed, FINAL_OOS untouched, redirect-not-regrid (§6, §8).
+7. **Honest prior accepted** — §6.1 gap ~2.5× with leaks partly spent; K≈12 deflation (corrected count)
+   is still material and does not close that gap; NULL is the most likely outcome; a null permanently
+   closes v4 (§8).
+
+> **Signed:** ☐ Arafat — 2026-06-__ (DRAFT → LOCKED). No engine/selector code written before this signature.
+
+---
+
+## 11. Execution (cold-session runnable — NOT STARTED until §10 is signed)
+
+> No stage begins before §10 is LOCKED. DISCOVERY only until a candidate is locked; v4-FINAL_OOS spent
+> exactly once, only on a §6-locked candidate, never on the null. Honor the token budget (Rule 6); update
+> Status + a session log per stage; do not mark Done if anything was skipped (Rule 12).
+
+### V4.7 — Lever implementation + Stage-1 turnover cost screen on DISCOVERY
+- **Status:** ⬜ NOT STARTED (gated on §10 lock).
+- **Do:** (a) additive `SwingConfig` + engine extensions — `decision_cadence` ("daily"/"weekly", default
+  "daily" ⇒ byte-identical), `min_hold_td`/`reentry_cooldown_td` (default 0 ⇒ byte-identical); `atr_mult`
+  and `neutral_fraction` already exist. Weekly cadence implemented in `step_day` per §3.2 (skip configured
+  exit + entry scan off-decision-days; floor + fills + MTM + anchor still daily); no-lookahead tested
+  (future bars / mid-week days leave a decision-day's actions unchanged). (b) Run the §4 Stage-1 screen (6
+  configs × base+pess) + the §5 anti-thrash diagnostic + the `03` forensic + the ADV anchor. Log to the v4
+  ledger.
+- **Done-criteria:** new levers deterministic + no-lookahead tested; Stage-1 reproduces the V4.4 MOM/ATR-3.0/
+  daily/deploy-0.5 cell as the V4.4 number (parity — base Calmar ~0.179); §6.1 survivors identified; no
+  battery/OOS in this stage.
+
+### V4.8 — Stage-2 battery + deployment lever + §6 acceptance (only on §6.1 survivors)
+- **Status:** ⬜ NOT STARTED. Runs only if V4.7 yields ≥1 §6.1 survivor; else the pre-accepted null (§6)
+  closes the v4 family permanently at V4.7.
+
+### V4.9 — One-shot v4-FINAL_OOS + §10-of-`00` verdict (only on a locked candidate)
+- **Status:** ⬜ NOT STARTED. Touches v4-FINAL_OOS exactly once, only on a single §6-locked candidate,
+  never on the null.
+
+---
+
+## Exit criteria
+- [ ] §0 reopen ruled by Arafat (justified / explicit-deviation / decline).
+- [ ] §10 locked by Arafat (DRAFT → LOCKED).
+- [ ] V4.7 — levers built (no-lookahead tested, V4.4-cell parity) + Stage-1 turnover screen on DISCOVERY;
+      §6.1 survivors identified; anti-thrash diagnostic + ADV anchor recorded; ledger updated.
+- [ ] V4.8 — Stage-2 battery + deployment lever + §6 acceptance on survivors (or N/A on a Stage-1 null).
+- [ ] V4.9 — one-shot v4-FINAL_OOS + verdict (or N/A; v4-FINAL_OOS stays pristine on any null).

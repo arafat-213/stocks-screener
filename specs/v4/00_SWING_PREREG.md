@@ -472,6 +472,11 @@ should explicitly accept or change before any code.
   return-informed selector carrying its own K) — it is **not** a swap this run, and it does **not** rescue the
   null: even `B_random` median (0.138) and `B_all` (0.090) are far below the costed bar.
 - **Ledger:** v4 K = **6** (3 configs × {base, pessimistic}); the diagnostic added 0. **`FINAL_OOS` untouched.**
+  > **K-accounting correction (2026-06-25, append-only — original figure above stands as signed):** under the
+  > corrected counting standard ratified in `05` §7.0, cost levels are an evaluation assumption, **not** a
+  > trial (×1, not ×2). This run's effective independent K is **3** (the three exit-tightness configs), not 6.
+  > The over-charge was the `× {base, pessimistic}` multiplier. The corrected carried v4 ledger is **4** (this
+  > 3 + V4.4's MOM); see `05` §7.1. No result or verdict changes — recorded so future preregs do not re-inflate.
 - Local report: `backend/reports/v41_cost_screen.txt` (gitignored). Engine support added additively:
   `SwingEngineResult.per_rebalance_turnover` (+`_daily_turnover`) so `metrics.compute_metrics` annualizes
   swing turnover, and a `SwingConfig.selector`/`selector_seed` knob for `B_random` (default `"adv"` ⇒ engine
