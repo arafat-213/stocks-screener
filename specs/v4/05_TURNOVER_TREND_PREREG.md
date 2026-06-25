@@ -1,7 +1,7 @@
 # v4 / 05 — Turnover-First Trend (exit-width × cadence + §5 deployment): Pre-Registration
 
-> **Status: DRAFT — awaiting Arafat §10 sign-off (and the §0 reopen decision FIRST).** No stage begins, and
-> no engine/selector code is written, before §10 is LOCKED. This prereg attacks the **one constraint V4.4
+> **Status: LOCKED 2026-06-25 (§0 ruled = explicit deviation; §10 signed by Arafat).** V4.7 is now runnable.
+> No stage began, and no engine/selector code was written, before §10 was LOCKED. This prereg attacks the **one constraint V4.4
 > isolated as binding — turnover × cost** — with the **one lever class the v4 family has never tested**
 > (wider / slower-cadence *time-series-trend* exits, as opposed to the *cross-sectional-momentum* churn levers
 > v3 `05` swept). It freezes — *before any new return number* — the small grid, the binding acceptance rule,
@@ -42,11 +42,19 @@ knob-hunt," stated plainly so you can reject it if you disagree:
 strategy has one more lever. The turnover-isolation argument is *valid* but I will not oversell it. **This is
 exactly the class of call that `04`/`00` reserved for you.** So:
 
-> **§0 DECISION (Arafat — rule before signing §10):** either (a) **judge that V4.4's turnover isolation is
-> "genuinely new information" sufficient to reopen v4 once more** for this single, named lever class, OR
-> (b) **record an explicit deviation** from the `00` §8 / `04` §8 "no new knobs" close (the `10` §13 species).
-> If you judge it is "just another knob," **do not lock this** — the honest move is to leave v4 closed and
-> redirect (§8). ☐ reopen-justified ☐ explicit-deviation ☐ decline (leave v4 closed)
+> **§0 DECISION (Arafat — ruled 2026-06-25):** ☐ reopen-justified  ☑ **explicit-deviation**  ☐ decline.
+> Recorded as an **explicit deviation** from the `00` §8 / `04` §8 "no new knobs" close (the `10` §13
+> species) — **NOT** claimed as "genuinely new information." The honest label: V4.4's turnover isolation is a
+> well-motivated *reason* for one more knob, not new information; this reopen is a **bounded, one-time,
+> pre-accepted-null** deviation, and explicitly **not** a precedent that any proven-binding-constraint finding
+> reopens a closed family.
+>
+> **Scope of the deviation (explicit — it authorizes TWO stacked things):** (i) the **turnover lever class**
+> (exit width + cadence), genuinely new to the whole program — the §0 case above (points 1–3) justifies *this*;
+> and (ii) the **§5 deployment axis** (Neutral-bucket fraction), which is **not** new to this doc — it rides
+> the prior **`04` §5 pre-authorization** (deployment as a gated axis with its own K). Both run under the
+> single corrected v4 K ledger (§7). The reopen claim is therefore: one genuinely-new lever class + one
+> already-authorized axis, not a fresh open-ended search.
 
 ---
 
@@ -117,13 +125,20 @@ turnover structurally (fewer, larger decisions) at the cost of delayed exits.
   in-progress week). Binary axis (reported at both levels; a config that clears at one cadence and craters at
   the other is fragile — reported, weighs against locking).
 
-### 3.3 Deployment — the §5-authorized regime Neutral-bucket fraction (gated, Stage 2)
+### 3.3 Deployment — the §5-authorized regime Neutral-bucket fraction (gated, IN Stage 1)
 `04` §5 ran D_more (Neutral 0.5→0.75) as a non-gating diagnostic and it read **"deployment is a real lever"**
 (Calmar 0.179→0.281, maxDD *fell* to 34.0% ≤ benchmark). `04` §5 pre-authorized adding deployment as a gated
-axis with its own K. Folded in here:
+axis with its own K. Folded in here **at the candidate level, inside the Stage-1 cost screen**:
 - **`neutral_fraction` ∈ {0.5, 0.75}** — Bear stays 0.0, Bull stays 1.0; only the Neutral bucket (score 2–3)
-  moves. Candidate **0.75** (the §5 direction). Gated **in Stage 2** (so Stage 1 stays a clean turnover
-  frontier at the frozen 0.5); the 0.75 arm + the 0.5 plateau-neighbor accrue K in Stage 2.
+  moves. Candidate **0.75** (the §5 direction). **Stage 1 runs the candidate `neutral_fraction`=0.75**, so the
+  §6.1 cost screen gates the *actual deployed candidate* rather than a deployment-stripped book; the **0.5 arm
+  is the §6.3 plateau-neighbor** (run in Stage 2).
+- *Decided at lock (the alternative considered and rejected):* gating §6.1 in front of a proven lever —
+  i.e. evaluating Stage 1 at the frozen 0.5 — would kill a turnover-reduced ~0.78-Calmar config **before** it
+  ever saw the ~1.5× deployment lift (`04` §5: 0.179→0.281) that might carry it over the 1.0 bar. On the §8
+  arithmetic that makes a Stage-1 null near-certain *by construction of the gate*, not by the strategy's
+  merit. The "clean turnover-only frontier at 0.5" is **not** worth gating out the best config, so Stage 1
+  runs the candidate deployment.
 
 ### 3.4 MOM selector — FROZEN (recorded §1 decision, not an axis)
 `selector = "mom"`, `selector_lookback = 126` — byte-frozen from V4.4. Not swept.
@@ -138,27 +153,31 @@ Everything except §3.1–§3.3 is frozen. Mirrors `04` §4 / v3 `05` two-stage 
 |---|---|---|---|
 | `atr_mult` (exit width) | **4.0** | 3.0, 5.0 | gated turnover lever + §6.3 plateau |
 | `decision_cadence` | **weekly** | daily | gated turnover lever (binary) |
-| `neutral_fraction` (deploy) | **0.75** | 0.5 | gated §5 lever (Stage 2; binary) |
+| `neutral_fraction` (deploy) | **0.75** | 0.5 | gated §5 lever (candidate in Stage 1; 0.5 = §6.3 plateau-neighbor; binary) |
 | selector / entry / regime score / U / target_positions / floor | MOM / 4-cond / 5-factor / 200 / 15 / −25% | — (FROZEN) | settled by `00`/`04` |
 
-- **Stage 1 — turnover cost screen:** `atr_mult` {3,4,5} × `decision_cadence` {daily, weekly} = **6 configs**
-  at the frozen `neutral_fraction`=0.5, MOM, ₹3.5L whole-share, **base + pessimistic** cost. Record turnover,
-  base/pessimistic Calmar, maxDD, win rate, avg hold, §6.1 ratio, **and the `03` per-round-trip forensic**
-  (so we see *how* each lever reshapes the trade population — does it cut cost faster than it gives back
-  edge?). Also re-run **ADV at the frozen exit** once as the V4.4 anchor (diagnostic). Log each **config** to
-  the v4 ledger (K accrues per §7.0 — cost levels are one trial, not two; anchors add 0). Identify §6.1
-  survivors.
-- **Stage 2 — battery + deployment lever (only on §6.1 survivors):** add the `neutral_fraction`=0.75 arm
-  (gated); §6.2 skew-aware / §6.3 plateau (over `atr_mult` {3,4,5} **and** `neutral_fraction` {0.5,0.75}) /
-  §6.5 capacity, + §6.4 subperiod diagnostic + the §5 min-hold/cooldown anti-thrash diagnostic. Apply §6.
+- **Stage 1 — turnover cost screen at the candidate deployment:** `atr_mult` {3,4,5} × `decision_cadence`
+  {daily, weekly} = **6 configs at the candidate `neutral_fraction`=0.75**, MOM, ₹3.5L whole-share, **base +
+  pessimistic** cost. Record turnover, base/pessimistic Calmar, maxDD, win rate, avg hold, §6.1 ratio, **and
+  the `03` per-round-trip forensic** (so we see *how* each lever reshapes the trade population — does it cut
+  cost faster than it gives back edge?). Also re-run **the V4.4 MOM/ATR-3.0/daily/deploy-0.5 anchor and ADV at
+  the frozen exit** once as parity/diagnostic (R3 → 0 to K). Log each **config** to the v4 ledger (K accrues
+  per §7.0 — cost levels are one trial, not two; anchors add 0). Identify §6.1 survivors.
+- **Stage 2 — battery + deployment plateau-neighbor (only on §6.1 survivors):** add the
+  `neutral_fraction`=0.5 plateau-neighbor arm; §6.2 skew-aware / §6.3 plateau (over `atr_mult` {3,4,5} **and**
+  `neutral_fraction` {0.5,0.75}) / §6.5 capacity, + §6.4 subperiod diagnostic + the §5 min-hold/cooldown
+  anti-thrash diagnostic. Apply §6.
 
 **K estimate (honest, under the §7.0 standard):** Stage 1 = 6 configs (`atr_mult`{3,4,5} × cadence{daily,
-weekly}), **counted ×1 cost not ×2**, minus the (atr=3.0, daily, deploy=0.5, MOM) cell which **is** the V4.4
-MOM anchor (already counted, R3) ⇒ **+5 new**. Stage 2 on a single survivor ≈ **+3** (the 0.75 deploy arm +
-its atr neighbors at base cost; the 0.5 neighbors are already-run Stage-1 cells, R3). **Carried 4 + ≈8 new ⇒
-K ≈ 12 at OOS** (vs ≈28 under the old config×cost convention). The skew-aware §6.2 and §6.5 resample one
-config (no new trials). **Deflation headwind is real but ~halved by the corrected count** (§7, §8) — it does
-NOT close the ~2.5× §6.1 gap; a marginal raw edge will still not survive deflation.
+weekly}) **at the candidate `neutral_fraction`=0.75**, **counted ×1 cost not ×2** — all 6 are new (the
+(atr=3.0, daily, deploy=0.5, MOM) V4.4 anchor is **not** among them now that Stage 1 runs at 0.75; it runs
+alongside as parity, R3 → 0) ⇒ **+6 new**. Stage 2 on a single survivor ≈ **+3** (the 0.5 deploy
+plateau-neighbor arm + its atr neighbors at base cost). **Carried 4 + ≈9 new ⇒ K ≈ 13 at OOS** (vs ≈28 under
+the old config×cost convention; **+1 vs the pre-fix-(a) ≈12**, because Stage 1 now runs the candidate
+deployment instead of letting the deploy-0.5 anchor absorb a Stage-1 cell). The skew-aware §6.2 and §6.5
+resample one config (no new trials). **Deflation headwind is real but ~halved by the corrected count** (§7,
+§8) — it does NOT close the ~2.5× §6.1 gap; a marginal raw edge will still not survive deflation, and the
+K 12→13 shift is immaterial to that gap.
 
 ---
 
@@ -241,7 +260,7 @@ five rules (chosen now, before a number is seen, so the count is not motivated r
   as fresh trials — both corrected. The original signed numbers stand in `00` §6.4 / `04` §12.6 with an
   append-only K-accounting correction note; this is the figure that carries forward.
 - **K** continues from the corrected v4 ledger (**4**) and accrues each *new* Stage-1/Stage-2 **config** (not
-  config×cost) under §7.0. At OOS report **raw Sharpe, K (≈12), deflated Sharpe** (`validation.deflated_sharpe`)
+  config×cost) under §7.0. At OOS report **raw Sharpe, K (≈13), deflated Sharpe** (`validation.deflated_sharpe`)
   **+ PBO** (`pbo_cscv` over DISCOVERY walk-forward windows; no fold reaches FINAL_OOS), and the empirical
   effective-N (R5) beside it. **The deflation penalty is real but ~halved vs the old config×cost convention —
   fixing the over-charge does NOT close the ~2.5× §6.1 gap; a marginal raw edge still deflates to ≤0.**
@@ -266,7 +285,7 @@ Read **before** sign-off, not after a result:
   is a genuine maybe, not a likely pass.
 - **Four prior programs hit the "buy-the-index-fund" wall** (v2 floor, v3 momentum-only, v3 Track-B, v4
   swing). The base rate for "one more lever clears the costed bar" is low.
-- **Deflation at K≈12 (corrected count, §7.0) is still material** (cf. `10`: raw Sharpe positive but
+- **Deflation at K≈13 (corrected count, §7.0) is still material** (cf. `10`: raw Sharpe positive but
   deflated ≤ 0 ∀K even at the honest lower K — the killer was a thin *raw* edge, not a huge K). Even a
   DISCOVERY pass may deflate away. Halving the K over-charge does not rescue a ~2.5× gross gap.
 - **Why run it anyway:** (a) it is the **first and only** attack on the constraint V4.4 *proved* is binding,
@@ -297,26 +316,28 @@ All `00` §9 landmines apply unchanged. New-lever-specific:
 
 Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do not sign.
 
-1. **§0 reopen ruled** — "genuinely new information" justification accepted, OR an explicit `00`/`04` §8
-   deviation recorded. *(Cannot sign §10 without this.)*
+1. **§0 reopen ruled = explicit deviation** (NOT "genuinely new information") — recorded against the
+   `00` §8 / `04` §8 "no new knobs" close (the `10` §13 species), scoped to the turnover lever class (new)
+   **+** the already-`04`-§5-pre-authorized deployment axis (carried). *(Ruled 2026-06-25; see §0.)*
 2. **K carries from v4 (corrected to 4 under the §7.0 standard, not 12), not reset**; the §7.0 counting
    standard (cost ×1; identical/anchor/diagnostic configs → 0; gated levels each count) is pre-committed;
    one-shot v4-FINAL_OOS inherited pristine (§1, §7).
 3. **Only the §3 four change** — exit width, cadence, deployment (gated); min-hold/cooldown (diagnostic).
    MOM frozen (recorded decision, not re-swept); entry/regime-score/U/target_positions/floor/₹3.5L
    byte-frozen (§1).
-4. **Grid** — the §4 grid (`atr_mult`{3,4,5} × cadence{daily,weekly} Stage 1; + `neutral_fraction`{0.5,0.75}
-   Stage 2); two-stage screen → battery; lowest-turnover tie-break; no level added after results.
+4. **Grid** — the §4 grid (`atr_mult`{3,4,5} × cadence{daily,weekly} at the candidate `neutral_fraction`=0.75
+   in Stage 1; the 0.5 deploy plateau-neighbor in Stage 2); two-stage screen → battery; lowest-turnover
+   tie-break; no level added after results.
 5. **Min-hold/cooldown = non-gating diagnostic only** (adds 0 to K; a positive read authorizes a *separate*
    future amendment) (§5).
 6. **Acceptance rule** — `00`/`04` §6 gates verbatim (§6.1 ratio ≥ 1.0; §6.2 skew-aware; §6.3 plateau over
    atr_mult+neutral_fraction; deploy bar maxDD ≤ 100%; §6.4 diagnostic); pre-accepted null = v4 family
    permanently closed, FINAL_OOS untouched, redirect-not-regrid (§6, §8).
-7. **Honest prior accepted** — §6.1 gap ~2.5× with leaks partly spent; K≈12 deflation (corrected count)
+7. **Honest prior accepted** — §6.1 gap ~2.5× with leaks partly spent; K≈13 deflation (corrected count)
    is still material and does not close that gap; NULL is the most likely outcome; a null permanently
    closes v4 (§8).
 
-> **Signed:** ☐ Arafat — 2026-06-__ (DRAFT → LOCKED). No engine/selector code written before this signature.
+> **Signed:** ☑ Arafat — 2026-06-25 (DRAFT → **LOCKED**). No engine/selector code written before this signature.
 
 ---
 
@@ -333,13 +354,14 @@ Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do 
   and `neutral_fraction` already exist. Weekly cadence implemented in `step_day` per §3.2 (skip configured
   exit + entry scan off-decision-days; floor + fills + MTM + anchor still daily); no-lookahead tested
   (future bars / mid-week days leave a decision-day's actions unchanged). (b) Run the §4 Stage-1 screen (6
-  configs × base+pess) + the §5 anti-thrash diagnostic + the `03` forensic + the ADV anchor. Log to the v4
-  ledger.
-- **Done-criteria:** new levers deterministic + no-lookahead tested; Stage-1 reproduces the V4.4 MOM/ATR-3.0/
-  daily/deploy-0.5 cell as the V4.4 number (parity — base Calmar ~0.179); §6.1 survivors identified; no
-  battery/OOS in this stage.
+  configs at the candidate `neutral_fraction`=0.75 × base+pess) + the §5 anti-thrash diagnostic + the `03`
+  forensic + the V4.4 deploy-0.5 anchor + the ADV anchor (parity, R3 → 0 to K). Log to the v4 ledger.
+- **Done-criteria:** new levers deterministic + no-lookahead tested; the V4.4 MOM/ATR-3.0/daily/deploy-0.5
+  anchor cell — run alongside Stage 1 as parity (R3 → 0 to K) — reproduces the V4.4 number (base Calmar
+  ~0.179), while Stage-1 proper runs the 6 cells at the candidate `neutral_fraction`=0.75; §6.1 survivors
+  identified; no battery/OOS in this stage.
 
-### V4.8 — Stage-2 battery + deployment lever + §6 acceptance (only on §6.1 survivors)
+### V4.8 — Stage-2 battery + deployment plateau-neighbor + §6 acceptance (only on §6.1 survivors)
 - **Status:** ⬜ NOT STARTED. Runs only if V4.7 yields ≥1 §6.1 survivor; else the pre-accepted null (§6)
   closes the v4 family permanently at V4.7.
 
@@ -350,8 +372,8 @@ Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do 
 ---
 
 ## Exit criteria
-- [ ] §0 reopen ruled by Arafat (justified / explicit-deviation / decline).
-- [ ] §10 locked by Arafat (DRAFT → LOCKED).
+- [x] §0 reopen ruled by Arafat — **explicit-deviation** (2026-06-25).
+- [x] §10 locked by Arafat (DRAFT → LOCKED, 2026-06-25).
 - [ ] V4.7 — levers built (no-lookahead tested, V4.4-cell parity) + Stage-1 turnover screen on DISCOVERY;
       §6.1 survivors identified; anti-thrash diagnostic + ADV anchor recorded; ledger updated.
 - [ ] V4.8 — Stage-2 battery + deployment lever + §6 acceptance on survivors (or N/A on a Stage-1 null).
