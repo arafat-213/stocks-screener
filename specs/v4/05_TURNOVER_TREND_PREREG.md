@@ -1,10 +1,12 @@
 # v4 / 05 — Turnover-First Trend (exit-width × cadence + §5 deployment): Pre-Registration
 
-> **Status: LOCKED 2026-06-25 (§0 = explicit deviation; §10 signed). V4.7 DONE 2026-06-25 → 1/6 §6.1 survivor
-> (atr 5.0 / daily, pess ratio 1.27 — the FIRST §6.1 pass in the v4 family) → V4.8 battery AUTHORIZED.** The
-> survivor is fragility-flagged (lone peak at the atr grid boundary; cadence crater; §6.3 plateau pre-diagnosed
-> to fail) — V4.8 enters eyes-open. No stage began, and no engine/selector code was written, before §10 was
-> LOCKED. v4-FINAL_OOS pristine. This prereg attacks the **one constraint V4.4
+> **Status: CLOSED — NULL (2026-06-26). LOCKED 2026-06-25 (§0 explicit deviation; §10 signed) → V4.7 → 1/6
+> §6.1 survivor (atr 5.0 / daily, ratio 1.27, the FIRST §6.1 pass in v4) → pre-V4.8 diagnostic (87% of net P&L
+> = ATGL) → V4.8 FULL §6 battery → NULL: §6.1 PASS but §6.2 FAIL (random-subset p5 43% < 50% — single-name
+> tail) AND §6.3 FAIL (atr4/0.75 neighbor 41% < 85% — lone peak). The v4 family is PERMANENTLY and FINALLY
+> closed; v4-FINAL_OOS NEVER touched (V4.9 N/A); K ≈ 13. Keeper finding: the exit mechanism mattered far more
+> than the entry mechanism. Any adaptive/gain-scaled exit is a NEW prereg, never a v4 continuation.** No stage
+> began, and no engine/selector code was written, before §10 was LOCKED. v4-FINAL_OOS pristine throughout. This prereg attacks the **one constraint V4.4
 > isolated as binding — turnover × cost** — with the **one lever class the v4 family has never tested**
 > (wider / slower-cadence *time-series-trend* exits, as opposed to the *cross-sectional-momentum* churn levers
 > v3 `05` swept). It freezes — *before any new return number* — the small grid, the binding acceptance rule,
@@ -451,16 +453,68 @@ the entry mechanism.* **Future (NEW prereg, NOT a v4 extension):** adaptive / ga
 widens as unrealized gain grows) — its own pre-registration if ever pursued, never folded into v4.
 
 ### V4.8 — Stage-2 battery + deployment plateau-neighbor + §6 acceptance (only on §6.1 survivors)
-- **Status:** ⬜ NOT STARTED — **AUTHORIZED** (V4.7 yielded 1 §6.1 survivor: atr 5.0 / daily). Runs the full
-  §6 battery on that single config: §6.2 skew-aware concentration, §6.3 plateau (over `atr_mult` {3,4,5} **and**
-  `neutral_fraction` {0.5,0.75} — the 0.5 plateau-neighbor arm is added here, +K per §7.1), §6.5 capacity,
-  §6.4 subperiod diagnostic, deploy bar (maxDD ≤ 100% of Nifty 50 TRI). **Pre-diagnosed risk (V4.7 flags 2–3):
-  the §6.3 plateau is expected to FAIL (lone peak at the atr boundary; cadence crater) — if it does, that is
-  the pre-accepted null, v4 closes permanently, FINAL_OOS untouched.** Not started this session.
+- **Status:** ✅ **DONE 2026-06-26** (`v48_battery.py`, full §6 battery on atr5/daily/0.75) → **NULL CLOSE —
+  failed §6.2 AND §6.3 → the v4 family is PERMANENTLY and FINALLY closed; v4-FINAL_OOS NEVER touched.**
+
+**Gate-by-gate (base Calmar 0.474 | Sharpe 0.79 | maxDD 28.0% | CAGR 13.29% | turnover 403%):**
+- **§6.1 cost survival — PASS** (re-confirmed): C_strat 0.438 / C_nifty50 0.346 = **ratio 1.27** ≥ 1.0.
+- **§6.2 skew-aware concentration — FAIL** (the binding kill, exactly as the pre-V4.8 diagnostic predicted):
+  - (a) random-subset retention **FAIL** — median **105%** (≥70% bar) BUT p5 **43%** < 50% bar. The median says
+    dropping 10 *random* names usually doesn't hurt (you often shed losers); the **p5 tail guard** says that in
+    the worst 5% of draws — the ones that remove ATGL/the few compounders — Calmar collapses to 43% of base.
+    The skew-aware tail bar caught the single-name fragility the median is designed to tolerate. **This is the
+    test working as designed**, not a threshold technicality.
+  - (b) contributor rotation **PASS** — 58 distinct top-10/yr (≥25). Winners rotate year-to-year, but rotation
+    does NOT rescue the tail-fragility (a different gate).
+  - classic drop-top-10 realized P&L (DIAGNOSTIC, non-gating): retention **−16%** — removing the top 10 names
+    by realized P&L drives Calmar *negative*. Pass-skew is moot here (random-subset already failed); reported.
+- **§6.3 plateau — FAIL** (lone peak on the `atr` axis confirmed, as flag 2 pre-diagnosed):
+  - grid base Calmar — atr3 {0.50→0.179, 0.75→0.281}; atr4 {0.50→**0.029**, 0.75→0.194}; atr5 {0.50→**0.518**,
+    0.75→**0.474**=candidate}.
+  - ±1-step neighbors of the candidate: **atr 4.0/0.75 = 0.194 = 41% of base → FAIL**; atr 5.0/0.50 = 0.518 =
+    109% → PASS. The **deployment axis is robust (0.5 arm even beats the candidate)**, but the **exit-width axis
+    is a lone spike** (atr4 craters) — one failed neighbor ⇒ §6.3 FAIL.
+- **deploy bar — PASS**: strat 0.474 vs Nifty50 TRI 0.346, maxDD ratio **0.73** ≤ 1.0. (Beats the index on the
+  bull window — but that is not enough when §6.2/§6.3 fail.)
+- **§6.4 subperiod (DIAGNOSTIC, non-gating) — 1/3 positive**: Pre-COVID chop **−0.480**, Post-COVID bull
+  **+5.767**, Rate-hike correction **−0.222**. *All* the edge is the one post-COVID bull window (where ATGL
+  ran); the other two regimes are net-negative — independent corroboration of the single-window/single-name story.
+
+**§7 deflation context (reported, not a gate):** raw Sharpe 0.786 → **DSR K13 = +0.025** (barely positive —
+deflation-marginal even before the §6 fails); PBO (CSCV 6×8) **0.47** (≈ coin-flip overfitting). K added this
+run = **+3 under §7.0** (the deploy-0.5 plateau arm: atr{3,4,5}/0.50; the 0.75 cells + candidate are V4.7
+re-runs → R3 = 0; §6.4 subperiods diagnostic → R4 = 0; §6.2 perturbations / PBO reruns resample one config → 0).
+The naive ConfigLedger logged 9 entries, but the §7.0-correct new-trial count is **+3 ⇒ carried 10 ⇒ K ≈ 13 at
+OOS** (matches §7.1's estimate; cf [[k-counting-standard-no-overcharge]]).
+
+**§5 anti-thrash on the survivor (NON-GATING, 0 to K) — INERT again:** turn 403%→403%, medHold 92d→92d,
+Calmar 0.474→0.483 (<10% turnover cut) ⇒ confirms `03`; no separate amendment authorized.
+
+**Leave-top-k-out fragility DEMONSTRATION (the Arafat-requested test — NON-GATING, 0 to K, P&L attribution not
+a re-simulation):** the edge vanishes at **k=2**.
+
+| remove top-k trades | remaining net P&L | attribution CAGR |
+|---|---|---|
+| 0 (full book) | ₹265,012 | **+11.02%** |
+| 1 (just ATGL) | ₹35,365 | +1.80% |
+| 2 | −₹9,274 | **−0.50%** (net-losing) |
+| 5 | −₹108,944 | −6.68% |
+| 10 | −₹194,853 | −14.00% |
+| 20 | −₹276,873 | −25.20% |
+
+Removing the **single** best trade (ATGL) collapses CAGR 11.0%→1.8%; removing the top **2** turns the book
+net-losing. This is the quantified answer to "how fast does the edge disappear?": **immediately.**
+
+**VERDICT — NULL (failed §6.2 + §6.3, two independent grounds).** The turnover/wide-exit lever produced a
+genuine trend edge, but one whose entire payoff is a single multi-year compounder (ATGL) — too concentrated to
+clear the skew-aware tail guard (§6.2 p5) and sitting on a lone `atr` spike (§6.3). Per `05` §6 pre-accepted
+null: **the v4 family is PERMANENTLY and FINALLY closed; v4-FINAL_OOS is NOT touched (V4.9 N/A); no lever added,
+no threshold loosened, no OOS peek.** Keeper finding: *the exit mechanism mattered far more than the entry
+mechanism.* Any adaptive/gain-scaled-exit idea is a NEW pre-registration, never a v4 continuation (§11 pre-V4.8 note).
 
 ### V4.9 — One-shot v4-FINAL_OOS + §10-of-`00` verdict (only on a locked candidate)
-- **Status:** ⬜ NOT STARTED. Touches v4-FINAL_OOS exactly once, only on a single §6-locked candidate,
-  never on the null.
+- **Status:** ⬛ **N/A — NOT RUN (correctly).** V4.8 produced no §6-passing candidate (NULL), so v4-FINAL_OOS
+  is **NEVER touched** and stays pristine across the entire v4 family. There is nothing to lock; there is no OOS.
 
 ---
 
@@ -473,6 +527,8 @@ widens as unrealized gain grows) — its own pre-registration if ever pursued, n
 - [x] Pre-V4.8 mechanism diagnostic (2026-06-25, 0 to K) — "edge vs lottery": **real trend edge, but 87% of
       net P&L is one name (ATGL +1161%)**; §6.2 now co-equal with §6.3 as the gate. Decision: run V4.8 FULL
       battery + a post-battery leave-top-k-out fragility test (non-gating).
-- [ ] V4.8 — Stage-2 FULL §6 battery + deployment plateau-neighbor + leave-top-k-out fragility test on the
-      atr-5.0/daily survivor (AUTHORIZED; §6.2 + §6.3 pre-diagnosed as the likely null). NOT started yet.
-- [ ] V4.9 — one-shot v4-FINAL_OOS + verdict (or N/A; v4-FINAL_OOS stays pristine on any null).
+- [x] V4.8 — Stage-2 FULL §6 battery + deployment plateau-neighbor + leave-top-k-out on the atr-5.0/daily
+      survivor (2026-06-26) → **NULL: §6.1 PASS (1.27) but §6.2 FAIL (random-subset p5 43%<50% — single-name
+      tail) AND §6.3 FAIL (atr4/0.75 neighbor 41%<85% — lone peak); deploy PASS; §6.4 1/3+; DSR K13 +0.025;
+      leave-top-k edge gone at k=2.** v4 family PERMANENTLY closed; ledger +3 under §7.0 ⇒ K ≈ 13.
+- [x] V4.9 — **N/A (correctly not run):** no §6-passing candidate ⇒ v4-FINAL_OOS NEVER touched, stays pristine.
