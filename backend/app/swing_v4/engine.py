@@ -111,6 +111,15 @@ class SwingEngineContext:
     # the "rs" selector subtracts. Built only when `nifty50_price` is supplied. None for the
     # "adv"/"mom"/"random" selectors (which never read it); "rs" fails loud if it is None.
     nifty_mom: dict[pd.Timestamp, float] | None = None
+    # `05` §3.2: weekly-cadence decision days = the last trading day of each ISO week,
+    # computed over the FULL calendar so the classification never depends on the run-window
+    # edge or future bars (the NSE weekly structure is known a-priori — not lookahead, §9).
+    # None when decision_cadence == "daily" (every day decides ⇒ byte-identical).
+    decision_days: set[pd.Timestamp] | None = None
+    # `05` §3.4/§5: trading-day ordinal of each full-calendar day, so min_hold and re-entry
+    # cooldown can count trading days between two dates. None unless a §5 lever is active;
+    # default-0 runs never consult it (gated by the config flags) ⇒ byte-identical.
+    cal_index: dict[pd.Timestamp, int] | None = None
 
 
 @dataclass
@@ -136,6 +145,10 @@ class SwingLoopState:
     # step_day when an exit is queued; carried on state so a future live shell records it
     # too. Default-empty ⇒ no behavioural change to any run.
     exit_log: list[tuple[date, str, str]] = field(default_factory=list)
+    # `05` §5: instrument_id → the day a full exit completed (the open at which it left the
+    # book). Consulted ONLY when reentry_cooldown_td > 0 (the §5 anti-thrash diagnostic);
+    # always recorded (harmless on default runs — never read) so a future live shell has it.
+    last_exit: dict[str, pd.Timestamp] = field(default_factory=dict)
 
 
 def run(
@@ -275,14 +288,25 @@ def build_context(
         .to_dict()
     )
 
-    calendar: list[pd.Timestamp] = sorted(_close.keys())
-    if not calendar:
+    full_calendar: list[pd.Timestamp] = sorted(_close.keys())
+    if not full_calendar:
         raise ValueError("prices DataFrame has no valid dates.")
-    start_ts = pd.Timestamp(config.date_from) if config.date_from else calendar[0]
-    end_ts = pd.Timestamp(config.date_to) if config.date_to else calendar[-1]
-    calendar = [d for d in calendar if start_ts <= d <= end_ts]
+    start_ts = pd.Timestamp(config.date_from) if config.date_from else full_calendar[0]
+    end_ts = pd.Timestamp(config.date_to) if config.date_to else full_calendar[-1]
+    calendar = [d for d in full_calendar if start_ts <= d <= end_ts]
     if not calendar:
         raise ValueError(f"No trading dates in [{config.date_from}, {config.date_to}].")
+
+    # `05` §3.2/§3.4: weekly decision days + a trading-day ordinal map, both built over the
+    # FULL calendar (not the window-trimmed one) so a day's "last-of-week"/td-since-entry
+    # classification is a property of the real trading calendar, independent of the run
+    # window edge — the no-lookahead-safe choice (the NSE week structure is known a-priori).
+    cal_index: dict[pd.Timestamp, int] = {ts: i for i, ts in enumerate(full_calendar)}
+    decision_days: set[pd.Timestamp] | None = (
+        _weekly_decision_days(full_calendar)
+        if config.decision_cadence == "weekly"
+        else None
+    )
 
     if signal_store is None:
         signal_store = precompute_swing_signals(prices, config)
@@ -336,8 +360,33 @@ def build_context(
         whole_shares=whole_shares,
         universe_mask=universe_mask,
         nifty_mom=nifty_mom,
+        decision_days=decision_days,
+        cal_index=cal_index,
     )
     return ctx, calendar
+
+
+def _weekly_decision_days(calendar: list[pd.Timestamp]) -> set[pd.Timestamp]:
+    """The last trading day of each ISO week in `calendar` — the weekly decision days
+    (05 §3.2: the completed week's last trading day, W-FRI as-of).
+
+    Determined purely from the trading-calendar structure (group by ISO year+week, take
+    the max day in each group), so it is NOT lookahead: in a live forward run the week's
+    last trading day is known a-priori from the published NSE holiday calendar (05 §9).
+    Computed over the FULL calendar so the final (possibly partial) week of a run window
+    is not misclassified by where `date_to` happens to fall.
+    """
+    last_by_week: dict[tuple[int, int], pd.Timestamp] = {}
+    for ts in calendar:
+        iso = ts.isocalendar()
+        key = (
+            iso[0],
+            iso[1],
+        )  # (ISO year, ISO week) — tuple/ namedtuple both index [0]/[1]
+        cur = last_by_week.get(key)
+        if cur is None or ts > cur:
+            last_by_week[key] = ts
+    return set(last_by_week.values())
 
 
 def _nifty_trailing_return(
@@ -366,8 +415,18 @@ def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) 
     step 1 — is exit-eligible on TODAY's close (no skipped first-day stop; §5 item 9).
     """
     pf = state.portfolio
+    cfg = ctx.config
     day_date = day.date()
     close_today: dict[str, float] = ctx.close.get(day, {})
+
+    # `05` §3.2: on a weekly NON-decision day, the configured exit check and the entry scan
+    # are skipped (fewer, larger decisions); fills/MTM/anchor and the catastrophic floor
+    # still run daily. Daily cadence (default) ⇒ every day is a decision day (byte-identical).
+    is_decision_day = (
+        cfg.decision_cadence != "weekly"
+        or ctx.decision_days is None
+        or day in ctx.decision_days
+    )
 
     # ---- step 1: apply prior-session queued fills at today's open ----------
     if state.pending_fills:
@@ -376,6 +435,7 @@ def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) 
         # Sells/trims before buys so exits replenish cash before new buys.
         _side_order = {"sell": 0, "trim": 1, "buy": 2}
         state.pending_fills.sort(key=lambda f: _side_order.get(f.side, 9))
+        held_before = set(pf.positions)
         stamped = _stamp_fills(
             state.pending_fills, open_today, day_date, adv_today, ctx.cost_cfg
         )
@@ -390,10 +450,11 @@ def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) 
             whole_shares=ctx.whole_shares,
         )
         state.pending_fills = []
-        # Drop the trail anchor of any position fully exited at this open.
-        for iid in list(state.anchors):
-            if iid not in pf.positions:
-                del state.anchors[iid]
+        # Drop the trail anchor of any position fully exited at this open, and record the
+        # exit day for the `05` §5 re-entry cooldown (consulted only when it is > 0).
+        for iid in held_before - set(pf.positions):
+            state.anchors.pop(iid, None)
+            state.last_exit[iid] = day
 
     # ---- step 2: MTM the book at today's adjusted close --------------------
     pf.mark_to_market(day_date, close_today)
@@ -411,11 +472,16 @@ def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) 
         state.anchors[iid] = c if prev is None else max(prev, c)
 
     # ---- step 4: exit checks (floor first, then configured) → queue SELL ----
+    # The catastrophic floor runs every day; the CONFIGURED exit runs only on a decision
+    # day AND once past the §5 min-hold window (both default to "always allowed").
     for iid, pos in list(pf.positions.items()):
         c = close_today.get(iid)
         if c is None:
             continue  # no close today (gap/halt) — carry the position
-        reason = _exit_reason(ctx, state, iid, pos, c, day)
+        allow_configured = is_decision_day and _past_min_hold(ctx, pos, day)
+        reason = _exit_reason(
+            ctx, state, iid, pos, c, day, allow_configured_exit=allow_configured
+        )
         if reason:
             state.exit_log.append((day_date, iid, reason))  # diagnostic side-channel
             state.pending_fills.append(
@@ -430,11 +496,12 @@ def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) 
                 )
             )
 
-    # ---- step 5: regime deployable fraction for today ----------------------
-    f = ctx.regime.deployable_fraction(day)
-
-    # ---- step 6: entry scan (D close → queue BUY D+1 open) -----------------
-    _scan_entries(ctx, state, day, day_date, f, close_today)
+    # ---- step 5+6: regime fraction + entry scan (decision days only) -------
+    # `05` §3.2: on a weekly non-decision day no new deployment is decided (the entry scan
+    # is skipped); daily cadence runs it every day (byte-identical).
+    if is_decision_day:
+        f = ctx.regime.deployable_fraction(day)
+        _scan_entries(ctx, state, day, day_date, f, close_today)
 
     # ---- step 7: snapshot --------------------------------------------------
     # The MTM call in step 2 already appended the day's DailySnapshot (NAV / cash /
@@ -457,6 +524,22 @@ def _exit_breach(
     return _exit_reason(ctx, state, iid, pos, close_today, day) is not None
 
 
+def _past_min_hold(ctx: SwingEngineContext, pos, day: pd.Timestamp) -> bool:
+    """True iff `pos` is past its `05` §5 min-hold window (so the configured exit may fire).
+
+    Counts TRADING days between entry and D via the full-calendar ordinal map. Defaults to
+    True (no min-hold) when the lever is off or the dates are not on the calendar — so a
+    default-0 run never gates the configured exit (byte-identical)."""
+    cfg = ctx.config
+    if cfg.min_hold_td <= 0 or ctx.cal_index is None:
+        return True
+    di = ctx.cal_index.get(day)
+    ei = ctx.cal_index.get(pd.Timestamp(pos.entry_date))
+    if di is None or ei is None:
+        return True
+    return (di - ei) >= cfg.min_hold_td
+
+
 def _exit_reason(
     ctx: SwingEngineContext,
     state: SwingLoopState,
@@ -464,16 +547,24 @@ def _exit_reason(
     pos,
     close_today: float,
     day: pd.Timestamp,
+    *,
+    allow_configured_exit: bool = True,
 ) -> str | None:
     """The exit decision AND which rule fired, or None to hold. Same logic as the old
     `_exit_breach` predicate — only the return is enriched from bool→reason so the
     forensic can attribute exits (00 §6 diagnostic). Behaviour is byte-identical: every
-    branch that returned True now returns a reason string (truthy), every False→None."""
+    branch that returned True now returns a reason string (truthy), every False→None.
+
+    `allow_configured_exit` (05 §3.2/§5): when False (a weekly non-decision day, or within
+    the min-hold window) the CONFIGURED exit is suppressed but the catastrophic floor still
+    fires — a risk control may run more often than the decision clock, never less. Default
+    True ⇒ the daily/no-min-hold path is byte-identical."""
     cfg = ctx.config
 
     # Catastrophic floor (close-breach circuit breaker beneath the configured exit).
     # Guarded by pct > 0 (mirrors v2 engine): pct == 0 DISABLES the floor — without
     # this guard a 0% floor would degenerate to "exit on any close below cost basis".
+    # Runs regardless of allow_configured_exit (the floor is never coarsened, 05 §3.2).
     if cfg.catastrophic_stop_pct > 0:
         floor_level = pos.cost_basis * (1.0 - cfg.catastrophic_stop_pct / 100.0)
         if close_today < floor_level:
@@ -485,6 +576,11 @@ def _exit_reason(
                 day.date(),
             )
             return "catastrophic_floor"
+
+    if not allow_configured_exit:
+        return (
+            None  # 05 §3.2/§5: floor-only day (weekly off-decision or within min-hold)
+        )
 
     if cfg.exit_type == 3:
         # Type 3 (candidate): close < anchor − atr_mult × ATR20[D] (stateful trail).
@@ -569,6 +665,8 @@ def _scan_entries(
     for iid, dates in ctx.membership.items():
         if day not in dates or iid in held or iid in queued_buys:
             continue
+        if cfg.reentry_cooldown_td > 0 and _in_reentry_cooldown(ctx, state, iid, day):
+            continue  # 05 §5: suppress re-entry within N td of a full exit
         if ctx.universe_mask is not None and not ctx.universe_mask.is_member(day, iid):
             continue
         if not ctx.signal_store.entry_signal(day, iid):
@@ -607,6 +705,22 @@ def _scan_entries(
         )
         projected_gross += per_name
         slots -= 1
+
+
+def _in_reentry_cooldown(
+    ctx: SwingEngineContext, state: SwingLoopState, iid: str, day: pd.Timestamp
+) -> bool:
+    """True iff `iid` is still inside its `05` §5 re-entry cooldown (a full exit completed
+    fewer than `reentry_cooldown_td` trading days ago). False when never exited or the
+    dates are off-calendar — caller already gated on reentry_cooldown_td > 0."""
+    last = state.last_exit.get(iid)
+    if last is None or ctx.cal_index is None:
+        return False
+    di = ctx.cal_index.get(day)
+    li = ctx.cal_index.get(last)
+    if di is None or li is None:
+        return False
+    return (di - li) < ctx.config.reentry_cooldown_td
 
 
 def _order_candidates(

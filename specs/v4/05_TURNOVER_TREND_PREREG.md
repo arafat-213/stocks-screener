@@ -1,7 +1,10 @@
 # v4 / 05 — Turnover-First Trend (exit-width × cadence + §5 deployment): Pre-Registration
 
-> **Status: LOCKED 2026-06-25 (§0 ruled = explicit deviation; §10 signed by Arafat).** V4.7 is now runnable.
-> No stage began, and no engine/selector code was written, before §10 was LOCKED. This prereg attacks the **one constraint V4.4
+> **Status: LOCKED 2026-06-25 (§0 = explicit deviation; §10 signed). V4.7 DONE 2026-06-25 → 1/6 §6.1 survivor
+> (atr 5.0 / daily, pess ratio 1.27 — the FIRST §6.1 pass in the v4 family) → V4.8 battery AUTHORIZED.** The
+> survivor is fragility-flagged (lone peak at the atr grid boundary; cadence crater; §6.3 plateau pre-diagnosed
+> to fail) — V4.8 enters eyes-open. No stage began, and no engine/selector code was written, before §10 was
+> LOCKED. v4-FINAL_OOS pristine. This prereg attacks the **one constraint V4.4
 > isolated as binding — turnover × cost** — with the **one lever class the v4 family has never tested**
 > (wider / slower-cadence *time-series-trend* exits, as opposed to the *cross-sectional-momentum* churn levers
 > v3 `05` swept). It freezes — *before any new return number* — the small grid, the binding acceptance rule,
@@ -348,7 +351,8 @@ Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do 
 > Status + a session log per stage; do not mark Done if anything was skipped (Rule 12).
 
 ### V4.7 — Lever implementation + Stage-1 turnover cost screen on DISCOVERY
-- **Status:** ⬜ NOT STARTED (gated on §10 lock).
+- **Status:** ✅ **DONE 2026-06-25** → **1/6 §6.1 survivor — V4.8 AUTHORIZED (NOT a null), but the survivor is
+  fragility-suspect (see the session log). The FIRST §6.1 pass in the entire v4 family.**
 - **Do:** (a) additive `SwingConfig` + engine extensions — `decision_cadence` ("daily"/"weekly", default
   "daily" ⇒ byte-identical), `min_hold_td`/`reentry_cooldown_td` (default 0 ⇒ byte-identical); `atr_mult`
   and `neutral_fraction` already exist. Weekly cadence implemented in `step_day` per §3.2 (skip configured
@@ -361,9 +365,67 @@ Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do 
   ~0.179), while Stage-1 proper runs the 6 cells at the candidate `neutral_fraction`=0.75; §6.1 survivors
   identified; no battery/OOS in this stage.
 
+#### V4.7 session log (2026-06-25)
+**Engine (additive, default byte-identical):** `SwingConfig` gained `decision_cadence` ("daily" default),
+`min_hold_td`/`reentry_cooldown_td` (0 default). `engine.py`: weekly cadence in `step_day` (off-decision days
+skip the configured exit + entry scan; fills/MTM/anchor/−25% floor stay daily), decision days = last trading
+day of each ISO week computed over the FULL calendar (no-lookahead, §9); `_past_min_hold`/`_in_reentry_cooldown`
+gated behind their config flags; `last_exit` recorded on full-exit. `_exit_reason` took an
+`allow_configured_exit` flag (floor always runs). **44 prior swing_v4 tests still green (additive proof); +7
+new `test_v47_levers.py` (decision-day map, daily-byte-identical, weekly defers configured exit / floor still
+daily, weekly no-lookahead, min-hold blocks configured-not-floor, cooldown suppress-then-allow).** Screen =
+`app/swing_v4/v47_turnover_screen.py`; report `backend/reports/v47_turnover_screen.txt` (gitignored).
+
+**Parity (R3 → 0 to K):** MOM-0.5 anchor base Calmar **0.179** (V4.4 exact, |Δ|=0.000); ADV anchor base **0.083**
+/ pess ratio **0.11** (V4.1 exact). Engine integrity confirmed — the new levers are byte-identical on the
+frozen path.
+
+**Stage-1 §6.1 grid (neutral_fraction=0.75, pessimistic-cost Calmar ratio vs Nifty 50 TRI; ≥1.0 clears):**
+
+| atr | cadence | base Calmar | maxDD | turn% | medHold | expectancy | payoff | §6.1 ratio | |
+|---|---|---|---|---|---|---|---|---|---|
+| 3.0 | daily | 0.281 | 34.0% | 829 | 46d | +2.18% | 2.54 | 0.68 | FAIL |
+| 3.0 | weekly | 0.271 | 21.9% | 511 | 56d | +1.94% | 2.39 | 0.66 | FAIL |
+| 4.0 | daily | 0.194 | 26.2% | 544 | 70d | +2.20% | 1.99 | 0.45 | FAIL |
+| **4.0** | **weekly** | 0.130 | 31.1% | 387 | 80d | +2.32% | 2.55 | 0.36 | FAIL ← §4 candidate |
+| **5.0** | **daily** | **0.474** | 28.0% | 403 | 92d | +9.34% | 3.96 | **1.27** | **PASS** |
+| 5.0 | weekly | 0.408 | 34.5% | 277 | 119d | +11.58% | 4.33 | 0.42 | FAIL |
+
+**Result: 1/6 clears §6.1 → atr 5.0 / daily (ratio 1.27).** The §2 thesis WORKED at the widest exit: the 5×
+trail cut turnover (829%→403% daily) **and** lifted expectancy (+2.18%→+9.34%, payoff 2.54→3.96, avgWin
++20.5%→+48.8% — it rides winners), so the trail-vs-give-back trade came out *favorable* at 5×. **This is the
+first §6.1 pass in the whole v4 family.**
+
+**⚠ Three loud fragility flags carried to V4.8 (Rule 12 — do NOT over-read the 1.27):**
+1. **The pre-registered §4 candidate (atr 4.0 / weekly) FAILED (0.36).** The survivor is a *different* cell.
+   Legitimate under §4 ("identify §6.1 survivors" — any clearer carries), but it is not the a-priori favorite.
+2. **Lone peak on the `atr` axis** — base Calmar 0.281 → 0.194 (trough) → **0.474**: non-monotonic and jagged.
+   The §6.3 plateau (candidate ±1 step ≥ 85% of base) will almost certainly FAIL — the atr-4.0/daily neighbor
+   (0.194) is 41% of 0.474. This is the `10` §6.3 lone-peak species, *predicted* before V4.8 runs it.
+3. **Cadence crater** — atr 5.0/daily ratio **1.27** vs atr 5.0/weekly **0.42**: a clean pass flips to a deep
+   fail on the binary cadence axis. Per §6.3 a config that clears one cadence and craters the other is fragile
+   — weighs against locking. Combined with (2), the survivor sits at the **grid boundary** (atr=5.0), itself a
+   tell that the response is not a plateau.
+
+**§5 anti-thrash diagnostic (NON-GATING, 0 to K):** candidate atr4/weekly ± (min_hold=10, cooldown=10):
+turnover 387%→382%, Calmar 0.130→0.147 (<10% turnover cut) ⇒ **INERT** — confirms `03` (median hold ~80d here,
+no whipsaw to suppress). Pre-committed read: leave it off; no separate amendment authorized.
+
+**K:** +6 new Stage-1 configs (cost ×1, R1; anchors + anti-thrash = 0). Carried v4 K = 4 ⇒ **K so far ≈ 10**
+(Stage 2 adds the 0.5 deploy plateau-neighbor → ≈13 at OOS, per §7.1). **v4-FINAL_OOS untouched (pristine).**
+
+**Verdict: V4.7 DONE — 1/6 §6.1 survivor (atr 5.0 / daily) → V4.8 battery authorized, NOT the pre-accepted
+null.** But V4.8 enters with the §6.3 plateau failure essentially pre-diagnosed (flag 2) and a cadence-crater
+fragility (flag 3); the honest expectation is that the survivor does not survive the full §6 battery. No grid
+level added, no threshold loosened, no OOS peek.
+
 ### V4.8 — Stage-2 battery + deployment plateau-neighbor + §6 acceptance (only on §6.1 survivors)
-- **Status:** ⬜ NOT STARTED. Runs only if V4.7 yields ≥1 §6.1 survivor; else the pre-accepted null (§6)
-  closes the v4 family permanently at V4.7.
+- **Status:** ⬜ NOT STARTED — **AUTHORIZED** (V4.7 yielded 1 §6.1 survivor: atr 5.0 / daily). Runs the full
+  §6 battery on that single config: §6.2 skew-aware concentration, §6.3 plateau (over `atr_mult` {3,4,5} **and**
+  `neutral_fraction` {0.5,0.75} — the 0.5 plateau-neighbor arm is added here, +K per §7.1), §6.5 capacity,
+  §6.4 subperiod diagnostic, deploy bar (maxDD ≤ 100% of Nifty 50 TRI). **Pre-diagnosed risk (V4.7 flags 2–3):
+  the §6.3 plateau is expected to FAIL (lone peak at the atr boundary; cadence crater) — if it does, that is
+  the pre-accepted null, v4 closes permanently, FINAL_OOS untouched.** Not started this session.
 
 ### V4.9 — One-shot v4-FINAL_OOS + §10-of-`00` verdict (only on a locked candidate)
 - **Status:** ⬜ NOT STARTED. Touches v4-FINAL_OOS exactly once, only on a single §6-locked candidate,
@@ -374,7 +436,9 @@ Confirm or redline each. **§0 must be ruled first** — if §0 = "decline," do 
 ## Exit criteria
 - [x] §0 reopen ruled by Arafat — **explicit-deviation** (2026-06-25).
 - [x] §10 locked by Arafat (DRAFT → LOCKED, 2026-06-25).
-- [ ] V4.7 — levers built (no-lookahead tested, V4.4-cell parity) + Stage-1 turnover screen on DISCOVERY;
-      §6.1 survivors identified; anti-thrash diagnostic + ADV anchor recorded; ledger updated.
-- [ ] V4.8 — Stage-2 battery + deployment lever + §6 acceptance on survivors (or N/A on a Stage-1 null).
+- [x] V4.7 — levers built (no-lookahead tested, V4.4-cell parity) + Stage-1 turnover screen on DISCOVERY
+      (2026-06-25); **1/6 §6.1 survivor = atr 5.0 / daily (ratio 1.27)**, fragility-flagged; anti-thrash
+      diagnostic (INERT) + MOM/ADV anchors (exact parity) recorded; ledger +6 (K so far ≈ 10).
+- [ ] V4.8 — Stage-2 battery + deployment plateau-neighbor + §6 acceptance on the atr-5.0/daily survivor
+      (AUTHORIZED; §6.3 plateau pre-diagnosed as the likely null). NOT started this session.
 - [ ] V4.9 — one-shot v4-FINAL_OOS + verdict (or N/A; v4-FINAL_OOS stays pristine on any null).

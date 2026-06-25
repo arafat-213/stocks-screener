@@ -50,8 +50,28 @@ class SwingConfig:
 
     # --- exit (00 §3.4 — candidate = Type 3; 1/2 are grid comparators) ---
     exit_type: int = 3  # knob: 1 (MACD cross-down) / 2 (close<EMA50) / 3 (ATR trail)
-    atr_mult: float = 3.0  # §6.3 plateau neighborhood {2.5, 3.0, 3.5}
+    # `05` §3.1 makes atr_mult the PRIMARY turnover lever: a WIDER multiple holds winners
+    # longer ⇒ fewer turns ⇒ less cost (the give-back trade-off the grid measures). `00`
+    # froze 3.0 and only-ever-tested TIGHTER; `05` Stage-1 grid sweeps {3.0, 4.0, 5.0}
+    # (candidate 4.0). Default stays 3.0 (the `00`/V4.4 frozen value ⇒ anchor parity).
+    atr_mult: float = 3.0  # `05` §3.1 grid {3.0, 4.0, 5.0}; `00` §6.3 plateau axis
     catastrophic_stop_pct: float = 25.0  # close-breach circuit breaker beneath Type 3
+
+    # --- decision cadence + anti-thrash levers (v4/05 §3.2 / §3.4 / §5) ---
+    # `decision_cadence` (05 §3.2 — the secondary turnover lever, binary): "daily" (frozen
+    # `00` default ⇒ byte-identical) re-decides exits + entries every close. "weekly"
+    # coarsens the DECISION clock — on a NON-decision day step_day still applies queued
+    # fills, MTMs, ratchets the trail anchor, and checks the −25% catastrophic floor (risk
+    # control is NEVER coarsened), but SKIPS the configured exit check and the entry scan.
+    # Decision day = the completed week's last trading day (W-FRI as-of; 05 §3.2 / §9).
+    decision_cadence: Literal["daily", "weekly"] = "daily"
+    # `05` §5 NON-GATING anti-thrash diagnostic (adds 0 to K). Both default 0 ⇒ byte-
+    # identical. `min_hold_td` blocks the CONFIGURED exit (NOT the catastrophic floor) for
+    # the first N trading days after entry; `reentry_cooldown_td` suppresses re-entry of an
+    # instrument_id for N trading days after a full exit. Run ONCE on the Stage-1 candidate
+    # (05 §5); the locked OOS candidate uses the §4 levers only (never these).
+    min_hold_td: int = 0
+    reentry_cooldown_td: int = 0
 
     # --- sizing / regime throttle (00 §3.5 + Amendment 1 §14 A/B/C) ---
     # `target_positions` is a BINDING concentration cap: simultaneously the hard slot cap
