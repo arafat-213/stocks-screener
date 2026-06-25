@@ -62,13 +62,28 @@ class SwingConfig:
     # granularity at ~₹3-4L), not a tuned knob; `00` §5 stresses {13,15,17} in V4.2.
     target_positions: int = 15
 
-    # Oversubscription selector (00 §14 C). "adv" = the frozen candidate: keep the
+    # Oversubscription selector (00 §14 C). "adv" = the frozen V4.1 candidate: keep the
     # top-`target_positions` by adv_20 (most liquid first). "random" exists ONLY for the
     # `00` §6 selection-quality diagnostic's `B_random` reference book (keep a random
-    # `target_positions` when oversubscribed, seeded for reproducibility) — it is NEVER a
-    # candidate and adds 0 to K. Default "adv" ⇒ byte-identical to the locked engine.
-    selector: Literal["adv", "random"] = "adv"
+    # `target_positions` when oversubscribed, seeded for reproducibility).
+    #
+    # `04` (return-informed selector prereg, LOCKED 2026-06-24) adds two return-informed
+    # rankers as a budgeted grid axis carrying its own K:
+    #   "mom" = the registered candidate — rank firing names by trailing `selector_lookback`-td
+    #           total return of the adjusted close (desc). The textbook 6-month momentum ranker.
+    #   "rs"  = comparator — candidate trailing return MINUS the Nifty 50 trailing return over
+    #           the same lookback (relative strength / excess). Needs nifty_mom in the engine
+    #           context (pass `nifty50_price` to build_context); fails loud otherwise.
+    # NOTE (`04` §3 finding, Rule 12): the Nifty 50 term is a SINGLE per-day constant subtracted
+    # from every candidate, so it cannot change the cross-sectional order — as a *selector* "rs"
+    # is mathematically identical to "mom". We still run it to demonstrate the identity, not assume it.
+    # Default "adv" ⇒ byte-identical to the locked V4.1 engine; "mom"/"rs" add to K (`04` §1/§4).
+    selector: Literal["adv", "random", "mom", "rs"] = "adv"
     selector_seed: int = 0  # only consulted when selector == "random"
+    # `04` §3/§4 — the return-informed-selector lookback (trading days). Frozen at the
+    # conventional 126 td (~6mo) for V4.4 Stage 1; {63, 252} are the V4.5 §6.3 plateau
+    # neighborhood (NOT swept here). Also the window for the "rs" Nifty 50 benchmark return.
+    selector_lookback: int = 126
 
     starting_capital: float = 350_000.0  # Amendment 1 §14 E — real spare capital
 

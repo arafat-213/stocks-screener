@@ -576,3 +576,11 @@ tests are green.
 > this family (≥6, not reset); inherits the still-pristine v4-FINAL_OOS one-shot. Honest prior: NULL is the
 > most likely outcome (the V4.1 reference books 0.09–0.14 sit far below the 0.346 bar), and a null there
 > permanently closes the v4 family.
+>
+> **`04` V4.4 DONE 2026-06-25 → NULL CLOSE → v4 family PERMANENTLY CLOSED (`04` §12).** 0/3 selectors clear
+> §6.1: the candidate MOM *worked as a mechanism* (base Calmar 0.083 → **0.179**, per-trade expectancy +0.72%
+> → +1.98% — the §6 edge-discarding diagnosis vindicated) but ~800% turnover keeps the costed Calmar at
+> **0.39×** the Nifty 50 TRI bar (pessimistic ratio 0.39 < 1.0). RS≡MOM confirmed (§3 identity). ADV re-derived
+> V4.1 exactly (parity OK). The §5 deployment diagnostic read **"deployment is a real lever"** (D_more Calmar
+> 0.179→0.281, maxDD ≤ benchmark) — a *separate* pre-authorized future prereg, not acted on. **v4-FINAL_OOS
+> NEVER touched (pristine across the entire v4 family); V4.5/V4.6 N/A; K≈12.**

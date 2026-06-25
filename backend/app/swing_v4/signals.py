@@ -118,6 +118,15 @@ def precompute_swing_signals(
         df["ema_exit"] = ind.ema(close, cfg.ema_exit)
         df["atr20"] = ind.atr_wilder(df["high"], df["low"], close, cfg.atr_period)
 
+        # --- return-informed selector rank (04 §3) -------------------------
+        # Trailing `selector_lookback`-td total return of the adjusted close, used by
+        # the "mom"/"rs" oversubscription selectors. Point-in-time by construction:
+        # close[D] / close[D - lookback] - 1 references only completed bars ≤ D, so a
+        # future bar cannot change row D's rank (no-lookahead, 04 §9). A name without a
+        # full lookback history yields NaN ⇒ the engine sorts it LAST (no thin-data
+        # preference). Inert for the "adv"/"random" selectors (column simply unread).
+        df["mom"] = close / close.shift(cfg.selector_lookback) - 1.0
+
         macd_line, signal_line = ind.macd(
             close, cfg.macd_fast, cfg.macd_slow, cfg.macd_signal
         )

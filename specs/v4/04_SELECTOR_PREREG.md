@@ -1,6 +1,16 @@
 # v4 / 04 — Return-Informed Selector: Pre-Registration
 
-> **Status: LOCKED — 2026-06-24 (Arafat). §10 signed (all 7 commitments).** V4.4 execution is authorized;
+> **Status: V4.4 DONE 2026-06-25 → NULL CLOSE → v4 swing family FULLY CLOSED as a research note.** 0/3
+> selectors clear §6.1 (MOM/RS pessimistic ratio 0.39, ADV 0.11; all < 1.0 vs Nifty 50 TRI). The candidate
+> **MOM more than doubled base Calmar (0.083 → 0.179)** — the §6 edge-discarding diagnosis was correct, the
+> return-informed selector *does* capture per-name edge the liquidity rank threw away (expectancy +0.72% →
+> +1.98%, payoff 2.21 → 2.71) — **but it is not enough**: ~800% turnover keeps the costed Calmar far below
+> the index bar. **v4-FINAL_OOS NEVER touched (pristine); V4.5/V4.6 N/A; K=6 this run on top of the carried 6.**
+> Two pre-authorized forward leads recorded (NOT acted on this run): RS≡MOM confirmed (§3 identity, no new
+> info), and the §5 deployment diagnostic read **DEPLOYMENT IS A REAL LEVER** (D_more lifts Calmar 0.179→0.281
+> with maxDD ≤ benchmark) — that authorizes a *separate future* deployment-axis prereg with its own K. See §12.
+>
+> **Status (prior): LOCKED — 2026-06-24 (Arafat). §10 signed (all 7 commitments).** V4.4 execution authorized;
 > no stage began before this lock. This prereg is the **separate, pre-authorized** follow-on that `00` §6 + `00` §13 (V4.1) and the
 > `03` trade-level forensic licensed: the V4.1 §6 selection-quality diagnostic read **edge-discarding**
 > (the top-15-by-`adv_20` liquidity selector throws away edge — random-15 and the uncapped book both beat
@@ -272,29 +282,118 @@ Confirm or redline each.
 > Status + a session log per stage; do not mark Done if anything was skipped (Rule 12).
 
 ### V4.4 — Selector implementation + Stage-1 cost screen on DISCOVERY
-- **Status:** ⬜ NOT STARTED (gated on §10 lock).
-- **Do:** (a) add a `SwingConfig.selector` extension for `"mom"`/`"rs"` (the `"adv"`/`"random"` knob already
-  exists from V4.1) — additive, default unchanged so V4.0/V4.1 stay byte-identical; point-in-time momentum
-  computed in the signal store (no lookahead test: future bars leave the rank unchanged). (b) Run the §4
-  Stage-1 screen (3 selectors × base+pessimistic) + the §5 deployment diagnostic + the `03` per-trade
-  forensic on each. Log to the v4 ledger.
-- **Done-criteria:** selector is deterministic + no-lookahead tested; screen reproduces the ADV baseline as
-  the V4.1 numbers (parity check — the closed engine must re-derive 0.083/0.11); §6.1 survivors identified;
-  no battery/OOS in this stage.
+- **Status:** ✅ DONE 2026-06-25 → **0/3 clear §6.1 → NULL CLOSE** (results in §12).
+- **Did:** (a) added `SwingConfig.selector` `"mom"`/`"rs"` + `selector_lookback=126` (additive — V4.0/V4.1
+  byte-identical; 44 swing_v4 tests green incl. no-lookahead, thin-data-sorts-last, RS≡MOM identity,
+  deterministic, fail-loud-on-missing-`nifty_mom`, and the §5 `neutral_fraction` knob); point-in-time
+  momentum precomputed in the signal store; `nifty_mom` plumbed into the engine context for "rs".
+  (b) Ran the §4 Stage-1 screen (3 selectors × base+pessimistic) + the §5 deployment diagnostic + the
+  `03` per-round-trip forensic on each (`backend/app/swing_v4/v44_selector_screen.py`; raw report
+  `backend/reports/v44_selector_screen.txt`, gitignored). Logged 6 trials to the v4 ledger.
+- **Done-criteria — all met:** selector deterministic + no-lookahead tested ✅; ADV-baseline parity ✅
+  (re-derived 0.083 base / 0.11 pessimistic exactly, |Δ|≤0.004); §6.1 survivors identified ✅ (**zero**);
+  no battery/OOS run (correct — the null stops here).
 
 ### V4.5 — Stage-2 battery + §6 acceptance (only on §6.1 survivors)
-- **Status:** ⬜ NOT STARTED. Runs only if V4.4 yields ≥1 §6.1 survivor; else the pre-accepted null (§6)
-  closes the v4 family at V4.4.
+- **Status:** ⬜ N/A — V4.4 yielded **0** §6.1 survivors ⇒ the pre-accepted null (§6) closes the v4 family
+  at V4.4. No battery, no plateau, no candidate.
 
 ### V4.6 — One-shot v4-FINAL_OOS + §10-of-`00` verdict (only on a locked candidate)
-- **Status:** ⬜ NOT STARTED. Touches v4-FINAL_OOS exactly once, only on a single §6-locked candidate,
-  never on the null.
+- **Status:** ⬜ N/A — no §6-locked candidate ⇒ **v4-FINAL_OOS NEVER touched; pristine for the v4 family.**
+
+---
+
+## 12. V4.4 results — NULL CLOSE (the findings)
+
+**Run:** `backend/app/swing_v4/v44_selector_screen.py`, DISCOVERY 2018-02-06 → 2023-06-30, base+pessimistic
+cost, whole-share ₹3.5L. Raw report `backend/reports/v44_selector_screen.txt` (gitignored).
+
+### 12.1 The §6.1 cost screen — 0/3 survivors
+
+| Selector | base Calmar | maxDD | Sharpe | CAGR | turnover | pess §6.1 ratio | §6.1 |
+|---|---:|---:|---:|---:|---:|---:|:--:|
+| **MOM** (candidate, 126-td return) | **0.179** | 34.2% | 0.55 | 6.1% | 798% | **0.39** | ❌ FAIL |
+| RS (excess vs Nifty 50) | 0.179 | 34.2% | 0.55 | 6.1% | 798% | 0.39 | ❌ FAIL |
+| ADV (closed V4.1 baseline) | 0.083 | 34.4% | 0.30 | 2.9% | 828% | 0.11 | ❌ FAIL |
+
+The §6.1 bar is **pessimistic-cost Calmar ratio ≥ 1.0** vs Nifty 50 TRI. Best is MOM at **0.39 — well short**.
+**Pre-accepted null (§6): the v4 swing family is fully closed as a research note; v4-FINAL_OOS NOT touched.**
+
+### 12.2 The selector DID capture edge — the §6 diagnosis was right, just not enough (the honest read)
+
+The encouraging negative result: **MOM more than doubled the candidate's base Calmar (0.083 → 0.179, 2.16×)**.
+Per-round-trip forensic (the `03` species), MOM vs ADV:
+
+| | win rate | avg win | avg loss | payoff | net expectancy/trip | median hold |
+|---|---:|---:|---:|---:|---:|---:|
+| **MOM** | 34% | **+21.2%** | −7.8% | **2.71** | **+1.98%** | 43d |
+| ADV | 33% | +16.6% | −7.5% | 2.21 | +0.72% | 42d |
+
+Picking the strongest-trend names (not the most liquid) raised average winner size and per-trade expectancy
+**~2.7×** — exactly the "edge is per-name and the liquidity rank discards it" mechanism `03` + the V4.1 §6
+diagnostic predicted. **The selector is a real, working lever.** It is simply **not large enough** to overcome
+~800% turnover at pessimistic cost: even the doubled Calmar (0.179) is 39% of the index's costed Calmar. The
+selector attacks the edge (Leak A, `03`); it does nothing for turnover (Leak B), which is set by the frozen
+exit and is the binding friction. *No knob inside this prereg can close a ~2.5× costed gap — the wall holds.*
+
+### 12.3 RS ≡ MOM — confirmed empirically (§3 identity)
+
+RS reproduced MOM **byte-for-byte** (base Calmar 0.1795, ratio 0.3948, 755 fills — identical). As §3 reasoned,
+the Nifty 50 term is a single per-day constant subtracted from every candidate, so it cannot change the
+cross-sectional order. **RS carries no information beyond MOM as a selector.** (Demonstrated, not assumed —
+the screen ran the full RS engine and it matched.)
+
+### 12.4 ADV-baseline parity — engine integrity confirmed
+
+The ADV selector (= the closed V4.1 T3 engine) re-derived the V4.1 numbers exactly: base Calmar **0.083**
+(V4.1 ~0.083) and pessimistic ratio **0.11** (V4.1 ~0.11), |Δcalmar|=0.000, |Δratio|=0.004 ≤ tol. The selector
+refactor changed nothing on the frozen path (also locked by 44 green swing_v4 unit tests).
+
+### 12.5 §5 deployment diagnostic — DEPLOYMENT IS A REAL LEVER (non-gating; a pre-authorized forward lead)
+
+| | Calmar | maxDD | CAGR |
+|---|---:|---:|---:|
+| `D_base` (Neutral f=0.50, frozen overlay) | 0.179 | 34.2% | 6.15% |
+| `D_more` (Neutral f=0.75) | **0.281** | **34.0%** | **9.56%** |
+| Nifty 50 TRI maxDD (deploy bar denominator) | — | 38.3% | — |
+
+Lifting the Neutral-bucket deployment from 0.5 → 0.75 raised Calmar **0.179 → 0.281** and CAGR 6.1% → 9.6%
+**while maxDD actually fell slightly (34.2% → 34.0%, ≤ the 38.3% benchmark)**. This is the §5 *"deployment is a
+real lever"* read: the structural worry (loosening the overlay lifts maxDD as fast as CAGR) did **not**
+materialize on this window. **Per §5 this authorizes a SEPARATE future amendment that adds a deployment axis
+with its own K — it does NOT change the candidate, add to K, or rescue §6.1 here** (base cost only; pessimistic
+cost + the ~800% turnover would still bind). Honest caveat (§8 prior): the base rate is still "buy the index
+fund," and this lever, like the selector, leaves turnover untouched.
+
+### 12.6 K / OOS accounting
+
+This run logged **6 trials** (3 selectors × 2 cost levels) to the v4 ledger; carried v4 K (≥6) ⇒ **K ≈ 12**.
+The §5 deployment diagnostic added **0** (non-gating). **v4-FINAL_OOS was NOT loaded or touched — pristine for
+the entire v4 family.** No selector added after seeing a number, no threshold relaxed, no OOS peek (§1 honored).
+
+### 12.7 Forward leads (recorded, NOT acted on — each needs its own signed prereg)
+
+1. **Deployment axis** (§5 positive read) — the one genuinely live, pre-authorized lead. A separate prereg
+   could test a deployment-throttle grid carrying its own K. **Prior: NULL is still most likely** (turnover
+   unaddressed; "buy the index fund" base rate across 4 prior programs).
+2. **Selector + exit/turnover jointly** — the selector helps edge, but turnover (the exit rule) is the binding
+   friction and was frozen by `03`. Any future attempt must attack turnover, which is a *different* mechanism
+   needing its own pre-registration. **Neither lead reopens this prereg or the closed v4 swing engine.**
 
 ---
 
 ## Exit criteria
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-24.
-- [ ] V4.4 — selector built (no-lookahead tested, ADV-baseline parity to V4.1) + Stage-1 cost screen on
-      DISCOVERY; §6.1 survivors identified; deployment diagnostic read recorded; ledger updated.
-- [ ] V4.5 — Stage-2 battery + §6 acceptance on survivors (or N/A on a Stage-1 null).
-- [ ] V4.6 — one-shot v4-FINAL_OOS + verdict (or N/A; v4-FINAL_OOS stays pristine on any null).
+- [x] V4.4 — selector built (no-lookahead tested, ADV-baseline parity to V4.1 ✅ 0.083/0.11) + Stage-1 cost
+      screen on DISCOVERY; **0/3 §6.1 survivors → NULL CLOSE**; §5 deployment diagnostic = "real lever"
+      recorded (non-gating); ledger +6 (K≈12). Done 2026-06-25 (§12).
+- [x] V4.5 — N/A (0 §6.1 survivors ⇒ §6 battery unreachable; pre-accepted null closes at V4.4).
+- [x] V4.6 — N/A (no locked candidate ⇒ v4-FINAL_OOS NEVER touched; pristine for the v4 family).
+
+> **PROGRAM CLOSE — 2026-06-25:** the return-informed selector — the last clean structural lever for v4 —
+> **does not rescue the thin daily-swing edge past a costed bar.** It worked as a mechanism (MOM doubled
+> Calmar, the §6 edge-discarding diagnosis vindicated) but the ~800% turnover it leaves untouched keeps the
+> costed Calmar at 0.39× the index. **The v4 daily-swing family is now permanently closed as a research note.**
+> v4-FINAL_OOS is pristine and unspent. Per §8, no further v4 amendments without genuinely new information
+> (new data, not new knobs) — with the single pre-authorized exception of a *separate* deployment-axis prereg
+> (§12.5/§12.7), which Arafat may or may not open and which carries the same honest "most-likely NULL" prior.

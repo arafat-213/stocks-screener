@@ -51,6 +51,7 @@ class RegimeScore:
         market_internals: pd.DataFrame,
         cfg: SwingConfig | None = None,
         n_factors: int | None = None,
+        neutral_fraction: float = 0.5,
     ) -> None:
         self._cfg = cfg or SwingConfig()
         self._n_factors = (
@@ -58,8 +59,17 @@ class RegimeScore:
         )
         if self._n_factors not in (3, 5):
             raise ValueError(f"regime n_factors must be 3 or 5, got {self._n_factors}")
+        # `04` §5 deployment diagnostic ONLY: the Neutral bucket (score 2–3) deployable
+        # fraction. Frozen 0.5 for the candidate (default ⇒ byte-identical); the `D_more`
+        # diagnostic lifts it to 0.75 to bound the "deploy more capital" question. NON-GATING,
+        # adds 0 to K — never used by the locked OOS candidate (04 §5). Bear/Bull stay 0/1.
+        self._neutral_fraction = neutral_fraction
         self._score, self._frac = _precompute(
-            nifty50_price, market_internals, self._cfg, self._n_factors
+            nifty50_price,
+            market_internals,
+            self._cfg,
+            self._n_factors,
+            neutral_fraction,
         )
 
     def score(self, day: date | pd.Timestamp) -> int:
@@ -82,6 +92,7 @@ def _precompute(
     market_internals: pd.DataFrame,
     cfg: SwingConfig,
     n_factors: int,
+    neutral_fraction: float = 0.5,
 ) -> tuple[pd.Series, pd.Series]:
     """Vectorized precompute on the market_internals trading calendar.
 
@@ -107,9 +118,11 @@ def _precompute(
     c3 = (mi["liq_breadth_pct"] > cfg.regime_breadth_min).fillna(False)
 
     if n_factors == 3:
-        # Reported ablation only (00 §4): 0 → 0.0, 1–2 → 0.5, 3 → 1.0.
+        # Reported ablation only (00 §4): 0 → 0.0, 1–2 → neutral, 3 → 1.0.
         score = (c1.astype(int) + c2.astype(int) + c3.astype(int)).astype(int)
-        frac = score.map(lambda s: 0.0 if s == 0 else (1.0 if s == 3 else 0.5))
+        frac = score.map(
+            lambda s: 0.0 if s == 0 else (1.0 if s == 3 else neutral_fraction)
+        )
         return score, frac
 
     c4 = (mi["liq_ad_ratio"] > cfg.regime_ad_min).fillna(False)
@@ -123,6 +136,7 @@ def _precompute(
         + c4.astype(int)
         + c5.astype(int)
     ).astype(int)
-    # Buckets (frozen): 0–1 → 0.0, 2–3 → 0.5, 4–5 → 1.0.
-    frac = score.map(lambda s: 0.0 if s <= 1 else (0.5 if s <= 3 else 1.0))
+    # Buckets (frozen): 0–1 → 0.0, 2–3 → neutral (0.5 default; 04 §5 D_more lifts to 0.75),
+    # 4–5 → 1.0.
+    frac = score.map(lambda s: 0.0 if s <= 1 else (neutral_fraction if s <= 3 else 1.0))
     return score, frac

@@ -107,6 +107,10 @@ class SwingEngineContext:
     # scan beneath the retained ₹5cr floor. None when config.universe_mode == "floor"
     # (the legacy ₹5cr-only universe — test/diagnostic escape hatch).
     universe_mask: StableUniverseMask | None = None
+    # `04` §3: per-day Nifty 50 trailing `selector_lookback`-td return, the benchmark term
+    # the "rs" selector subtracts. Built only when `nifty50_price` is supplied. None for the
+    # "adv"/"mom"/"random" selectors (which never read it); "rs" fails loud if it is None.
+    nifty_mom: dict[pd.Timestamp, float] | None = None
 
 
 @dataclass
@@ -309,6 +313,15 @@ def build_context(
             config.universe_review_cadence,
         )
 
+    # `04` §3: the "rs" selector needs the Nifty 50 trailing return per day. Build it
+    # only when the caller supplies `nifty50_price` (the cost screen passes it for "rs"
+    # runs); leave None otherwise — "adv"/"mom"/"random" never read it.
+    nifty_mom: dict[pd.Timestamp, float] | None = None
+    if nifty50_price is not None:
+        nifty_mom = _nifty_trailing_return(
+            nifty50_price, calendar, config.selector_lookback
+        )
+
     ctx = SwingEngineContext(
         config=config,
         cost_fn=cost_fn,
@@ -322,8 +335,25 @@ def build_context(
         regime=regime,
         whole_shares=whole_shares,
         universe_mask=universe_mask,
+        nifty_mom=nifty_mom,
     )
     return ctx, calendar
+
+
+def _nifty_trailing_return(
+    nifty50_price: pd.Series, calendar: list[pd.Timestamp], lookback: int
+) -> dict[pd.Timestamp, float]:
+    """Per-day Nifty 50 trailing `lookback`-td total return for the "rs" selector (04 §3).
+
+    Computed on the index's FULL history (so the lookback can reach back across the window
+    edge), then as-of (ffill) mapped onto the run calendar — causal, no in-progress bar.
+    Returned as {date → return}, NaN days dropped (the selector guards a missing entry to 0,
+    which — since the term is constant across the cross-section — leaves the rank unchanged).
+    """
+    full = nifty50_price.sort_index()
+    r_full = full / full.shift(lookback) - 1.0
+    r_cal = r_full.reindex(pd.DatetimeIndex(calendar), method="ffill")
+    return {ts: float(v) for ts, v in r_cal.items() if pd.notna(v)}
 
 
 def step_day(ctx: SwingEngineContext, state: SwingLoopState, day: pd.Timestamp) -> None:
@@ -501,10 +531,10 @@ def _scan_entries(
     gross < f × equity. Per-name target notional = f × equity / `target_positions`
     (equal-weight). `target_positions` is the binding concentration cap (00 §14 A/B).
 
-    Selector (00 §14 C): `adv_20` is promoted from a rare-day tiebreak to the **primary
-    selector** — when more candidates fire than there are free slots, we keep the
-    top-`target_positions` by `adv_20` desc (most liquid first). Realised by ranking all
-    candidates by adv_20 desc and filling until the slot/gross cap binds.
+    Selector: when more candidates fire than there are free slots, `_order_candidates`
+    ranks them by `config.selector` and we fill best-first until the slot/gross cap binds.
+    "adv" (00 §14 C, the V4.1 candidate) keeps the most-liquid; "mom"/"rs" (`04`) keep the
+    strongest-trend; "random" is the `00` §6 diagnostic book.
     """
     cfg = ctx.config
     target_positions = cfg.target_positions
@@ -534,8 +564,8 @@ def _scan_entries(
 
     # Candidate entrants: 4 frozen conditions true on D, liquid (₹5cr floor, inside
     # entry_signal), in the stable_universe (00 §14 D), traded D, not held, not already
-    # queued. Rank by adv_20 desc (most liquid first) — the primary selector (§14 C).
-    candidates: list[tuple[str, float]] = []
+    # queued. Gather (iid, adv_20, mom) then order by the configured selector below.
+    candidates: list[tuple[str, float, float | None]] = []
     for iid, dates in ctx.membership.items():
         if day not in dates or iid in held or iid in queued_buys:
             continue
@@ -545,20 +575,15 @@ def _scan_entries(
             continue
         row = ctx.signal_store.row(day, iid)
         adv = float(row["adv_20"]) if row is not None else 0.0
-        candidates.append((iid, adv))
-    if cfg.selector == "random":
-        # `00` §6 selection-quality diagnostic ONLY (the `B_random` reference book) —
-        # keep a RANDOM target_positions when oversubscribed instead of the top-adv_20.
-        # Seed off (selector_seed, ordinal day) so each day's draw is independent yet the
-        # whole run is reproducible across seeds (median/p5-over-seeds, 00 §6). NEVER a
-        # candidate; adds 0 to K. The locked engine is selector == "adv".
-        rng = random.Random(cfg.selector_seed * 1_000_003 + day.toordinal())
-        rng.shuffle(candidates)
-    else:
-        candidates.sort(key=lambda t: t[1], reverse=True)  # top-adv_20 (the candidate)
+        mom = None
+        if row is not None and "mom" in row:
+            mv = row["mom"]
+            mom = float(mv) if not (isinstance(mv, float) and math.isnan(mv)) else None
+        candidates.append((iid, adv, mom))
+    _order_candidates(ctx, candidates, day)
 
     _EPS = 1e-9
-    for iid, _adv in candidates:
+    for iid, _adv, _mom in candidates:
         if slots <= 0:
             break
         if projected_gross >= target_gross - _EPS:
@@ -582,6 +607,54 @@ def _scan_entries(
         )
         projected_gross += per_name
         slots -= 1
+
+
+def _order_candidates(
+    ctx: SwingEngineContext,
+    candidates: list[tuple[str, float, float | None]],
+    day: pd.Timestamp,
+) -> None:
+    """Order the firing candidates IN PLACE by the configured selector (best first).
+
+    - "adv"    (V4.1 candidate, 00 §14 C): adv_20 desc (most liquid first).
+    - "random" (00 §6 B_random diagnostic): seeded per-day shuffle — independent each day
+      yet reproducible across seeds (median/p5-over-seeds).
+    - "mom"    (04 candidate): trailing-return rank desc; a name without a full lookback
+      (mom is None) sorts LAST; ties break on adv_20 desc (the frozen neutral tiebreak).
+    - "rs"     (04 comparator): mom MINUS the per-day Nifty 50 trailing return. That term is
+      one constant across the whole cross-section, so it cannot change the order — "rs" is
+      identical to "mom" as a selector (04 §3). Implemented faithfully (subtraction +
+      fail-loud on a missing nifty_mom) so the screen *demonstrates* the identity.
+    """
+    cfg = ctx.config
+    sel = cfg.selector
+    if sel == "adv":
+        candidates.sort(key=lambda t: t[1], reverse=True)
+        return
+    if sel == "random":
+        rng = random.Random(cfg.selector_seed * 1_000_003 + day.toordinal())
+        rng.shuffle(candidates)
+        return
+    if sel in ("mom", "rs"):
+        shift = 0.0
+        if sel == "rs":
+            if ctx.nifty_mom is None:
+                raise ValueError(
+                    "selector='rs' needs the Nifty 50 trailing return — pass "
+                    "`nifty50_price` to build_context/run (04 §3)."
+                )
+            s = ctx.nifty_mom.get(day)
+            shift = s if (s is not None and not math.isnan(s)) else 0.0
+
+        def _key(t: tuple[str, float, float | None]):
+            _iid, adv, mom = t
+            has = mom is not None
+            rank = (mom - shift) if has else float("-inf")
+            return (has, rank, adv)  # has-mom first; rank desc; adv_20 desc tiebreak
+
+        candidates.sort(key=_key, reverse=True)
+        return
+    raise ValueError(f"unknown selector: {sel!r} (known: adv, random, mom, rs)")
 
 
 def _pivot(prices: pd.DataFrame, col: str) -> dict[pd.Timestamp, dict[str, float]]:
