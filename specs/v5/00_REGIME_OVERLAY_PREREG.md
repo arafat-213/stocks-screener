@@ -317,7 +317,9 @@ Confirm or redline each before any code/run:
 > and self-contained — **not** the `backtest_v2`/`swing_v4` engines (this is a one-instrument simulator).
 
 ### RO0 — dependency verify + build the overlay simulator (no returns yet)
-- **Status:** ⬜ TODO (blocked on §11 signature).
+- **Status:** ✅ DONE — 2026-06-26. Simulator + comparators + defensive loader built and
+  tested (13 green); all three real series verified + aligned; **no DISCOVERY/OOS return
+  measured**; `FINAL_OOS` untouched.
 - **Do:** (a) verify `benchmark.load_tri(TRI_NIFTY_50)` returns a real, gap-checked Nifty 50 **TRI** over
   2018–2026 AND a Nifty 50 **price** series for the regime DMAs (fail loud on miss); (a′) source + gap-check a
   **real short-rate series** for the defensive asset (91-day T-bill or a liquid-fund index; one-off cache-miss
@@ -330,6 +332,49 @@ Confirm or redline each before any code/run:
   correctly, defensive-leg accrual correct, causality (no `D` value used before `D+1`).
 - **Done-criteria:** module + tests green; **no DISCOVERY/OOS return measured**; Nifty 50 TRI + price + the
   short-rate series all confirmed real and aligned to the trading calendar; `FINAL_OOS` untouched.
+
+#### RO0 — Session log (2026-06-26)
+**Built** (`backend/app/regime_overlay/`, additive — touches no existing module):
+- `overlay.py` — the pure close-to-close one-instrument simulator. `simulate(fraction, tri,
+  defensive, cost_cfg, overlay_cfg, rebalance)`: equity (TRI) calendar authoritative; defensive
+  overnight leg as-of **ffilled** onto it; causal **1-day signal lag** (score on close `D` trades at
+  `D+1` open — day 0 sits in cash, no look-ahead); switch cost = `costs.fill_cost` (statutory) **+
+  `base_slippage_pct` on the traded ETF notional `|Δequity|`**, defensive leg STT-free; cost reduces
+  NAV then splits to target (no phantom negative-cash at a 100% deploy); daily ETF (0.05%/yr) + liquid
+  (0.20%/yr) holding-cost accrual. Emits NAV, applied-fraction path, **`w*`** (mean applied fraction —
+  an output), flip count, total switch ₹. Fraction-path builders: `overlay_fraction` (frozen 3-bucket
+  candidate), `static_fraction` (constant `w*`, `rebalance="monthly"` = the §5a binding comparator),
+  `faber_fraction` (200-DMA timer), `linear_ramp_fraction` (`score/5` diagnostic). `metrics_from_nav`
+  reuses `metrics._cagr_from_equity` + `_compute_max_drawdown` → Calmar/maxDD/CAGR/Sharpe.
+- `short_rate.py` — `load_defensive_index(...)`, mirroring `benchmark.load_price_index` (injectable
+  `_fetch_fn`, atomic parquet cache, fail-loud-on-empty).
+- `tests/regime_overlay/test_ro0_overlay.py` — 13 synthetic tests (no live API): causality lag, exact
+  switch cost on a known Δ, `w*`, defensive accrual, defensive ffill onto a sparser calendar, monthly
+  static rebalance count, Faber DMA cross, metrics drawdown, fail-loud on a TRI gap, loader parse/cache/
+  empty-raise. **13 passed**; reused `benchmark`/`regime` suites still green (53 combined, additive-only).
+
+**Defensive asset — sourced + LOCKED (within the §3a pre-authorized "91-day T-bill *or* a liquid-fund
+index" choice; not a stick-move):** the **Nifty 1D Rate Index** (NSE's overnight-rate index, the
+canonical liquid/overnight-fund proxy), pulled from the niftyindices *price* endpoint (cumulative CLOSE
+level; `pct_change` = realised daily overnight return). Fetched + cached real over 2017-01-02 → 2026-06-12.
+
+**Dependency verification (all real, gap-checked, aligned — RO0 a/a′):**
+| Series | rows | span | overlay-window exact-date hits | post-ffill holes |
+|---|---|---|---|---|
+| Nifty 50 **TRI** | 2340 | 2017-01-02 → 2026-06-12 | — (authoritative cal) | 0 |
+| Nifty 50 **price** | 2340 | 2017-01-02 → 2026-06-12 | 2067/2067 | 0 |
+| **Nifty 1D Rate Index** | 2184 | 2017-01-02 → 2026-06-12 | 1917/2067 (sparser publish cal) | **0** (ffilled) |
+
+The rate index: daily return min **+0.0062%** / max +1.86% / **0 negative days** / **~5.72%/yr** mean —
+a clean accruing overnight series. Price shares the TRI calendar exactly; the rate index publishes on a
+slightly sparser calendar but covers every trading day after as-of ffill (the simulator's alignment).
+**No returns measured; all data sliced ≤ 2026-06-12; `FINAL_OOS` (2023-07-01 → 2026-06-12) untouched.**
+
+**Process note (not a stick-move):** an early-session claim that "network is fully blocked" was **wrong** —
+the default tool sandbox blocks network on tool calls; the one-off real fetch (§12 RO0 a′: "one-off
+cache-miss fetch allowed, no live API in pytest") runs fine with the sandbox disabled, and **no live
+network touches `pytest`** (tests inject stub fetches). Cache parquet lives under the gitignored
+`backend/data/niftyindices/` (consistent with the existing TRI/price caches) — not committed.
 
 ### RO1 — DISCOVERY headline + full diagnostics + §5 acceptance
 - **Status:** ⬜ TODO.
@@ -354,7 +399,7 @@ Confirm or redline each before any code/run:
 
 ## Exit criteria
 - [x] §11 signed by Arafat (DRAFT → LOCKED) — 2026-06-26.
-- [ ] RO0 — simulator + comparators built, deps verified, tested; no returns measured; FINAL_OOS untouched.
+- [x] RO0 — simulator + comparators built, deps verified, tested; no returns measured; FINAL_OOS untouched. — 2026-06-26.
 - [ ] RO1 — DISCOVERY headline + diagnostics + §5 binding-bar verdict; FINAL_OOS untouched.
 - [ ] RO2 — one-shot FINAL_OOS consumed (only on an RO1 clear); §9 deploy verdict recorded.
 
