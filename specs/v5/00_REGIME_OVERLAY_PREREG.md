@@ -377,7 +377,14 @@ network touches `pytest`** (tests inject stub fetches). Cache parquet lives unde
 `backend/data/niftyindices/` (consistent with the existing TRI/price caches) — not committed.
 
 ### RO1 — DISCOVERY headline + full diagnostics + §5 acceptance
-- **Status:** ⬜ TODO.
+- **Status:** ✅ DONE — 2026-06-26. **§5c BINDING BAR FAILED — hard, at both cost levels →
+  §9 PRE-ACCEPTED NULL → RESEARCH-NOTE CLOSE. RO2 N/A. `FINAL_OOS` PRISTINE (never loaded into
+  any window — all four series sliced ≤ DISCOVERY end before simulation).** The frozen overlay
+  whipsaws to death: **598 bucket flips over 1333 DISCOVERY days (~113/yr, mean dwell 2.2 days),
+  ₹229k switch cost on a ₹350k book** — **wall #1 (turnover) was NOT disarmed.** The prereg's core
+  premise (§0: "trade only on bucket change ⇒ a handful of switches/year") is **empirically false**:
+  the score's three *daily* internals (breadth / A-D / VIX) flicker across the 1↔2 and 3↔4 bucket
+  boundaries constantly (score itself changes 818/1333 days).
 - **Do:** run the locked overlay on `DISCOVERY` at base + pessimistic; compute `w*`, the static-matched mix,
   buy-and-hold, Faber-200DMA; report the §6 table (Calmar/maxDD/turnover/flip-count for each); run the
   per-drawdown decomposition + the 3-factor/liquid-fund sensitivities; apply the §5c binding bar; assign the
@@ -387,8 +394,57 @@ network touches `pytest`** (tests inject stub fetches). Cache parquet lives unde
   per-drawdown attribution + single-event verdict; honest "clears bar / fails / deflation-marginal" call;
   `FINAL_OOS` untouched (TRI sliced ≤ DISCOVERY end). **If FAIL at pessimistic ⇒ §9 null close; RO2 N/A.**
 
+#### RO1 — Session log (2026-06-26)
+**Ran** (`backend/app/regime_overlay/ro1_discovery.py`, additive; report → `backend/reports/ro1_discovery.txt`):
+wired the **real cached** series (Nifty 50 TRI / Nifty 50 price / Nifty 1D Rate Index / `market_internals`
+regime), all sliced **≤ 2023-06-30** before any sim, into the RO0 `overlay.simulate`. **1333 DISCOVERY
+trading days**; frozen 5-factor `RegimeScore` (`neutral_fraction=0.5`); `w* = 0.6193`. **K=1** (one config
+in the family `ConfigLedger`).
+
+**Headline table (base | pessimistic), DISCOVERY:**
+| Series | Calmar | maxDD | CAGR | Sharpe | flips | switch ₹ |
+|---|---|---|---|---|---|---|
+| **Overlay (CANDIDATE) base** | **−0.155** | 37.6% | −5.82% | −0.527 | 599 | 228,963 |
+| **Overlay (CANDIDATE) pess** | **−0.237** | 57.5% | −13.64% | −1.356 | 599 | 290,101 |
+| Static w*-mix (**BINDING**) base | **0.419** | 24.4% | 10.23% | 0.926 | 65 | 1,752 |
+| Static w*-mix (**BINDING**) pess | **0.418** | 24.4% | 10.20% | 0.923 | 65 | 2,450 |
+| Buy&Hold TRI (ctx) base | 0.343 | 38.3% | 13.14% | 0.762 | — | — |
+| Faber-200DMA (ctx) base | 0.241 | 22.1% | 5.32% | 0.496 | 55 | — |
+
+**§5c binding bar — FAIL (not marginal):** overlay Calmar **−0.155 ≤ static 0.419** (base) AND
+**−0.237 ≤ 0.418** (pess) → both legs FAIL; the maxDD-≤-B&H sanity leg passes (37.6% ≤ 38.3%) but the
+binding Calmar test is failed at *both* cost levels. The overlay even **loses to plain buy-and-hold**
+(0.343). **The static w*-mix (0.419) — same two assets, same average exposure, only timing removed —
+beats B&H on Calmar with far lower maxDD (24.4% vs 38.3%): the §5 thesis confirmed empirically —
+"the de-risking is valuable, but only done *statically*; the *timing* destroys it."**
+
+**Per-drawdown decomposition (overlay edge over static, base):** the overlay **loses in EVERY B&H crash
+window** — 2018 −14.0%, 2019 −11.4%, **COVID-2020 −16.0%**, 2022 −18.5%, 2023 −6.9% edge. Σ positive
+episode edges = **0** ⇒ single-event share N/A ⇒ **NOT single-event-fragile** — it is *uniformly*
+cost-dominated, a stronger negative than fragility (it never even dodged COVID net of its own whipsaw).
+
+**Diagnostics (non-gating, each 0 to K):** linear ramp (`score/5`) base Calmar **−0.116**; 3-factor
+ablation **−0.041**; 0%-cash floor **−0.189** (vs −0.155 real-rate). **Nothing rescues it** — and §1
+forbids re-picking regardless.
+
+**Whipsaw is the killer (the headline finding):** **598 bucket flips / ~113 per year / mean dwell 2.2
+days**; switch cost **₹228,963 on a ₹350k book (65% of capital bled to costs)**. Verified this is an
+**intrinsic property of the frozen score, not a sim artifact** (raw fraction-change count = 598
+independent of the simulator; score changes 818/1333 days). The 3 *daily* internals (liq-breadth,
+liq-A/D, VIX) flicker across the 1↔2 and 3↔4 bucket boundaries continuously ⇒ **wall #1 (turnover)
+re-materialized**, contradicting the §0 premise. No hysteresis / debounce exists in the frozen map, and
+adding one is a *new signal* (§1/§4 forbidden) ⇒ the candidate-as-frozen is decisively null.
+
+**§9 VERDICT:** **RESEARCH-NOTE NULL** — fails the §5c binding bar at pessimistic (and base). `FINAL_OOS`
+**stays pristine**, the OOS run is **not** performed (RO2 N/A), and the earned conclusion is
+**"hold a static index/liquid-fund sleeve"** — concretely the static `w*≈0.62` mix (Calmar 0.419, maxDD
+24.4%), a clean deployable answer for ₹3.5L. A null is **not** a prompt to add hysteresis, relax the bar,
+or re-pick the map (§1, Rule 12) — any debounced/EMA-smoothed regime timer is a **separate future prereg**
+with its own K, not a continuation of this one.
+
 ### RO2 — one-shot FINAL_OOS + §9 verdict (only if RO1 clears the bar)
-- **Status:** ⬜ TODO (gated on RO1 clear).
+- **Status:** ⛔ N/A — RO1 failed the §5c binding bar (pre-accepted null, §9). `FINAL_OOS` stays
+  **PRISTINE** for this family; the one-shot OOS run is **not** performed.
 - **Do:** byte-for-byte locked overlay through the RO0 simulator on `FINAL_OOS` — **once**. Deploy bar at
   base + pessimistic vs the OOS-window static-matched mix; raw + deflated Sharpe (K=1); per-drawdown on the
   OOS window. Mark `FINAL_OOS` consumed for this family.
@@ -400,8 +456,10 @@ network touches `pytest`** (tests inject stub fetches). Cache parquet lives unde
 ## Exit criteria
 - [x] §11 signed by Arafat (DRAFT → LOCKED) — 2026-06-26.
 - [x] RO0 — simulator + comparators built, deps verified, tested; no returns measured; FINAL_OOS untouched. — 2026-06-26.
-- [ ] RO1 — DISCOVERY headline + diagnostics + §5 binding-bar verdict; FINAL_OOS untouched.
-- [ ] RO2 — one-shot FINAL_OOS consumed (only on an RO1 clear); §9 deploy verdict recorded.
+- [x] RO1 — DISCOVERY headline + diagnostics + §5 binding-bar verdict; FINAL_OOS untouched. **NULL: overlay
+      Calmar −0.155/−0.237 ≤ static 0.419/0.418 at base/pess (598 flips/yr-equiv ~113, ₹229k switch cost) ⇒
+      §9 RESEARCH-NOTE CLOSE; family closes. — 2026-06-26.**
+- [ ] RO2 — N/A (RO1 did not clear the bar); `FINAL_OOS` PRISTINE, one-shot OOS not performed.
 
 ---
 
