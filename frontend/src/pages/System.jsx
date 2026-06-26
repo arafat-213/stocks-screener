@@ -85,7 +85,7 @@ const System = () => {
           <div className='grid grid-cols-2 gap-4'>
             <div className='bg-slate-50 dark:bg-slate-900 border-2 border-border p-5 rounded-2xl flex flex-col gap-1 shadow-sm'>
               <span className='text-[10px] font-black uppercase tracking-widest text-slate-500'>
-                Last Processed
+                Book Through
               </span>
               <span className='text-base font-black font-mono tracking-tighter'>
                 {lastProcessedDate
@@ -183,7 +183,7 @@ const System = () => {
 
       {!!lastProcessedDate && (
         <div className='bg-slate-50 dark:bg-slate-900/50 py-3 px-6 rounded-full border border-border w-fit mx-auto text-slate-500 font-mono font-black text-[10px] uppercase tracking-[0.2em] shadow-sm'>
-          S3 Engine Last Processed:{' '}
+          S3 Book Through:{' '}
           {new Date(lastProcessedDate).toLocaleDateString('en-IN', {
             weekday: 'short',
             day: '2-digit',
