@@ -6,7 +6,11 @@
 > tail) AND §6.3 FAIL (atr4/0.75 neighbor 41% < 85% — lone peak). The v4 family is PERMANENTLY and FINALLY
 > closed; v4-FINAL_OOS NEVER touched (V4.9 N/A); K ≈ 13. Keeper finding: the exit mechanism mattered far more
 > than the entry mechanism. Any adaptive/gain-scaled exit is a NEW prereg, never a v4 continuation.** No stage
-> began, and no engine/selector code was written, before §10 was LOCKED. v4-FINAL_OOS pristine throughout. This prereg attacks the **one constraint V4.4
+> began, and no engine/selector code was written, before §10 was LOCKED. v4-FINAL_OOS pristine throughout.
+> **Cost-factor audit appended 2026-06-26 (§12, 0 to K): "costs are the killer / ~7% of capital" is corrected —
+> turnover "800%" is two-sided (~400% one-way; survivor only ~209%); real total cost drag ≈ 2.4–2.7% CAGR/yr
+> (not 7%); the V4.4 book trails the index even FRICTIONLESS (Calmar 0.285 < 0.346) and the survivor died on
+> §6.2/§6.3, not cost. The audit REINFORCES the permanent close, not reopens it.** This prereg attacks the **one constraint V4.4
 > isolated as binding — turnover × cost** — with the **one lever class the v4 family has never tested**
 > (wider / slower-cadence *time-series-trend* exits, as opposed to the *cross-sectional-momentum* churn levers
 > v3 `05` swept). It freezes — *before any new return number* — the small grid, the binding acceptance rule,
@@ -532,3 +536,78 @@ mechanism.* Any adaptive/gain-scaled-exit idea is a NEW pre-registration, never 
       tail) AND §6.3 FAIL (atr4/0.75 neighbor 41%<85% — lone peak); deploy PASS; §6.4 1/3+; DSR K13 +0.025;
       leave-top-k edge gone at k=2.** v4 family PERMANENTLY closed; ledger +3 under §7.0 ⇒ K ≈ 13.
 - [x] V4.9 — **N/A (correctly not run):** no §6-passing candidate ⇒ v4-FINAL_OOS NEVER touched, stays pristine.
+
+---
+
+## 12. Cost-factor audit (APPEND-ONLY, 2026-06-26 — corrects the "costs are the killer" / "7% of capital" framing)
+
+> **Append-only, NON-GATING, 0 to K, DISCOVERY only — v4-FINAL_OOS untouched.** No signed result, K count, or
+> verdict above changes. This note records a *measurement* (not a new trial) requested by Arafat to stress-test
+> two specific claims that ran through the v4 close: that **turnover was ~800%** and that **costs (~7% of
+> capital) were "the killer."** Both are corrected here. **The correction makes the v4 close MORE robust, not
+> less — it removes "our costs were too harsh" as a reopen excuse.** Method: the already-closed survivor
+> (atr 5.0 / daily / neutral 0.75) and the V4.4 baseline (atr 3.0 / daily / neutral 0.5, MOM) re-run at four
+> cost levels — **frictionless** (all charges + slippage 0), **statutory-only** (`CostConfig.optimistic` — real
+> STT/exch/stamp/DP, zero slippage), **base**, **pessimistic** — decomposing the CAGR drag.
+
+### 12.1 Turnover is REAL but two-sided — "800%" ≈ ~400% one-way (and the survivor is far lower)
+
+The reported turnover is `Σ|qty×price| / equity` counting **both** legs (buy + sell) — correct for costing
+(you pay per leg), but ≈ 2× a one-way convention. Measured:
+
+| config | reported (2-sided) | one-way (buys only) | n_fills (buy/sell) | median hold |
+|---|---:|---:|---:|---:|
+| V4.4 baseline (atr3/daily) | 798% | **407%** | 755 (385/370) | ~42d |
+| **§6.1 survivor (atr5/daily)** | 403% | **209%** | 399 (207/192) | ~92d |
+
+Reconciles with hold length (a 15-slot book, ~42-day median hold ⇒ each slot cycles ~6×/yr ⇒ ~800% two-sided).
+**Not a bug.** The config that actually *cleared* the cost gate turns over only ~209% one-way (~2 rotations/yr)
+— nowhere near the alarming 800%, which was always the *baseline*, not the survivor.
+
+### 12.2 The cost model is correct — arguably conservative (no overcharge)
+
+- **14.2–14.4 bps/side statutory** is STT-dominated (10 bps/side, a hard delivery-equity government charge) and
+  correct. No double-count: `fill_cost` (statutory cash) and `effective_price` (slippage in the fill price)
+  each apply **once** per leg; the legacy flat-`round_trip_bps` path is OFF in base/pessimistic.
+- Two genuine soft spots, neither a bug: (a) the **DP flat ₹15.34/sell is 22–23% of statutory cash** because
+  at ₹3.5L / 15 ≈ ₹23K positions it is ~6.6 bps — a real *small-account* penalty that shrinks as capital grows;
+  (b) the **0.15%/side slippage floor** is the single biggest drag (~1.5% CAGR) and the one *debatable
+  assumption* — for ₹23K orders in ₹5cr+-ADV names true impact is near-zero, so the floor is, if anything,
+  conservative (punitive), not lenient.
+
+### 12.3 CAGR drag decomposition — total cost ≈ 2.4–2.7% CAGR/yr, NOT ~7%
+
+| config | frictionless | statutory-only | base | pessimistic | statutory drag | slippage drag (base) | **TOTAL drag (base)** |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| survivor (atr5/daily) | CAGR 15.69% / Calmar **0.626** | 14.94% / 0.557 | 13.29% / **0.474** | 12.52% / 0.438 | 0.75% | 1.65% | **2.40% CAGR/yr** (pess 3.17%) |
+| baseline (atr3/daily) | CAGR 8.87% / Calmar **0.285** | 7.60% / 0.230 | 6.15% / **0.179** | 4.88% / 0.137 | 1.28% | 1.45% | **2.73% CAGR/yr** (pess 4.00%) |
+
+**Where "~7% of capital" came from:** that was the baseline's **cumulative statutory-only cash**
+(₹24,831 / ₹350,000 = 7.1% over the 5.4-yr window ≈ 1.3%/yr) — it conflated *cumulative statutory cash* with
+the relevant number. The honest figure — **annual total drag including slippage — is ~2.4–2.7% CAGR**. The
+`05` §8 corollary "halve turnover ⇒ ~double net trading P&L" was therefore optimistic.
+
+### 12.4 The decisive correction — costs were NOT the binding constraint
+
+Running frictionless (literally zero cost) settles it on two independent legs:
+
+1. **The V4.4 broad MOM book trails the index even at ZERO cost:** frictionless Calmar **0.285 < 0.346**
+   (Nifty 50 TRI). Cost worsens it (0.285 → 0.179) but is *not* the line between pass and fail — the **gross**
+   edge is simply below the bar. (`00` §13 already conceded this for V4.1: "the verdict holds even before
+   costs"; this quantifies it for the V4.4 candidate.)
+2. **The survivor passed the cost gate regardless of cost level** (frictionless 0.626, base 0.474, pess 0.438
+   — all > 0.346). It did **not** die on cost. It died on **§6.2** (87% of P&L = one name, ATGL) and **§6.3**
+   (lone `atr` peak) — failures with no dependence on the cost model. Halving the conservative 0.15%/side
+   slippage floor would not change either §6.2 or §6.3.
+
+**Corrected framing for the v4 record:** "high turnover / costs erased the edge" is a lazy summary. The truer
+statement is **(a)** the broad MOM trend book never had the gross edge (it trails the index pre-cost), and
+**(b)** the one book with a real gross edge (the wide-trail survivor) was a single-name lottery ticket. Neither
+is a cost-measurement artifact, so **the cost audit reinforces the permanent v4 close — it does not reopen it.**
+The one input that is genuinely conservative (slippage floor) is the right thing to revisit only if a *future,
+separately-pre-registered* strategy with a real broad gross edge ever clears §6.2/§6.3 — at which point cheaper
+realized execution becomes a deployment lever, not a rescue for this null.
+
+> *Reproduced via a scratchpad measurement harness (four-cost-level re-run of the closed configs); not added to
+> the repo as it introduces no new engine/strategy code and the closed `v47_*`/`v48_*` scripts already pin the
+> as-run numbers. DISCOVERY only; FINAL_OOS pristine; 0 to K.*
