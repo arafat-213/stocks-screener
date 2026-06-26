@@ -589,9 +589,16 @@ Confirm or redline each before any code:
 >   fractional ₹2,937,242 (−1.87% over 9y of compounding — the now-correct figure; immaterial, matches
 >   the A/B magnitude). No schema change ⇒ no Alembic migration. `10` "exploratory" ceiling unchanged;
 >   FINAL_OOS untouched.
-> - **OPEN OPERATIONAL ITEM:** worker + beat are **STOPPED** (operator run). Forward accrual resumes
->   only when Arafat restarts them; the 6 counted months run from the **new** go_live 2026-06-23.
-- **Do:** enable the daily post-close Celery job forward. Daily order (§3e): append → **execute prior
+>
+> **Session log (2026-06-26) — operator restart confirmed (doc freshness update):**
+> - The stale post-rewarm-start interlock is cleared: worker + beat have been restarted and the
+>   `s3-paper-daily-postclose` pipeline is live again.
+> - The pipeline has run daily for the last **3** sessions under the whole-share, de-ghosted S3 book.
+>   Forward accrual is therefore active; the 6 counted months run from the **new** go_live 2026-06-23,
+>   subject to the §7 replay-completeness and parity gates.
+> - This is an operational status update only: no S3 knob moved, no FINAL_OOS interaction, and the
+>   `10` "exploratory" ceiling remains unchanged.
+- **Do:** continue operating the daily post-close Celery job forward. Daily order (§3e): append → **execute prior
   queue at today's open** → MTM → stop-check → (month-end) rebalance → persist. Each month-end: parity
   assert → rebalance preview → next-session fill + confirm. **Missed days are backfilled in order
   before the next month-end** (§7.2); an unbackfilled gap reaching a month-end blocks the rebalance
@@ -611,5 +618,5 @@ Confirm or redline each before any code:
 - [x] §10 locked by Arafat (DRAFT → LOCKED) — 2026-06-21.
 - [x] P11.0 — migration + daily incremental append on the existing bhavcopy pipeline + regression/reconciliation tests green (2026-06-22; §5a corrected to inception-anchored append).
 - [x] P11.1 — v2-native wrapper + persisted queue + parity harness; dry-run reproduces backtest (decision + fill) byte-for-byte (2026-06-22; shared `step_day` extraction + `decision_price` fidelity fix; 9 new tests, 763 green).
-- [~] P11.2 — **GO-LIVE on de-ghosted data 2026-06-23 (post-`07`)**: first started 2026-06-22, paused for the `06`→`07` ghost fix, then re-armed clean after `07` COMPLETE — `s3_probation` book holds 0 carried-unsellable ghosts (T07.5), `go_live=2026-06-22` (clock not reset), post-close beat live (`s3-paper-daily-postclose`, weekday 19:30 IST). Go-live day correctly idles (`confirmed_replay_days → []`, store edge 2026-06-19 is the held-back trailing edge); 28 paper_v2 tests green. **§13 DEVIATION 2026-06-23 (signed): whole-share (integer) sizing fix + re-warm-start — clock RESET to `go_live = 2026-06-23` (book was flat, 0 forward runs ⇒ free); gates PASS (0 fractional / 0 ghost / parity 0.0bps), 2335 snapshot rows; worker+beat STOPPED pending Arafat restart.** 6 forward months accrue from the **new** 2026-06-23 go-live once the beat is restarted. **Awaiting 6 consecutive clean monthly rebalances (real calendar time) → P11.3.**
+- [~] P11.2 — **GO-LIVE on de-ghosted data 2026-06-23 (post-`07`)**: first started 2026-06-22, paused for the `06`→`07` ghost fix, then re-armed clean after `07` COMPLETE — `s3_probation` book holds 0 carried-unsellable ghosts (T07.5). Go-live day correctly idled (`confirmed_replay_days → []`, store edge 2026-06-19 was the held-back trailing edge); 28 paper_v2 tests green. **§13 DEVIATION 2026-06-23 (signed): whole-share (integer) sizing fix + re-warm-start — clock RESET to `go_live = 2026-06-23` (book was flat, 0 forward runs ⇒ free); gates PASS (0 fractional / 0 ghost / parity 0.0bps), 2335 snapshot rows.** **2026-06-26 freshness update:** worker + beat are live again and the daily pipeline has run for the last 3 sessions. 6 forward months accrue from the **new** 2026-06-23 go-live under §7 replay-completeness/parity gates. **Awaiting 6 consecutive clean monthly rebalances (real calendar time) → P11.3.**
 - [ ] P11.3 — verdict against §7/§8; "exploratory" ceiling restated.
