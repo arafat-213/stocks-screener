@@ -1,7 +1,9 @@
 # v5 / 00 — Regime-Throttled Index Overlay: the frozen v4 regime score as a risk-on/off timer on Nifty 50 TRI
 
-> **Status: LOCKED — 2026-06-26 (Arafat signed §11). Execution AUTHORIZED but NOT started — Arafat will run
-> RO0 in a separate cold session. No backtest may touch `FINAL_OOS` until a DISCOVERY candidate is locked.**
+> **Status: CLOSED — RESEARCH NOTE (2026-06-26). RO0 + RO1 DONE; RO1 = NULL (overlay fails the §5c binding
+> bar hard). v5 family CLOSED; `FINAL_OOS` PRISTINE (RO2 never ran). Forward-look settled (Arafat,
+> 2026-06-26): the hysteresis/slow-mapping idea is NOT pursued — see "Family close" below. Was: LOCKED
+> 2026-06-26 (Arafat signed §11).**
 > This is a **commitment, not a task list**. It fixes — before any new number exists — the
 > single candidate, the (already-frozen) signal, the deployment mechanics, the binding bar, the diagnostics,
 > the K accounting, and the one-shot OOS protocol. Moving any stick after a result (a new bucket cut, a
@@ -441,6 +443,42 @@ adding one is a *new signal* (§1/§4 forbidden) ⇒ the candidate-as-frozen is 
 24.4%), a clean deployable answer for ₹3.5L. A null is **not** a prompt to add hysteresis, relax the bar,
 or re-pick the map (§1, Rule 12) — any debounced/EMA-smoothed regime timer is a **separate future prereg**
 with its own K, not a continuation of this one.
+
+#### Family close — forward-look settled (2026-06-26, Arafat)
+
+A sharp post-RO1 diagnosis (Arafat) correctly separated two claims: **disproved** = "bucketized score → a
+*daily* deployable trading system" (the unstable mapping/cadence); **NOT disproved** = "the five factors
+carry information." True — RO1 indicts the *mapping*, not the factor content. The engineering reflex is
+**hysteresis** (no-trade band / persistence / EMA smoothing) to stop a 1-point score flicker from tipping a
+full-portfolio trade.
+
+**That reflex was considered and rejected on evidence already in hand — the Faber-200DMA comparator is the
+clean stable-timer experiment, and it already failed:**
+
+| Strategy | Calmar (base) | maxDD | CAGR | flips |
+|---|---|---|---|---|
+| Overlay (whipsaw) | −0.155 | 37.6% | −5.82% | 599 |
+| **Faber-200DMA (STABLE timer)** | **0.241** | **22.1%** | **5.32%** | **55** |
+| **Static w\*≈0.62 mix (binding bar)** | **0.419** | 24.4% | 10.23% | 65 |
+| Buy & Hold | 0.343 | 38.3% | 13.14% | — |
+
+Faber is hysteresis in its simplest form: a slow, stable timer with **no whipsaw** (55 flips) and the **best
+drawdown control in the table** (22.1%). It **still lost to the static mix on Calmar** (0.241 vs 0.419) — and
+**not via turnover** (it barely trades) but via **cash drag**: its CAGR collapsed to 5.32% because sitting
+out chunks of the 2018–2023 bull gave up more return than the drawdown reduction was worth, and
+Calmar = CAGR/maxDD punishes exactly that. **This is the second wall behind the turnover wall — the §2
+cash-drag caveat, now empirically confirmed.** The static mix wins by capturing the de-risking benefit at a
+*constant* ~62% exposure, never paying timing's bull-market opportunity cost.
+
+**∴ a stable/hysteretic remap would fix the bleed but almost certainly still fail the binding bar** (it would
+have to dodge COVID *without* sitting out the bull — a needle Faber could not thread). Building that machinery
+is effort for an edge the in-sample evidence says is not there. **Decision (Arafat): do NOT pursue
+hysteresis; close v5 as a research note.** The earned, deployable answer for ₹3.5L stands: **hold the static
+`w*≈0.62` Nifty-50-TRI / liquid-fund sleeve** (Calmar 0.419, maxDD 24.4% << B&H 38.3%) — the *fourth*
+independent family (after v2/v3/v4) to converge on "a static/index sleeve is the thing that works." If the
+"factors carry info" hypothesis is ever revisited, it is a **brand-new prereg with its own K** and ideally
+**fresh OOS data** (v5's pristine split should not be pre-informed by an exploratory smoothing screen) —
+**not** a continuation of this file.
 
 ### RO2 — one-shot FINAL_OOS + §9 verdict (only if RO1 clears the bar)
 - **Status:** ⛔ N/A — RO1 failed the §5c binding bar (pre-accepted null, §9). `FINAL_OOS` stays
