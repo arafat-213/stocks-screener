@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.backtest_v2.costs import CostConfig, effective_price, fill_cost
 from app.core.celery_app import redis_url
 from app.db.models import (
     PaperV2Alert,
@@ -454,6 +455,192 @@ def run_paper_pipeline(db: Session = Depends(get_db)) -> dict:
     _log.info("Manual S3 paper pipeline trigger via System UI")
     execute_paper_daily_task.delay()
     return {"message": "S3 paper pipeline task queued"}
+
+
+# ---------------------------------------------------------------------------
+# F2 — Realized-vs-modeled cost ledger (specs/v3/12 F2)
+# ---------------------------------------------------------------------------
+
+
+class CostLedgerRowResponse(BaseModel):
+    """Per-rebalance-event row in the cost ledger."""
+
+    decision_date: datetime.date
+    reason: str  # rebalance | catastrophic_stop | force_exit
+    traded_notional: float  # Σ qty × fill_price for filled fills in this event
+    realized_cost_rupees: float  # statutory (cost_rupees) + timing slippage
+    realized_bps: float  # realized_cost_rupees / traded_notional × 10 000
+    modeled_base_bps: float  # base CostConfig band (lower edge)
+    modeled_pess_bps: float  # pessimistic CostConfig band (upper edge)
+
+
+class CostLedgerResponse(BaseModel):
+    """Cumulative realized-vs-modeled cost ledger for the S3 probation (F2)."""
+
+    realized_bps_total: float
+    realized_drag_pct_yr: float  # annualized by forward elapsed days
+    modeled_base_bps: float  # cumulative base band in bps of total traded notional
+    modeled_pessimistic_bps: float
+    within_band: bool  # realized_bps_total ≤ modeled_pessimistic_bps (§2.3 gate)
+    rows: list[CostLedgerRowResponse]
+
+
+def _compute_modeled_cost(
+    side: str,
+    qty: float,
+    fill_price: float,
+    cfg: CostConfig,
+) -> float:
+    """Total modeled cost for one fill: statutory (fill_cost) + slippage impact.
+
+    adv_20=0 → effective_price uses base_slippage_pct floor only (no participation
+    component), since paper fills have no stored ADV. This matches the paper-fill
+    caveat (specs/v3/12 §1.4): slippage here is impact-model slippage, not timing.
+    """
+    stat = fill_cost(side, qty, fill_price, 0.0, cfg)
+    slipped_px = effective_price(side, fill_price, qty, 0.0, cfg)
+    slip_cost = abs(slipped_px - fill_price) * qty
+    return stat + slip_cost
+
+
+@router.get("/cost-ledger", response_model=CostLedgerResponse)
+def get_cost_ledger(db: Session = Depends(get_db)) -> CostLedgerResponse:
+    """Realized vs modeled cost band for the S3 probation book (F2, specs/v3/12).
+
+    Realized cost = Σ statutory cost_rupees + timing slippage (|fill − decision| × qty)
+    for all *filled* fills (pending fills haven't executed and are excluded).
+    Modeled band reuses costs.py fill_cost / effective_price at base and pessimistic
+    CostConfig levels — no formula is re-derived here (specs/v3/12 §2.4 Rule 5).
+    Annualisation uses forward elapsed days from paper_v2_daily_snapshot.
+    """
+    _empty = CostLedgerResponse(
+        realized_bps_total=0.0,
+        realized_drag_pct_yr=0.0,
+        modeled_base_bps=0.0,
+        modeled_pessimistic_bps=0.0,
+        within_band=True,
+        rows=[],
+    )
+    book = _active_book(db)
+    if not book:
+        return _empty
+
+    # Only filled fills contribute to realized cost — pending fills haven't executed.
+    fills = (
+        db.query(PaperV2PendingFill)
+        .filter_by(portfolio_id=book.id, status="filled")
+        .order_by(PaperV2PendingFill.decision_date.asc(), PaperV2PendingFill.id.asc())
+        .all()
+    )
+    if not fills:
+        return _empty
+
+    # Forward elapsed days for annualisation (is_forward snapshots only; warm-start
+    # replay days are excluded for the same reason the NAV curve divides at go-live).
+    fwd_snaps = (
+        db.query(PaperV2DailySnapshot)
+        .filter_by(portfolio_id=book.id, is_forward=True)
+        .all()
+    )
+    n_forward_days = len(fwd_snaps)
+    avg_nav = (
+        sum(s.equity for s in fwd_snaps) / n_forward_days
+        if n_forward_days
+        else book.starting_capital
+    )
+
+    cfg_base = CostConfig.base()
+    cfg_pess = CostConfig.pessimistic()
+
+    # Group by decision_date (same ordering as /rebalances).
+    grouped: dict[datetime.date, list[PaperV2PendingFill]] = {}
+    for f in fills:
+        grouped.setdefault(f.decision_date, []).append(f)
+
+    rows: list[CostLedgerRowResponse] = []
+    total_notional = 0.0
+    total_realized = 0.0
+    total_base = 0.0
+    total_pess = 0.0
+
+    for decision_date, group in sorted(grouped.items()):
+        # Event reason by precedence (mirrors /rebalances grouping logic).
+        reasons = {f.reason for f in group}
+        if "rebalance" in reasons:
+            reason = "rebalance"
+        elif "catastrophic_stop" in reasons:
+            reason = "catastrophic_stop"
+        else:
+            reason = "force_exit"
+
+        grp_notional = 0.0
+        grp_realized = 0.0
+        grp_base = 0.0
+        grp_pess = 0.0
+
+        for f in group:
+            if f.fill_price is None or f.qty is None:
+                continue  # malformed row — skip (should not happen for status=filled)
+            notional = f.qty * f.fill_price
+            grp_notional += notional
+
+            # Realized = statutory (stored) + next-open-vs-decision-close timing slippage.
+            statutory = f.cost_rupees or 0.0
+            timing_slip = (
+                abs(f.fill_price - f.decision_price) * f.qty
+                if f.decision_price is not None
+                else 0.0
+            )
+            grp_realized += statutory + timing_slip
+
+            # Modeled = statutory + impact-model slippage via costs.py (Rule 5).
+            grp_base += _compute_modeled_cost(f.side, f.qty, f.fill_price, cfg_base)
+            grp_pess += _compute_modeled_cost(f.side, f.qty, f.fill_price, cfg_pess)
+
+        realized_bps = (grp_realized / grp_notional * 10_000) if grp_notional else 0.0
+        base_bps = (grp_base / grp_notional * 10_000) if grp_notional else 0.0
+        pess_bps = (grp_pess / grp_notional * 10_000) if grp_notional else 0.0
+
+        rows.append(
+            CostLedgerRowResponse(
+                decision_date=decision_date,
+                reason=reason,
+                traded_notional=grp_notional,
+                realized_cost_rupees=grp_realized,
+                realized_bps=realized_bps,
+                modeled_base_bps=base_bps,
+                modeled_pess_bps=pess_bps,
+            )
+        )
+        total_notional += grp_notional
+        total_realized += grp_realized
+        total_base += grp_base
+        total_pess += grp_pess
+
+    realized_bps_total = (
+        (total_realized / total_notional * 10_000) if total_notional else 0.0
+    )
+    modeled_base_bps = (total_base / total_notional * 10_000) if total_notional else 0.0
+    modeled_pess_bps = (total_pess / total_notional * 10_000) if total_notional else 0.0
+
+    # Drag = cumulative realized cost as annualised % of average forward NAV.
+    realized_drag_pct_yr = (
+        (total_realized / avg_nav) * (252.0 / n_forward_days) * 100.0
+        if n_forward_days and avg_nav
+        else 0.0
+    )
+
+    # Gate (specs/v3/12 §2.3): realized must not exceed the pessimistic band.
+    within_band = total_realized <= total_pess
+
+    return CostLedgerResponse(
+        realized_bps_total=realized_bps_total,
+        realized_drag_pct_yr=realized_drag_pct_yr,
+        modeled_base_bps=modeled_base_bps,
+        modeled_pessimistic_bps=modeled_pess_bps,
+        within_band=within_band,
+        rows=rows,
+    )
 
 
 # ---------------------------------------------------------------------------

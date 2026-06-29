@@ -32,6 +32,7 @@ import {
   getPaperV2Parity,
   getPaperV2Rebalances,
   getPaperV2Alerts,
+  getPaperV2CostLedger,
 } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { formatDisplayDate } from '../utils/dateUtils';
@@ -185,6 +186,7 @@ const S3PaperBook = () => {
   const [parity, setParity] = useState(null);
   const [rebalances, setRebalances] = useState([]);
   const [alerts, setAlerts] = useState([]);
+  const [costLedger, setCostLedger] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notArmed, setNotArmed] = useState(false);
 
@@ -193,27 +195,36 @@ const S3PaperBook = () => {
       try {
         // Each new endpoint .catch → null/[] so one failing call never blanks the
         // page (matches the 404-tolerant pattern already used for getPaperV2Book).
-        const [bookData, posData, navData, parityData, rebalData, alertData] =
-          await Promise.all([
-            getPaperV2Book().catch((err) => {
-              if (err?.response?.status === 404) {
-                setNotArmed(true);
-                return null;
-              }
-              throw err;
-            }),
-            getPaperV2Positions().catch(() => []),
-            getPaperV2Nav().catch(() => null),
-            getPaperV2Parity().catch(() => null),
-            getPaperV2Rebalances().catch(() => []),
-            getPaperV2Alerts().catch(() => []),
-          ]);
+        const [
+          bookData,
+          posData,
+          navData,
+          parityData,
+          rebalData,
+          alertData,
+          costLedgerData,
+        ] = await Promise.all([
+          getPaperV2Book().catch((err) => {
+            if (err?.response?.status === 404) {
+              setNotArmed(true);
+              return null;
+            }
+            throw err;
+          }),
+          getPaperV2Positions().catch(() => []),
+          getPaperV2Nav().catch(() => null),
+          getPaperV2Parity().catch(() => null),
+          getPaperV2Rebalances().catch(() => []),
+          getPaperV2Alerts().catch(() => []),
+          getPaperV2CostLedger().catch(() => null),
+        ]);
         setBook(bookData);
         setPositions(posData || []);
         setNav(navData);
         setParity(parityData);
         setRebalances(rebalData || []);
         setAlerts(alertData || []);
+        setCostLedger(costLedgerData);
       } catch (error) {
         console.error('Error loading S3 paper book:', error);
       } finally {
@@ -319,6 +330,9 @@ const S3PaperBook = () => {
 
       {/* Cumulative cost-drag + turnover */}
       <CostDragPanel rebalances={rebalances} book={book} isDark={isDark} />
+
+      {/* Realized-vs-modeled cost ledger (F2) */}
+      <CostLedgerCard ledger={costLedger} />
 
       {/* Rebalance log */}
       <RebalanceLog events={rebalances} />
@@ -1435,6 +1449,235 @@ const RebalanceLog = ({ events }) => {
           );
         })(events)}
       </div>
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// F2 — Realized-vs-modeled cost ledger (specs/v3/12 F2)
+// ---------------------------------------------------------------------------
+
+// Band gauge: renders a horizontal bar showing where realized falls vs [base..pess].
+// Green when realized ≤ pessimistic; red when realized exceeds it.
+const BandGauge = ({ realizedBps, baseBps, pessBps }) => {
+  if (!pessBps) return null;
+  // Clamp gauge fill at 120% of pessimistic so the bar doesn't overflow on breach.
+  const maxBps = pessBps * 1.2;
+  const realizePct = Math.min((realizedBps / maxBps) * 100, 100);
+  const basePct = (baseBps / maxBps) * 100;
+  const pessPct = (pessBps / maxBps) * 100;
+  const overBand = realizedBps > pessBps;
+
+  return (
+    <div className='w-full'>
+      <div className='relative h-4 bg-bg-elevated rounded-full overflow-hidden'>
+        {/* Base marker */}
+        <div
+          className='absolute top-0 bottom-0 w-0.5 bg-bullish/60 z-10'
+          style={{ left: `${basePct}%` }}
+        />
+        {/* Pessimistic marker */}
+        <div
+          className='absolute top-0 bottom-0 w-0.5 bg-bearish/60 z-10'
+          style={{ left: `${pessPct}%` }}
+        />
+        {/* Realized fill */}
+        <div
+          className={`h-full rounded-full transition-all ${overBand ? 'bg-bearish/70' : 'bg-bullish/60'}`}
+          style={{ width: `${realizePct}%` }}
+        />
+      </div>
+      <div className='flex justify-between text-[9px] font-black uppercase tracking-widest text-text-muted mt-1'>
+        <span>0</span>
+        <span className='text-bullish'>base {baseBps.toFixed(1)} bps</span>
+        <span className='text-bearish'>pess {pessBps.toFixed(1)} bps</span>
+      </div>
+    </div>
+  );
+};
+
+const CostLedgerCard = ({ ledger }) => {
+  const [expanded, setExpanded] = useState(false);
+
+  if (!ledger) return null;
+
+  const {
+    realized_bps_total,
+    realized_drag_pct_yr,
+    modeled_base_bps,
+    modeled_pessimistic_bps,
+    within_band,
+    rows,
+  } = ledger;
+
+  const hasRows = rows && rows.length > 0;
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
+      {/* Header */}
+      <div className='flex flex-wrap justify-between items-start gap-3 mb-4'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <Receipt size={20} className='text-primary' /> Cost Ledger
+          <span className='text-[10px] font-black uppercase tracking-widest text-text-muted normal-case'>
+            (F2 — realized vs modeled)
+          </span>
+        </h3>
+        <div className='flex items-center gap-2 flex-wrap'>
+          {/* Within-band gate badge */}
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg ${
+              within_band
+                ? 'bg-bullish/10 text-bullish border-bullish/20'
+                : 'bg-bearish/10 text-bearish border-bearish/20'
+            }`}
+          >
+            <span className='text-[9px] font-black uppercase tracking-widest'>
+              {within_band ? 'Within band' : 'Exceeds band'}
+            </span>
+          </div>
+          {/* Realized bps */}
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Realized
+            </span>
+            <span
+              className={`text-xs font-black ${within_band ? 'text-text' : 'text-bearish'}`}
+            >
+              {realized_bps_total.toFixed(1)} bps
+            </span>
+          </div>
+          {/* Drag annualised */}
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Drag /yr
+            </span>
+            <span className='text-xs font-black text-amber-500'>
+              {realized_drag_pct_yr.toFixed(2)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Band gauge */}
+      <div className='mb-4'>
+        <p className='text-[11px] font-bold text-text-muted mb-2'>
+          Realized{' '}
+          <span className='font-black text-text'>
+            {realized_bps_total.toFixed(1)} bps
+          </span>{' '}
+          vs modeled band{' '}
+          <span className='text-bullish font-black'>
+            {modeled_base_bps.toFixed(1)}
+          </span>{' '}
+          →{' '}
+          <span className='text-bearish font-black'>
+            {modeled_pessimistic_bps.toFixed(1)} bps
+          </span>{' '}
+          (base → pessimistic)
+        </p>
+        <BandGauge
+          realizedBps={realized_bps_total}
+          baseBps={modeled_base_bps}
+          pessBps={modeled_pessimistic_bps}
+        />
+      </div>
+
+      {/* Caveat banner — mandatory per specs/v3/12 §1.4 */}
+      <div className='flex gap-2 items-start p-3 bg-amber-500/5 border border-amber-500/20 rounded-xl mb-4'>
+        <AlertTriangle size={14} className='text-amber-500 mt-0.5 shrink-0' />
+        <p className='text-[10px] font-bold text-amber-500 leading-relaxed'>
+          Paper fills replay at historical opens — no real market impact.
+          Realized cost here is statutory + timing slippage only; real-world
+          cost will be higher. Passing this gate is necessary, not sufficient,
+          for real capital.
+        </p>
+      </div>
+
+      {/* Expandable per-rebalance table */}
+      {hasRows && (
+        <div>
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className='flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-text-muted hover:text-text transition-colors mb-2'
+          >
+            {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            Per-rebalance ledger ({rows.length} events)
+          </button>
+
+          {expanded && (
+            <div className='overflow-x-auto rounded-xl border border-border/50'>
+              <table className='w-full border-collapse'>
+                <thead>
+                  <tr className='text-[9px] uppercase tracking-widest text-text-muted font-black border-b border-border/50'>
+                    <th className='text-left p-3'>Date</th>
+                    <th className='text-left p-3'>Reason</th>
+                    <th className='text-right p-3'>Notional (₹)</th>
+                    <th className='text-right p-3'>Realized (bps)</th>
+                    <th className='text-right p-3'>Base (bps)</th>
+                    <th className='text-right p-3'>Pess (bps)</th>
+                    <th className='text-center p-3'>Gate</th>
+                  </tr>
+                </thead>
+                <tbody className='text-xs'>
+                  {map((row) => {
+                    const over = row.realized_bps > row.modeled_pess_bps;
+                    return (
+                      <tr
+                        key={row.decision_date}
+                        className='border-b border-border/30'
+                      >
+                        <td className='p-3 font-mono text-text-muted'>
+                          {formatDisplayDate(row.decision_date)}
+                        </td>
+                        <td className='p-3'>
+                          <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+                            {row.reason}
+                          </span>
+                        </td>
+                        <td className='p-3 text-right font-mono text-text-muted'>
+                          ₹
+                          {row.traded_notional.toLocaleString(undefined, {
+                            maximumFractionDigits: 0,
+                          })}
+                        </td>
+                        <td
+                          className={`p-3 text-right font-black font-mono ${over ? 'text-bearish' : 'text-text'}`}
+                        >
+                          {row.realized_bps.toFixed(1)}
+                        </td>
+                        <td className='p-3 text-right font-mono text-bullish'>
+                          {row.modeled_base_bps.toFixed(1)}
+                        </td>
+                        <td className='p-3 text-right font-mono text-bearish'>
+                          {row.modeled_pess_bps.toFixed(1)}
+                        </td>
+                        <td className='p-3 text-center'>
+                          {over ? (
+                            <span className='text-[9px] font-black text-bearish uppercase'>
+                              ✗
+                            </span>
+                          ) : (
+                            <span className='text-[9px] font-black text-bullish uppercase'>
+                              ✓
+                            </span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })(rows)}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {!hasRows && (
+        <p className='text-[11px] font-bold text-text-muted text-center py-4'>
+          No filled rebalances yet — cost data will appear after the first
+          execution.
+        </p>
+      )}
     </div>
   );
 };

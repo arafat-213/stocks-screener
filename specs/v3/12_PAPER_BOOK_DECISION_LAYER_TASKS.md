@@ -35,7 +35,7 @@ breach timeline — was de-scoped.)
 | This doc | Brainstorm # | Feature | Pillar | New table? |
 |----------|-------------|---------|--------|-----------|
 | **F1** | #1 | Cumulative tracking-error tile + sparkline | Fidelity | No |
-| **F2** | #3 | Realized-vs-modeled cost ledger | Cost | No |
+| **F2** | #3 | Realized-vs-modeled cost ledger | Cost | No | ✅ DONE 2026-06-29 |
 | **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No |
 | **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** |
 | **F5** | #6 | Alert log surfaced in-UI | Ops | **Yes** |
@@ -210,7 +210,7 @@ source actually used.
 
 ---
 
-## F2 — Realized-vs-modeled cost ledger  (brainstorm #3)
+## F2 — Realized-vs-modeled cost ledger  (brainstorm #3)  ✅ DONE 2026-06-29
 
 **Goal.** The cost pillar (`11` §7.3) is the one most likely to kill the edge and is the
 least visible today. Show modeled cost band vs paper-realized cost, cumulative, in bps —
@@ -242,6 +242,22 @@ necessary, not sufficient, for real capital."
 **Done-criteria (+ §2.6).** Test: realized cost reconciles to Σ`cost_rupees` + slippage on
 a seeded fill set; `within_band` flips correctly at the pessimistic edge; annualization uses
 forward elapsed days. Reuses `costs.py` (no duplicated cost formula — Rule 5).
+
+**Execution notes (2026-06-29):**
+- `GET /v2/paper/cost-ledger` added to `paper_v2.py`; `_compute_modeled_cost` helper
+  delegates to `costs.py` `fill_cost` + `effective_price` (Rule 5 — no re-derived formula).
+- `CostLedgerRowResponse` + `CostLedgerResponse` Pydantic models inline in the router.
+- Realized = Σ `cost_rupees` (statutory) + `|fill_price − decision_price| × qty` (timing
+  slippage) over **filled** fills only; pending fills excluded.
+- Modeled band: `CostConfig.base()` (lower) → `CostConfig.pessimistic()` (upper), reusing
+  `fill_cost` + `effective_price` at `adv_20=0` (no stored ADV for paper fills → floor
+  slippage only).
+- Annualisation by `n_forward_days` (count of `is_forward=True` snapshots); `avg_nav` from
+  forward snapshot equity values.
+- `getPaperV2CostLedger` added to `frontend/src/api/client.js`; `CostLedgerCard` +
+  `BandGauge` components added to `S3PaperBook.jsx` below `CostDragPanel`. Mandatory
+  caveat banner (§1.4) present in the UI.
+- 9 tests in `tests/paper_v2/test_cost_ledger.py`; all 70 paper_v2 tests pass; `npm run build` green.
 
 ---
 
