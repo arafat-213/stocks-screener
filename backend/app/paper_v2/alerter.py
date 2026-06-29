@@ -8,11 +8,18 @@ Three alert kinds:
   * stop alert      — a catastrophic stop was queued today (daily job, §4a.4).
   * rebalance preview — month-end queued buys/sells/trims for next-open (§4b.4).
   * fill confirmation — the prior session's queue executed at today's open (§4b).
+
+F5 (specs/v3/12): each emitted alert is persisted to ``paper_v2_alert`` so the
+operator has a durable in-UI feed. Pass ``session`` to enable persistence; if
+omitted, no persistence (backward-compatible for call sites without a session).
 """
 
 from __future__ import annotations
 
+import datetime
 import logging
+
+from sqlalchemy.orm import Session
 
 from app.alerts.email import send_alert_email
 from app.paper_v2.live_engine import ProcessReport
@@ -82,38 +89,102 @@ def build_fill_confirm_html(report: ProcessReport) -> str:
     )
 
 
-def emit_alerts(report: ProcessReport, *, send: bool = True) -> list[str]:
+def _persist_alert(
+    session: Session,
+    kind: str,
+    subject: str,
+    body_summary: str,
+    delivered: bool,
+    as_of: datetime.date | None = None,
+) -> None:
+    """Persist one alert row to ``paper_v2_alert`` within the caller's session.
+
+    Resolves the active portfolio_id from the session. A no-op when no active
+    book exists (early-failure path before the book was created). Uses flush so
+    the caller's transaction controls commit timing.
+    """
+    from app.db.models import PaperV2Alert, PaperV2Portfolio
+
+    pf = session.query(PaperV2Portfolio).filter_by(is_active=True).first()
+    if pf is None:
+        log.debug(
+            "_persist_alert: no active book — skipping persistence for %r", subject
+        )
+        return
+    row = PaperV2Alert(
+        portfolio_id=pf.id,
+        kind=kind,
+        subject=subject,
+        body_summary=body_summary,
+        delivered=delivered,
+        as_of=as_of,
+    )
+    session.add(row)
+    session.flush()
+
+
+def emit_alerts(
+    report: ProcessReport,
+    *,
+    send: bool = True,
+    session: Session | None = None,
+) -> list[str]:
     """Build (and optionally send) the alerts implied by ``report``.
 
     Returns the list of subjects emitted (so the caller / tests can assert without a
     live Resend key). When ``send`` is False, HTML is built and discarded — used to
     prove rendering in tests without external I/O (Rule 5).
+
+    When ``session`` is provided, each emitted alert is also persisted to the
+    ``paper_v2_alert`` table (F5). Persistence happens on both send=True and
+    send=False paths; ``delivered`` reflects the send flag.
     """
     emitted: list[str] = []
     if report.skipped:
         return emitted
 
     if report.fills_executed:
-        _maybe_send(
-            f"S3 paper — fills executed {report.process_date}",
-            build_fill_confirm_html(report),
-            send,
-        )
+        subject = f"S3 paper — fills executed {report.process_date}"
+        _maybe_send(subject, build_fill_confirm_html(report), send)
+        if session is not None:
+            _persist_alert(
+                session,
+                "fill_confirm",
+                subject,
+                f"{len(report.fills_executed)} fill(s) executed at next-session open.",
+                delivered=send,
+                as_of=report.process_date,
+            )
         emitted.append("fills")
 
     if report.is_rebalance and report.queued:
-        _maybe_send(
-            f"S3 paper — rebalance preview {report.process_date}",
-            build_rebalance_preview_html(report),
-            send,
-        )
+        subject = f"S3 paper — rebalance preview {report.process_date}"
+        _maybe_send(subject, build_rebalance_preview_html(report), send)
+        if session is not None:
+            n_buys = sum(1 for f in report.queued if f.side == "buy")
+            n_other = sum(1 for f in report.queued if f.side in ("sell", "trim"))
+            _persist_alert(
+                session,
+                "rebalance_preview",
+                subject,
+                f"Rebalance queued: {n_buys} buy(s), {n_other} sell/trim(s).",
+                delivered=send,
+                as_of=report.process_date,
+            )
         emitted.append("rebalance")
     elif report.queued:  # non-rebalance day ⇒ queued fills are catastrophic stops
-        _maybe_send(
-            f"S3 paper — STOP triggered {report.process_date}",
-            build_stop_alert_html(report),
-            send,
-        )
+        subject = f"S3 paper — STOP triggered {report.process_date}"
+        _maybe_send(subject, build_stop_alert_html(report), send)
+        if session is not None:
+            stops = [f for f in report.queued if f.side == "sell"]
+            _persist_alert(
+                session,
+                "stop",
+                subject,
+                f"Catastrophic stop: {len(stops)} name(s) queued for next-open sells.",
+                delivered=send,
+                as_of=report.process_date,
+            )
         emitted.append("stop")
 
     return emitted
@@ -139,17 +210,39 @@ def build_pipeline_failure_html(
 
 
 def emit_failure_alert(
-    exc: Exception, process_date: str, traceback_str: str, *, send: bool = True
+    exc: Exception,
+    process_date: str,
+    traceback_str: str,
+    *,
+    send: bool = True,
+    session: Session | None = None,
 ) -> None:
     """Send an immediate failure email when the daily paper task crashes.
 
     Must be called from inside an except block so ``traceback_str`` (from
     ``traceback.format_exc()``) captures the live traceback. The ``send=False``
     path renders HTML without I/O so tests can assert without a live Resend key.
+
+    When ``session`` is provided, the failure is also persisted to ``paper_v2_alert``.
     """
     subject = f"🚨 S3 paper — PIPELINE FAILED {process_date}"
     html = build_pipeline_failure_html(exc, process_date, traceback_str)
     _maybe_send(subject, html, send)
+    if session is not None:
+        exc_type = type(exc).__name__
+        as_of = None
+        try:
+            as_of = datetime.date.fromisoformat(process_date)
+        except (ValueError, TypeError):
+            pass
+        _persist_alert(
+            session,
+            "pipeline_failure",
+            subject,
+            f"{exc_type}: {str(exc)[:300]}",
+            delivered=send,
+            as_of=as_of,
+        )
 
 
 def _maybe_send(subject: str, html: str, send: bool) -> None:

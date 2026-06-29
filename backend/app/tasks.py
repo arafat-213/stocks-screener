@@ -177,7 +177,7 @@ def execute_paper_daily_task(process_date: str | None = None):
             if report.skipped:
                 continue
             if d >= go_live:
-                alerter.emit_alerts(report)
+                alerter.emit_alerts(report, session=db)
             if report.is_rebalance and d >= go_live:
                 par = parity.shadow_parity(db, pf.id, prices, index_prices, d)
                 logger.info(par.summary)
@@ -198,7 +198,9 @@ def execute_paper_daily_task(process_date: str | None = None):
         try:
             import traceback as _traceback
 
-            alerter.emit_failure_alert(e, target.isoformat(), _traceback.format_exc())
+            alerter.emit_failure_alert(
+                e, target.isoformat(), _traceback.format_exc(), session=db
+            )
         except Exception as alert_exc:
             logger.error("emit_failure_alert itself failed: %s", alert_exc)
         raise

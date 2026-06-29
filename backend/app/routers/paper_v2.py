@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.core.celery_app import redis_url
 from app.db.models import (
+    PaperV2Alert,
     PaperV2DailySnapshot,
     PaperV2ParityCheck,
     PaperV2PendingFill,
@@ -453,3 +454,59 @@ def run_paper_pipeline(db: Session = Depends(get_db)) -> dict:
     _log.info("Manual S3 paper pipeline trigger via System UI")
     execute_paper_daily_task.delay()
     return {"message": "S3 paper pipeline task queued"}
+
+
+# ---------------------------------------------------------------------------
+# F5 — Alert log (specs/v3/12 F5): persisted feed of all emitted alerts
+# ---------------------------------------------------------------------------
+
+
+class PaperAlertResponse(BaseModel):
+    """One persisted alert row from ``paper_v2_alert`` (F5)."""
+
+    id: int
+    created_at: datetime.datetime
+    kind: str  # stop | rebalance_preview | fill_confirm | pipeline_failure | staleness
+    as_of: datetime.date | None
+    subject: str
+    body_summary: str
+    delivered: bool
+
+
+@router.get("/alerts", response_model=list[PaperAlertResponse])
+def get_alerts(
+    limit: int = 50,
+    kind: str | None = None,
+    db: Session = Depends(get_db),
+) -> list[PaperAlertResponse]:
+    """Persisted alert feed for the S3 probation book (F5). Most recent first.
+
+    ``limit`` caps the number of rows returned (default 50). ``kind`` filters by
+    alert kind (stop | rebalance_preview | fill_confirm | pipeline_failure | staleness).
+    Read-only over ``paper_v2_alert``; no live fetch.
+    """
+    book = _active_book(db)
+    if not book:
+        return []
+
+    q = (
+        db.query(PaperV2Alert)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2Alert.created_at.desc())
+    )
+    if kind is not None:
+        q = q.filter(PaperV2Alert.kind == kind)
+    rows = q.limit(limit).all()
+
+    return [
+        PaperAlertResponse(
+            id=r.id,
+            created_at=r.created_at,
+            kind=r.kind,
+            as_of=r.as_of,
+            subject=r.subject,
+            body_summary=r.body_summary,
+            delivered=r.delivered,
+        )
+        for r in rows
+    ]

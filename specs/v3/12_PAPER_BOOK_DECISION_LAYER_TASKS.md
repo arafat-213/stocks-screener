@@ -321,7 +321,7 @@ change — assert engine output unchanged around the instrumentation).
 
 ---
 
-## F5 — Alert log surfaced in-UI  (brainstorm #6)  — **NEW TABLE**
+## F5 — Alert log surfaced in-UI  (brainstorm #6)  — **NEW TABLE** ✅ DONE 2026-06-29
 
 **Goal.** The alerter (`app/paper_v2/alerter.py`) emails stop / rebalance-preview /
 fill-confirm / pipeline-failure notices into the void (Resend) and discards them. The paper
@@ -354,6 +354,19 @@ summary, "delivered" indicator). Place near the rebalance log. Filter by kind.
 with correct `kind`/`as_of`/`delivered`; `send=False` path persists with `delivered=False`
 and performs no network I/O (Resend mocked/asserted-not-called); endpoint filters by kind.
 No change to email content/timing.
+
+**Execution notes (2026-06-29):**
+- Migration `0a1f85aef724` (down_revision `c1e9a4f7b2d6`); up→down→up clean.
+- `alerter.emit_alerts` / `emit_failure_alert` gained `session=` kwarg; `tasks.py`
+  passes `session=db` to both. `watchdog.run_watchdog` restructured to persist inside
+  the try block (before session close) via `_persist_staleness_alert` helper.
+- `_persist_alert` in alerter resolves `portfolio_id` from `PaperV2Portfolio.is_active`
+  (same as `_active_book` in the router) — callers don't need to pass the ID.
+- `GET /v2/paper/alerts?limit=N&kind=` added to `paper_v2.py`; `getPaperV2Alerts` added
+  to `frontend/src/api/client.js`; `AlertFeedCard` component with kind-filter chips added
+  to `S3PaperBook.jsx` below the RebalanceLog.
+- 15 new tests in `tests/paper_v2/test_alert_log.py`; all 61 paper_v2 tests pass; `npm
+  run build` green.
 
 ---
 

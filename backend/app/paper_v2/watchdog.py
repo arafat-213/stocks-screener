@@ -152,6 +152,37 @@ def build_watchdog_html(report: StalenessReport) -> str:
     )
 
 
+def _persist_staleness_alert(
+    db: Session, report: StalenessReport, subject: str, delivered: bool, commit: bool
+) -> None:
+    """Write a staleness alert row to ``paper_v2_alert`` (F5).
+
+    ``commit`` is True when ``run_watchdog`` owns the session (Celery entry);
+    False when the caller owns it and manages commits.
+    """
+    from app.db.models import PaperV2Alert, PaperV2Portfolio
+
+    pf = db.query(PaperV2Portfolio).filter_by(name=PROBATION_BOOK_NAME).one_or_none()
+    if pf is None:
+        return
+    row = PaperV2Alert(
+        portfolio_id=pf.id,
+        kind="staleness",
+        subject=subject,
+        body_summary=(
+            f"Replay clock stale — {report.lag_trading_days} trading day(s) behind "
+            f"(threshold > {report.threshold}). Last processed: {report.last_processed}."
+        ),
+        delivered=delivered,
+        as_of=report.last_processed,
+    )
+    db.add(row)
+    if commit:
+        db.commit()
+    else:
+        db.flush()
+
+
 def run_watchdog(
     session: Session | None = None, *, send: bool = True, today: date | None = None
 ) -> StalenessReport:
@@ -160,31 +191,36 @@ def run_watchdog(
     Owns its own session when called with ``session=None`` (the Celery entry point). The
     email is suppressed with ``send=False`` so tests can assert the verdict without
     external I/O (Rule 5).
+
+    F5: stale alerts are persisted to ``paper_v2_alert`` on both send paths.
     """
     own = session is None
     db = session or SessionLocal()
     try:
         report = check_staleness(db, today=today)
+
+        if report.is_stale:
+            log.warning(
+                "S3 paper watchdog: replay STALE — last_processed=%s lag=%d td (> %d)",
+                report.last_processed,
+                report.lag_trading_days,
+                report.threshold,
+            )
+            subject = (
+                f"⚠ S3 paper book replay STALE — "
+                f"{report.lag_trading_days} trading days behind"
+            )
+            if send:
+                send_alert_email(subject, build_watchdog_html(report))
+            _persist_staleness_alert(db, report, subject, delivered=send, commit=own)
+        else:
+            log.info(
+                "S3 paper watchdog: OK (book_armed=%s lag=%d td)",
+                report.book_armed,
+                report.lag_trading_days,
+            )
     finally:
         if own:
             db.close()
 
-    if report.is_stale:
-        log.warning(
-            "S3 paper watchdog: replay STALE — last_processed=%s lag=%d td (> %d)",
-            report.last_processed,
-            report.lag_trading_days,
-            report.threshold,
-        )
-        if send:
-            send_alert_email(
-                f"⚠ S3 paper book replay STALE — {report.lag_trading_days} trading days behind",
-                build_watchdog_html(report),
-            )
-    else:
-        log.info(
-            "S3 paper watchdog: OK (book_armed=%s lag=%d td)",
-            report.book_armed,
-            report.lag_trading_days,
-        )
     return report

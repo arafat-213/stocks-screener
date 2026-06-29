@@ -50,6 +50,11 @@ export const getPaperV2Parity = () =>
   apiClient.get('/v2/paper/parity').then((res) => res.data);
 export const getPaperV2Rebalances = () =>
   apiClient.get('/v2/paper/rebalances').then((res) => res.data);
+export const getPaperV2Alerts = ({ limit = 50, kind } = {}) => {
+  const params = { limit };
+  if (kind) params.kind = kind;
+  return apiClient.get('/v2/paper/alerts', { params }).then((res) => res.data);
+};
 
 // --- S3 paper pipeline status + manual trigger (System UI) ---
 export const fetchPaperPipelineStatus = () =>

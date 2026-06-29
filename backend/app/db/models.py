@@ -654,6 +654,34 @@ class PaperV2ParityCheck(Base):
     )
 
 
+class PaperV2Alert(Base):
+    """Persisted alert log for the S3 probation book (specs/v3/12 F5).
+
+    Every alert emitted by alerter.py and watchdog.py writes one row so the
+    operator has a durable, in-UI feed of all operational events. ``delivered``
+    reflects whether the Resend path was actually invoked (False on send=False
+    test paths). Idempotent on insert — no upsert needed (each call = new event).
+    """
+
+    __tablename__ = "paper_v2_alert"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    created_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+    # stop | rebalance_preview | fill_confirm | pipeline_failure | staleness
+    kind = Column(String, nullable=False)
+    as_of = Column(Date, nullable=True)  # process/decision date the alert pertains to
+    subject = Column(String, nullable=False)
+    body_summary = Column(String, nullable=False)  # short text, NOT the full HTML
+    delivered = Column(Boolean, nullable=False, default=False)
+
+    __table_args__ = (
+        Index("ix_paper_v2_alert_portfolio_created_at", "portfolio_id", "created_at"),
+    )
+
+
 class MarketBreadth(Base):
     __tablename__ = "market_breadth"
     date = Column(Date, primary_key=True)

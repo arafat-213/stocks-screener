@@ -19,6 +19,11 @@ import {
   PieChart,
   TrendingDown,
   Receipt,
+  Bell,
+  CheckCircle2,
+  XCircle,
+  Mail,
+  MailX,
 } from 'lucide-react';
 import {
   getPaperV2Book,
@@ -26,6 +31,7 @@ import {
   getPaperV2Nav,
   getPaperV2Parity,
   getPaperV2Rebalances,
+  getPaperV2Alerts,
 } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { formatDisplayDate } from '../utils/dateUtils';
@@ -178,6 +184,7 @@ const S3PaperBook = () => {
   const [nav, setNav] = useState(null);
   const [parity, setParity] = useState(null);
   const [rebalances, setRebalances] = useState([]);
+  const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notArmed, setNotArmed] = useState(false);
 
@@ -186,7 +193,7 @@ const S3PaperBook = () => {
       try {
         // Each new endpoint .catch → null/[] so one failing call never blanks the
         // page (matches the 404-tolerant pattern already used for getPaperV2Book).
-        const [bookData, posData, navData, parityData, rebalData] =
+        const [bookData, posData, navData, parityData, rebalData, alertData] =
           await Promise.all([
             getPaperV2Book().catch((err) => {
               if (err?.response?.status === 404) {
@@ -199,12 +206,14 @@ const S3PaperBook = () => {
             getPaperV2Nav().catch(() => null),
             getPaperV2Parity().catch(() => null),
             getPaperV2Rebalances().catch(() => []),
+            getPaperV2Alerts().catch(() => []),
           ]);
         setBook(bookData);
         setPositions(posData || []);
         setNav(navData);
         setParity(parityData);
         setRebalances(rebalData || []);
+        setAlerts(alertData || []);
       } catch (error) {
         console.error('Error loading S3 paper book:', error);
       } finally {
@@ -313,6 +322,9 @@ const S3PaperBook = () => {
 
       {/* Rebalance log */}
       <RebalanceLog events={rebalances} />
+
+      {/* Alert feed (F5) */}
+      <AlertFeedCard alerts={alerts} />
     </div>
   );
 };
@@ -1423,6 +1435,161 @@ const RebalanceLog = ({ events }) => {
           );
         })(events)}
       </div>
+    </div>
+  );
+};
+
+// Kind metadata for the alert-feed card (F5).
+const ALERT_KIND_META = {
+  stop: {
+    label: 'Stop',
+    className: 'bg-bearish/10 text-bearish border-bearish/20',
+    Icon: XCircle,
+  },
+  rebalance_preview: {
+    label: 'Rebalance',
+    className: 'bg-primary/10 text-primary border-primary/20',
+    Icon: Repeat,
+  },
+  fill_confirm: {
+    label: 'Fills',
+    className: 'bg-bullish/10 text-bullish border-bullish/20',
+    Icon: CheckCircle2,
+  },
+  pipeline_failure: {
+    label: 'Failure',
+    className: 'bg-bearish/10 text-bearish border-bearish/20',
+    Icon: AlertTriangle,
+  },
+  staleness: {
+    label: 'Stale',
+    className: 'bg-amber-500/10 text-amber-500 border-amber-500/20',
+    Icon: AlertCircle,
+  },
+};
+
+const ALERT_KIND_FILTERS = [
+  'all',
+  'stop',
+  'rebalance_preview',
+  'fill_confirm',
+  'pipeline_failure',
+  'staleness',
+];
+
+// Alert-feed card (F5): timeline list of all emitted alerts (persisted in
+// paper_v2_alert). Delivered = actually reached Resend; undelivered = send=False path
+// (e.g. test runs). Read-only observability only — not a control signal.
+const AlertFeedCard = ({ alerts }) => {
+  const [kindFilter, setKindFilter] = useState('all');
+
+  const filtered =
+    kindFilter === 'all' ? alerts : alerts.filter((a) => a.kind === kindFilter);
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl overflow-hidden shadow-sm'>
+      <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 pb-4 border-b border-border'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <Bell size={20} className='text-primary' /> Alert Feed
+        </h3>
+        {/* Kind filter */}
+        <div className='flex items-center gap-2 flex-wrap'>
+          {ALERT_KIND_FILTERS.map((k) => (
+            <button
+              key={k}
+              onClick={() => setKindFilter(k)}
+              className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest border transition-colors ${
+                kindFilter === k
+                  ? 'bg-primary text-white border-primary'
+                  : 'bg-transparent text-text-muted border-border hover:border-primary/40'
+              }`}
+            >
+              {k === 'all' ? 'All' : (ALERT_KIND_META[k]?.label ?? k)}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {isEmpty(filtered) ? (
+        <div className='flex flex-col items-center justify-center py-12 text-center'>
+          <Bell size={40} className='text-text-muted mb-3 opacity-20' />
+          <p className='text-text-muted max-w-xs'>
+            {isEmpty(alerts)
+              ? 'No alerts persisted yet. Alerts appear here after the first forward rebalance, stop, or pipeline event.'
+              : 'No alerts match the selected filter.'}
+          </p>
+        </div>
+      ) : (
+        <div className='divide-y divide-border/50'>
+          {map((a) => {
+            const meta = ALERT_KIND_META[a.kind] || {
+              label: a.kind,
+              className: 'bg-bg-elevated text-text-muted border-border',
+              Icon: Bell,
+            };
+            const { Icon } = meta;
+            return (
+              <div key={a.id} className='flex items-start gap-4 p-4'>
+                <div className='mt-0.5 shrink-0'>
+                  <Icon
+                    size={16}
+                    className={
+                      a.kind === 'pipeline_failure' || a.kind === 'stop'
+                        ? 'text-bearish'
+                        : a.kind === 'staleness'
+                          ? 'text-amber-500'
+                          : a.kind === 'fill_confirm'
+                            ? 'text-bullish'
+                            : 'text-primary'
+                    }
+                  />
+                </div>
+                <div className='flex-1 min-w-0'>
+                  <div className='flex items-center gap-2 flex-wrap mb-1'>
+                    <span
+                      className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${meta.className}`}
+                    >
+                      {meta.label}
+                    </span>
+                    {a.as_of && (
+                      <span className='text-[10px] text-text-muted font-mono'>
+                        {formatDisplayDate(a.as_of)}
+                      </span>
+                    )}
+                    <span className='text-[10px] text-text-muted font-mono ml-auto'>
+                      {new Date(a.created_at).toLocaleString('en-IN', {
+                        timeZone: 'Asia/Kolkata',
+                        dateStyle: 'short',
+                        timeStyle: 'short',
+                      })}
+                    </span>
+                  </div>
+                  <p className='text-sm font-semibold text-text leading-snug truncate'>
+                    {a.subject}
+                  </p>
+                  <p className='text-xs text-text-muted mt-0.5'>
+                    {a.body_summary}
+                  </p>
+                </div>
+                <div
+                  className='shrink-0 mt-0.5'
+                  title={
+                    a.delivered
+                      ? 'Delivered to Resend'
+                      : 'Not sent (test/send=False path)'
+                  }
+                >
+                  {a.delivered ? (
+                    <Mail size={13} className='text-bullish opacity-70' />
+                  ) : (
+                    <MailX size={13} className='text-text-muted opacity-40' />
+                  )}
+                </div>
+              </div>
+            );
+          })(filtered)}
+        </div>
+      )}
     </div>
   );
 };
