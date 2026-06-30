@@ -162,3 +162,6 @@ http_cache.sqlite
 
 notes/
 data/
+
+# Claude Code session state (memory lives in ~/.claude, not here)
+.claude/projects/
