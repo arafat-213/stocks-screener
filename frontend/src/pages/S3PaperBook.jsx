@@ -37,6 +37,7 @@ import {
   getPaperV2Turnover,
   getPaperV2Runs,
   getPaperV2TrackingError,
+  getPaperV2Scorecard,
 } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { formatDisplayDate } from '../utils/dateUtils';
@@ -194,6 +195,7 @@ const S3PaperBook = () => {
   const [turnover, setTurnover] = useState(null);
   const [runs, setRuns] = useState([]);
   const [trackingError, setTrackingError] = useState(null);
+  const [scorecard, setScorecard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notArmed, setNotArmed] = useState(false);
 
@@ -213,6 +215,7 @@ const S3PaperBook = () => {
           turnoverData,
           runsData,
           trackingErrorData,
+          scorecardData,
         ] = await Promise.all([
           getPaperV2Book().catch((err) => {
             if (err?.response?.status === 404) {
@@ -230,6 +233,7 @@ const S3PaperBook = () => {
           getPaperV2Turnover().catch(() => null),
           getPaperV2Runs().catch(() => []),
           getPaperV2TrackingError().catch(() => null),
+          getPaperV2Scorecard().catch(() => null),
         ]);
         setBook(bookData);
         setPositions(posData || []);
@@ -241,6 +245,7 @@ const S3PaperBook = () => {
         setTurnover(turnoverData);
         setRuns(runsData || []);
         setTrackingError(trackingErrorData);
+        setScorecard(scorecardData);
       } catch (error) {
         console.error('Error loading S3 paper book:', error);
       } finally {
@@ -290,6 +295,9 @@ const S3PaperBook = () => {
       <PageHeader parity={parity} />
 
       <StalenessBanner book={book} />
+
+      {/* Probation scorecard — F6 decision panel (specs/v3/12 F6) */}
+      <ScorecardPanel scorecard={scorecard} />
 
       {/* Book header cards */}
       <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6'>
@@ -512,6 +520,191 @@ const ProbationProgress = ({ book }) => {
         <span>Go-live {formatDisplayDate(goLive)}</span>
         <span>Target {formatDisplayDate(endStr)}</span>
       </div>
+    </div>
+  );
+};
+
+// F6 — Probation scorecard: graduation gates + kill watch (specs/v3/12 F6).
+// Thresholds are pre-registered (11 §7/§8); the UI renders them, never invents them.
+const VERDICT_META = {
+  'ON TRACK': {
+    bg: 'bg-bullish/10',
+    text: 'text-bullish',
+    border: 'border-bullish/30',
+  },
+  'CLOCK RESET': {
+    bg: 'bg-amber-500/10',
+    text: 'text-amber-400',
+    border: 'border-amber-400/30',
+  },
+  HALT: {
+    bg: 'bg-bearish/10',
+    text: 'text-bearish',
+    border: 'border-bearish/30',
+  },
+  GRADUATED: {
+    bg: 'bg-primary/10',
+    text: 'text-primary',
+    border: 'border-primary/30',
+  },
+};
+
+const GATE_STATUS_META = {
+  pass: {
+    icon: <CheckCircle2 size={15} className='text-bullish' />,
+    labelCls: 'text-bullish bg-bullish/10 border-bullish/20',
+  },
+  fail: {
+    icon: <XCircle size={15} className='text-bearish' />,
+    labelCls: 'text-bearish bg-bearish/10 border-bearish/20',
+  },
+  insufficient_data: {
+    icon: <AlertCircle size={15} className='text-text-muted' />,
+    labelCls: 'text-text-muted bg-border/40 border-border',
+  },
+};
+
+const ScorecardPanel = ({ scorecard }) => {
+  if (!scorecard) return null;
+
+  const verdictMeta =
+    VERDICT_META[scorecard.verdict] ?? VERDICT_META['ON TRACK'];
+  const clean = scorecard.clean_months_passed;
+  const ringPct = Math.min(100, (clean / 6) * 100);
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm space-y-6'>
+      {/* Header row */}
+      <div className='flex items-center justify-between flex-wrap gap-3'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <ShieldCheck size={20} className='text-primary' /> Probation Scorecard
+        </h3>
+        <span
+          className={`px-4 py-1.5 rounded-full text-sm font-black uppercase tracking-widest border ${verdictMeta.bg} ${verdictMeta.text} ${verdictMeta.border}`}
+        >
+          {scorecard.verdict}
+        </span>
+      </div>
+
+      {/* Progress + gates */}
+      <div className='flex flex-col sm:flex-row gap-5 items-start'>
+        {/* Clean-month counter */}
+        <div className='flex-none text-center p-4 rounded-xl bg-bg-elevated border border-border min-w-[128px]'>
+          <div className='text-4xl font-black text-primary'>{clean}</div>
+          <div className='text-[10px] font-bold uppercase tracking-widest text-text-muted mt-1'>
+            of 6 clean
+          </div>
+          <div className='text-[10px] text-text-muted'>monthly checks</div>
+          <div className='mt-3 h-1.5 bg-border rounded-full overflow-hidden'>
+            <div
+              className={`h-full rounded-full transition-all duration-700 ${
+                scorecard.verdict === 'GRADUATED' ? 'bg-bullish' : 'bg-primary'
+              }`}
+              style={{ width: `${ringPct}%` }}
+            />
+          </div>
+          <div className='mt-2 text-[9px] text-text-muted'>
+            {scorecard.months_elapsed.toFixed(1)} calendar months elapsed
+          </div>
+          {scorecard.clock_reset_at && (
+            <div className='mt-1 text-[9px] text-amber-400 font-bold'>
+              ↺ reset {formatDisplayDate(scorecard.clock_reset_at)}
+            </div>
+          )}
+        </div>
+
+        {/* Gate checklist */}
+        <div className='flex-1 space-y-2.5'>
+          {scorecard.gates.map((gate) => {
+            const meta =
+              GATE_STATUS_META[gate.status] ??
+              GATE_STATUS_META.insufficient_data;
+            return (
+              <div
+                key={gate.id}
+                className='flex items-start gap-3 p-3 rounded-xl bg-bg-elevated border border-border'
+              >
+                <div className='mt-0.5 flex-none'>{meta.icon}</div>
+                <div className='flex-1 min-w-0'>
+                  <div className='flex items-center gap-1.5 flex-wrap'>
+                    <span className='text-[11px] font-black text-text leading-snug'>
+                      {gate.label}
+                    </span>
+                    <span
+                      className={`text-[8px] px-1.5 py-0.5 rounded uppercase tracking-widest font-black border ${
+                        gate.severity === 'hard'
+                          ? 'bg-primary/10 text-primary border-primary/20'
+                          : 'bg-text-muted/10 text-text-muted border-text-muted/20'
+                      }`}
+                    >
+                      {gate.severity === 'hard' ? 'HARD' : 'SOFT'}
+                    </span>
+                    <span
+                      className={`text-[8px] px-1.5 py-0.5 rounded uppercase tracking-widest font-black border ${meta.labelCls}`}
+                    >
+                      {gate.status.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <p className='text-[10px] text-text-muted mt-1 leading-relaxed'>
+                    {gate.detail}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Kill watch */}
+      <div>
+        <p className='text-[10px] font-black uppercase tracking-widest text-text-muted mb-2.5'>
+          Kill Watch (11 §8)
+        </p>
+        <div className='grid grid-cols-1 sm:grid-cols-2 gap-3'>
+          {scorecard.kill_watch.map((k, i) => (
+            <div
+              key={i}
+              className={`p-3 rounded-xl border flex items-center gap-3 ${
+                k.tripped
+                  ? 'bg-bearish/5 border-bearish/30'
+                  : 'bg-bg-elevated border-border'
+              }`}
+            >
+              {k.tripped ? (
+                <XCircle size={15} className='text-bearish flex-none' />
+              ) : (
+                <CheckCircle2 size={15} className='text-bullish flex-none' />
+              )}
+              <div className='flex-1 min-w-0'>
+                <p className='text-[10px] font-bold text-text leading-snug'>
+                  {k.label}
+                </p>
+                <p
+                  className={`text-xs font-black mt-0.5 ${
+                    k.tripped ? 'text-bearish' : 'text-text-muted'
+                  }`}
+                >
+                  {k.value != null
+                    ? `${k.value.toFixed(1)} / ${k.threshold}`
+                    : `— / ${k.threshold}`}
+                </p>
+              </div>
+              {k.tripped && (
+                <span className='text-[8px] font-black uppercase tracking-widest text-bearish bg-bearish/10 border border-bearish/30 px-2 py-0.5 rounded-full flex-none'>
+                  TRIPPED
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Mandatory footer (specs/v3/12 F6 / 11 §0/§7) */}
+      <p className='text-[10px] text-text-muted border-t border-border pt-4 opacity-70 leading-relaxed'>
+        Graduation earns only the <em>right to consider</em> small real capital
+        under a future prereg — it does <strong>NOT</strong> validate the edge;
+        6 months cannot. (11 §0/§7)
+      </p>
     </div>
   );
 };

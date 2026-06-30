@@ -959,3 +959,428 @@ def get_tracking_error(db: Session = Depends(get_db)) -> TrackingErrorResponse:
         basis="mom30",
         series=series,
     )
+
+
+# ---------------------------------------------------------------------------
+# F6 — Probation scorecard / countdown (specs/v3/12 F6)
+# ---------------------------------------------------------------------------
+
+# Locked thresholds from 11 §7/§8 (specs/v3/12 §2.3). NEVER EDIT — pre-registered.
+_FIDELITY_TOL_BPS: float = 25.0  # Gate 1: parity dev ≤ 25 bps (§7.1)
+_DIRECTIONAL_UNDERPERF_LIMIT_PP: float = 15.0  # Gate 4: book vs Mom30, soft (§7.4)
+_KILL_CSTOP_PER_WINDOW: int = 5  # Kill: ≥5 stops in one window (§8)
+_KILL_MAXDD_PCT: float = 23.1  # Kill: maxDD > ~23.1% (OOS 13.1%+10pp)
+_MIN_FWD_DAYS_FOR_DIRECTIONAL: int = 20  # presentational: need ≥20 days of data
+
+
+def _months_elapsed(go_live: datetime.date, today: datetime.date) -> float:
+    """Approximate calendar months (with fractional days/30) between two dates."""
+    full = (today.year - go_live.year) * 12 + (today.month - go_live.month)
+    partial = (today.day - go_live.day) / 30.0
+    return max(0.0, full + partial)
+
+
+class GateStatus(BaseModel):
+    """Single gate evaluation in the F6 probation scorecard."""
+
+    id: str  # "g1_fidelity" | "g2_operational" | "g3_cost" | "g4_directional"
+    label: str
+    severity: str  # "hard" | "soft"
+    status: str  # "pass" | "fail" | "insufficient_data"
+    detail: str
+    source: str
+
+
+class KillWatchItem(BaseModel):
+    """One kill criterion from §8 (specs/v3/12 §2.3)."""
+
+    label: str
+    value: float | None  # None = not yet computable
+    threshold: float
+    tripped: bool
+
+
+class ScorecardResponse(BaseModel):
+    """F6 probation scorecard: graduation gates + kill watch (specs/v3/12 F6).
+
+    Evaluates the locked §2.3 gates against persisted data — verbatim thresholds,
+    no invented bars. ``verdict`` is advisory and uses only the four states the spec
+    defines. A gate that cannot be evaluated from persisted data returns
+    ``status="insufficient_data"`` rather than a fabricated pass/fail.
+    """
+
+    go_live: datetime.date
+    months_elapsed: float
+    clean_months_passed: int
+    clock_reset_at: datetime.date | None  # date of last parity fail; None = never
+    gates: list[GateStatus]
+    kill_watch: list[KillWatchItem]
+    verdict: str  # "ON TRACK" | "CLOCK RESET" | "HALT" | "GRADUATED"
+
+
+@router.get("/scorecard", response_model=ScorecardResponse)
+def get_scorecard(db: Session = Depends(get_db)) -> ScorecardResponse:
+    """F6 probation scorecard: graduation gates + kill watch (specs/v3/12 F6).
+
+    Evaluates the four locked §2.3 gates and two §8 kill criteria from persisted
+    state — no live fetch, no new table. Thresholds are module-level constants that
+    must not be changed post-registration. Gates that cannot yet be evaluated from
+    persisted data return ``status="insufficient_data"``, never a fabricated pass.
+    """
+    book = _active_book(db)
+    if not book:
+        raise HTTPException(status_code=404, detail="No active S3 paper book.")
+
+    today = datetime.datetime.now(datetime.timezone.utc).astimezone(_IST).date()
+    go_live = book.created_at.astimezone(_IST).date() if book.created_at else today
+    months_elapsed = _months_elapsed(go_live, today)
+
+    # --- Parity history → Gate 1 + clean-month clock ---
+    parity_rows = (
+        db.query(PaperV2ParityCheck)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2ParityCheck.as_of.asc())
+        .all()
+    )
+
+    # Clean-month clock (§7.1): consecutive passes AFTER the last fail.
+    # A row is a clock-reset event when passed=False OR max_dev_bps > 25.
+    clock_reset_at: datetime.date | None = None
+    clean_months_passed = 0
+    for pc in parity_rows:
+        if not pc.passed or pc.max_dev_bps > _FIDELITY_TOL_BPS:
+            clock_reset_at = pc.as_of
+            clean_months_passed = 0
+        else:
+            clean_months_passed += 1
+
+    # Gate 1 — Fidelity (HARD): every monthly parity passed AND max_dev_bps ≤ 25.
+    if not parity_rows:
+        g1 = GateStatus(
+            id="g1_fidelity",
+            label=f"Fidelity — parity ≤ {_FIDELITY_TOL_BPS:.0f} bps every month (§7.1)",
+            severity="hard",
+            status="insufficient_data",
+            detail="No monthly parity checks have run yet.",
+            source="paper_v2_parity_check",
+        )
+    else:
+        failing = [
+            pc
+            for pc in parity_rows
+            if not pc.passed or pc.max_dev_bps > _FIDELITY_TOL_BPS
+        ]
+        if failing:
+            lf = failing[-1]
+            g1 = GateStatus(
+                id="g1_fidelity",
+                label=f"Fidelity — parity ≤ {_FIDELITY_TOL_BPS:.0f} bps every month (§7.1)",
+                severity="hard",
+                status="fail",
+                detail=(
+                    f"Parity failed on {lf.as_of} "
+                    f"(max_dev={lf.max_dev_bps:.1f} bps). Clock reset."
+                ),
+                source="paper_v2_parity_check",
+            )
+        else:
+            worst = max(pc.max_dev_bps for pc in parity_rows)
+            g1 = GateStatus(
+                id="g1_fidelity",
+                label=f"Fidelity — parity ≤ {_FIDELITY_TOL_BPS:.0f} bps every month (§7.1)",
+                severity="hard",
+                status="pass",
+                detail=(
+                    f"All {len(parity_rows)} monthly check(s) passed. "
+                    f"Worst deviation: {worst:.1f} bps."
+                ),
+                source="paper_v2_parity_check",
+            )
+
+    # Gate 2 — Operational (HARD): every day processed, no gap before month-end.
+    run_rows = (
+        db.query(PaperV2Run)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2Run.started_at.desc())
+        .limit(60)
+        .all()
+    )
+
+    if not run_rows:
+        g2 = GateStatus(
+            id="g2_operational",
+            label="Operational — every day processed before next month-end (§7.2)",
+            severity="hard",
+            status="insufficient_data",
+            detail="No pipeline run records yet (F4 instrumentation active since 2026-06-30).",
+            source="paper_v2_run",
+        )
+    else:
+        # An unrecovered failure = a 'failed' run whose last_date is NOT covered by
+        # a subsequent (more-recent) 'success' run with last_date ≥ that date.
+        # Runs are ordered newest-first; lower index = more recent.
+        recent = run_rows[:10]
+        unrecovered_fail: bool = False
+        fail_detail: str = ""
+        for i, r in enumerate(recent):
+            if r.status == "failed" and r.last_date is not None:
+                covered = any(
+                    r2.status == "success"
+                    and r2.last_date is not None
+                    and r2.last_date >= r.last_date
+                    for r2 in recent[:i]
+                )
+                if not covered:
+                    unrecovered_fail = True
+                    fail_detail = (
+                        f"Unrecovered failure covering {r.last_date} "
+                        f"({r.error_class or 'unknown'})."
+                    )
+                    break
+
+        days_behind = (
+            (today - book.last_processed_date).days if book.last_processed_date else 999
+        )
+
+        if unrecovered_fail:
+            g2 = GateStatus(
+                id="g2_operational",
+                label="Operational — every day processed before next month-end (§7.2)",
+                severity="hard",
+                status="fail",
+                detail=fail_detail,
+                source="paper_v2_run",
+            )
+        elif days_behind > 10:
+            g2 = GateStatus(
+                id="g2_operational",
+                label="Operational — every day processed before next month-end (§7.2)",
+                severity="hard",
+                status="fail",
+                detail=(
+                    f"Book is {days_behind} calendar days behind "
+                    f"(last_processed={book.last_processed_date}). "
+                    "Risk of unprocessed gap before month-end."
+                ),
+                source="paper_v2_run + paper_v2_portfolio",
+            )
+        else:
+            n_success = sum(1 for r in run_rows if r.status == "success")
+            g2 = GateStatus(
+                id="g2_operational",
+                label="Operational — every day processed before next month-end (§7.2)",
+                severity="hard",
+                status="pass",
+                detail=(
+                    f"{n_success} successful run(s) in history; "
+                    f"last processed {book.last_processed_date} ({days_behind}d ago)."
+                ),
+                source="paper_v2_run",
+            )
+
+    # Gate 3 — Cost realism (HARD): realized within base → pessimistic band (§7.3).
+    # Reuses _compute_modeled_cost (Rule 5 — no formula re-derived).
+    fills = (
+        db.query(PaperV2PendingFill)
+        .filter_by(portfolio_id=book.id, status="filled")
+        .all()
+    )
+
+    if not fills:
+        g3 = GateStatus(
+            id="g3_cost",
+            label="Cost realism — realized within base→pessimistic band (§7.3/§2.4)",
+            severity="hard",
+            status="insufficient_data",
+            detail="No filled fills yet — cost gate cannot be evaluated.",
+            source="paper_v2_pending_fills",
+        )
+    else:
+        cfg_pess = CostConfig.pessimistic()
+        total_realized = 0.0
+        total_pess = 0.0
+        for f in fills:
+            if f.fill_price is None or f.qty is None:
+                continue
+            statutory = f.cost_rupees or 0.0
+            timing_slip = (
+                abs(f.fill_price - f.decision_price) * f.qty
+                if f.decision_price is not None
+                else 0.0
+            )
+            total_realized += statutory + timing_slip
+            total_pess += _compute_modeled_cost(f.side, f.qty, f.fill_price, cfg_pess)
+
+        within_band = total_realized <= total_pess
+        g3 = GateStatus(
+            id="g3_cost",
+            label="Cost realism — realized within base→pessimistic band (§7.3/§2.4)",
+            severity="hard",
+            status="pass" if within_band else "fail",
+            detail=(
+                f"Realized ₹{total_realized:,.0f} vs pessimistic ceiling "
+                f"₹{total_pess:,.0f} — "
+                f"{'within' if within_band else 'ABOVE'} band."
+            ),
+            source="paper_v2_pending_fills",
+        )
+
+    # Gate 4 — Directional sanity (SOFT): book not below Mom30 by > 15 pp (§7.4).
+    fwd_index_snaps = (
+        db.query(PaperV2DailySnapshot)
+        .filter(
+            PaperV2DailySnapshot.portfolio_id == book.id,
+            PaperV2DailySnapshot.is_forward == True,  # noqa: E712
+            PaperV2DailySnapshot.index_level.isnot(None),
+        )
+        .order_by(PaperV2DailySnapshot.date.asc())
+        .all()
+    )
+
+    if len(fwd_index_snaps) < _MIN_FWD_DAYS_FOR_DIRECTIONAL:
+        g4 = GateStatus(
+            id="g4_directional",
+            label=(
+                f"Directional sanity (SOFT) — book not below Mom30 by "
+                f"> {_DIRECTIONAL_UNDERPERF_LIMIT_PP:.0f} pp (§7.4)"
+            ),
+            severity="soft",
+            status="insufficient_data",
+            detail=(
+                f"Fewer than {_MIN_FWD_DAYS_FOR_DIRECTIONAL} forward days with index data "
+                f"({len(fwd_index_snaps)} so far). Breakage detector, NOT alpha."
+            ),
+            source="paper_v2_daily_snapshot",
+        )
+    else:
+        first_s, last_s = fwd_index_snaps[0], fwd_index_snaps[-1]
+        cum_book = (
+            (last_s.equity / first_s.equity - 1) * 100.0 if first_s.equity > 0 else 0.0
+        )
+        cum_mom30 = (
+            (last_s.index_level / first_s.index_level - 1) * 100.0
+            if first_s.index_level > 0
+            else 0.0
+        )
+        underperf_pp = cum_book - cum_mom30  # negative = book underperformed
+
+        if underperf_pp < -_DIRECTIONAL_UNDERPERF_LIMIT_PP:
+            g4 = GateStatus(
+                id="g4_directional",
+                label=(
+                    f"Directional sanity (SOFT) — book not below Mom30 by "
+                    f"> {_DIRECTIONAL_UNDERPERF_LIMIT_PP:.0f} pp (§7.4)"
+                ),
+                severity="soft",
+                status="fail",
+                detail=(
+                    f"Book {cum_book:.1f}% vs Mom30 {cum_mom30:.1f}% = "
+                    f"{underperf_pp:.1f} pp gap. Exceeds "
+                    f"−{_DIRECTIONAL_UNDERPERF_LIMIT_PP:.0f} pp threshold. "
+                    "Breakage detector, NOT alpha signal."
+                ),
+                source="paper_v2_daily_snapshot",
+            )
+        else:
+            g4 = GateStatus(
+                id="g4_directional",
+                label=(
+                    f"Directional sanity (SOFT) — book not below Mom30 by "
+                    f"> {_DIRECTIONAL_UNDERPERF_LIMIT_PP:.0f} pp (§7.4)"
+                ),
+                severity="soft",
+                status="pass",
+                detail=(
+                    f"Book {cum_book:.1f}% vs Mom30 {cum_mom30:.1f}% = "
+                    f"{underperf_pp:+.1f} pp. Within breakage threshold "
+                    f"(floor −{_DIRECTIONAL_UNDERPERF_LIMIT_PP:.0f} pp). "
+                    "Breakage detector, NOT alpha signal."
+                ),
+                source="paper_v2_daily_snapshot",
+            )
+
+    gates = [g1, g2, g3, g4]
+
+    # --- Kill watch (§8) ---
+
+    # Kill 1: Catastrophic-stop cascade — ≥ K=5 stops in one rebalance window (§8).
+    forward_stops = (
+        db.query(PaperV2PendingFill)
+        .filter(
+            PaperV2PendingFill.portfolio_id == book.id,
+            PaperV2PendingFill.status == "filled",
+            PaperV2PendingFill.reason == "catastrophic_stop",
+            PaperV2PendingFill.decision_date >= go_live,
+        )
+        .all()
+    )
+    stops_by_window: dict[datetime.date, int] = {}
+    for f in forward_stops:
+        stops_by_window[f.decision_date] = stops_by_window.get(f.decision_date, 0) + 1
+    max_stops = max(stops_by_window.values(), default=0)
+
+    kw1 = KillWatchItem(
+        label=f"Catastrophic-stop cascade (kill ≥ {_KILL_CSTOP_PER_WINDOW} in one window, §8)",
+        value=float(max_stops),
+        threshold=float(_KILL_CSTOP_PER_WINDOW),
+        tripped=max_stops >= _KILL_CSTOP_PER_WINDOW,
+    )
+
+    # Kill 2: Drawdown breach — live maxDD > ~23.1% (OOS 13.1% + Z=10 pp, §8).
+    all_fwd_snaps = (
+        db.query(PaperV2DailySnapshot)
+        .filter(
+            PaperV2DailySnapshot.portfolio_id == book.id,
+            PaperV2DailySnapshot.is_forward == True,  # noqa: E712
+        )
+        .order_by(PaperV2DailySnapshot.date.asc())
+        .all()
+    )
+
+    if not all_fwd_snaps:
+        max_dd_pct: float | None = None
+        kw2_tripped = False
+    else:
+        peak = -math.inf
+        worst_dd = 0.0
+        for s in all_fwd_snaps:
+            if s.equity > peak:
+                peak = s.equity
+            dd = (s.equity / peak - 1) * 100.0 if peak > 0 else 0.0
+            if dd < worst_dd:
+                worst_dd = dd
+        max_dd_pct = abs(worst_dd)
+        kw2_tripped = max_dd_pct > _KILL_MAXDD_PCT
+
+    kw2 = KillWatchItem(
+        label=f"Drawdown breach (kill > {_KILL_MAXDD_PCT:.1f}% — OOS 13.1% + 10 pp, §8)",
+        value=round(max_dd_pct, 2) if max_dd_pct is not None else None,
+        threshold=_KILL_MAXDD_PCT,
+        tripped=kw2_tripped,
+    )
+
+    kill_watch = [kw1, kw2]
+
+    # --- Verdict (four locked states from specs/v3/12 F6) ---
+    any_kill = any(k.tripped for k in kill_watch)
+    hard_gates = [g for g in gates if g.severity == "hard"]
+    all_hard_pass = all(g.status == "pass" for g in hard_gates)
+
+    if any_kill:
+        verdict = "HALT"
+    elif clean_months_passed >= 6 and all_hard_pass:
+        verdict = "GRADUATED"
+    elif clock_reset_at is not None:
+        verdict = "CLOCK RESET"
+    else:
+        verdict = "ON TRACK"
+
+    return ScorecardResponse(
+        go_live=go_live,
+        months_elapsed=round(months_elapsed, 2),
+        clean_months_passed=clean_months_passed,
+        clock_reset_at=clock_reset_at,
+        gates=gates,
+        kill_watch=kill_watch,
+        verdict=verdict,
+    )

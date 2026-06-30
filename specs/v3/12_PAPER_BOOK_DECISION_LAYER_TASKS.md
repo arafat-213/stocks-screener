@@ -39,7 +39,7 @@ breach timeline — was de-scoped.)
 | **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No | ✅ DONE 2026-06-30 |
 | **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** | ✅ DONE 2026-06-30 |
 | **F5** | #6 | Alert log surfaced in-UI | Ops | **Yes** | ✅ DONE 2026-06-29 |
-| **F6** | #7 | Probation scorecard / countdown | Decision | No |
+| **F6** | #7 | Probation scorecard / countdown | Decision | No | ✅ DONE 2026-06-30 |
 
 Suggested execution order: **F1 → F2 → F3 → F4 → F5 → F6** (F6 reads F1+F4 outputs; the
 rest are independent). Each can ship alone.
@@ -438,7 +438,7 @@ No change to email content/timing.
 
 ---
 
-## F6 — Probation scorecard / countdown  (brainstorm #7)  — depends on F1, F4
+## F6 — Probation scorecard / countdown  (brainstorm #7)  — depends on F1, F4  ✅ DONE 2026-06-30
 
 **Goal.** The single panel that converts "data accruing" into "a decision being made":
 days/months elapsed of the 6-month window **and** live pass/fail against the **locked** `11`
@@ -489,6 +489,31 @@ months resets to 0 after a failing parity month and counts only consecutive pass
 each gate maps to the exact `11` §7 threshold (25 bps / band / 15 pp); kill-watch trips at
 ≥5 stops and at maxDD > 23.1%; un-evaluable gates return `insufficient_data`, never a
 fabricated pass. No threshold appears as a literal that disagrees with §2.3.
+
+**Execution notes (2026-06-30):**
+- Four locked threshold constants added as module-level vars in `paper_v2.py`:
+  `_FIDELITY_TOL_BPS=25.0`, `_DIRECTIONAL_UNDERPERF_LIMIT_PP=15.0`,
+  `_KILL_CSTOP_PER_WINDOW=5`, `_KILL_MAXDD_PCT=23.1`. Tests assert these values
+  directly so any post-hoc edit is caught (Rule 9).
+- `GET /v2/paper/scorecard` → `ScorecardResponse { go_live, months_elapsed,
+  clean_months_passed, clock_reset_at, gates: list[GateStatus], kill_watch:
+  list[KillWatchItem], verdict }` added inline in `paper_v2.py`. No new table.
+- Clean-month clock: iterates `paper_v2_parity_check` ascending; resets on
+  `passed=False` OR `max_dev_bps > 25` (both conditions required per §7.1).
+- Gate 2 (Operational): unrecovered-failure heuristic on last 10 runs + 10-day
+  calendar lag from `last_processed_date`. Renders `insufficient_data` with no runs.
+- Gate 3 (Cost): reuses `_compute_modeled_cost` (Rule 5 — no formula re-derived).
+- Gate 4 (Directional): requires ≥ 20 forward days with index data before evaluating.
+- Kill watch: cstop groups forward fills by `decision_date`; maxDD from forward
+  equity curve. Both return `value=None` when no forward data yet (not 0).
+- Verdict precedence: HALT > GRADUATED (6 clean + all hard pass) > CLOCK RESET
+  (clock_reset_at not None) > ON TRACK.
+- `getPaperV2Scorecard` added to `frontend/src/api/client.js`; `ScorecardPanel`
+  with clean-month counter, gate checklist (HARD/SOFT badges), kill-watch grid, and
+  mandatory §0/§7 honesty footer added to `S3PaperBook.jsx` between StalenessBanner
+  and book header cards (top of page).
+- 17 tests in `tests/paper_v2/test_scorecard.py`; all 114 paper_v2 tests pass;
+  `npm run build` green.
 
 ---
 

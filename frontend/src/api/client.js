@@ -65,6 +65,8 @@ export const getPaperV2Runs = ({ limit = 30 } = {}) =>
     .then((res) => res.data);
 export const getPaperV2TrackingError = () =>
   apiClient.get('/v2/paper/tracking-error').then((res) => res.data);
+export const getPaperV2Scorecard = () =>
+  apiClient.get('/v2/paper/scorecard').then((res) => res.data);
 
 // --- S3 paper pipeline status + manual trigger (System UI) ---
 export const fetchPaperPipelineStatus = () =>
