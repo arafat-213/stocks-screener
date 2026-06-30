@@ -32,6 +32,7 @@ from app.db.models import (
     PaperV2Position,
 )
 from app.db.session import get_db
+from app.paper_v2.s3_config import S3_EXPECTED_TURNOVER_TWO_WAY_PCT
 
 router = APIRouter(prefix="/v2/paper", tags=["paper-v2"])
 
@@ -697,3 +698,110 @@ def get_alerts(
         )
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# F3 — Turnover-to-date vs backtest expectation (specs/v3/12 F3)
+# ---------------------------------------------------------------------------
+
+
+class TurnoverResponse(BaseModel):
+    """Live two-way turnover vs frozen S3 backtest expectation (F3, specs/v3/12).
+
+    ``live_annualized_pct`` is two-way (buys + sells counted), annualized over forward
+    elapsed days — the same convention as backtest_v2 metrics._compute_annualized_turnover.
+    ``expected_pct`` is the frozen S3 FINAL_OOS figure from ``10`` R10.3 (base cost);
+    it comes from ``S3_EXPECTED_TURNOVER_TWO_WAY_PCT`` in s3_config.py, not from a
+    live backtest (read-only law + Rule 5).
+    ``ratio`` > 1.0 means the live book is churning more than the frozen S3 predicts.
+    """
+
+    live_annualized_pct: float
+    expected_pct: (
+        float  # frozen from FINAL_OOS R10.3 via S3_EXPECTED_TURNOVER_TWO_WAY_PCT
+    )
+    ratio: float  # live / expected (0.0 when no forward fills yet)
+    basis: str  # always "two-way"
+    n_forward_days: int
+
+
+@router.get("/turnover", response_model=TurnoverResponse)
+def get_turnover(db: Session = Depends(get_db)) -> TurnoverResponse:
+    """Live two-way turnover vs frozen S3 backtest expectation (F3, specs/v3/12).
+
+    Live turnover = Σ|qty × fill_price| over *forward* filled fills (decision_date ≥
+    go_live) / average forward NAV, annualized by forward trading days from
+    paper_v2_daily_snapshot (is_forward=True).
+
+    Expected turnover = S3_EXPECTED_TURNOVER_TWO_WAY_PCT (581 % two-way, frozen from
+    ``10`` R10.3 FINAL_OOS). Read-only; no live price fetch; no formula re-derived.
+    """
+    _empty = TurnoverResponse(
+        live_annualized_pct=0.0,
+        expected_pct=S3_EXPECTED_TURNOVER_TWO_WAY_PCT,
+        ratio=0.0,
+        basis="two-way",
+        n_forward_days=0,
+    )
+    book = _active_book(db)
+    if not book:
+        return _empty
+
+    go_live = book.created_at.astimezone(_IST).date() if book.created_at else None
+
+    # Forward trading days for annualisation (is_forward snapshots only — warm-start
+    # replay days excluded for the same reason the NAV curve divides at go-live).
+    fwd_snaps = (
+        db.query(PaperV2DailySnapshot)
+        .filter_by(portfolio_id=book.id, is_forward=True)
+        .all()
+    )
+    n_forward_days = len(fwd_snaps)
+    avg_nav = (
+        sum(s.equity for s in fwd_snaps) / n_forward_days
+        if n_forward_days
+        else book.starting_capital
+    )
+
+    # Forward fills only: decision_date >= go_live excludes warm-start replay trades.
+    # Pending fills haven't executed — only status=filled counts toward turnover.
+    q = db.query(PaperV2PendingFill).filter_by(portfolio_id=book.id, status="filled")
+    if go_live is not None:
+        q = q.filter(PaperV2PendingFill.decision_date >= go_live)
+    forward_fills = q.all()
+
+    if not forward_fills or n_forward_days == 0:
+        return TurnoverResponse(
+            live_annualized_pct=0.0,
+            expected_pct=S3_EXPECTED_TURNOVER_TWO_WAY_PCT,
+            ratio=0.0,
+            basis="two-way",
+            n_forward_days=n_forward_days,
+        )
+
+    # Two-way notional: |qty × fill_price| for every forward fill (buys + sells).
+    total_notional = sum(
+        abs(f.qty * f.fill_price)
+        for f in forward_fills
+        if f.fill_price is not None and f.qty is not None
+    )
+
+    # Annualized two-way turnover as % of average NAV.
+    live_annualized_pct = (
+        (total_notional / avg_nav) * (252.0 / n_forward_days) * 100.0
+        if avg_nav
+        else 0.0
+    )
+    ratio = (
+        live_annualized_pct / S3_EXPECTED_TURNOVER_TWO_WAY_PCT
+        if S3_EXPECTED_TURNOVER_TWO_WAY_PCT
+        else 0.0
+    )
+
+    return TurnoverResponse(
+        live_annualized_pct=live_annualized_pct,
+        expected_pct=S3_EXPECTED_TURNOVER_TWO_WAY_PCT,
+        ratio=ratio,
+        basis="two-way",
+        n_forward_days=n_forward_days,
+    )

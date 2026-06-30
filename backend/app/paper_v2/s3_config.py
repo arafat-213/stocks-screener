@@ -43,6 +43,13 @@ S3_TERMINATE_AFTER_SILENT_DAYS = 15
 # favourable direction (quantified A/B), it is an execution-realism correctness fix.
 S3_WHOLE_SHARES = True
 
+# Frozen S3 two-way annualized turnover from the one-shot FINAL_OOS run (R10.3,
+# 2023-07-01 → 2026-06-12; `10` §R10.3 table, base cost, m_base.annualized_turnover).
+# Used by F3 (specs/v3/12) as the expected turnover constant to compare against live
+# paper-book turnover. NOT recomputed live — a frozen documented constant. Two-way
+# convention: buys + sells both counted (same as backtest_v2 metrics._compute_annualized_turnover).
+S3_EXPECTED_TURNOVER_TWO_WAY_PCT = 581.0
+
 
 def make_s3_v3config(
     date_from: date | None = None, date_to: date | None = None

@@ -36,7 +36,7 @@ breach timeline — was de-scoped.)
 |----------|-------------|---------|--------|-----------|
 | **F1** | #1 | Cumulative tracking-error tile + sparkline | Fidelity | No |
 | **F2** | #3 | Realized-vs-modeled cost ledger | Cost | No | ✅ DONE 2026-06-29 |
-| **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No |
+| **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No | ✅ DONE 2026-06-30 |
 | **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** |
 | **F5** | #6 | Alert log surfaced in-UI | Ops | **Yes** |
 | **F6** | #7 | Probation scorecard / countdown | Decision | No |
@@ -292,6 +292,21 @@ graduation criterion). Sub-label: "two-way, annualized; fidelity check, not a ga
 **Done-criteria (+ §2.6).** Test: live turnover matches Σ|notional|/NAV on a seeded fill
 set; basis convention asserted; expected value sourced from a documented constant, not a
 literal in the endpoint.
+
+**Execution notes (2026-06-30):**
+- `S3_EXPECTED_TURNOVER_TWO_WAY_PCT = 581.0` added to `app/paper_v2/s3_config.py` with
+  full provenance comment (FINAL_OOS R10.3, `10` §R10.3 table, base cost). Frozen
+  documented constant — not recomputed live (Rule 5).
+- `GET /v2/paper/turnover` → `TurnoverResponse` added inline in `paper_v2.py`. Imports
+  `S3_EXPECTED_TURNOVER_TWO_WAY_PCT` from `s3_config` (no literal). Forward fills only:
+  `decision_date >= go_live_date` + `status="filled"` (warm-start replay excluded, pending
+  excluded). Annualisation via `is_forward=True` snapshot count (same denominator as F2).
+- `getPaperV2Turnover` added to `frontend/src/api/client.js`; `TurnoverCard` component
+  with gauge bar + ratio badge added to `S3PaperBook.jsx` below `CostLedgerCard`. Honesty
+  label (§3) present: "Fidelity check, not a gate. Colour thresholds are UI-only and do
+  NOT represent pre-registered criteria."
+- 9 tests in `tests/paper_v2/test_turnover.py`; all 79 paper_v2 tests pass; `npm run
+  build` green.
 
 ---
 

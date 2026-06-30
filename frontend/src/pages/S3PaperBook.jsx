@@ -33,6 +33,7 @@ import {
   getPaperV2Rebalances,
   getPaperV2Alerts,
   getPaperV2CostLedger,
+  getPaperV2Turnover,
 } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { formatDisplayDate } from '../utils/dateUtils';
@@ -187,6 +188,7 @@ const S3PaperBook = () => {
   const [rebalances, setRebalances] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [costLedger, setCostLedger] = useState(null);
+  const [turnover, setTurnover] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notArmed, setNotArmed] = useState(false);
 
@@ -203,6 +205,7 @@ const S3PaperBook = () => {
           rebalData,
           alertData,
           costLedgerData,
+          turnoverData,
         ] = await Promise.all([
           getPaperV2Book().catch((err) => {
             if (err?.response?.status === 404) {
@@ -217,6 +220,7 @@ const S3PaperBook = () => {
           getPaperV2Rebalances().catch(() => []),
           getPaperV2Alerts().catch(() => []),
           getPaperV2CostLedger().catch(() => null),
+          getPaperV2Turnover().catch(() => null),
         ]);
         setBook(bookData);
         setPositions(posData || []);
@@ -225,6 +229,7 @@ const S3PaperBook = () => {
         setRebalances(rebalData || []);
         setAlerts(alertData || []);
         setCostLedger(costLedgerData);
+        setTurnover(turnoverData);
       } catch (error) {
         console.error('Error loading S3 paper book:', error);
       } finally {
@@ -333,6 +338,9 @@ const S3PaperBook = () => {
 
       {/* Realized-vs-modeled cost ledger (F2) */}
       <CostLedgerCard ledger={costLedger} />
+
+      {/* Turnover-to-date vs backtest expectation (F3) */}
+      <TurnoverCard turnover={turnover} />
 
       {/* Rebalance log */}
       <RebalanceLog events={rebalances} />
@@ -1678,6 +1686,126 @@ const CostLedgerCard = ({ ledger }) => {
           execution.
         </p>
       )}
+    </div>
+  );
+};
+
+// Turnover gauge card (F3): live two-way annualized turnover vs frozen S3 backtest
+// expectation (581% from FINAL_OOS R10.3). Colour is presentational only — it is NOT
+// a pre-registered gate (specs/v3/12 §3). Label says "fidelity check, not a gate."
+const TurnoverCard = ({ turnover }) => {
+  if (!turnover) return null;
+
+  const { live_annualized_pct, expected_pct, ratio, basis, n_forward_days } =
+    turnover;
+
+  // Presentational colour thresholds — visually distinct from the §2.3 hard gates.
+  // Green ≈ on-track, amber = drifting, red = materially above expected.
+  const ratioColor =
+    ratio <= 1.1
+      ? 'text-bullish'
+      : ratio <= 1.35
+        ? 'text-amber-500'
+        : 'text-bearish';
+  const ratioLabel =
+    ratio <= 1.1 ? 'On track' : ratio <= 1.35 ? 'Drifting' : 'High churn';
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
+      <div className='flex flex-wrap justify-between items-start gap-3 mb-4'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <Repeat size={20} className='text-amber-500' /> Turnover
+          <span className='text-[10px] font-black uppercase tracking-widest text-text-muted normal-case'>
+            (F3 — live vs expected)
+          </span>
+        </h3>
+        <div className='flex items-center gap-2 flex-wrap'>
+          {/* Ratio badge — presentational, NOT a gate */}
+          <div
+            className={`flex items-center gap-1.5 px-3 py-1.5 border rounded-lg ${
+              ratio <= 1.1
+                ? 'bg-bullish/10 border-bullish/20'
+                : ratio <= 1.35
+                  ? 'bg-amber-500/10 border-amber-500/20'
+                  : 'bg-bearish/10 border-bearish/20'
+            }`}
+          >
+            <span
+              className={`text-[9px] font-black uppercase tracking-widest ${ratioColor}`}
+            >
+              {ratioColor && ratioLabel}
+            </span>
+            <span className={`text-xs font-black ${ratioColor}`}>
+              {ratio.toFixed(2)}×
+            </span>
+          </div>
+          {/* Live pct */}
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Live
+            </span>
+            <span className='text-xs font-black text-text'>
+              {live_annualized_pct > 0
+                ? `${live_annualized_pct.toFixed(0)}%`
+                : '—'}
+            </span>
+          </div>
+          {/* Expected pct */}
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Expected
+            </span>
+            <span className='text-xs font-black text-text-muted'>
+              {expected_pct.toFixed(0)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Gauge bar */}
+      <div className='mb-4'>
+        <div className='w-full bg-bg-elevated rounded-full h-2 overflow-hidden'>
+          <div
+            className={`h-2 rounded-full transition-all ${
+              ratio <= 1.1
+                ? 'bg-bullish'
+                : ratio <= 1.35
+                  ? 'bg-amber-500'
+                  : 'bg-bearish'
+            }`}
+            style={{ width: `${Math.min((ratio * 100) / 2, 100)}%` }}
+          />
+        </div>
+        <div className='flex justify-between text-[9px] font-black uppercase tracking-widest text-text-muted mt-1'>
+          <span>0</span>
+          <span>expected {expected_pct.toFixed(0)}%</span>
+          <span>2×</span>
+        </div>
+      </div>
+
+      <div className='flex flex-wrap gap-x-6 gap-y-1 text-[11px] font-bold text-text-muted mb-3'>
+        <span>
+          Convention: <span className='text-text'>{basis}</span> (buys + sells)
+        </span>
+        <span>
+          Forward days: <span className='text-text'>{n_forward_days}</span>
+        </span>
+        {n_forward_days === 0 && (
+          <span className='text-amber-500'>
+            No forward data yet — first rebalance needed.
+          </span>
+        )}
+      </div>
+
+      {/* Honesty label — mandatory per specs/v3/12 §3 */}
+      <p className='text-[10px] font-bold text-text-muted border-t border-border pt-3'>
+        Fidelity check, not a gate. Turnover ratio &gt; 1 means the live book is
+        churning more than the frozen S3 backtest expects; it warrants
+        investigation but is presentational only — the pre-registered
+        graduation/kill gates are in §2.3 of the decision-layer spec. Colour
+        thresholds here are UI-only and do NOT represent pre-registered
+        criteria.
+      </p>
     </div>
   );
 };
