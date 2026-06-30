@@ -38,7 +38,7 @@ breach timeline — was de-scoped.)
 | **F2** | #3 | Realized-vs-modeled cost ledger | Cost | No | ✅ DONE 2026-06-29 |
 | **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No | ✅ DONE 2026-06-30 |
 | **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** | ✅ DONE 2026-06-30 |
-| **F5** | #6 | Alert log surfaced in-UI | Ops | **Yes** |
+| **F5** | #6 | Alert log surfaced in-UI | Ops | **Yes** | ✅ DONE 2026-06-29 |
 | **F6** | #7 | Probation scorecard / countdown | Decision | No |
 
 Suggested execution order: **F1 → F2 → F3 → F4 → F5 → F6** (F6 reads F1+F4 outputs; the
