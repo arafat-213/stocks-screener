@@ -37,7 +37,7 @@ breach timeline — was de-scoped.)
 | **F1** | #1 | Cumulative tracking-error tile + sparkline | Fidelity | No |
 | **F2** | #3 | Realized-vs-modeled cost ledger | Cost | No | ✅ DONE 2026-06-29 |
 | **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No | ✅ DONE 2026-06-30 |
-| **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** |
+| **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** | ✅ DONE 2026-06-30 |
 | **F5** | #6 | Alert log surfaced in-UI | Ops | **Yes** |
 | **F6** | #7 | Probation scorecard / countdown | Decision | No |
 
@@ -310,7 +310,7 @@ literal in the endpoint.
 
 ---
 
-## F4 — Pipeline heartbeat / run-history strip  (brainstorm #5)  — **NEW TABLE**
+## F4 — Pipeline heartbeat / run-history strip  (brainstorm #5)  — **NEW TABLE** ✅ DONE 2026-06-30
 
 **Goal.** Operator confidence in a 6-month unattended run comes from *seeing the streak*
 (✓✓✗✓ …), not from the absence of a watchdog email. Today `/pipeline/status` only reports
@@ -349,6 +349,27 @@ records `status=success` + correct span; a simulated failure records `failed` +
 `error_class` from `classify_error`; a no-op idle day records `noop`. Heartbeat summary
 (streak) computed correctly. The beat task still processes days identically (no behavioural
 change — assert engine output unchanged around the instrumentation).
+
+**Execution notes (2026-06-30):**
+- Migration `1b67f5d050b2` (down_revision `0a1f85aef724`); up→down→up clean. Unrelated
+  autogenerate drift (`ix_sr_slug_date` drop + `technical_signals` alter) trimmed from the
+  migration — F4 only adds `paper_v2_run`.
+- `PaperV2Run` model added to `models.py` after `PaperV2Alert` with full index on
+  `(portfolio_id, started_at)`.
+- `execute_paper_daily_task` gains `trigger: str = "beat"` param. Outer-scope state vars
+  (`_run_status`, `_days_processed`, `_first_date`, `_last_date`, `_error_class`,
+  `_error_msg`, `_portfolio_id`) are updated as the task progresses; `finally` block calls
+  `_persist_paper_run` which uses a **fresh** `SessionLocal()` so a dirty main session
+  (post-parity-halt rollback) cannot prevent the run record.
+- `run_paper_pipeline` router endpoint updated to pass `trigger="manual"`.
+- `classify_error` imported at the top of `tasks.py` (project law §1).
+- `GET /v2/paper/runs?limit=N` → `list[PaperRunResponse]` added to `paper_v2.py`; scoped
+  to active `portfolio_id`, ordered `started_at DESC`. `PaperV2Run` imported into router.
+- `getPaperV2Runs` added to `frontend/src/api/client.js`; `HeartbeatStrip` component with
+  chip strip (✓/✗/◦), hover detail, streak counter, and last-failure summary added to
+  `S3PaperBook.jsx` above `AlertFeedCard`. Concurrent-guard note present in footer.
+- 10 tests in `tests/paper_v2/test_run_history.py`; all 99 paper_v2 tests pass;
+  `npm run build` green.
 
 ---
 

@@ -24,6 +24,7 @@ import {
   XCircle,
   Mail,
   MailX,
+  Activity,
 } from 'lucide-react';
 import {
   getPaperV2Book,
@@ -34,6 +35,7 @@ import {
   getPaperV2Alerts,
   getPaperV2CostLedger,
   getPaperV2Turnover,
+  getPaperV2Runs,
 } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { formatDisplayDate } from '../utils/dateUtils';
@@ -189,6 +191,7 @@ const S3PaperBook = () => {
   const [alerts, setAlerts] = useState([]);
   const [costLedger, setCostLedger] = useState(null);
   const [turnover, setTurnover] = useState(null);
+  const [runs, setRuns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [notArmed, setNotArmed] = useState(false);
 
@@ -206,6 +209,7 @@ const S3PaperBook = () => {
           alertData,
           costLedgerData,
           turnoverData,
+          runsData,
         ] = await Promise.all([
           getPaperV2Book().catch((err) => {
             if (err?.response?.status === 404) {
@@ -221,6 +225,7 @@ const S3PaperBook = () => {
           getPaperV2Alerts().catch(() => []),
           getPaperV2CostLedger().catch(() => null),
           getPaperV2Turnover().catch(() => null),
+          getPaperV2Runs().catch(() => []),
         ]);
         setBook(bookData);
         setPositions(posData || []);
@@ -230,6 +235,7 @@ const S3PaperBook = () => {
         setAlerts(alertData || []);
         setCostLedger(costLedgerData);
         setTurnover(turnoverData);
+        setRuns(runsData || []);
       } catch (error) {
         console.error('Error loading S3 paper book:', error);
       } finally {
@@ -344,6 +350,9 @@ const S3PaperBook = () => {
 
       {/* Rebalance log */}
       <RebalanceLog events={rebalances} />
+
+      {/* Pipeline heartbeat strip (F4) */}
+      <HeartbeatStrip runs={runs} />
 
       {/* Alert feed (F5) */}
       <AlertFeedCard alerts={alerts} />
@@ -1961,6 +1970,181 @@ const AlertFeedCard = ({ alerts }) => {
           })(filtered)}
         </div>
       )}
+    </div>
+  );
+};
+
+// ---------------------------------------------------------------------------
+// F4 — Pipeline heartbeat strip (specs/v3/12 F4)
+// Run-history for each execute_paper_daily_task invocation, newest first.
+// Status chips: ✓ success (green), ✗ failed (red), ◦ noop (muted).
+// Concurrent-guard skips are never recorded (no row written); the strip therefore
+// shows only substantive invocations that reached the book-setup stage.
+// ---------------------------------------------------------------------------
+
+const RUN_STATUS_META = {
+  success: {
+    label: '✓',
+    chipCls: 'bg-bullish/10 text-bullish border-bullish/20',
+    dotCls: 'bg-bullish',
+  },
+  failed: {
+    label: '✗',
+    chipCls: 'bg-bearish/10 text-bearish border-bearish/20',
+    dotCls: 'bg-bearish',
+  },
+  noop: {
+    label: '◦',
+    chipCls: 'bg-bg-elevated text-text-muted border-border',
+    dotCls: 'bg-text-muted opacity-40',
+  },
+};
+
+const HeartbeatStrip = ({ runs }) => {
+  const [expanded, setExpanded] = useState(null);
+
+  if (!runs || runs.length === 0) {
+    return (
+      <div className='bg-bg-secondary border border-border rounded-2xl overflow-hidden shadow-sm'>
+        <div className='flex items-center gap-3 p-6 border-b border-border'>
+          <Activity size={20} className='text-primary' />
+          <h3 className='text-lg font-black text-text uppercase tracking-tight'>
+            Pipeline Heartbeat
+          </h3>
+        </div>
+        <div className='flex flex-col items-center justify-center py-12 text-center'>
+          <Activity size={40} className='text-text-muted mb-3 opacity-20' />
+          <p className='text-text-muted max-w-xs'>
+            No run records yet. The heartbeat strip fills after the first
+            successful paper job fire.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Consecutive successes from the newest run (streak = how many clean runs).
+  let streak = 0;
+  for (const r of runs) {
+    if (r.status === 'success') streak += 1;
+    else break;
+  }
+
+  const lastFailed = runs.find((r) => r.status === 'failed');
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl overflow-hidden shadow-sm'>
+      {/* Header */}
+      <div className='flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 pb-4 border-b border-border'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <Activity size={20} className='text-primary' /> Pipeline Heartbeat
+        </h3>
+        <div className='flex items-center gap-4 text-xs text-text-muted'>
+          {streak > 0 && (
+            <span className='flex items-center gap-1.5 text-bullish font-bold'>
+              <CheckCircle2 size={13} /> {streak} clean in a row
+            </span>
+          )}
+          {lastFailed && (
+            <span className='flex items-center gap-1.5 text-bearish font-bold'>
+              <XCircle size={13} /> last failure{' '}
+              {formatDisplayDate(lastFailed.started_at?.slice(0, 10) ?? '—')}
+            </span>
+          )}
+          <span className='text-text-muted opacity-60'>
+            {runs.length} run{runs.length !== 1 ? 's' : ''} shown
+          </span>
+        </div>
+      </div>
+
+      {/* Chip strip */}
+      <div className='p-4 pb-2 flex flex-wrap gap-1.5'>
+        {runs.map((r) => {
+          const meta = RUN_STATUS_META[r.status] ?? RUN_STATUS_META.noop;
+          const isOpen = expanded === r.id;
+          return (
+            <button
+              key={r.id}
+              title={`${r.status} · ${r.trigger} · ${r.days_processed}d processed · ${r.started_at?.slice(0, 10) ?? '?'}`}
+              onClick={() => setExpanded(isOpen ? null : r.id)}
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-black border transition-all ${meta.chipCls} ${isOpen ? 'ring-2 ring-primary/40' : 'hover:opacity-80'}`}
+            >
+              {meta.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Expanded row detail */}
+      {expanded !== null &&
+        (() => {
+          const r = runs.find((x) => x.id === expanded);
+          if (!r) return null;
+          const meta = RUN_STATUS_META[r.status] ?? RUN_STATUS_META.noop;
+          return (
+            <div className='mx-4 mb-4 p-4 rounded-xl bg-bg-elevated border border-border text-xs space-y-2'>
+              <div className='flex items-center gap-2 flex-wrap'>
+                <span
+                  className={`px-2 py-0.5 rounded-md text-[9px] font-black uppercase tracking-widest border ${meta.chipCls}`}
+                >
+                  {r.status}
+                </span>
+                <span className='font-mono text-text-muted'>{r.trigger}</span>
+                <span className='ml-auto font-mono text-text-muted'>
+                  {new Date(r.started_at).toLocaleString('en-IN', {
+                    timeZone: 'Asia/Kolkata',
+                    dateStyle: 'short',
+                    timeStyle: 'short',
+                  })}
+                </span>
+              </div>
+              <div className='flex flex-wrap gap-x-6 gap-y-1 text-text-muted'>
+                <span>
+                  <span className='text-text font-semibold'>
+                    Days processed:
+                  </span>{' '}
+                  {r.days_processed}
+                </span>
+                {r.first_date && (
+                  <span>
+                    <span className='text-text font-semibold'>Span:</span>{' '}
+                    {formatDisplayDate(r.first_date)} →{' '}
+                    {formatDisplayDate(r.last_date)}
+                  </span>
+                )}
+                {r.finished_at && (
+                  <span>
+                    <span className='text-text font-semibold'>Duration:</span>{' '}
+                    {Math.round(
+                      (new Date(r.finished_at) - new Date(r.started_at)) / 1000
+                    )}
+                    s
+                  </span>
+                )}
+              </div>
+              {r.status === 'failed' && (
+                <div className='mt-2 p-3 rounded-lg bg-bearish/5 border border-bearish/20 space-y-1'>
+                  <p className='text-bearish font-bold uppercase tracking-widest text-[9px]'>
+                    {r.error_class ?? 'unknown'}
+                  </p>
+                  <p className='text-text-muted font-mono text-[10px] break-all whitespace-pre-wrap'>
+                    {r.error_msg ?? '—'}
+                  </p>
+                </div>
+              )}
+              {r.status === 'noop' && (
+                <p className='text-text-muted italic text-[10px]'>
+                  Nothing to process — book was already current for this fire.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
+      <p className='px-6 pb-4 text-[10px] text-text-muted opacity-60'>
+        Concurrent-guard skips (lock already held) are never recorded. Each chip
+        = one task invocation that reached book setup.
+      </p>
     </div>
   );
 };

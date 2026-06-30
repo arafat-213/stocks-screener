@@ -59,6 +59,10 @@ export const getPaperV2Alerts = ({ limit = 50, kind } = {}) => {
   if (kind) params.kind = kind;
   return apiClient.get('/v2/paper/alerts', { params }).then((res) => res.data);
 };
+export const getPaperV2Runs = ({ limit = 30 } = {}) =>
+  apiClient
+    .get('/v2/paper/runs', { params: { limit } })
+    .then((res) => res.data);
 
 // --- S3 paper pipeline status + manual trigger (System UI) ---
 export const fetchPaperPipelineStatus = () =>

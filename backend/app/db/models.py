@@ -682,6 +682,34 @@ class PaperV2Alert(Base):
     )
 
 
+class PaperV2Run(Base):
+    """Persisted run record for each execute_paper_daily_task invocation (specs/v3/12 F4).
+
+    One row per task fire — feeds the pipeline heartbeat strip and F6's operational gate.
+    ``trigger`` distinguishes scheduled beat fires from manual/backfill calls.
+    ``status`` is noop when nothing was left to process (idle day), failed on exception,
+    success otherwise. ``error_class`` comes from classify_error (project law §1).
+    Idempotent insert — each invocation is a distinct event (no upsert needed).
+    """
+
+    __tablename__ = "paper_v2_run"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    trigger = Column(String, nullable=False)  # beat | manual | backfill
+    status = Column(String, nullable=False)  # success | failed | noop
+    days_processed = Column(Integer, nullable=False, default=0)
+    first_date = Column(Date, nullable=True)  # first date in the span replayed
+    last_date = Column(Date, nullable=True)  # last date in the span replayed
+    error_class = Column(String, nullable=True)  # from classify_error (project law §1)
+    error_msg = Column(String, nullable=True)
+
+    __table_args__ = (
+        Index("ix_paper_v2_run_portfolio_started_at", "portfolio_id", "started_at"),
+    )
+
+
 class MarketBreadth(Base):
     __tablename__ = "market_breadth"
     date = Column(Date, primary_key=True)

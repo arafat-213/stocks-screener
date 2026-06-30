@@ -30,6 +30,7 @@ from app.db.models import (
     PaperV2PendingFill,
     PaperV2Portfolio,
     PaperV2Position,
+    PaperV2Run,
 )
 from app.db.session import get_db
 from app.paper_v2.s3_config import S3_EXPECTED_TURNOVER_TWO_WAY_PCT
@@ -454,7 +455,7 @@ def run_paper_pipeline(db: Session = Depends(get_db)) -> dict:
         )
 
     _log.info("Manual S3 paper pipeline trigger via System UI")
-    execute_paper_daily_task.delay()
+    execute_paper_daily_task.delay(trigger="manual")
     return {"message": "S3 paper pipeline task queued"}
 
 
@@ -805,3 +806,69 @@ def get_turnover(db: Session = Depends(get_db)) -> TurnoverResponse:
         basis="two-way",
         n_forward_days=n_forward_days,
     )
+
+
+# ---------------------------------------------------------------------------
+# F4 — Pipeline heartbeat / run-history strip (specs/v3/12 F4)
+# ---------------------------------------------------------------------------
+
+
+class PaperRunResponse(BaseModel):
+    """One persisted run record from ``paper_v2_run`` (F4).
+
+    ``trigger`` is "beat" | "manual" | "backfill".
+    ``status`` is "success" | "failed" | "noop" (noop = nothing left to process).
+    ``days_processed`` is 0 for noop / pre-failure runs.
+    ``error_class`` / ``error_msg`` are populated only on failed runs.
+    """
+
+    id: int
+    started_at: datetime.datetime
+    finished_at: datetime.datetime | None
+    trigger: str
+    status: str
+    days_processed: int
+    first_date: datetime.date | None
+    last_date: datetime.date | None
+    error_class: str | None
+    error_msg: str | None
+
+
+@router.get("/runs", response_model=list[PaperRunResponse])
+def get_runs(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+) -> list[PaperRunResponse]:
+    """Run history for the S3 paper pipeline (F4, specs/v3/12).
+
+    Returns the most recent ``limit`` run records (default 30), newest first.
+    Each row corresponds to one execute_paper_daily_task invocation that reached
+    the book-setup stage (concurrent guard skips are never recorded).
+    Read-only over ``paper_v2_run``; no live fetch.
+    """
+    book = _active_book(db)
+    if not book:
+        return []
+
+    rows = (
+        db.query(PaperV2Run)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2Run.started_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        PaperRunResponse(
+            id=r.id,
+            started_at=r.started_at,
+            finished_at=r.finished_at,
+            trigger=r.trigger,
+            status=r.status,
+            days_processed=r.days_processed,
+            first_date=r.first_date,
+            last_date=r.last_date,
+            error_class=r.error_class,
+            error_msg=r.error_msg,
+        )
+        for r in rows
+    ]

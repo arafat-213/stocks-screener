@@ -7,6 +7,7 @@ from app.core.celery_app import celery_app, redis_url
 from app.core.trading_config import UnifiedTradingConfig as BacktestConfig
 from app.db.session import SessionLocal
 from app.pipeline.cleanup import run_cleanup
+from app.pipeline.errors import classify_error
 from app.pipeline.orchestrator import run_pipeline
 
 logger = logging.getLogger(__name__)
@@ -48,13 +49,16 @@ def execute_pipeline_task(limit: int | None = None, resume_run_id: str | None = 
 
 
 @celery_app.task(name="app.tasks.execute_paper_daily_task")
-def execute_paper_daily_task(process_date: str | None = None):
+def execute_paper_daily_task(process_date: str | None = None, trigger: str = "beat"):
     """Daily post-close S3 paper job (11 §4a/§4b/§4c).
 
     Date-parameterized, ordered replay: appends bhavcopy through the target date
     (inception-anchored, §5a corrected), then processes every unprocessed trading day in
     ascending order (so a backfilled gap reproduces continuous operation, §7.2). On each
     month-end it runs the shadow-parity check and HALTS the run on a break (11 §8/§7.1).
+
+    ``trigger`` is recorded in paper_v2_run (F4): "beat" for the scheduled Celery beat,
+    "manual" when fired from the System UI, "backfill" for explicit date-targeted calls.
     """
     import datetime as _dt
     from zoneinfo import ZoneInfo
@@ -81,7 +85,17 @@ def execute_paper_daily_task(process_date: str | None = None):
         if process_date
         else _dt.datetime.now(_dt.timezone.utc).astimezone().date()
     )
-    logger.info("Starting S3 paper daily task (target=%s)", target)
+    logger.info("Starting S3 paper daily task (target=%s, trigger=%s)", target, trigger)
+
+    # F4 run-record state — updated as the task progresses; persisted in finally.
+    _started_at = _dt.datetime.now(_dt.timezone.utc)
+    _portfolio_id: int | None = None
+    _run_status = "noop"
+    _days_processed = 0
+    _first_date: _dt.date | None = None
+    _last_date: _dt.date | None = None
+    _error_class: str | None = None
+    _error_msg: str | None = None
 
     db = SessionLocal()
     try:
@@ -91,6 +105,7 @@ def execute_paper_daily_task(process_date: str | None = None):
         # halt (§8): check_9 warns on any new termination near the edge, but we only
         # halt when a ghost-risk ISIN is actually held in the live book (11 §8 interlock).
         pf_early = live_engine.get_or_create_book(db)
+        _portfolio_id = pf_early.id
         held_isins = frozenset(
             pos.isin
             for pos in db.query(PaperV2Position)
@@ -192,8 +207,17 @@ def execute_paper_daily_task(process_date: str | None = None):
                         f"PARITY BREAK on {d}: {par.summary} — halting (11 §8); "
                         "the 6-month clock resets per §7.1."
                     )
+
+        # F4: capture span on success.
+        _days_processed = len(to_process)
+        _first_date = to_process[0] if to_process else None
+        _last_date = to_process[-1] if to_process else None
+        _run_status = "success" if to_process else "noop"
         logger.info("S3 paper daily task done: processed %d day(s)", len(to_process))
     except Exception as e:
+        _run_status = "failed"
+        _error_class = classify_error(e)
+        _error_msg = str(e)[:2000]
         logger.error(f"Paper daily task failed: {e}")
         try:
             import traceback as _traceback
@@ -205,8 +229,64 @@ def execute_paper_daily_task(process_date: str | None = None):
             logger.error("emit_failure_alert itself failed: %s", alert_exc)
         raise
     finally:
+        _finished_at = _dt.datetime.now(_dt.timezone.utc)
+        if _portfolio_id is not None:
+            _persist_paper_run(
+                _portfolio_id,
+                _started_at,
+                _finished_at,
+                trigger,
+                _run_status,
+                _days_processed,
+                _first_date,
+                _last_date,
+                _error_class,
+                _error_msg,
+            )
         db.close()
         _r.delete(_PAPER_LOCK_KEY)
+
+
+def _persist_paper_run(
+    portfolio_id: int,
+    started_at,
+    finished_at,
+    trigger: str,
+    status: str,
+    days_processed: int,
+    first_date,
+    last_date,
+    error_class: str | None,
+    error_msg: str | None,
+) -> None:
+    """Write one paper_v2_run row (F4). Uses a fresh session so a dirty main
+    session (e.g. after a parity-halt rollback) doesn't prevent recording the run.
+    Errors here are logged and swallowed — a record failure must not shadow the
+    original task exception (Rule 12 / project law §1).
+    """
+    from app.db.models import PaperV2Run
+
+    run_db = SessionLocal()
+    try:
+        run_db.add(
+            PaperV2Run(
+                portfolio_id=portfolio_id,
+                started_at=started_at,
+                finished_at=finished_at,
+                trigger=trigger,
+                status=status,
+                days_processed=days_processed,
+                first_date=first_date,
+                last_date=last_date,
+                error_class=error_class,
+                error_msg=error_msg,
+            )
+        )
+        run_db.commit()
+    except Exception as exc:
+        logger.error("_persist_paper_run failed (run record lost): %s", exc)
+    finally:
+        run_db.close()
 
 
 @celery_app.task(name="app.tasks.execute_paper_watchdog_task")
