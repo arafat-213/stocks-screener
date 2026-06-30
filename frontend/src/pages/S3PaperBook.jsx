@@ -36,6 +36,7 @@ import {
   getPaperV2CostLedger,
   getPaperV2Turnover,
   getPaperV2Runs,
+  getPaperV2TrackingError,
 } from '../api/client';
 import { useTheme } from '../hooks/useTheme';
 import { formatDisplayDate } from '../utils/dateUtils';
@@ -192,6 +193,7 @@ const S3PaperBook = () => {
   const [costLedger, setCostLedger] = useState(null);
   const [turnover, setTurnover] = useState(null);
   const [runs, setRuns] = useState([]);
+  const [trackingError, setTrackingError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notArmed, setNotArmed] = useState(false);
 
@@ -210,6 +212,7 @@ const S3PaperBook = () => {
           costLedgerData,
           turnoverData,
           runsData,
+          trackingErrorData,
         ] = await Promise.all([
           getPaperV2Book().catch((err) => {
             if (err?.response?.status === 404) {
@@ -226,6 +229,7 @@ const S3PaperBook = () => {
           getPaperV2CostLedger().catch(() => null),
           getPaperV2Turnover().catch(() => null),
           getPaperV2Runs().catch(() => []),
+          getPaperV2TrackingError().catch(() => null),
         ]);
         setBook(bookData);
         setPositions(posData || []);
@@ -236,6 +240,7 @@ const S3PaperBook = () => {
         setCostLedger(costLedgerData);
         setTurnover(turnoverData);
         setRuns(runsData || []);
+        setTrackingError(trackingErrorData);
       } catch (error) {
         console.error('Error loading S3 paper book:', error);
       } finally {
@@ -332,6 +337,9 @@ const S3PaperBook = () => {
 
       {/* Underwater (drawdown) curve — book vs Mom30 */}
       <DrawdownCurve nav={nav} isDark={isDark} />
+
+      {/* Tracking-error tile + sparkline (F1) */}
+      <TrackingErrorCard te={trackingError} isDark={isDark} />
 
       {/* Name-concentration panel (§6.2 gate) */}
       <ConcentrationPanel positions={positions} />
@@ -1695,6 +1703,114 @@ const CostLedgerCard = ({ ledger }) => {
           execution.
         </p>
       )}
+    </div>
+  );
+};
+
+// Tracking-error card (F1): annualized std of daily (book − Mom30) return
+// differences over forward days only.  Basis is always "mom30" (no shadow NAV
+// persisted; spec F1 option b).  Sparkline shows the cumulative drift path.
+// Honesty label: "fidelity/benchmark drift — NOT an alpha measure."
+const TrackingErrorCard = ({ te, isDark }) => {
+  if (!te) return null;
+
+  const { annualized_te_pct, n_days, basis, series } = te;
+  const hasData = n_days >= 2 && series.length >= 2;
+
+  return (
+    <div className='bg-bg-secondary border border-border rounded-2xl p-6 shadow-sm'>
+      <div className='flex flex-wrap justify-between items-start gap-3 mb-4'>
+        <h3 className='text-lg font-black flex items-center gap-3 text-text uppercase tracking-tight'>
+          <Activity size={20} className='text-primary' /> Tracking Error
+          <span className='text-[10px] font-black uppercase tracking-widest text-text-muted normal-case'>
+            (F1 — vs {basis})
+          </span>
+        </h3>
+        <div className='flex items-center gap-2 flex-wrap'>
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Annualized TE
+            </span>
+            <span className='text-xs font-black text-text'>
+              {hasData ? `${annualized_te_pct.toFixed(2)}%` : '—'}
+            </span>
+          </div>
+          <div className='flex items-center gap-1.5 px-3 py-1.5 bg-bg-elevated border border-border rounded-lg'>
+            <span className='text-[9px] font-black uppercase tracking-widest text-text-muted'>
+              Days
+            </span>
+            <span className='text-xs font-black text-text'>{n_days}</span>
+          </div>
+        </div>
+      </div>
+
+      {hasData ? (
+        <Suspense
+          fallback={
+            <div className='h-24 flex items-center justify-center'>
+              <Loader2 size={16} className='animate-spin text-text-muted' />
+            </div>
+          }
+        >
+          <ResponsiveContainer width='100%' height={80}>
+            <LineChart
+              data={series}
+              margin={{ top: 4, right: 8, left: 0, bottom: 0 }}
+            >
+              <XAxis dataKey='date' hide />
+              <YAxis hide />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: isDark ? '#1e1e2e' : '#fff',
+                  border: '1px solid #3f3f46',
+                  borderRadius: 8,
+                  fontSize: 11,
+                }}
+                formatter={(v) => [`${v.toFixed(2)} pp`, 'Cum. drift']}
+                labelFormatter={(l) => l}
+              />
+              <ReferenceLine y={0} stroke='#6b7280' strokeDasharray='3 3' />
+              <Line
+                type='monotone'
+                dataKey='cum_diff_pct'
+                stroke='#6366f1'
+                strokeWidth={1.5}
+                dot={false}
+                isAnimationActive={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+          <p className='text-[9px] font-black uppercase tracking-widest text-text-muted mt-1 text-center'>
+            Cumulative book − {basis} return (pp)
+          </p>
+        </Suspense>
+      ) : (
+        <p className='text-[11px] font-bold text-text-muted py-4 text-center'>
+          Insufficient forward data — sparkline appears after ≥ 2 forward days.
+        </p>
+      )}
+
+      <div className='flex flex-wrap gap-x-6 gap-y-1 text-[11px] font-bold text-text-muted mt-3 mb-3'>
+        <span>
+          Basis: <span className='text-text'>{basis}</span>
+        </span>
+        <span>
+          Forward days: <span className='text-text'>{n_days}</span>
+        </span>
+        <span>
+          Annualization: <span className='text-text'>√252 (daily std)</span>
+        </span>
+      </div>
+
+      {/* Honesty label — mandatory per specs/v3/12 §1.3/§1.4 */}
+      <p className='text-[10px] font-bold text-text-muted border-t border-border pt-3'>
+        Fidelity/benchmark drift — NOT an alpha measure. This shows how far the
+        live book&apos;s daily returns deviate from the Mom30 benchmark, not
+        whether S3 has positive edge. 6 forward months cannot validate the
+        strategy&apos;s edge (specs/v3/11 §0). Basis is &quot;{basis}&quot;
+        because no daily shadow NAV is persisted; a shadow-vs-book TE would
+        require a separate persistence job.
+      </p>
     </div>
   );
 };

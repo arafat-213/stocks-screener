@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import math
 from zoneinfo import ZoneInfo
 
 import redis as _redis
@@ -872,3 +873,89 @@ def get_runs(
         )
         for r in rows
     ]
+
+
+# ---------------------------------------------------------------------------
+# F1 — Cumulative tracking-error tile + sparkline (specs/v3/12 F1)
+# ---------------------------------------------------------------------------
+
+
+class TEDiffPoint(BaseModel):
+    date: datetime.date
+    cum_diff_pct: float
+
+
+class TrackingErrorResponse(BaseModel):
+    annualized_te_pct: float
+    n_days: int
+    # Always "mom30": no daily shadow NAV is persisted; spec F1 option (b).
+    basis: str
+    series: list[TEDiffPoint]
+
+
+@router.get("/tracking-error", response_model=TrackingErrorResponse)
+def get_tracking_error(db: Session = Depends(get_db)) -> TrackingErrorResponse:
+    """Cumulative tracking-error tile + sparkline (F1, specs/v3/12).
+
+    Tracking error = annualized std of daily (book_return − Mom30_return) over
+    forward days only (is_forward=True).  Basis is "mom30" because no daily shadow
+    NAV is persisted; see F1 spec option (b).  Read-only over
+    paper_v2_daily_snapshot; no live fetch.
+    """
+    book = _active_book(db)
+    if not book:
+        return TrackingErrorResponse(
+            annualized_te_pct=0.0, n_days=0, basis="mom30", series=[]
+        )
+
+    rows = (
+        db.query(PaperV2DailySnapshot)
+        .filter(
+            PaperV2DailySnapshot.portfolio_id == book.id,
+            PaperV2DailySnapshot.is_forward == True,  # noqa: E712
+            PaperV2DailySnapshot.index_level.isnot(None),
+        )
+        .order_by(PaperV2DailySnapshot.date.asc())
+        .all()
+    )
+
+    if len(rows) < 2:
+        return TrackingErrorResponse(
+            annualized_te_pct=0.0,
+            n_days=len(rows),
+            basis="mom30",
+            series=([TEDiffPoint(date=rows[0].date, cum_diff_pct=0.0)] if rows else []),
+        )
+
+    # Daily return differences: book_ret − bench_ret for consecutive forward days.
+    diffs: list[float] = []
+    for i in range(1, len(rows)):
+        prev, curr = rows[i - 1], rows[i]
+        if prev.equity <= 0 or prev.index_level <= 0:
+            continue
+        diffs.append(curr.equity / prev.equity - curr.index_level / prev.index_level)
+
+    if not diffs:
+        return TrackingErrorResponse(
+            annualized_te_pct=0.0, n_days=len(rows), basis="mom30", series=[]
+        )
+
+    # Sample std × sqrt(252) → annualized TE in %.
+    n = len(diffs)
+    mean_d = sum(diffs) / n
+    variance = sum((d - mean_d) ** 2 for d in diffs) / (n - 1) if n > 1 else 0.0
+    annualized_te_pct = math.sqrt(variance) * math.sqrt(252) * 100.0
+
+    # Cumulative diff path for sparkline: anchor 0.0 on the first forward day.
+    cum = 0.0
+    series: list[TEDiffPoint] = [TEDiffPoint(date=rows[0].date, cum_diff_pct=0.0)]
+    for i, d in enumerate(diffs):
+        cum += d * 100.0
+        series.append(TEDiffPoint(date=rows[i + 1].date, cum_diff_pct=round(cum, 4)))
+
+    return TrackingErrorResponse(
+        annualized_te_pct=round(annualized_te_pct, 4),
+        n_days=len(rows),
+        basis="mom30",
+        series=series,
+    )

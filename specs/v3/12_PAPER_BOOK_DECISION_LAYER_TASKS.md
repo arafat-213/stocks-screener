@@ -34,7 +34,7 @@ breach timeline — was de-scoped.)
 
 | This doc | Brainstorm # | Feature | Pillar | New table? |
 |----------|-------------|---------|--------|-----------|
-| **F1** | #1 | Cumulative tracking-error tile + sparkline | Fidelity | No |
+| **F1** | #1 | Cumulative tracking-error tile + sparkline | Fidelity | No | ✅ DONE 2026-06-30 |
 | **F2** | #3 | Realized-vs-modeled cost ledger | Cost | No | ✅ DONE 2026-06-29 |
 | **F3** | #4 | Turnover-to-date vs backtest expectation | Cost/Fidelity | No | ✅ DONE 2026-06-30 |
 | **F4** | #5 | Pipeline heartbeat / run-history strip | Ops | **Yes** | ✅ DONE 2026-06-30 |
@@ -207,6 +207,22 @@ NOT an alpha measure; 6 forward points cannot validate edge (`11` §0)."
 **Done-criteria (+ §2.6).** Test: TE excludes warm-start days; TE is 0 when book return ==
 benchmark return every day; correct annualization factor. Basis label matches the data
 source actually used.
+
+**Execution notes (2026-06-30):**
+- No shadow NAV is persisted → option (b) chosen: basis = "mom30" (benchmark tracking error).
+  `import math` added to router imports.
+- `GET /v2/paper/tracking-error` → `TrackingErrorResponse { annualized_te_pct, n_days,
+  basis: "mom30", series: list[TEDiffPoint{date, cum_diff_pct}] }` added inline in
+  `paper_v2.py`. Filters `is_forward=True` + `index_level IS NOT NULL`; uses sample std ×
+  sqrt(252) × 100 for annualization; anchors cumulative series at 0.0 on the first forward
+  day. Handles < 2 rows gracefully (returns 0.0 TE, no series error).
+- `getPaperV2TrackingError` added to `frontend/src/api/client.js`.
+- `TrackingErrorCard` component with inline sparkline (`LineChart` from the lazy-loaded
+  recharts bundle) added to `S3PaperBook.jsx` between `DrawdownCurve` and
+  `ConcentrationPanel`. Mandatory honesty label (§1.3/§1.4) present: "Fidelity/benchmark
+  drift — NOT an alpha measure; 6 forward months cannot validate the strategy's edge."
+- 8 tests in `tests/paper_v2/test_tracking_error.py`; all 107 paper_v2 tests pass;
+  `npm run build` green.
 
 ---
 
