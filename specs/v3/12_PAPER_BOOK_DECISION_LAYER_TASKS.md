@@ -172,7 +172,7 @@ plus timing slippage `(fill_price − decision_price)/decision_price`.
 
 ---
 
-## F1 — Cumulative tracking-error tile + sparkline  (brainstorm #1)
+## F1 — Cumulative tracking-error tile + sparkline  (brainstorm #1)  ✅ DONE 2026-06-30
 
 **Goal.** One headline number a deploy committee asks for first: *how far has the live book
 drifted from the frozen shadow since go-live?* Render it as a StatCard with a sparkline.
@@ -277,7 +277,7 @@ forward elapsed days. Reuses `costs.py` (no duplicated cost formula — Rule 5).
 
 ---
 
-## F3 — Turnover-to-date vs backtest expectation  (brainstorm #4)
+## F3 — Turnover-to-date vs backtest expectation  (brainstorm #4)  ✅ DONE 2026-06-30
 
 **Goal.** Every prior strategy family in this program died on a **turnover wall** (see
 memory: v4 ~800–2660%, v2 ~934% churn-dominant). A live "turnover run-rate vs expected"
@@ -326,7 +326,7 @@ literal in the endpoint.
 
 ---
 
-## F4 — Pipeline heartbeat / run-history strip  (brainstorm #5)  — **NEW TABLE** ✅ DONE 2026-06-30
+## F4 — Pipeline heartbeat / run-history strip  (brainstorm #5)  — **NEW TABLE**  ✅ DONE 2026-06-30
 
 **Goal.** Operator confidence in a 6-month unattended run comes from *seeing the streak*
 (✓✓✗✓ …), not from the absence of a watchdog email. Today `/pipeline/status` only reports
