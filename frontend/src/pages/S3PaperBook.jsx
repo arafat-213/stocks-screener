@@ -364,14 +364,14 @@ const S3PaperBook = () => {
       {/* Turnover-to-date vs backtest expectation (F3) */}
       <TurnoverCard turnover={turnover} />
 
-      {/* Rebalance log */}
-      <RebalanceLog events={rebalances} />
-
       {/* Pipeline heartbeat strip (F4) */}
       <HeartbeatStrip runs={runs} />
 
       {/* Alert feed (F5) */}
       <AlertFeedCard alerts={alerts} />
+
+      {/* Rebalance log */}
+      <RebalanceLog events={rebalances} />
     </div>
   );
 };
