@@ -158,9 +158,10 @@ def execute_paper_daily_task(process_date: str | None = None, trigger: str = "be
         #     noise about trades that never happened live. Only forward days alert.
         go_live = pf.created_at.astimezone(ZoneInfo("Asia/Kolkata")).date()
 
-        # 2. Ordered replay of every CONFIRMED unprocessed trading day (§4c). The latest
-        #    stored day is an unconfirmed month-end (no successor yet) and is held back
-        #    until the next run confirms it — holiday-proof, fidelity-neutral (§7.2).
+        # 2. Ordered replay of every unprocessed trading day, including the trailing edge
+        #    (specs/v3/13). The forward NSE calendar resolves the trailing edge's month-end
+        #    status in build_live_context, so it no longer has to be held back a day — the
+        #    rebalance is computed the evening of D, before D+1's open it fills at.
         cal = sorted(d.date() for d in prices["date"].drop_duplicates())
         to_process = live_engine.confirmed_replay_days(
             cal, pf.last_processed_date, target
