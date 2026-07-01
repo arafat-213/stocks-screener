@@ -32,8 +32,9 @@ from app.db.models import (
     PaperV2Portfolio,
     PaperV2Position,
     PaperV2Run,
+    PaperV2ScorecardSnapshot,
 )
-from app.db.session import get_db
+from app.db.session import SessionLocal, get_db
 from app.paper_v2.s3_config import S3_EXPECTED_TURNOVER_TWO_WAY_PCT
 
 router = APIRouter(prefix="/v2/paper", tags=["paper-v2"])
@@ -1026,15 +1027,25 @@ class ScorecardResponse(BaseModel):
 def get_scorecard(db: Session = Depends(get_db)) -> ScorecardResponse:
     """F6 probation scorecard: graduation gates + kill watch (specs/v3/12 F6).
 
-    Evaluates the four locked §2.3 gates and two §8 kill criteria from persisted
-    state — no live fetch, no new table. Thresholds are module-level constants that
-    must not be changed post-registration. Gates that cannot yet be evaluated from
-    persisted data return ``status="insufficient_data"``, never a fabricated pass.
+    Thin wrapper over ``build_scorecard`` (specs/v3/14 Fix #2) — the live tile and
+    the month-end snapshot writer share this one source of truth so a snapshot can
+    never disagree with what the endpoint showed at the time.
     """
     book = _active_book(db)
     if not book:
         raise HTTPException(status_code=404, detail="No active S3 paper book.")
+    return build_scorecard(db, book)
 
+
+def build_scorecard(db: Session, book: PaperV2Portfolio) -> ScorecardResponse:
+    """F6 probation scorecard: graduation gates + kill watch (specs/v3/12 F6).
+
+    Pure (Rule 5 — deterministic, no model): evaluates the four locked §2.3 gates and
+    two §8 kill criteria from persisted state for the given ``book`` — no live fetch.
+    Thresholds are module-level constants that must not be changed post-registration.
+    Gates that cannot yet be evaluated from persisted data return
+    ``status="insufficient_data"``, never a fabricated pass.
+    """
     today = datetime.datetime.now(datetime.timezone.utc).astimezone(_IST).date()
     go_live = book.created_at.astimezone(_IST).date() if book.created_at else today
     months_elapsed = _months_elapsed(go_live, today)
@@ -1406,3 +1417,126 @@ def get_scorecard(db: Session = Depends(get_db)) -> ScorecardResponse:
         kill_watch=kill_watch,
         verdict=verdict,
     )
+
+
+# ---------------------------------------------------------------------------
+# Fix #2 — Immutable scorecard snapshot (specs/v3/14 §2): durability over the
+# live-recomputed dashboard above.
+# ---------------------------------------------------------------------------
+
+
+def _upsert_scorecard_snapshot(
+    db: Session,
+    portfolio_id: int,
+    as_of_date: datetime.date,
+    trigger: str,
+    scorecard: ScorecardResponse,
+) -> None:
+    """Insert or update one ``paper_v2_scorecard_snapshot`` row on ``db``.
+
+    Idempotent on ``(portfolio_id, as_of_date, trigger)`` (Pipeline Law): a re-run of
+    the same processed month-end updates the row in place rather than appending.
+    Split out from ``_persist_scorecard_snapshot`` so the upsert logic itself is
+    testable against an ordinary session, without exercising fresh-session creation
+    (mirrors ``build_scorecard`` / ``get_scorecard``'s pure-function split).
+    """
+    existing = (
+        db.query(PaperV2ScorecardSnapshot)
+        .filter_by(portfolio_id=portfolio_id, as_of_date=as_of_date, trigger=trigger)
+        .first()
+    )
+    payload = scorecard.model_dump(mode="json")
+    if existing:
+        existing.taken_at = datetime.datetime.now(datetime.timezone.utc)
+        existing.verdict = scorecard.verdict
+        existing.clean_months_passed = scorecard.clean_months_passed
+        existing.clock_reset_at = scorecard.clock_reset_at
+        existing.payload = payload
+    else:
+        db.add(
+            PaperV2ScorecardSnapshot(
+                portfolio_id=portfolio_id,
+                as_of_date=as_of_date,
+                trigger=trigger,
+                verdict=scorecard.verdict,
+                clean_months_passed=scorecard.clean_months_passed,
+                clock_reset_at=scorecard.clock_reset_at,
+                payload=payload,
+            )
+        )
+
+
+def _persist_scorecard_snapshot(
+    portfolio_id: int, as_of_date: datetime.date, trigger: str
+) -> None:
+    """Write/update one scorecard snapshot on a fresh session (specs/v3/14 Fix #2).
+
+    Mirrors ``tasks._persist_paper_run``'s fresh-session pattern (F4) so a snapshot
+    write can never poison the daily task's transaction. Builds the scorecard via
+    ``build_scorecard`` — the same function the live endpoint calls — so a snapshot
+    can never disagree with the live tile for the same DB state. Errors are logged
+    and swallowed — a snapshot failure must not shadow the daily task (Rule 12).
+    """
+    snap_db = SessionLocal()
+    try:
+        book = snap_db.query(PaperV2Portfolio).filter_by(id=portfolio_id).first()
+        if book is None:
+            _log.error(
+                "_persist_scorecard_snapshot: portfolio %s not found", portfolio_id
+            )
+            return
+        scorecard = build_scorecard(snap_db, book)
+        _upsert_scorecard_snapshot(
+            snap_db, portfolio_id, as_of_date, trigger, scorecard
+        )
+        snap_db.commit()
+    except Exception as exc:
+        _log.error("_persist_scorecard_snapshot failed (snapshot lost): %s", exc)
+    finally:
+        snap_db.close()
+
+
+class ScorecardSnapshotResponse(BaseModel):
+    """One frozen ``paper_v2_scorecard_snapshot`` row (specs/v3/14 Fix #2)."""
+
+    id: int
+    taken_at: datetime.datetime
+    as_of_date: datetime.date
+    trigger: str  # "month_end" | "manual"
+    verdict: str
+    clean_months_passed: int
+    clock_reset_at: datetime.date | None
+
+
+@router.get("/scorecard/snapshots", response_model=list[ScorecardSnapshotResponse])
+def get_scorecard_snapshots(
+    limit: int = 50, db: Session = Depends(get_db)
+) -> list[ScorecardSnapshotResponse]:
+    """Frozen month-end scorecard verdicts, most recent first (specs/v3/14 Fix #2).
+
+    Read-only over ``paper_v2_scorecard_snapshot``; no live fetch, no recompute —
+    the point is that these rows do NOT change after a later backfill.
+    """
+    book = _active_book(db)
+    if not book:
+        return []
+
+    rows = (
+        db.query(PaperV2ScorecardSnapshot)
+        .filter_by(portfolio_id=book.id)
+        .order_by(PaperV2ScorecardSnapshot.as_of_date.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        ScorecardSnapshotResponse(
+            id=r.id,
+            taken_at=r.taken_at,
+            as_of_date=r.as_of_date,
+            trigger=r.trigger,
+            verdict=r.verdict,
+            clean_months_passed=r.clean_months_passed,
+            clock_reset_at=r.clock_reset_at,
+        )
+        for r in rows
+    ]

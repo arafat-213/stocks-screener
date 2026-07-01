@@ -216,6 +216,15 @@ def execute_paper_daily_task(process_date: str | None = None, trigger: str = "be
                 # survive (LOCKED: commit, never flush-only).
                 parity.persist_parity(db, pf.id, par)
                 db.commit()
+
+                # Fix #2 (specs/v3/14): freeze the F6 scorecard verdict at this same
+                # month-end cadence, on a fresh session, so the graduation record is
+                # a dated artifact instead of only a live-recomputed dashboard. Runs
+                # even on a BREAK below — the frozen record should capture that too.
+                from app.routers.paper_v2 import _persist_scorecard_snapshot
+
+                _persist_scorecard_snapshot(pf.id, d, "month_end")
+
                 if not par.passed:
                     raise RuntimeError(
                         f"PARITY BREAK on {d}: {par.summary} — halting (11 §8); "

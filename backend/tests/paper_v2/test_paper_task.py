@@ -148,6 +148,7 @@ def test_tc1_parity_not_called_before_go_live():
         ),
         patch("app.paper_v2.alerter.emit_alerts"),
         patch("app.paper_v2.parity.shadow_parity") as mock_parity,
+        patch("app.routers.paper_v2._persist_scorecard_snapshot") as mock_snapshot,
         patch("app.tasks.SessionLocal"),
         patch("app.tasks._redis") as mock_redis_mod,
     ):
@@ -155,6 +156,10 @@ def test_tc1_parity_not_called_before_go_live():
         execute_paper_daily_task("2026-01-31")
 
     mock_parity.assert_not_called()
+    # specs/v3/14 Fix #2: the snapshot is gated on the same go_live check as parity
+    # (both live inside `if report.is_rebalance and d >= go_live`) — a warm-start
+    # month-end must not freeze a scorecard snapshot either.
+    mock_snapshot.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -207,6 +212,10 @@ def test_tc2_parity_halt_raises_on_failed_parity():
             "app.paper_v2.parity.shadow_parity",
             return_value=_fake_parity(passed=False),  # BREAK
         ),
+        # specs/v3/14 Fix #2: the month-end snapshot writer opens its own fresh
+        # session (real DB) — mock it out here same as every other external I/O
+        # (Rule 5), so this test never touches a real database.
+        patch("app.routers.paper_v2._persist_scorecard_snapshot"),
         patch("app.tasks.SessionLocal"),
         patch("app.tasks._redis") as mock_redis_mod,
     ):
@@ -245,6 +254,111 @@ def test_tc3_concurrency_guard_skips_when_locked():
     )
     # Lock must NOT be deleted when it was never acquired.
     redis_client.delete.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# TC6-7 — scorecard snapshot fires exactly at month-end (specs/v3/14 Fix #2)
+# ---------------------------------------------------------------------------
+
+
+def test_tc6_scorecard_snapshot_called_on_post_go_live_rebalance():
+    """A post-go_live rebalance day (parity PASS) must call
+    _persist_scorecard_snapshot(portfolio_id, day, "month_end") exactly once.
+
+    WHY: Fix #2 freezes the F6 verdict at the same cadence graduation is measured
+    on. If this call is missing or mis-gated, the probation never accumulates the
+    dated, immutable record 11 §11 requires — the live dashboard could keep
+    silently drifting after later backfills with nothing to check it against.
+    """
+    _fake_build = MagicMock(val_report=None)
+    with (
+        patch(
+            "app.data.bhavcopy.incremental.incremental_append",
+            return_value=(_fake_build, None),
+        ),
+        patch(
+            "app.data.bhavcopy.store.read_prices_adjusted",
+            return_value=_fake_prices(),
+        ),
+        patch("app.backtest_v2.benchmark.load_price_index", return_value=MagicMock()),
+        patch(
+            "app.paper_v2.live_engine.get_or_create_book",
+            return_value=_fake_book(),
+        ),
+        patch(
+            "app.paper_v2.live_engine.confirmed_replay_days",
+            return_value=[_LIVE_DAY],
+        ),
+        patch(
+            "app.paper_v2.live_engine.build_live_context",
+            return_value=(MagicMock(), []),
+        ),
+        patch(
+            "app.paper_v2.live_engine.process_day",
+            return_value=_fake_report(is_rebalance=True),
+        ),
+        patch("app.paper_v2.alerter.emit_alerts"),
+        patch(
+            "app.paper_v2.parity.shadow_parity",
+            return_value=_fake_parity(passed=True),
+        ),
+        patch("app.paper_v2.parity.persist_parity"),
+        patch("app.routers.paper_v2._persist_scorecard_snapshot") as mock_snapshot,
+        patch("app.tasks.SessionLocal"),
+        patch("app.tasks._redis") as mock_redis_mod,
+    ):
+        mock_redis_mod.from_url.return_value = _redis_unlocked()
+        execute_paper_daily_task("2026-06-30")
+
+    mock_snapshot.assert_called_once_with(1, _LIVE_DAY, "month_end")
+
+
+def test_tc7_scorecard_snapshot_not_called_on_non_rebalance_day():
+    """A post-go_live day that is NOT a rebalance (mid-month) must NOT snapshot.
+
+    WHY: Fix #2 snapshots exactly at the month-end cadence graduation is measured
+    on — snapshotting every day would (a) not match "at each month-end" and (b)
+    make the idempotency guard's (portfolio_id, as_of_date, trigger) key pointless
+    noise instead of one row per graduation-relevant month.
+    """
+    _fake_build = MagicMock(val_report=None)
+    with (
+        patch(
+            "app.data.bhavcopy.incremental.incremental_append",
+            return_value=(_fake_build, None),
+        ),
+        patch(
+            "app.data.bhavcopy.store.read_prices_adjusted",
+            return_value=_fake_prices(),
+        ),
+        patch("app.backtest_v2.benchmark.load_price_index", return_value=MagicMock()),
+        patch(
+            "app.paper_v2.live_engine.get_or_create_book",
+            return_value=_fake_book(),
+        ),
+        patch(
+            "app.paper_v2.live_engine.confirmed_replay_days",
+            return_value=[_LIVE_DAY],
+        ),
+        patch(
+            "app.paper_v2.live_engine.build_live_context",
+            return_value=(MagicMock(), []),
+        ),
+        patch(
+            "app.paper_v2.live_engine.process_day",
+            return_value=_fake_report(is_rebalance=False),  # NOT a rebalance day
+        ),
+        patch("app.paper_v2.alerter.emit_alerts"),
+        patch("app.paper_v2.parity.shadow_parity") as mock_parity,
+        patch("app.routers.paper_v2._persist_scorecard_snapshot") as mock_snapshot,
+        patch("app.tasks.SessionLocal"),
+        patch("app.tasks._redis") as mock_redis_mod,
+    ):
+        mock_redis_mod.from_url.return_value = _redis_unlocked()
+        execute_paper_daily_task("2026-06-30")
+
+    mock_parity.assert_not_called()
+    mock_snapshot.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

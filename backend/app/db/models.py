@@ -710,6 +710,48 @@ class PaperV2Run(Base):
     )
 
 
+class PaperV2ScorecardSnapshot(Base):
+    """Immutable F6 scorecard verdict snapshot (specs/v3/14 Fix #2).
+
+    The live ``/scorecard`` endpoint recomputes from mutable tables (parity, runs,
+    fills, daily snapshots), so a later bhavcopy backfill or CA re-adjustment can
+    silently change a past reading. This table freezes what the scorecard said, on
+    what data, at each month-end — the dated record ``11 §11``'s "write the verdict"
+    needs. ``payload`` is the full serialized ``ScorecardResponse`` (gates +
+    kill_watch), so a close-out review never has to re-derive from since-changed
+    source tables. Idempotent on ``(portfolio_id, as_of_date, trigger)``: a re-run of
+    the same processed month-end updates the row in place rather than appending
+    (Pipeline Law).
+    """
+
+    __tablename__ = "paper_v2_scorecard_snapshot"
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    portfolio_id = Column(Integer, ForeignKey("paper_v2_portfolio.id"), nullable=False)
+    taken_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.datetime.now(datetime.timezone.utc),
+    )
+    as_of_date = Column(Date, nullable=False)  # IST processed date that triggered it
+    trigger = Column(String, nullable=False)  # month_end | manual
+    verdict = Column(String, nullable=False)
+    clean_months_passed = Column(Integer, nullable=False)
+    clock_reset_at = Column(Date, nullable=True)
+    payload = Column(JSON, nullable=False)  # full serialized ScorecardResponse
+
+    __table_args__ = (
+        UniqueConstraint(
+            "portfolio_id",
+            "as_of_date",
+            "trigger",
+            name="uq_paper_v2_scorecard_snap_portfolio_asof_trigger",
+        ),
+        Index(
+            "ix_paper_v2_scorecard_snap_portfolio_asof", "portfolio_id", "as_of_date"
+        ),
+    )
+
+
 class MarketBreadth(Base):
     __tablename__ = "market_breadth"
     date = Column(Date, primary_key=True)

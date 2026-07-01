@@ -1,6 +1,6 @@
 # v3 / 14 — Probation Verdict Hardening (Decision-Layer Faithfulness & Durability)
 
-> **Status: LOCKED — signed off by Arafat 2026-07-01 (§6). Fix #1 DONE 2026-07-01; Fix #2/#3 pending.**
+> **Status: LOCKED — signed off by Arafat 2026-07-01 (§6). Fix #1/#2 DONE 2026-07-01; Fix #3 pending.**
 > The F6 scorecard (`specs/v3/12`, `paper_v2.py:964–1379`) computes the four locked graduation
 > gates and two kill watches correctly, but it is a **live-recomputed dashboard**, not a
 > defensible verdict. Six months from `go_live = 2026-06-23` the probation must yield a clean,
@@ -83,7 +83,7 @@ orange, so the badge doesn't silently fall back to the green `ON TRACK` style).
 
 ---
 
-## 2. Fix #2 — Persist an immutable verdict snapshot (durability)
+## 2. Fix #2 — Persist an immutable verdict snapshot (durability) — **DONE 2026-07-01**
 
 ### The gap
 The verdict is recomputed on every GET from mutable tables (`paper_v2_daily_snapshot`,
@@ -134,6 +134,27 @@ Behavior:
 - Re-run same month-end date → row **updated in place**, still count 1 (idempotency).
 - `build_scorecard` returns byte-equal result to the live endpoint for the same DB state (single
   source of truth).
+
+### Implementation note (landed 2026-07-01)
+`get_scorecard` is now a thin wrapper: it fetches the active book and returns
+`build_scorecard(db, book)` — the same call the fresh-session snapshot writer makes, so
+`test_ts21` asserts the two are byte-equal for identical DB state. The upsert itself is split
+into `_upsert_scorecard_snapshot(db, portfolio_id, as_of_date, trigger, scorecard)` (pure,
+testable against an ordinary session) and `_persist_scorecard_snapshot(portfolio_id, as_of_date,
+trigger)` (the fresh-session wrapper tasks.py calls, mirroring `_persist_paper_run`) — the same
+pure-function/fresh-session split Fix #1's note used for `build_scorecard` itself. The uniqueness
+key is `(portfolio_id, as_of_date, trigger)`, not just `(portfolio_id, as_of_date)`, so a future
+`"manual"` snapshot on the same date can never clobber the `"month_end"` graduation record for
+that date (`test_ts24`). The call site lives in `tasks.py` inside the existing
+`if report.is_rebalance and d >= go_live:` block, right after `parity.persist_parity` commits and
+*before* the BREAK check — so a parity-break month-end still gets a frozen record of that break,
+not just clean months. Landed in `app/db/models.py` (`PaperV2ScorecardSnapshot`), migration
+`42a9ea26fbe2` (revises `1b67f5d050b2`), `app/routers/paper_v2.py` (`build_scorecard`,
+`_upsert_scorecard_snapshot`, `_persist_scorecard_snapshot`, `GET /scorecard/snapshots`),
+`app/tasks.py`, and 8 new tests across `tests/paper_v2/test_scorecard_snapshot.py` (`test_ts21`–
+`test_ts26`) + `tests/paper_v2/test_paper_task.py` (`test_tc6`, `test_tc7`, plus snapshot
+assertions added to the existing `test_tc1`/`test_tc2`). Full `paper_v2` + API suite green
+(143 tests). UI timeline card remains out of scope (spec §2, follow-on).
 
 ---
 
@@ -192,7 +213,7 @@ authoritative NSE calendar the engine already trusts.
 
 1. **Fix #1** (verdict correctness) — standalone; smallest blast radius; land first. **DONE 2026-07-01.**
 2. **Fix #2** (`build_scorecard` refactor + snapshot table/migration/endpoint) — depends on #1 so the
-   persisted `verdict` already includes `AT RISK`.
+   persisted `verdict` already includes `AT RISK`. **DONE 2026-07-01.**
 3. **Fix #3** (Gate 2 coverage audit) — independent of #2; can land before or after.
 
 **Done = all of:** new/updated tests green in `tests/paper_v2/`; `alembic upgrade head` clean on the
