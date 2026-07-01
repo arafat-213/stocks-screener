@@ -1,6 +1,7 @@
 import logging
 
 import redis as _redis
+import requests
 
 from app.backtest.engine import run_backtest as execute_backtest_engine
 from app.core.celery_app import celery_app, redis_url
@@ -48,7 +49,19 @@ def execute_pipeline_task(limit: int | None = None, resume_run_id: str | None = 
         db.close()
 
 
-@celery_app.task(name="app.tasks.execute_paper_daily_task")
+@celery_app.task(
+    name="app.tasks.execute_paper_daily_task",
+    # Transient network errors (e.g. a niftyindices/yfinance read timeout, cf. the
+    # 2026-06-30 19:30 IST run that needed a manual re-fire) get 3 automatic
+    # attempts with backoff instead of silently failing the whole day. Only these
+    # exception types retry — a RuntimeError (parity BREAK, ghost-risk HALT) is a
+    # real halt and must propagate immediately, not be masked by a retry loop.
+    autoretry_for=(requests.Timeout, requests.ConnectionError),
+    retry_backoff=60,
+    retry_backoff_max=600,
+    retry_jitter=True,
+    max_retries=3,
+)
 def execute_paper_daily_task(process_date: str | None = None, trigger: str = "beat"):
     """Daily post-close S3 paper job (11 §4a/§4b/§4c).
 
@@ -223,9 +236,17 @@ def execute_paper_daily_task(process_date: str | None = None, trigger: str = "be
         try:
             import traceback as _traceback
 
-            alerter.emit_failure_alert(
-                e, target.isoformat(), _traceback.format_exc(), session=db
-            )
+            # Fresh session: `db` may be mid-aborted-transaction from the failure
+            # above, and any further use of it (even a flush) would raise —
+            # silently losing the alert (same rationale as _persist_paper_run).
+            alert_db = SessionLocal()
+            try:
+                alerter.emit_failure_alert(
+                    e, target.isoformat(), _traceback.format_exc(), session=alert_db
+                )
+                alert_db.commit()
+            finally:
+                alert_db.close()
         except Exception as alert_exc:
             logger.error("emit_failure_alert itself failed: %s", alert_exc)
         raise
