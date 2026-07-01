@@ -88,7 +88,10 @@ def _succession_panel(*, stitched: bool):
     ``stitched=False`` ⇒ no ``instrument_id`` column (raw-isin pre-fix store).
     """
     rng = np.random.default_rng(11)
-    all_dates = pd.bdate_range("2022-01-03", periods=N_DAYS)
+    # specs/v3/13: trailing edge must fall in a forward-calendar-covered year
+    # (build_live_context now resolves the trailing month-end via the NSE calendar and
+    # fails loud on an uncovered year). 400 bdays → 2026-12-11, a covered weekday.
+    all_dates = pd.bdate_range("2025-06-02", periods=N_DAYS)
     rows: list[dict] = []
 
     # 24 ordinary names — modest upward random walks (the book's other holdings).

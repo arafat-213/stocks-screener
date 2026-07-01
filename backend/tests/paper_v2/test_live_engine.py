@@ -35,6 +35,7 @@ import pytest
 from app.backtest_v2 import engine
 from app.backtest_v2.portfolio import Portfolio
 from app.backtest_v2.schemas import DailySnapshot, Fill
+from app.data import trading_calendar
 from app.db.models import PaperV2PendingFill, PaperV2Portfolio, PaperV2Position
 from app.paper_v2 import alerter, live_engine, parity
 from app.paper_v2.ca_reconcile import would_stop_fire
@@ -66,7 +67,11 @@ _PRICE_COLS = [
 
 def _make_panel(
     isins: list[str],
-    start: str = "2022-01-03",
+    # specs/v3/13: the frame's trailing edge must land in a forward-calendar-covered year
+    # (build_live_context now resolves the trailing month-end against the NSE calendar and
+    # fails loud on an uncovered year — exactly as production would). 400 bdays from here
+    # ends 2026-12-11, a covered weekday; interior years need no coverage (untouched).
+    start: str = "2025-06-02",
     n_days: int = 400,
     seed: int = 7,
 ) -> pd.DataFrame:
@@ -119,7 +124,9 @@ def _make_index(prices: pd.DataFrame) -> pd.Series:
 
 def _flat_panel(
     isins: list[str],
-    start: str = "2022-03-01",
+    # specs/v3/13: trailing edge in a covered year (43 bdays → 2026-04-29, a covered
+    # weekday). See _make_panel's note.
+    start: str = "2026-03-02",
     n_days: int = 43,
     base: float = 100.0,
     adj_factor: float = 1.0,
@@ -783,37 +790,22 @@ def test_dc6_emit_alerts_render_without_io():
 
 
 # ---------------------------------------------------------------------------
-# DC7 — forward-aware replay window: the live trailing edge is held back (§4c)
+# DC7 — forward-calendar replay window: trailing edge processed same-evening (specs/v3/13)
 # ---------------------------------------------------------------------------
 
 
-def test_dc7_trailing_month_end_is_held_back_then_confirmed():
-    """The blocker P11.2 resolves: live, the stored frame ends at the latest bhavcopy,
-    so its trailing day is an UNCONFIRMED month-end. ``_month_end_dates`` would mark it
-    the last trading day of its month every single day → a false rebalance daily.
-
-    ``confirmed_replay_days`` must hold that trailing edge back until a later trading day
-    confirms it, then process the real month-end on its correct historical date — so the
-    rebalance fires exactly once, on the month-end, not every day."""
+def test_dc7_replay_window_includes_trailing_edge():
+    """specs/v3/13: the holdback is GONE — the trailing edge is processed the evening of
+    D itself (so the rebalance is computed before the D+1 open it fills at). Every
+    unprocessed day ≤ target is returned, including the latest stored day."""
     jan = [
         date(2026, 1, 28),
         date(2026, 1, 29),
-        date(2026, 1, 30),
-    ]  # Jan 30 = month-end
-
-    # Frame ends ON the month-end (it is the trailing edge): it MUST be held back, so the
-    # month-end is NOT (yet) processed and no false rebalance can fire.
-    held = live_engine.confirmed_replay_days(jan, None, date(2026, 1, 30))
-    assert held == [date(2026, 1, 28), date(2026, 1, 29)]
-    assert date(2026, 1, 30) not in held
-
-    # Next run: February data arrives → Jan 30 now has a successor and is confirmed. It is
-    # processed (as the month-end) and Feb 2 becomes the new held-back trailing edge.
-    feb = jan + [date(2026, 2, 2)]
-    confirmed = live_engine.confirmed_replay_days(
-        feb, date(2026, 1, 29), date(2026, 2, 2)
-    )
-    assert confirmed == [date(2026, 1, 30)]
+        date(2026, 1, 30),  # month-end AND trailing edge
+    ]
+    win = live_engine.confirmed_replay_days(jan, None, date(2026, 1, 30))
+    assert win == [date(2026, 1, 28), date(2026, 1, 29), date(2026, 1, 30)]
+    assert date(2026, 1, 30) in win  # no longer held back
 
 
 def test_dc7_replay_window_respects_last_processed_and_target_and_order():
@@ -825,25 +817,67 @@ def test_dc7_replay_window_respects_last_processed_and_target_and_order():
         date(2026, 2, 3),
     ]
     # last_processed bounds the low end (only strictly-after days); target bounds the high
-    # end; the trailing edge (Feb 3) is always excluded; result is ascending.
-    win = live_engine.confirmed_replay_days(cal, date(2026, 1, 28), date(2026, 2, 2))
-    assert win == [date(2026, 1, 29), date(2026, 1, 30), date(2026, 2, 2)]
-    assert win == sorted(win)
-
-
-def test_dc7_historical_replay_holds_nothing_back():
-    """When ``target`` is well before the frame's end (an ordered backfill), every day
-    ≤ target already has a successor, so none is held back — the month-end inside the
-    window is processed on time (matching the backfill path P11.1 already proves)."""
-    cal = [
+    # end. The trailing edge is no longer excluded — target alone caps the window.
+    win = live_engine.confirmed_replay_days(cal, date(2026, 1, 28), date(2026, 2, 3))
+    assert win == [
         date(2026, 1, 29),
-        date(2026, 1, 30),  # month-end, has successors in-frame
+        date(2026, 1, 30),
         date(2026, 2, 2),
         date(2026, 2, 3),
     ]
-    win = live_engine.confirmed_replay_days(cal, None, date(2026, 1, 30))
-    assert win == [date(2026, 1, 29), date(2026, 1, 30)]  # month-end NOT held back
+    assert win == sorted(win)
 
 
 def test_dc7_empty_calendar_is_empty():
     assert live_engine.confirmed_replay_days([], None, date(2026, 1, 30)) == []
+
+
+# ---------------------------------------------------------------------------
+# DC7b — _confirm_trailing_rebalance: forward calendar resolves the trailing month-end
+# ---------------------------------------------------------------------------
+
+
+def _fake_ctx(rebalance_dates):
+    """A minimal stand-in exposing only the field _confirm_trailing_rebalance touches."""
+    from types import SimpleNamespace
+
+    return SimpleNamespace(rebalance_dates=set(rebalance_dates))
+
+
+def test_confirm_trailing_rebalance_discards_false_month_end():
+    """A mid-month trailing edge is flagged a month-end by ``_month_end_dates`` (it is the
+    max of its own (year, month) group). The forward calendar knows Jan 29 2026 is NOT the
+    last trading day of January (Jan 30 is), so it is discarded → no false rebalance."""
+    cal = [pd.Timestamp("2026-01-28"), pd.Timestamp("2026-01-29")]
+    ctx = _fake_ctx({pd.Timestamp("2026-01-29")})  # frame's spurious month-end
+    live_engine._confirm_trailing_rebalance(ctx, cal)
+    assert ctx.rebalance_dates == set()
+
+
+def test_confirm_trailing_rebalance_keeps_true_month_end():
+    """When the trailing edge IS the real month-end (Jan 30 2026, the last trading day of
+    Jan), it is kept — so the rebalance fires the same evening, before the D+1 open."""
+    cal = [pd.Timestamp("2026-01-28"), pd.Timestamp("2026-01-30")]
+    ctx = _fake_ctx({pd.Timestamp("2026-01-30")})
+    live_engine._confirm_trailing_rebalance(ctx, cal)
+    assert ctx.rebalance_dates == {pd.Timestamp("2026-01-30")}
+
+
+def test_confirm_trailing_rebalance_leaves_interior_dates_untouched():
+    """Only the trailing edge is reconsidered; an interior confirmed month-end (Jan 30,
+    which has a successor in-frame) is never consulted against the calendar and stays."""
+    cal = [pd.Timestamp("2026-01-30"), pd.Timestamp("2026-02-02")]
+    ctx = _fake_ctx({pd.Timestamp("2026-01-30")})  # interior, confirmed by Feb 2
+    live_engine._confirm_trailing_rebalance(ctx, cal)
+    # Feb 2 is the trailing edge and is not a month-end, but it isn't in the set anyway;
+    # the interior Jan 30 month-end must survive untouched.
+    assert ctx.rebalance_dates == {pd.Timestamp("2026-01-30")}
+
+
+def test_confirm_trailing_rebalance_fails_loud_on_uncovered_year():
+    """An un-refreshed calendar (trailing edge in an uncovered year) must HALT, not
+    silently skip the check (Rule 12 / specs/v3/13)."""
+    cal = [pd.Timestamp("2027-01-28")]
+    ctx = _fake_ctx({pd.Timestamp("2027-01-28")})
+    with pytest.raises(trading_calendar.CalendarCoverageError):
+        live_engine._confirm_trailing_rebalance(ctx, cal)

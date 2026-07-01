@@ -20,11 +20,19 @@ Month-end / rebalance detection uses ``ctx.rebalance_dates`` (the last trading d
 each month in the *stored* trading calendar). ``_month_end_dates`` marks day D a
 month-end iff D is the max date of its (year, month) group — which is only trustworthy
 once a *later* trading day exists in the frame. Live, the stored frame ends at the
-latest published bhavcopy, so its trailing day is an UNCONFIRMED month-end and would
-falsely rebalance every single day. ``confirmed_replay_days`` (P11.2 §4c, holiday-proof)
-resolves this by holding the trailing edge back until its successor confirms it: the
-book trails one trading day in wall-clock, but every decision/fill is byte-identical to
-the backtest and to the ordered-backfill path (paper replay is fidelity-neutral, §7.2).
+latest published bhavcopy, so its trailing day is an UNCONFIRMED month-end.
+
+Originally (`11` §4c) ``confirmed_replay_days`` resolved this by holding the trailing
+edge back until its successor confirmed it — fidelity-neutral for the replay, but it
+delayed *computing* the rebalance to the evening AFTER the open it modeled the fill at,
+so a real live order could never have achieved that price (specs/v3/13). The forward NSE
+calendar (``app.data.trading_calendar``) now answers "is the trailing edge a true
+month-end?" deterministically on the evening of D itself, so the holdback is gone:
+``_confirm_trailing_rebalance`` corrects the trailing edge's membership in
+``ctx.rebalance_dates`` and the day is processed the same evening. The fill convention is
+unchanged (decision ≤ D → fill at D+1's open); a live deployment stages the order
+overnight as a Market-On-Open (MOO) order, so the same convention is now physically
+honorable. Replay output stays byte-identical to the backtest (specs/v3/13).
 """
 
 from __future__ import annotations
@@ -41,6 +49,7 @@ from app.backtest_v2 import engine
 from app.backtest_v2.costs import CostLevel
 from app.backtest_v2.portfolio import Portfolio
 from app.backtest_v2.schemas import DailySnapshot, Fill, Position
+from app.data import trading_calendar
 from app.db.models import (
     PaperV2DailySnapshot,
     PaperV2PendingFill,
@@ -87,7 +96,7 @@ def build_live_context(
     v3cfg = s3_config.make_s3_v3config()
     eng_cfg = s3_config.make_s3_engine_cfg(v3cfg)
     ss = s3_config.build_s3_signal_store(prices, v3cfg)
-    return engine.build_context(
+    ctx, calendar = engine.build_context(
         prices,
         eng_cfg,
         index_prices=index_prices,
@@ -103,11 +112,50 @@ def build_live_context(
         # here so book + shadow-parity share the flag ⇒ stay byte-identical (s3_config).
         whole_shares=s3_config.S3_WHOLE_SHARES,
     )
+    # specs/v3/13: resolve the trailing edge's month-end status from the forward NSE
+    # calendar (the one date the stored frame cannot self-confirm). Applied at this single
+    # chokepoint so the book, the shadow-parity re-derivation, and the warm-start replay
+    # all share the corrected set and stay byte-identical.
+    _confirm_trailing_rebalance(ctx, calendar)
+    return ctx, calendar
 
 
 # ---------------------------------------------------------------------------
-# Forward-aware replay window (11 §4c) — holiday-proof month-end confirmation
+# Forward-aware replay window — forward-calendar month-end confirmation (specs/v3/13)
 # ---------------------------------------------------------------------------
+
+
+def _confirm_trailing_rebalance(
+    ctx: engine.EngineContext, calendar: list[pd.Timestamp]
+) -> None:
+    """Resolve the trailing edge's month-end status using the forward NSE calendar.
+
+    ``_month_end_dates`` flags day D a month-end iff D is the max date of its (year,
+    month) group. Every day in the stored frame *except the global max* has a successor
+    that makes that flag trustworthy; the **trailing edge is the one date the frame cannot
+    self-confirm** — it is always the max of its own (year, month) group, so it is always
+    flagged a month-end even mid-month. Before specs/v3/13 the trailing edge was held back
+    a day to dodge this; now the forward calendar answers it directly.
+
+    We only ever *discard* the trailing edge (when the calendar says it is NOT the last
+    trading day of its month). We never add: a true month-end is already present (monthly
+    cadence) or correctly absent (quarterly/semi-annual filter ``_rebalance_dates``), and
+    the forward calendar's "is a month-end" never over-rules a cadence exclusion.
+
+    Mutates ``ctx.rebalance_dates`` in place. The trailing edge of the *stored* frame is
+    always the latest published bhavcopy ≈ today, so the calendar lookup is on a covered
+    year; an un-refreshed calendar raises ``CalendarCoverageError`` (fail loud, Rule 12),
+    halting the run rather than silently mis-detecting a month-end.
+    """
+    if not calendar:
+        return
+    trailing = _to_date(max(calendar))
+    trailing_ts = pd.Timestamp(trailing)
+    if (
+        trailing_ts in ctx.rebalance_dates
+        and not trading_calendar.is_month_end_trading_day(trailing)
+    ):
+        ctx.rebalance_dates.discard(trailing_ts)
 
 
 def confirmed_replay_days(
@@ -115,37 +163,28 @@ def confirmed_replay_days(
     last_processed: date | None,
     target: date,
 ) -> list[date]:
-    """The unprocessed trading days whose month-end status is FINAL (11 §4c).
+    """The unprocessed trading days to replay, ascending (specs/v3/13).
 
-    A day D's rebalance status is final only once a *later* trading day exists in the
-    stored frame: ``_month_end_dates`` flags D a month-end iff D is the max date of its
-    (year, month) group, and that is trustworthy only when D has a successor. Live, the
-    stored frame ends at the latest published bhavcopy, so its **trailing day is an
-    unconfirmed month-end** — processed as-is it would fire a false rebalance every day
-    of the trailing month (the blocker this resolves).
+    Returns every ``D`` with ``last_processed < D <= target`` — **the trailing edge is no
+    longer held back.** The holdback (`11` §4c) was a workaround for the repo lacking a
+    forward trading calendar: it couldn't tell, on the evening of D, whether the latest
+    stored day was a true month-end, so it deferred D a day. That pushed the rebalance
+    *computation* to the evening AFTER the open it modeled the fill at — physically
+    unexecutable live (specs/v3/13).
 
-    The holiday-proof fix (no future trading calendar exists in the repo — the bhavcopy
-    pipeline only skips weekends and tolerates holiday gaps): **hold the trailing edge
-    back** until a later stored day confirms it. The book trails one trading day in
-    wall-clock, but the held-back day is processed on the next run with the SAME
-    information set (decision from data ≤ D, fill at D+1's open), so it is byte-identical
-    to the backtest and to the ordered-backfill path — paper replay is fidelity-neutral
-    (§7.2). For a historical replay (``target`` well before the frame's end) nothing is
-    held back: every day ≤ target already has a successor.
-
-    Returns the ascending dates D with ``last_processed < D ≤ target`` and
-    ``D < max(calendar)`` (the trailing edge excluded).
+    The forward NSE calendar now resolves the trailing edge's month-end status in real
+    time (``_confirm_trailing_rebalance``, applied in ``build_live_context``), so D is
+    processed the same evening. The fill convention is unchanged (decision ≤ D → fill at
+    D+1's open); a live deployment stages the order overnight as a Market-On-Open order,
+    making that convention honorable. Replay output is byte-identical to the backtest.
     """
     if not calendar:
         return []
     days = sorted(_to_date(d) for d in calendar)
-    trailing_edge = days[-1]  # unconfirmed: no successor in the stored frame yet
     return [
         d
         for d in days
-        if d < trailing_edge
-        and d <= target
-        and (last_processed is None or d > last_processed)
+        if d <= target and (last_processed is None or d > last_processed)
     ]
 
 
