@@ -600,3 +600,120 @@ def test_ts16_verdict_graduated_requires_6_clean_months_and_hard_gates_pass(clie
     for g in hard:
         assert g["status"] == "pass", f"{g['id']} not pass: {g['status']}"
     assert data["verdict"] == "GRADUATED"
+
+
+# ---------------------------------------------------------------------------
+# TS17-21 — AT RISK verdict (specs/v3/14 Fix #1)
+#
+# WHY: before Fix #1, a HARD gate (Gate 2/Gate 3) failing with no parity break
+# and no kill fell through to the catch-all "else" and reported ON TRACK — a
+# green-ish headline over a failing HARD gate. AT RISK closes that gap. These
+# tests encode the exact precedence: HALT > AT RISK > GRADUATED > CLOCK RESET
+# > ON TRACK, and that AT RISK must not fire on insufficient_data or on a
+# historical (recovered) parity fail — only on a gate that is failing *now*.
+# ---------------------------------------------------------------------------
+
+
+def test_ts17_at_risk_when_gate3_cost_fails_no_parity_break(client, db):
+    """G3 cost HARD fail, no parity break, no kill → verdict AT RISK.
+
+    WHY: a hard cost breach must never read ON TRACK or GRADUATED just
+    because Gate 1 never broke and no kill tripped.
+    """
+    pf = _make_book(db)
+    _add_run(db, pf, last_date=_GO_LIVE)
+    # Enormous timing slippage blows through the pessimistic cost ceiling.
+    _add_fill(
+        db,
+        pf,
+        _GO_LIVE,
+        qty=10.0,
+        decision_price=100.0,
+        fill_price=1000.0,
+        cost_rupees=1.0,
+    )
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    g3 = next(g for g in data["gates"] if g["id"] == "g3_cost")
+    assert g3["status"] == "fail"
+    assert data["verdict"] == "AT RISK"
+
+
+def test_ts17b_at_risk_when_gate3_cost_fails_with_6_clean_months(client, db):
+    """G3 cost HARD fail even with 6 clean parity months → still AT RISK, not GRADUATED.
+
+    WHY: AT RISK must take precedence over a satisfied clean-month clock —
+    graduation requires ALL hard gates clean, not just fidelity.
+    """
+    pf = _make_book(db)
+    _add_run(db, pf, last_date=_GO_LIVE)
+    for i in range(6):
+        _add_parity(
+            db, pf, datetime.date(2026, 7 + i, 28), passed=True, max_dev_bps=10.0
+        )
+    _add_fill(
+        db,
+        pf,
+        _GO_LIVE,
+        qty=10.0,
+        decision_price=100.0,
+        fill_price=1000.0,
+        cost_rupees=1.0,
+    )
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    assert data["clean_months_passed"] == 6
+    assert data["verdict"] == "AT RISK"
+
+
+def test_ts18_at_risk_when_gate2_operational_fails(client, db):
+    """G2 operational HARD fail (unrecovered run failure) → verdict AT RISK.
+
+    WHY: an unrecovered pipeline failure is exactly the §7.2 failure mode the
+    gate exists to catch — it must not be masked by a clean parity history.
+    """
+    pf = _make_book(db)
+    _add_run(db, pf, status="failed", last_date=_GO_LIVE)
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    g2 = next(g for g in data["gates"] if g["id"] == "g2_operational")
+    assert g2["status"] == "fail"
+    assert data["verdict"] == "AT RISK"
+
+
+def test_ts19_clock_reset_not_at_risk_after_recovery(client, db):
+    """Historical parity fail then 3 clean months → CLOCK RESET, not AT RISK.
+
+    WHY: g1's persisted status is a permanent all-time record (see test_ts3),
+    but the AT RISK trigger must reflect whether fidelity is failing *right
+    now*. The most recent parity check here passed, so the book has recovered
+    and the headline must say CLOCK RESET, not misreport a live breach.
+    """
+    pf = _make_book(db)
+    _add_run(db, pf, last_date=_GO_LIVE)
+    _add_parity(db, pf, datetime.date(2026, 7, 28), passed=False, max_dev_bps=80.0)
+    _add_parity(db, pf, datetime.date(2026, 8, 28), passed=True, max_dev_bps=5.0)
+    _add_parity(db, pf, datetime.date(2026, 9, 28), passed=True, max_dev_bps=5.0)
+    _add_parity(db, pf, datetime.date(2026, 10, 28), passed=True, max_dev_bps=5.0)
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    assert data["verdict"] == "CLOCK RESET"
+
+
+def test_ts20_on_track_when_all_gates_insufficient_data(client, db):
+    """Early book, no parity/runs/fills/snapshots → verdict ON TRACK, never AT RISK.
+
+    WHY: insufficient_data must never count as a fail — an early book with no
+    history yet is a fail-safe ON TRACK, not a false AT RISK alarm.
+    """
+    _make_book(db)
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    hard = [g for g in data["gates"] if g["severity"] == "hard"]
+    assert all(g["status"] == "insufficient_data" for g in hard)
+    assert data["verdict"] == "ON TRACK"

@@ -1004,9 +1004,13 @@ class ScorecardResponse(BaseModel):
     """F6 probation scorecard: graduation gates + kill watch (specs/v3/12 F6).
 
     Evaluates the locked §2.3 gates against persisted data — verbatim thresholds,
-    no invented bars. ``verdict`` is advisory and uses only the four states the spec
-    defines. A gate that cannot be evaluated from persisted data returns
-    ``status="insufficient_data"`` rather than a fabricated pass/fail.
+    no invented bars. ``verdict`` is advisory and uses the five states from
+    specs/v3/12 F6 + specs/v3/14 Fix #1: "HALT" > "AT RISK" > "GRADUATED" >
+    "CLOCK RESET" > "ON TRACK". "AT RISK" fires whenever any HARD gate currently
+    reads "fail" (with no kill tripped), so a live gate breach can never read as
+    "ON TRACK" or "CLOCK RESET". A gate that cannot be evaluated from persisted
+    data returns ``status="insufficient_data"`` rather than a fabricated pass/fail,
+    and "insufficient_data" never counts as a fail (fail-safe).
     """
 
     go_live: datetime.date
@@ -1015,7 +1019,7 @@ class ScorecardResponse(BaseModel):
     clock_reset_at: datetime.date | None  # date of last parity fail; None = never
     gates: list[GateStatus]
     kill_watch: list[KillWatchItem]
-    verdict: str  # "ON TRACK" | "CLOCK RESET" | "HALT" | "GRADUATED"
+    verdict: str  # "ON TRACK" | "AT RISK" | "CLOCK RESET" | "HALT" | "GRADUATED"
 
 
 @router.get("/scorecard", response_model=ScorecardResponse)
@@ -1361,13 +1365,31 @@ def get_scorecard(db: Session = Depends(get_db)) -> ScorecardResponse:
 
     kill_watch = [kw1, kw2]
 
-    # --- Verdict (four locked states from specs/v3/12 F6) ---
+    # --- Verdict (five states: specs/v3/12 F6 four + specs/v3/14 Fix #1 AT RISK) ---
     any_kill = any(k.tripped for k in kill_watch)
     hard_gates = [g for g in gates if g.severity == "hard"]
     all_hard_pass = all(g.status == "pass" for g in hard_gates)
 
+    # g1.status is a permanent all-time record: any parity fail in history marks
+    # it "fail" forever (test_ts3), which is correct for the persisted gate but
+    # wrong for a live headline — a book that reset and has since run clean
+    # should read CLOCK RESET, not AT RISK. So AT RISK checks whether fidelity
+    # is failing *right now* (the most recent parity check itself), not whether
+    # it ever failed (specs/v3/14 Fix #1 note, §1).
+    g1_currently_failing = bool(parity_rows) and (
+        not parity_rows[-1].passed or parity_rows[-1].max_dev_bps > _FIDELITY_TOL_BPS
+    )
+    other_hard_fail = any(
+        g.status == "fail" for g in hard_gates if g.id != "g1_fidelity"
+    )
+    any_hard_fail = g1_currently_failing or other_hard_fail
+
     if any_kill:
         verdict = "HALT"
+    elif any_hard_fail:
+        # A HARD gate is red right now — never let this read ON TRACK/GRADUATED,
+        # and a *current* Gate 1 fail must not misread as a historical CLOCK RESET.
+        verdict = "AT RISK"
     elif clean_months_passed >= 6 and all_hard_pass:
         verdict = "GRADUATED"
     elif clock_reset_at is not None:

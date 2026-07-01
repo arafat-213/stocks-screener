@@ -537,6 +537,11 @@ const VERDICT_META = {
     text: 'text-amber-400',
     border: 'border-amber-400/30',
   },
+  'AT RISK': {
+    bg: 'bg-orange-500/10',
+    text: 'text-orange-400',
+    border: 'border-orange-400/30',
+  },
   HALT: {
     bg: 'bg-bearish/10',
     text: 'text-bearish',

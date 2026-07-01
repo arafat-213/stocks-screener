@@ -1,6 +1,6 @@
 # v3 / 14 — Probation Verdict Hardening (Decision-Layer Faithfulness & Durability)
 
-> **Status: LOCKED — signed off by Arafat 2026-07-01 (§6). Implementation may proceed.**
+> **Status: LOCKED — signed off by Arafat 2026-07-01 (§6). Fix #1 DONE 2026-07-01; Fix #2/#3 pending.**
 > The F6 scorecard (`specs/v3/12`, `paper_v2.py:964–1379`) computes the four locked graduation
 > gates and two kill watches correctly, but it is a **live-recomputed dashboard**, not a
 > defensible verdict. Six months from `go_live = 2026-06-23` the probation must yield a clean,
@@ -21,7 +21,7 @@ defend later** — instead of a number that silently re-derives from mutable dat
 
 ---
 
-## 1. Fix #1 — Verdict must reflect any HARD-gate failure (correctness bug)
+## 1. Fix #1 — Verdict must reflect any HARD-gate failure (correctness bug) — **DONE 2026-07-01**
 
 ### The defect
 Verdict logic (`paper_v2.py:1364–1376`):
@@ -66,6 +66,20 @@ Notes:
 - All hard `pass`, `clean_months_passed = 6` → `GRADUATED` (unchanged happy path still holds).
 - Historical parity fail then 3 clean months (Gate 1 currently `pass`) → `CLOCK RESET`, not `AT RISK`.
 - All `insufficient_data` early book → `ON TRACK` (fail-safe).
+
+### Implementation note (landed 2026-07-01)
+`g1_fidelity.status` is a **permanent all-time record** — any historical parity fail marks
+it `"fail"` forever, even after later clean months (existing `test_ts3`, unchanged). Using
+that field directly for the `AT RISK` trigger would misfire on a *recovered* book: the
+scenario "historical fail → 3 clean months since" would read `AT RISK` instead of the
+correct `CLOCK RESET`. So the `AT RISK` check uses a **separate, derived** signal for Gate 1
+— whether the *most recent* parity row itself is failing — while Gates 2/3 use their
+`.status` directly (both are already computed from current/recent state, no historical
+baggage). This is purely a verdict-precedence detail; `g1.status` itself, `clock_reset_at`,
+and all four gate definitions are byte-for-byte unchanged. Landed in
+`app/routers/paper_v2.py` (`get_scorecard`) + `tests/paper_v2/test_scorecard.py`
+(`test_ts17`–`test_ts20`) + `frontend/src/pages/S3PaperBook.jsx` (`VERDICT_META['AT RISK']`,
+orange, so the badge doesn't silently fall back to the green `ON TRACK` style).
 
 ---
 
@@ -176,7 +190,7 @@ authoritative NSE calendar the engine already trusts.
 
 ## 5. Sequencing & acceptance
 
-1. **Fix #1** (verdict correctness) — standalone; smallest blast radius; land first.
+1. **Fix #1** (verdict correctness) — standalone; smallest blast radius; land first. **DONE 2026-07-01.**
 2. **Fix #2** (`build_scorecard` refactor + snapshot table/migration/endpoint) — depends on #1 so the
    persisted `verdict` already includes `AT RISK`.
 3. **Fix #3** (Gate 2 coverage audit) — independent of #2; can land before or after.
