@@ -38,6 +38,7 @@ import logging
 import os
 import re
 import tempfile
+import time
 from datetime import date
 from pathlib import Path
 from typing import Callable
@@ -140,6 +141,30 @@ def _make_session() -> requests.Session:
     return sess
 
 
+_RETRY_ATTEMPTS = 3
+_RETRY_BACKOFF_SECS = [5, 15]  # delay before attempt 2, then attempt 3
+
+
+def _call_with_retry(fn: Callable[[], list[dict]]) -> list[dict]:
+    """Call fn(), retrying up to _RETRY_ATTEMPTS times on transient network errors."""
+    for attempt in range(_RETRY_ATTEMPTS):
+        try:
+            return fn()
+        except (requests.Timeout, requests.ConnectionError) as exc:
+            if attempt == _RETRY_ATTEMPTS - 1:
+                raise
+            delay = _RETRY_BACKOFF_SECS[attempt]
+            log.warning(
+                "niftyindices fetch transient error (attempt %d/%d): %s — retrying in %ds",
+                attempt + 1,
+                _RETRY_ATTEMPTS,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+    raise RuntimeError("unreachable")  # mypy
+
+
 def _fetch_tri(index_name: str, start: str, end: str) -> list[dict]:
     """Fetch TRI rows from niftyindices. Returns raw row dicts."""
     sess = _make_session()
@@ -153,11 +178,13 @@ def _fetch_tri(index_name: str, start: str, end: str) -> list[dict]:
             "indexName": index_name,
         }
     )
-    resp = sess.post(_TRI_ENDPOINT, json={"cinfo": cinfo}, timeout=30)
-    resp.raise_for_status()
-    outer = resp.json()
-    rows: list[dict] = json.loads(outer["d"])
-    return rows
+
+    def _do() -> list[dict]:
+        resp = sess.post(_TRI_ENDPOINT, json={"cinfo": cinfo}, timeout=30)
+        resp.raise_for_status()
+        return json.loads(resp.json()["d"])
+
+    return _call_with_retry(_do)
 
 
 def _fetch_price(index_name: str, start: str, end: str) -> list[dict]:
@@ -173,11 +200,13 @@ def _fetch_price(index_name: str, start: str, end: str) -> list[dict]:
             "indexName": index_name,
         }
     )
-    resp = sess.post(_PRICE_ENDPOINT, json={"cinfo": cinfo}, timeout=30)
-    resp.raise_for_status()
-    outer = resp.json()
-    rows: list[dict] = json.loads(outer["d"])
-    return rows
+
+    def _do() -> list[dict]:
+        resp = sess.post(_PRICE_ENDPOINT, json={"cinfo": cinfo}, timeout=30)
+        resp.raise_for_status()
+        return json.loads(resp.json()["d"])
+
+    return _call_with_retry(_do)
 
 
 # ---------------------------------------------------------------------------
