@@ -511,6 +511,7 @@ def test_ts14_verdict_clock_reset_when_parity_failed(client, db):
     """
     pf = _make_book(db)
     _add_run(db, pf, last_date=_GO_LIVE)
+    _add_snap(db, pf, _GO_LIVE, 1_000_000.0, is_forward=True)  # Gate 2 coverage
     _add_parity(db, pf, datetime.date(2026, 7, 28), passed=False, max_dev_bps=80.0)
     _add_parity(db, pf, datetime.date(2026, 8, 28), passed=True, max_dev_bps=5.0)
 
@@ -694,6 +695,7 @@ def test_ts19_clock_reset_not_at_risk_after_recovery(client, db):
     """
     pf = _make_book(db)
     _add_run(db, pf, last_date=_GO_LIVE)
+    _add_snap(db, pf, _GO_LIVE, 1_000_000.0, is_forward=True)  # Gate 2 coverage
     _add_parity(db, pf, datetime.date(2026, 7, 28), passed=False, max_dev_bps=80.0)
     _add_parity(db, pf, datetime.date(2026, 8, 28), passed=True, max_dev_bps=5.0)
     _add_parity(db, pf, datetime.date(2026, 9, 28), passed=True, max_dev_bps=5.0)
@@ -717,3 +719,121 @@ def test_ts20_on_track_when_all_gates_insufficient_data(client, db):
     hard = [g for g in data["gates"] if g["severity"] == "hard"]
     assert all(g["status"] == "insufficient_data" for g in hard)
     assert data["verdict"] == "ON TRACK"
+
+
+# ---------------------------------------------------------------------------
+# TS27-30 — Gate 2 calendar-anchored coverage audit (specs/v3/14 Fix #3)
+#
+# WHY: 11 §7.2's HARD bar is completeness — every trading day in the window
+# processed, no gap left unbacked before the next month-end. The old gate only
+# checked the last 10 run rows and a `days_behind > 10` recency proxy, so an
+# INTERIOR gap (skipped early, then stepped over as last_processed_date
+# advanced past it) was invisible to both checks. These tests encode the real
+# NSE trading-day sequence from _GO_LIVE (2026-06-23): 6/23, 6/24, 6/25 are
+# trading days, 6/26 is a sourced holiday (a weekday, not a weekend — chosen
+# deliberately so a "missing" non-trading weekday can't be mistaken for a
+# gap), 6/27-28 is a weekend, then 6/29, 6/30, 7/1, 7/2 resume.
+# ---------------------------------------------------------------------------
+
+_G2_TRADING_DAYS = [
+    datetime.date(2026, 6, 23),
+    datetime.date(2026, 6, 24),
+    datetime.date(2026, 6, 25),
+    # 6/26 sourced holiday, 6/27-28 weekend — neither is a trading day.
+    datetime.date(2026, 6, 29),
+    datetime.date(2026, 6, 30),
+    datetime.date(2026, 7, 1),
+    datetime.date(2026, 7, 2),
+]
+
+
+def test_ts27_gate2_pass_when_window_fully_covered(client, db):
+    """Every trading day in go_live→last_processed has a snapshot → Gate 2 pass.
+
+    WHY: the happy path must still read pass under the new coverage audit —
+    completeness, not recency, but a fully-processed window is still clean.
+    """
+    last = _G2_TRADING_DAYS[-1]
+    pf = _make_book(db, last_processed=last)
+    _add_run(db, pf, last_date=last)
+    for d in _G2_TRADING_DAYS:
+        _add_snap(db, pf, d, 1_000_000.0, is_forward=True)
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    g2 = next(g for g in data["gates"] if g["id"] == "g2_operational")
+    assert g2["status"] == "pass"
+    assert str(len(_G2_TRADING_DAYS)) in g2["detail"]
+
+
+def test_ts28_gate2_fail_on_interior_gap_names_the_date(client, db):
+    """An interior trading day with no snapshot, last_processed advanced well
+    past it → Gate 2 fail naming that exact date.
+
+    WHY: this is precisely the §7.2 failure mode the old recency-only check
+    (last 10 runs + days_behind) could not see — the gap is in the MIDDLE of
+    an otherwise-advancing window, not at the trailing edge.
+    """
+    missing_day = datetime.date(2026, 6, 30)
+    last = _G2_TRADING_DAYS[-1]
+    pf = _make_book(db, last_processed=last)
+    _add_run(db, pf, last_date=last)
+    for d in _G2_TRADING_DAYS:
+        if d == missing_day:
+            continue
+        _add_snap(db, pf, d, 1_000_000.0, is_forward=True)
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    g2 = next(g for g in data["gates"] if g["id"] == "g2_operational")
+    assert g2["status"] == "fail"
+    assert str(missing_day) in g2["detail"]
+    assert data["verdict"] == "AT RISK"
+
+
+def test_ts29_gate2_pass_holiday_and_weekend_are_not_false_gaps(client, db):
+    """The window's un-snapshotted calendar days are ONLY the sourced holiday
+    and the weekend — no real trading day is missing → Gate 2 pass.
+
+    WHY: encodes explicitly that Gate 2 must audit against the NSE trading
+    calendar, not raw calendar days — 6/26 (holiday) and 6/27-28 (weekend)
+    must never be counted as unprocessed gaps.
+    """
+    last = datetime.date(2026, 6, 29)
+    pf = _make_book(db, last_processed=last)
+    _add_run(db, pf, last_date=last)
+    for d in [
+        datetime.date(2026, 6, 23),
+        datetime.date(2026, 6, 24),
+        datetime.date(2026, 6, 25),
+        last,
+    ]:
+        _add_snap(db, pf, d, 1_000_000.0, is_forward=True)
+
+    resp = client.get("/api/v2/paper/scorecard")
+    data = resp.json()
+    g2 = next(g for g in data["gates"] if g["id"] == "g2_operational")
+    assert g2["status"] == "pass"
+
+
+def test_ts30_gate2_insufficient_data_when_window_reaches_uncovered_year(client, db):
+    """last_processed_date lands in a year the sourced calendar doesn't cover
+    → Gate 2 insufficient_data citing the refresh, endpoint still returns 200.
+
+    WHY: 'fail loud, don't fail wrong' (Rule 12) — an un-refreshed calendar
+    must halt the coverage audit into a known-blind gate, never silently pass
+    (which would fabricate completeness) and never crash the endpoint.
+    """
+    pf = _make_book(
+        db,
+        go_live=datetime.date(2026, 12, 24),
+        last_processed=datetime.date(2027, 1, 5),
+    )
+    _add_run(db, pf, last_date=datetime.date(2027, 1, 5))
+
+    resp = client.get("/api/v2/paper/scorecard")
+    assert resp.status_code == 200
+    data = resp.json()
+    g2 = next(g for g in data["gates"] if g["id"] == "g2_operational")
+    assert g2["status"] == "insufficient_data"
+    assert "calendar" in g2["detail"].lower()

@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 
 from app.backtest_v2.costs import CostConfig, effective_price, fill_cost
 from app.core.celery_app import redis_url
+from app.data import trading_calendar
 from app.db.models import (
     PaperV2Alert,
     PaperV2DailySnapshot,
@@ -1153,10 +1154,6 @@ def build_scorecard(db: Session, book: PaperV2Portfolio) -> ScorecardResponse:
                     )
                     break
 
-        days_behind = (
-            (today - book.last_processed_date).days if book.last_processed_date else 999
-        )
-
         if unrecovered_fail:
             g2 = GateStatus(
                 id="g2_operational",
@@ -1166,32 +1163,80 @@ def build_scorecard(db: Session, book: PaperV2Portfolio) -> ScorecardResponse:
                 detail=fail_detail,
                 source="paper_v2_run",
             )
-        elif days_behind > 10:
+        elif book.last_processed_date is None:
             g2 = GateStatus(
                 id="g2_operational",
                 label="Operational — every day processed before next month-end (§7.2)",
                 severity="hard",
-                status="fail",
-                detail=(
-                    f"Book is {days_behind} calendar days behind "
-                    f"(last_processed={book.last_processed_date}). "
-                    "Risk of unprocessed gap before month-end."
-                ),
-                source="paper_v2_run + paper_v2_portfolio",
-            )
-        else:
-            n_success = sum(1 for r in run_rows if r.status == "success")
-            g2 = GateStatus(
-                id="g2_operational",
-                label="Operational — every day processed before next month-end (§7.2)",
-                severity="hard",
-                status="pass",
-                detail=(
-                    f"{n_success} successful run(s) in history; "
-                    f"last processed {book.last_processed_date} ({days_behind}d ago)."
-                ),
+                status="insufficient_data",
+                detail="No successful day processed yet.",
                 source="paper_v2_run",
             )
+        else:
+            # Calendar-anchored coverage audit (specs/v3/14 Fix #3): §7.2 is
+            # completeness of the go_live → last_processed window, not recency.
+            # An interior gap — skipped early, then stepped over as
+            # last_processed_date advanced — is invisible to a recency check but
+            # not to walking the authoritative NSE calendar day by day.
+            try:
+                expected_days: list[datetime.date] = []
+                d = go_live
+                if not trading_calendar.is_trading_day(d):
+                    d = trading_calendar.next_trading_day(d)
+                while d <= book.last_processed_date:
+                    expected_days.append(d)
+                    if d == book.last_processed_date:
+                        break
+                    d = trading_calendar.next_trading_day(d)
+            except trading_calendar.CalendarCoverageError as exc:
+                g2 = GateStatus(
+                    id="g2_operational",
+                    label="Operational — every day processed before next month-end (§7.2)",
+                    severity="hard",
+                    status="insufficient_data",
+                    detail=(
+                        f"Coverage window reaches an un-sourced calendar year: {exc} "
+                        "Refresh app/data/nse_holidays.json (specs/v3/13)."
+                    ),
+                    source="app.data.trading_calendar",
+                )
+            else:
+                covered_dates = {
+                    row.date
+                    for row in db.query(PaperV2DailySnapshot.date)
+                    .filter(
+                        PaperV2DailySnapshot.portfolio_id == book.id,
+                        PaperV2DailySnapshot.date >= go_live,
+                        PaperV2DailySnapshot.date <= book.last_processed_date,
+                    )
+                    .all()
+                }
+                missing = sorted(set(expected_days) - covered_dates)
+                if missing:
+                    g2 = GateStatus(
+                        id="g2_operational",
+                        label="Operational — every day processed before next month-end (§7.2)",
+                        severity="hard",
+                        status="fail",
+                        detail=(
+                            f"{len(missing)} unprocessed trading day(s) in the "
+                            f"go_live→last_processed window; earliest gap {missing[0]}."
+                        ),
+                        source="paper_v2_daily_snapshot + app.data.trading_calendar",
+                    )
+                else:
+                    n_success = sum(1 for r in run_rows if r.status == "success")
+                    g2 = GateStatus(
+                        id="g2_operational",
+                        label="Operational — every day processed before next month-end (§7.2)",
+                        severity="hard",
+                        status="pass",
+                        detail=(
+                            f"All {len(expected_days)} trading day(s) since {go_live} "
+                            f"processed; {n_success} successful run(s) in history."
+                        ),
+                        source="paper_v2_daily_snapshot + app.data.trading_calendar",
+                    )
 
     # Gate 3 — Cost realism (HARD): realized within base → pessimistic band (§7.3).
     # Reuses _compute_modeled_cost (Rule 5 — no formula re-derived).

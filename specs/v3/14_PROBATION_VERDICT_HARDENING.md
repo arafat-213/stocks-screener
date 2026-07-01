@@ -1,6 +1,6 @@
 # v3 / 14 — Probation Verdict Hardening (Decision-Layer Faithfulness & Durability)
 
-> **Status: LOCKED — signed off by Arafat 2026-07-01 (§6). Fix #1/#2 DONE 2026-07-01; Fix #3 pending.**
+> **Status: LOCKED — signed off by Arafat 2026-07-01 (§6). Fix #1/#2/#3 DONE 2026-07-01.**
 > The F6 scorecard (`specs/v3/12`, `paper_v2.py:964–1379`) computes the four locked graduation
 > gates and two kill watches correctly, but it is a **live-recomputed dashboard**, not a
 > defensible verdict. Six months from `go_live = 2026-06-23` the probation must yield a clean,
@@ -158,7 +158,7 @@ assertions added to the existing `test_tc1`/`test_tc2`). Full `paper_v2` + API s
 
 ---
 
-## 3. Fix #3 — Gate 2 must audit replay completeness, not recency (faithfulness)
+## 3. Fix #3 — Gate 2 must audit replay completeness, not recency (faithfulness) — **DONE 2026-07-01**
 
 ### The gap
 `11 §7.2` HARD gate = *every trading day in the window is processed in ascending order, with **no gap
@@ -193,6 +193,37 @@ authoritative NSE calendar the engine already trusts.
 - Missing day is a **holiday/weekend** (not a trading day) → still `pass` (no false gap).
 - Window straddles an uncovered year → `insufficient_data` citing the refresh, endpoint returns 200.
 
+### Implementation note (landed 2026-07-01)
+Replaced the `days_behind > 10` proxy in-place; the unrecovered-`failed`-run check above it
+is untouched. Walk order: `d = go_live`, advance once via `trading_calendar.next_trading_day`
+if `go_live` itself isn't a trading day, then loop `while d <= book.last_processed_date:
+expected_days.append(d); if d == last_processed: break; d = next_trading_day(d)` — the
+`break` before advancing past `last_processed_date` matters: calling `next_trading_day` one
+extra step beyond the actual window would probe into the following year even when the window
+itself never reaches an uncovered year (e.g. `last_processed_date` = the last trading day of
+2026), producing a false `insufficient_data`. Coverage is read from
+`paper_v2_daily_snapshot.date` (not `paper_v2_run`) — `live_engine.py`'s `_persist_state`
+writes exactly one snapshot row per processed trading day, so this is the authoritative
+"was this day actually durable" source, not merely "did a run claim success." A
+`CalendarCoverageError` from the walk (window reaches an un-sourced year) is caught and
+returns `insufficient_data` citing the `nse_holidays.json` refresh — it does not propagate
+into a 500. `book.last_processed_date is None` (no day processed yet) also returns
+`insufficient_data` rather than reaching the walk with a null bound.
+
+**Test-fixture consequence:** because coverage is now proven by an actual
+`paper_v2_daily_snapshot` row rather than merely a `paper_v2_run(status="success")` row, three
+pre-existing tests in `tests/paper_v2/test_scorecard.py` (`test_ts14`, `test_ts19`) and
+`tests/paper_v2/test_scorecard_snapshot.py` (`test_ts23`) needed one added `_add_snap(...)`
+call each for `go_live` to keep asserting their intended verdict (`CLOCK RESET` / `ON TRACK`)
+instead of incidentally tripping the new Gate 2 audit — this is fixing an unrealistic fixture
+(a "success" run that never wrote its snapshot), not weakening the check. Four new tests
+(`test_ts27`–`test_ts30`) land in `test_scorecard.py` exercising the real NSE calendar sequence
+from `_GO_LIVE` (2026-06-23), including the sourced 2026-06-26 holiday (a weekday, deliberately
+chosen so a missing non-trading weekday can't be mistaken for a gap) and an uncovered-year
+window (`go_live=2026-12-24 → last_processed=2027-01-05`). No new migration — `g2_operational`
+detail/source text changed only. Full `paper_v2` suite green (136 tests); `paper_v2` +
+`tests/data/test_trading_calendar.py` combined: 144 tests.
+
 ---
 
 ## 4. Guards — what this spec does NOT do
@@ -214,7 +245,7 @@ authoritative NSE calendar the engine already trusts.
 1. **Fix #1** (verdict correctness) — standalone; smallest blast radius; land first. **DONE 2026-07-01.**
 2. **Fix #2** (`build_scorecard` refactor + snapshot table/migration/endpoint) — depends on #1 so the
    persisted `verdict` already includes `AT RISK`. **DONE 2026-07-01.**
-3. **Fix #3** (Gate 2 coverage audit) — independent of #2; can land before or after.
+3. **Fix #3** (Gate 2 coverage audit) — independent of #2; can land before or after. **DONE 2026-07-01.**
 
 **Done = all of:** new/updated tests green in `tests/paper_v2/`; `alembic upgrade head` clean on the
 new migration; `GET /v2/paper/scorecard` unchanged in shape except the five-state `verdict`;

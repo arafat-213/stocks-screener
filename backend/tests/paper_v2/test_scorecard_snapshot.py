@@ -22,7 +22,13 @@ from app.routers.paper_v2 import (
     _upsert_scorecard_snapshot,
     build_scorecard,
 )
-from tests.paper_v2.test_scorecard import _add_fill, _add_parity, _add_run, _make_book
+from tests.paper_v2.test_scorecard import (
+    _add_fill,
+    _add_parity,
+    _add_run,
+    _add_snap,
+    _make_book,
+)
 
 _GO_LIVE = datetime.date(2026, 6, 23)
 
@@ -101,6 +107,7 @@ def test_ts23_snapshot_upsert_idempotent_updates_in_place(db):
     """
     pf = _make_book(db)
     _add_run(db, pf, last_date=_GO_LIVE)
+    _add_snap(db, pf, _GO_LIVE, 1_000_000.0, is_forward=True)  # Gate 2 coverage
     as_of = datetime.date(2026, 7, 28)
 
     # First call: no parity yet -> Gate 1 insufficient_data, verdict ON TRACK.
